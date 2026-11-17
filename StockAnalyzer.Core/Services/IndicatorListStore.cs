@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Serialization;
 using StockAnalyzer.Core.Utilities;
 
@@ -45,15 +46,7 @@ internal sealed class IndicatorListStore : IDisposable
         _filePath = filePath;
         _displayName = displayName;
         _logger = logger;
-        _jsonOptions = new JsonSerializerOptions
-        {
-            WriteIndented = true,
-            TypeInfoResolver = WorkspacePolymorphicResolver.CreateResolver(),
-            IncludeFields = true,
-            PropertyNameCaseInsensitive = true,
-            NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
-            Converters = { new IndicatorColorJsonConverter() }
-        };
+        _jsonOptions = CreateJsonOptions();
 
         // Eager initial load of cache: the synchronous getters depend on it.
         string? json = null;
@@ -112,6 +105,7 @@ internal sealed class IndicatorListStore : IDisposable
         try
         {
             var item = indicator.Snapshot();
+            IndicatorTimeframePolicy.ForceSameAsChart(item); // a registration is a chain upstream: it is calculated on the chart's own bars
             if (string.IsNullOrEmpty(item.Id))
             {
                 item.Id = Guid.NewGuid().ToString();
@@ -204,6 +198,31 @@ internal sealed class IndicatorListStore : IDisposable
         }
     }
 
+    /// <summary>The serializer options of the indicator list files: the one definition shared with the read-only MCP source.</summary>
+    internal static JsonSerializerOptions CreateJsonOptions() => new()
+    {
+        WriteIndented = true,
+        TypeInfoResolver = WorkspacePolymorphicResolver.CreateResolver(),
+        IncludeFields = true,
+        PropertyNameCaseInsensitive = true,
+        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
+        Converters = { new IndicatorColorJsonConverter() }
+    };
+
+    /// <summary>The indicators of an indicator list file as the application loads them (parsed, then healed to the current defaults). Throws when the content is not a valid list.</summary>
+    internal static List<CoreIndicatorSettings> ParseItems(string json, JsonSerializerOptions options)
+    {
+        var items = new List<CoreIndicatorSettings>();
+        foreach (CoreIndicatorSettings item in JsonSerializer.Deserialize<List<CoreIndicatorSettings>>(json, options) ?? new List<CoreIndicatorSettings>())
+        {
+            DefaultCoreIndicatorSettings.AutoHeal(item);
+            IndicatorTimeframePolicy.ForceSameAsChart(item); // a file written before this rule may carry one
+            items.Add(item);
+        }
+
+        return items;
+    }
+
     /// <summary>
     /// Completes one load attempt. <paramref name="json"/> is null when the file does not exist. Returns true when the cache is
     /// authoritative (state Loaded), false when the file must be read again later (state Unloaded).
@@ -226,15 +245,7 @@ internal sealed class IndicatorListStore : IDisposable
         {
             try
             {
-                var parsed = JsonSerializer.Deserialize<List<CoreIndicatorSettings>>(json, _jsonOptions);
-                if (parsed != null)
-                {
-                    foreach (var item in parsed)
-                    {
-                        DefaultCoreIndicatorSettings.AutoHeal(item);
-                        items.Add(item);
-                    }
-                }
+                items.AddRange(ParseItems(json, _jsonOptions));
             }
             catch (Exception ex)
             {

@@ -61,6 +61,12 @@ public sealed class AiChartPlotTransform
     /// <summary>The x of the centre of a bar, in image pixels.</summary>
     public double CenterXPx(int index) => PlotLeftPx + _transform.GetX(index, _count, PlotWidthPx);
 
+    /// <summary>
+    /// The x of a position given in bar units (0 is the first bar, 1.5 half way between the second and the third; outside the bars too), in image pixels: the line through the
+    /// centres of the bars, the same formula as <see cref="CenterXPx(int)"/>.
+    /// </summary>
+    public double CenterXPx(double barPosition) => PlotLeftPx + (barPosition * BarSpacingPx) + (BarSpacingPx / 2);
+
     /// <summary>The width of a candle in the transformation layer (80% of the bar spacing); the renderer turns it into whole pixels.</summary>
     public double RawBodyWidthPx => _transform.GetCandleWidth(_count, PlotWidthPx);
 
@@ -128,7 +134,12 @@ public static class AiChartPriceRange
     /// the application would return it as it is, but the transformation layer needs a positive width, and no tool call can produce such a range (the registry defaults all have minimum
     /// below maximum and MCP sets none). Whatever the input, the result has a positive width.
     /// </summary>
-    public static (decimal Min, decimal Max) ComputeOscillator(IEnumerable<IReadOnlyList<decimal?>> drawnSeries, decimal? fixedMin, decimal? fixedMax, bool includeZeroBaseline)
+    public static (decimal Min, decimal Max) ComputeOscillator(
+        IEnumerable<IReadOnlyList<decimal?>> drawnSeries,
+        decimal? fixedMin,
+        decimal? fixedMax,
+        bool includeZeroBaseline,
+        IReadOnlyList<decimal?>? histogramValues = null)
     {
         if (fixedMin is { } fixedLow && fixedMax is { } fixedHigh && fixedHigh > fixedLow)
         {
@@ -138,7 +149,10 @@ public static class AiChartPriceRange
         decimal min = decimal.MaxValue;
         decimal max = decimal.MinValue;
         bool hasValue = false;
-        foreach (IReadOnlyList<decimal?> series in drawnSeries)
+        // A histogram counts like a drawn series; its bars start at zero, so zero stays inside the range as soon as there is a bar to draw.
+        IEnumerable<IReadOnlyList<decimal?>> all = histogramValues is null ? drawnSeries : drawnSeries.Append(histogramValues);
+        bool histogramHasValue = histogramValues is not null && histogramValues.Any(v => v is not null);
+        foreach (IReadOnlyList<decimal?> series in all)
         {
             foreach (decimal? value in series)
             {
@@ -156,7 +170,7 @@ public static class AiChartPriceRange
             return (AiChartImageStyle.OscillatorEmptyMin, AiChartImageStyle.OscillatorEmptyMax);
         }
 
-        if (includeZeroBaseline)
+        if (includeZeroBaseline || histogramHasValue)
         {
             min = Math.Min(min, 0m);
             max = Math.Max(max, 0m);

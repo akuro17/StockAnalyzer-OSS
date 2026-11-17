@@ -1,7 +1,15 @@
 namespace StockAnalyzer.Core.Rendering;
 
-/// <summary>A drawn line with its look: which line of which indicator, the colour, the pattern and the width.</summary>
-public sealed record AiChartStyledLine(string IndicatorId, string SeriesName, string Label, IReadOnlyList<decimal?> Values, string ColorHex, AiChartLineStyle LineStyle, float WidthPx);
+/// <summary>A drawn line with its look: which line of which indicator, the colour, the pattern and the width; <paramref name="Shape"/> says whether it is a line or a dot per bar.</summary>
+public sealed record AiChartStyledLine(
+    string IndicatorId,
+    string SeriesName,
+    string Label,
+    IReadOnlyList<decimal?> Values,
+    string ColorHex,
+    AiChartLineStyle LineStyle,
+    float WidthPx,
+    AiChartLineShape Shape = AiChartLineShape.Line);
 
 /// <summary>
 /// The rule that gives every line of an AI chart image its colour, pattern and width, the same way for the same input (plan 15, 6.3; owner decisions D-15h and D-15k).
@@ -35,12 +43,12 @@ public static class AiChartLineAssigner
         int auxiliary = 0;
         foreach ((AiChartOverlay overlay, int rank) in averages)
         {
-            Append(lines, overlay.Id, overlay.Series, rank < MovingAverageColors.Length ? MovingAverageColors[rank] : null, ref auxiliary);
+            Append(lines, overlay.Id, overlay.Series, rank < MovingAverageColors.Length ? MovingAverageColors[rank] : null, ref auxiliary, overlay.Shape);
         }
 
         foreach (AiChartOverlay overlay in others)
         {
-            Append(lines, overlay.Id, overlay.Series, null, ref auxiliary);
+            Append(lines, overlay.Id, overlay.Series, null, ref auxiliary, overlay.Shape);
         }
 
         return lines;
@@ -59,7 +67,7 @@ public static class AiChartLineAssigner
     /// Adds the lines of one indicator. <paramref name="firstColor"/> colours its first line (a moving average of rank 0..2); every other line takes the next auxiliary colour.
     /// A line's pattern is its number in the panel mod 3, counted over <paramref name="lines"/>.
     /// </summary>
-    private static void Append(List<AiChartStyledLine> lines, string id, IReadOnlyList<AiChartLineSeries> series, string? firstColor, ref int auxiliary)
+    private static void Append(List<AiChartStyledLine> lines, string id, IReadOnlyList<AiChartLineSeries> series, string? firstColor, ref int auxiliary, AiChartLineShape shape = AiChartLineShape.Line)
     {
         for (int i = 0; i < series.Count; i++)
         {
@@ -68,7 +76,7 @@ public static class AiChartLineAssigner
             float width = movingAverageColor ? AiChartImageStyle.MovingAverageWidthPx : AiChartImageStyle.AuxiliaryWidthPx;
             AiChartLineStyle pattern = AiChartImageStyle.LinePatterns[lines.Count % AiChartImageStyle.LinePatterns.Count];
             string label = series.Count == 1 || series[i].Name == StockAnalyzer.Core.Models.Indicators.IndicatorResult.MainSeriesName ? id : $"{id}.{series[i].Name}";
-            lines.Add(new AiChartStyledLine(id, series[i].Name, label, series[i].Values, color, pattern, width));
+            lines.Add(new AiChartStyledLine(id, series[i].Name, label, series[i].Values, color, pattern, width, shape));
         }
     }
 }

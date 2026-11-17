@@ -7,30 +7,11 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
-
-/// <summary>
-/// Specifies the aggregation timeframe period used to compute Classic Pivot Points.
-/// </summary>
-public enum PivotPeriod
-{
-    Day,
-    Week,
-    Month
-}
-
-/// <summary>
-/// Specifies the horizontal line extension mode for Classic Pivot Points.
-/// </summary>
-public enum PivotLineExtendMode
-{
-    None = 0,
-    ExtendRight = 1,
-    ExtendLeft = 2,
-    ExtendBoth = 3
-}
 
 /// <summary>
 /// Classic Pivot Points Drawing Tool.
@@ -174,40 +155,21 @@ public class ClassicPivotPointsObject : IChartObject, IDrawingCalculatedValuesPr
         }
 
         var anchor = Points[0].Time;
-        GetCurrentPeriodBoundaries(anchor, Period, out _periodStart, out _periodEnd);
+        ClassicPivotPointsValues.GetPeriodBoundaries(anchor, Period, out _periodStart, out _periodEnd);
 
-        if (!TryAggregatePreviousPeriod(candles, _periodStart, Period, out decimal high, out decimal low, out decimal close))
+        if (!ClassicPivotPointsValues.TryCompute(anchor, candles, Period, out ClassicPivotLevels levels))
         {
             ResetLevels();
             return;
         }
 
-        // Mathematical formulas for Classic Pivot Points (strict decimal precision)
-        // P = (High + Low + Close) / 3
-        decimal pivot = (high + low + close) / 3m;
-
-        // R1 = 2P - Low, S1 = 2P - High
-        decimal r1 = 2m * pivot - low;
-        decimal s1 = 2m * pivot - high;
-
-        // Range
-        decimal diff = high - low;
-
-        // R2 = P + diff, S2 = P - diff
-        decimal r2 = pivot + diff;
-        decimal s2 = pivot - diff;
-
-        // R3 (HBOP) = R1 + diff, S3 (LBOP) = S1 - diff
-        decimal r3 = r1 + diff;
-        decimal s3 = s1 - diff;
-
-        _pivot = pivot;
-        _r1 = r1;
-        _s1 = s1;
-        _r2 = r2;
-        _s2 = s2;
-        _r3 = r3;
-        _s3 = s3;
+        _pivot = levels.Pivot;
+        _r1 = levels.R1;
+        _s1 = levels.S1;
+        _r2 = levels.R2;
+        _s2 = levels.S2;
+        _r3 = levels.R3;
+        _s3 = levels.S3;
         _hasValidData = true;
     }
 
@@ -405,29 +367,8 @@ public class ClassicPivotPointsObject : IChartObject, IDrawingCalculatedValuesPr
         if (!_hasValidData) return Array.Empty<DrawingCalculatedValue>();
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-        int count = 2
-            + (_r3.HasValue ? 1 : 0)
-            + (_r2.HasValue ? 1 : 0)
-            + (_r1.HasValue ? 1 : 0)
-            + (_pivot.HasValue ? 1 : 0)
-            + (_s1.HasValue ? 1 : 0)
-            + (_s2.HasValue ? 1 : 0)
-            + (_s3.HasValue ? 1 : 0);
-
-        var values = new DrawingCalculatedValue[count];
-        int index = 0;
-        values[index++] = new DrawingCalculatedValue("Period", "Period", null, Period.ToString(), color);
-        values[index++] = new DrawingCalculatedValue("ExtendLines", "Extend Lines", null, ExtendMode.ToString(), color);
-
-        if (_r3.HasValue) values[index++] = new DrawingCalculatedValue("HBOP", "HBOP (R3)", _r3.Value, $"{_r3.Value:F3}", color);
-        if (_r2.HasValue) values[index++] = new DrawingCalculatedValue("R2", "R2", _r2.Value, $"{_r2.Value:F3}", color);
-        if (_r1.HasValue) values[index++] = new DrawingCalculatedValue("R1", "R1", _r1.Value, $"{_r1.Value:F3}", color);
-        if (_pivot.HasValue) values[index++] = new DrawingCalculatedValue("Pivot", "Pivot (P)", _pivot.Value, $"{_pivot.Value:F3}", color);
-        if (_s1.HasValue) values[index++] = new DrawingCalculatedValue("S1", "S1", _s1.Value, $"{_s1.Value:F3}", color);
-        if (_s2.HasValue) values[index++] = new DrawingCalculatedValue("S2", "S2", _s2.Value, $"{_s2.Value:F3}", color);
-        if (_s3.HasValue) values[index] = new DrawingCalculatedValue("LBOP", "LBOP (S3)", _s3.Value, $"{_s3.Value:F3}", color);
-
-        return values;
+        var levels = new ClassicPivotLevels(_pivot!.Value, _r1!.Value, _r2!.Value, _r3!.Value, _s1!.Value, _s2!.Value, _s3!.Value, _periodStart, _periodEnd);
+        return ClassicPivotPointsValues.Calculate(levels, Period, ExtendMode, color);
     }
 
     public void Dispose()
@@ -437,129 +378,5 @@ public class ClassicPivotPointsObject : IChartObject, IDrawingCalculatedValuesPr
         _pLinePaint.Dispose();
         _textPaint.Dispose();
         GC.SuppressFinalize(this);
-    }
-
-    // --- Boundary & Aggregation Helpers ---
-
-    private static void GetCurrentPeriodBoundaries(
-        DateTime anchor,
-        PivotPeriod period,
-        out DateTime currentStart,
-        out DateTime currentEnd)
-    {
-        var anchorDate = anchor.Date;
-        switch (period)
-        {
-            case PivotPeriod.Day:
-                currentStart = anchorDate;
-                currentEnd = anchorDate.AddDays(1);
-                break;
-
-            case PivotPeriod.Week:
-                int diff = anchor.DayOfWeek == DayOfWeek.Sunday
-                    ? 6
-                    : (int)anchor.DayOfWeek - 1;
-                currentStart = anchorDate.AddDays(-diff);
-                currentEnd = currentStart.AddDays(7);
-                break;
-
-            case PivotPeriod.Month:
-                currentStart = new DateTime(anchor.Year, anchor.Month, 1, 0, 0, 0, anchor.Kind);
-                currentEnd = currentStart.AddMonths(1);
-                break;
-
-            default:
-                currentStart = anchorDate;
-                currentEnd = anchorDate.AddDays(1);
-                break;
-        }
-    }
-
-    private static bool TryAggregatePreviousPeriod(
-        IReadOnlyList<CoreCandleData> candles,
-        DateTime currentPeriodStart,
-        PivotPeriod period,
-        out decimal high,
-        out decimal low,
-        out decimal close)
-    {
-        high = decimal.MinValue;
-        low = decimal.MaxValue;
-        close = 0m;
-
-        if (candles == null || candles.Count == 0) return false;
-
-        // 1. Find the latest candle strictly before currentPeriodStart
-        int lastIdx = -1;
-        for (int i = candles.Count - 1; i >= 0; i--)
-        {
-            if (candles[i].Timestamp < currentPeriodStart)
-            {
-                lastIdx = i;
-                break;
-            }
-        }
-
-        if (lastIdx < 0) return false;
-
-        var latestPrevCandle = candles[lastIdx];
-        DateTime prevTargetDate = latestPrevCandle.Timestamp.Date;
-
-        DateTime rangeStart;
-        DateTime rangeEnd;
-
-        switch (period)
-        {
-            case PivotPeriod.Day:
-                rangeStart = prevTargetDate;
-                rangeEnd = prevTargetDate.AddDays(1);
-                break;
-
-            case PivotPeriod.Week:
-                int diff = latestPrevCandle.Timestamp.DayOfWeek == DayOfWeek.Sunday
-                    ? 6
-                    : (int)latestPrevCandle.Timestamp.DayOfWeek - 1;
-                rangeStart = prevTargetDate.AddDays(-diff);
-                rangeEnd = rangeStart.AddDays(7);
-                break;
-
-            case PivotPeriod.Month:
-                rangeStart = new DateTime(latestPrevCandle.Timestamp.Year, latestPrevCandle.Timestamp.Month, 1, 0, 0, 0, latestPrevCandle.Timestamp.Kind);
-                rangeEnd = rangeStart.AddMonths(1);
-                break;
-
-            default:
-                rangeStart = prevTargetDate;
-                rangeEnd = prevTargetDate.AddDays(1);
-                break;
-        }
-
-        close = latestPrevCandle.Close;
-        int count = 0;
-
-        // 2. Backwards scan (O(K) early exit, ZeroAllocation)
-        for (int i = lastIdx; i >= 0; i--)
-        {
-            var c = candles[i];
-            if (c.Timestamp < rangeStart)
-            {
-                break; // Earlier than range start -> terminate search immediately
-            }
-
-            if (c.Timestamp < rangeEnd)
-            {
-                if (c.High > high) high = c.High;
-                if (c.Low < low) low = c.Low;
-                count++;
-            }
-        }
-
-        // Defensive guard: must have valid non-empty candles and positive valid range (high >= low > 0)
-        if (count == 0 || high < low || low <= 0m)
-        {
-            return false;
-        }
-
-        return true;
     }
 }

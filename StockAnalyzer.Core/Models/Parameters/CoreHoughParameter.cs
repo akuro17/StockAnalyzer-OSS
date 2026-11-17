@@ -62,6 +62,16 @@ public abstract class CoreHoughParameterBase : CoreIndicatorParameterBase
         set => SetProperty(ref _normalization, value);
     }
 
+    private bool _useVolumeWeight;
+
+    [DisplayName("Volume Weight")]
+    [Description("Weight pivot votes by median-normalized log volume (1 + ln(1 + Volume / median)).")]
+    public bool UseVolumeWeight
+    {
+        get => _useVolumeWeight;
+        set => SetProperty(ref _useVolumeWeight, value);
+    }
+
     public override void Validate()
     {
         if (Lookback < 20 || Lookback > 500)
@@ -89,12 +99,13 @@ public class CoreHoughTrendStrengthParameter : CoreHoughParameterBase
                p.PivotWindow == PivotWindow &&
                p.VoteThreshold == VoteThreshold &&
                p.MaxLines == MaxLines &&
-               p.Normalization == Normalization;
+               p.Normalization == Normalization &&
+               p.UseVolumeWeight == UseVolumeWeight;
     }
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(Lookback, PivotWindow, VoteThreshold, MaxLines, Normalization);
+        return HashCode.Combine(Lookback, PivotWindow, VoteThreshold, MaxLines, Normalization, UseVolumeWeight);
     }
 }
 
@@ -112,11 +123,12 @@ public class CoreHoughTrendAngleParameter : CoreHoughParameterBase
                p.PivotWindow == PivotWindow &&
                p.VoteThreshold == VoteThreshold &&
                p.MaxLines == MaxLines &&
-               p.Normalization == Normalization;
+               p.Normalization == Normalization &&
+               p.UseVolumeWeight == UseVolumeWeight;
     }
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(Lookback, PivotWindow, VoteThreshold, MaxLines, Normalization);
+        return HashCode.Combine(Lookback, PivotWindow, VoteThreshold, MaxLines, Normalization, UseVolumeWeight);
     }
 }

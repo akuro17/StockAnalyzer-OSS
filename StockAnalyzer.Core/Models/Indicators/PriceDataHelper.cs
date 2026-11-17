@@ -330,6 +330,8 @@ public static class PriceDataHelper
             return nulls;
         }
 
+        bool useExactTimestamp = HasIntradayTimestamps(primaryCandles, secondaryCandles);
+
         // Fast-path: Check if secondaryCandles is already 1:1 aligned with primaryCandles
         if (secondaryCandles.Count == primaryCandles.Count)
         {
@@ -337,11 +339,11 @@ public static class PriceDataHelper
             for (int i = 0; i < primaryCandles.Count; i++)
             {
                 var sc = secondaryCandles[i];
-                if (sc != null)
+                if (sc != null && sc.Timestamp != default && primaryCandles[i].Timestamp != default)
                 {
-                    var sDate = sc.Timestamp.Date;
-                    var pDate = primaryCandles[i].Timestamp.Date;
-                    if (sDate != pDate && sc.Timestamp != default && primaryCandles[i].Timestamp != default)
+                    var sKey = AlignmentKey(sc.Timestamp, useExactTimestamp);
+                    var pKey = AlignmentKey(primaryCandles[i].Timestamp, useExactTimestamp);
+                    if (sKey != pKey)
                     {
                         matches = false;
                         break;
@@ -362,7 +364,7 @@ public static class PriceDataHelper
         decimal? prevHaClose = null;
         decimal? prevClose = null;
         decimal? lastMatchedPrice = null;
-        DateTime lastMatchedDate = default;
+        DateTime lastMatchedKey = default;
 
         int s = 0;
         int m = secondaryCandles.Count;
@@ -376,9 +378,9 @@ public static class PriceDataHelper
                 continue;
             }
 
-            var pDate = pc.Timestamp.Date;
+            var pKey = AlignmentKey(pc.Timestamp, useExactTimestamp);
 
-            // Advance secondary pointer while secondary candle date is strictly before primary date
+            // Advance secondary pointer while secondary candle key is strictly before primary key
             while (s < m)
             {
                 var sc = secondaryCandles[s];
@@ -388,10 +390,10 @@ public static class PriceDataHelper
                     continue;
                 }
 
-                var sDate = sc.Timestamp.Date;
-                if (sDate < pDate)
+                var sKey = AlignmentKey(sc.Timestamp, useExactTimestamp);
+                if (sKey < pKey)
                 {
-                    // Secondary candle precedes the current primary date.
+                    // Secondary candle precedes the current primary key.
                     // Advance recursive Heikin-Ashi state and prevClose to maintain chronological continuity.
                     var c = sc;
                     if (isHeikinAshi)
@@ -407,12 +409,12 @@ public static class PriceDataHelper
                 }
             }
 
-            // Check if current secondary candle matches pDate
+            // Check if current secondary candle matches pKey
             CoreCandleData? matched = null;
             if (s < m)
             {
                 var sc = secondaryCandles[s];
-                if (sc != null && sc.Timestamp != default && sc.Timestamp.Date == pDate)
+                if (sc != null && sc.Timestamp != default && AlignmentKey(sc.Timestamp, useExactTimestamp) == pKey)
                 {
                     matched = sc;
                     s++;
@@ -439,11 +441,11 @@ public static class PriceDataHelper
                 result.Add(price);
                 prevClose = c.Close;
                 lastMatchedPrice = price;
-                lastMatchedDate = pDate;
+                lastMatchedKey = pKey;
             }
-            else if (lastMatchedPrice.HasValue && pDate == lastMatchedDate)
+            else if (lastMatchedPrice.HasValue && pKey == lastMatchedKey)
             {
-                // Multiple primary candles on the same date: reuse the matched secondary price for this date
+                // Duplicate primary timestamp or daily multi-bar match: reuse exact-key match only (never forward-fill intraday bars)
                 result.Add(lastMatchedPrice.Value);
             }
             else
@@ -454,6 +456,28 @@ public static class PriceDataHelper
 
         return result;
     }
+
+    private static bool HasIntradayTimestamps(
+        IReadOnlyList<CoreCandleData> primaryCandles,
+        IReadOnlyList<CoreCandleData?> secondaryCandles)
+        => SeriesHasIntradayTimestamp(primaryCandles) && SeriesHasIntradayTimestamp(secondaryCandles);
+
+    private static bool SeriesHasIntradayTimestamp(IReadOnlyList<CoreCandleData?> candles)
+    {
+        for (int i = 0; i < candles.Count; i++)
+        {
+            var c = candles[i];
+            if (c != null && c.Timestamp != default && c.Timestamp.TimeOfDay != TimeSpan.Zero)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static DateTime AlignmentKey(DateTime timestamp, bool useExactTimestamp)
+        => useExactTimestamp ? timestamp : timestamp.Date;
 
     /// <summary>
     /// Extracts a nullable price series (IReadOnlyList<decimal?>) from CandleData.

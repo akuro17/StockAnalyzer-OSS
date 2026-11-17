@@ -970,6 +970,12 @@ public class ChartObjectManager
                 new ChartPoint(p1.Time, p2.Price)
             };
         }
+        if (obj is ElliottWaveObject wave && wave.ActivePointCount < wave.Points.Count)
+        {
+            // Points beyond the displayed pattern's point count are stored but neither drawn nor given a handle, so AP must not reach them.
+            // The prefix keeps the indices of Points, so AnchorPointIndex stays a valid index into obj.Points.
+            return wave.Points.GetRange(0, wave.ActivePointCount);
+        }
         return obj.Points;
     }
 

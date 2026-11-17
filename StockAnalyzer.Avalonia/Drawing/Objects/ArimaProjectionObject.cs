@@ -79,6 +79,21 @@ public class ArimaProjectionObject : IChartObject, IDrawingCalculatedValuesProvi
     /// </summary>
     public decimal ConfidenceMultiplier { get; set; } = 2.0m;
 
+    /// <summary>
+    /// When true, selects (p, d, q) automatically on the selected window using KPSS + stepwise AICc.
+    /// </summary>
+    public bool AutoOrderSelection { get; set; } = IndicatorDefaultConstants.ArimaDefaultAutoOrderSelection;
+
+    /// <summary>
+    /// Maximum AR order p considered during Auto-ARIMA order selection (1-5).
+    /// </summary>
+    public int MaxAutoP { get; set; } = IndicatorDefaultConstants.ArimaDefaultMaxAutoP;
+
+    /// <summary>
+    /// Maximum MA order q considered during Auto-ARIMA order selection (1-5).
+    /// </summary>
+    public int MaxAutoQ { get; set; } = IndicatorDefaultConstants.ArimaDefaultMaxAutoQ;
+
     public SkiaSharp.SKColor SkiaColor => new(Color.R, Color.G, Color.B, Color.A);
     public SkiaSharp.SKColor SkiaFillColor => new(FillColor.R, FillColor.G, FillColor.B, FillColor.A);
 
@@ -94,6 +109,9 @@ public class ArimaProjectionObject : IChartObject, IDrawingCalculatedValuesProvi
     public double ResidualStdDev { get; private set; }
     public double TargetPrice { get; private set; }
     public bool IsLowerBandClamped { get; private set; }
+    public int SelectedP { get; private set; } = 1;
+    public int SelectedD { get; private set; } = 1;
+    public int SelectedQ { get; private set; } = 1;
 
     private readonly Renderers.ArimaProjectionRenderer _renderer = new();
 
@@ -174,6 +192,9 @@ public class ArimaProjectionObject : IChartObject, IDrawingCalculatedValuesProvi
             ResidualStdDev = 0.0;
             TargetPrice = 0.0;
             IsLowerBandClamped = false;
+            SelectedP = P;
+            SelectedD = D;
+            SelectedQ = Q;
             return;
         }
 
@@ -206,6 +227,9 @@ public class ArimaProjectionObject : IChartObject, IDrawingCalculatedValuesProvi
             ResidualStdDev = 0.0;
             TargetPrice = 0.0;
             IsLowerBandClamped = false;
+            SelectedP = P;
+            SelectedD = D;
+            SelectedQ = Q;
             return;
         }
 
@@ -220,7 +244,10 @@ public class ArimaProjectionObject : IChartObject, IDrawingCalculatedValuesProvi
             priceSource: PriceSource,
             timeframeSpan: timeframeSpan,
             showConfidenceBand: ShowConfidenceBand,
-            confidenceMultiplier: ConfidenceMultiplier);
+            confidenceMultiplier: ConfidenceMultiplier,
+            autoSelectOrder: AutoOrderSelection,
+            maxAutoP: MaxAutoP,
+            maxAutoQ: MaxAutoQ);
 
         ProjectedPath = result.ProjectedPoints.ToList();
         UpperBandPath = result.UpperBandPoints.ToList();
@@ -229,6 +256,9 @@ public class ArimaProjectionObject : IChartObject, IDrawingCalculatedValuesProvi
         ResidualStdDev = result.ResidualStdDev;
         TargetPrice = result.TargetPrice;
         IsLowerBandClamped = result.IsLowerBandClamped;
+        SelectedP = AutoOrderSelection ? result.SelectedP : P;
+        SelectedD = AutoOrderSelection ? result.SelectedD : D;
+        SelectedQ = AutoOrderSelection ? result.SelectedQ : Q;
     }
 
     public IReadOnlyList<DrawingCalculatedValue> GetCalculatedValues(DateTime timestamp, decimal? currentPrice = null)
@@ -242,7 +272,9 @@ public class ArimaProjectionObject : IChartObject, IDrawingCalculatedValuesProvi
                 "ARIMA Order",
                 "ARIMA Order",
                 0m,
-                $"({P}, {D}, {Q})",
+                AutoOrderSelection
+                    ? $"Auto-ARIMA({SelectedP},{SelectedD},{SelectedQ})"
+                    : $"({P}, {D}, {Q})",
                 color),
             new(
                 "ARIMA Innovation Variance",

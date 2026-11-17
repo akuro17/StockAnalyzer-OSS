@@ -11,6 +11,15 @@ public static class SsaDiagnostics
 {
     public const double CorrelationEpsilon = 1e-12;
 
+    /// <summary>Lower bound (percent) of the "Excellent" separability grade.</summary>
+    public const double ExcellentSeparabilityScore = 90.0;
+
+    /// <summary>Lower bound (percent) of the "Good" separability grade; UI rows turn bearish below it.</summary>
+    public const double GoodSeparabilityScore = 75.0;
+
+    /// <summary>Lower bound (percent) of the "Moderate" separability grade; below it the grade is "Poor".</summary>
+    public const double ModerateSeparabilityScore = 60.0;
+
     /// <summary>
     /// Computes the normalized w-correlation matrix between reconstructed SSA components.
     /// Values close to 0 indicate strong separability (orthogonality in the Hankel inner product space),
@@ -158,9 +167,9 @@ public static class SsaDiagnostics
     {
         return score switch
         {
-            >= 90.0 => "Excellent",
-            >= 75.0 => "Good",
-            >= 60.0 => "Moderate",
+            >= ExcellentSeparabilityScore => "Excellent",
+            >= GoodSeparabilityScore => "Good",
+            >= ModerateSeparabilityScore => "Moderate",
             _ => "Poor"
         };
     }

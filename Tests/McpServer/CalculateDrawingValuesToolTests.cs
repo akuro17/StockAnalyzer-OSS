@@ -102,7 +102,29 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
         ["SineLine"] = (p, _) => new SineLineObject(p[0], p[1]),
         ["TimeCycles"] = (p, _) => new TimeCyclesObject(p[0], p[1]),
         ["Pitchfork"] = (p, _) => new PitchforkObject(p[0], p[1], p[2]),
+        ["AngleTool"] = (p, _) => new AngleObject(p[0], p[1]),
+        ["GannSquareOfNine"] = (p, _) => new GannSquareOfNineObject(p[0]),
+        ["TargetPriceProjection"] = (p, _) => new TargetPriceProjectionObject(p[0], p[1], p[2]),
+        ["LongPosition"] = (p, _) => new LongShortPositionObject(p[0], p[1], p[2], isLong: true),
+        ["ShortPosition"] = (p, _) => new LongShortPositionObject(p[0], p[1], p[2], isLong: false),
+        ["RegressionTrend"] = (p, _) => new RegressionTrendObject(p[0], p[1]),
+        ["AnchoredVWAP"] = (p, _) => new AnchoredVwapObject(p[0]),
+        ["ClassicPivotPoints"] = (p, _) => new ClassicPivotPointsObject(p[0]),
     };
+
+    /// <summary>The bars the fixture stores for <see cref="_closes"/> (open = close - 0.2, high = close + 0.5, low = close - 0.5, volume 1000), as the chart objects take them.</summary>
+    private List<CoreCandleData> CoreBars()
+        => _closes.Select((close, i) => new CoreCandleData(FirstDay.AddDays(i), close - 0.2m, close + 0.5m, close - 0.5m, close, 1000)).ToList();
+
+    private static void Recalculate(IChartObject obj, List<CoreCandleData> candles)
+    {
+        switch (obj)
+        {
+            case RegressionTrendObject regression: regression.Recalculate(candles); break;
+            case AnchoredVwapObject vwap: vwap.Recalculate(candles); break;
+            case ClassicPivotPointsObject pivots: pivots.Recalculate(candles); break;
+        }
+    }
 
     public static TheoryData<string, bool> EveryTool()
     {
@@ -116,7 +138,15 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
         return data;
     }
 
-    private static string AnchorPartFor(DrawingValueDescriptor descriptor) => descriptor.PointCount switch
+    private static string AnchorPartFor(DrawingValueDescriptor descriptor) => descriptor.Name switch
+    {
+        // Entry, Stop, Target in the valid order of the kind.
+        "LongPosition" => $"\"anchorMode\":\"Explicit\",\"points\":[{{\"date\":\"{DateText(31)}\",\"price\":100}},{{\"date\":\"{DateText(60)}\",\"price\":95}},{{\"date\":\"{DateText(50)}\",\"price\":110}}]",
+        "ShortPosition" => $"\"anchorMode\":\"Explicit\",\"points\":[{{\"date\":\"{DateText(31)}\",\"price\":100}},{{\"date\":\"{DateText(60)}\",\"price\":105}},{{\"date\":\"{DateText(50)}\",\"price\":90}}]",
+        _ => AnchorPartForPointCount(descriptor),
+    };
+
+    private static string AnchorPartForPointCount(DrawingValueDescriptor descriptor) => descriptor.PointCount switch
     {
         1 => "\"anchorMode\":\"RangeEndpoints\",\"anchorBars\":10",
         2 => "\"anchorMode\":\"RangeExtremes\",\"anchorBars\":40",
@@ -160,6 +190,7 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
                 IChartObject obj = Factories[toolName](chartPoints, showExtensions);
                 try
                 {
+                    Recalculate(obj, CoreBars());
                     var expected = ((IDrawingCalculatedValuesProvider)obj).GetCalculatedValues(timestamp, currentPrice);
                     JsonElement[] actual = evaluation.GetProperty("values").EnumerateArray().ToArray();
 
@@ -838,6 +869,175 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
 
         Assert.Contains("Fib 23.6%", englishText);
         Assert.Contains("\"text\":\"", englishText);
+    }
+
+    // ---- phase 2 and 3: LongPosition / ShortPosition order, AutoPivots ----
+
+    private static string PositionPoints(decimal entry, decimal stop, decimal target)
+        => $"\"anchorMode\":\"Explicit\",\"points\":[{{\"date\":\"{DateText(31)}\",\"price\":{entry.ToString(CultureInfo.InvariantCulture)}}},{{\"date\":\"{DateText(60)}\",\"price\":{stop.ToString(CultureInfo.InvariantCulture)}}},{{\"date\":\"{DateText(50)}\",\"price\":{target.ToString(CultureInfo.InvariantCulture)}}}]";
+
+    [Theory]
+    [InlineData("LongPosition", 100, 105, 110)]
+    [InlineData("LongPosition", 100, 95, 90)]
+    [InlineData("LongPosition", 100, 100, 110)]
+    [InlineData("ShortPosition", 100, 95, 90)]
+    [InlineData("ShortPosition", 100, 105, 110)]
+    public async Task APositionInTheInvalidOrder_IsRefusedAtPoints_ByTheToolNotTheCalculator(string tool, int entry, int stop, int target)
+    {
+        var dispatcher = await StartAsync();
+
+        (string code, string? param) = Error(await CallAsync(dispatcher, tool, PositionPoints(entry, stop, target)));
+
+        Assert.Equal("INVALID_ARGUMENT", code);
+        Assert.Equal("points", param);
+    }
+
+    [Theory]
+    [InlineData("LongPosition", 100, 95, 110)]
+    [InlineData("ShortPosition", 100, 105, 90)]
+    public async Task APositionInTheValidOrder_IsCalculated(string tool, int entry, int stop, int target)
+    {
+        var dispatcher = await StartAsync();
+
+        JsonElement result = Result(await CallAsync(dispatcher, tool, PositionPoints(entry, stop, target)));
+
+        JsonElement[] values = result.GetProperty("evaluations")[0].GetProperty("values").EnumerateArray().ToArray();
+        Assert.Equal(new[] { "Entry", "Target", "Stop", "RiskReward" }, values.Select(v => v.GetProperty("key").GetString()).ToArray());
+        Assert.Equal(2m, values[3].GetProperty("value").GetDecimal());
+    }
+
+    // The closes make the swing pivots of strength 3 known: highs at day 5 (105.5) and day 16 (106.5), lows at day 10 (99.5) and day 23 (98.5).
+    private static readonly List<decimal> PivotCloses = new()
+    {
+        100, 101, 102, 103, 104, 105, 104, 103, 102, 101, 100, 101, 102, 103, 104, 105, 106, 105, 104, 103, 102, 101, 100, 99, 100, 101, 102, 103, 104, 105,
+    };
+
+    private const string Strength3 = "\"pivotLeftStrength\":3,\"pivotRightStrength\":3";
+
+    private async Task<McpMessageDispatcher> StartWithPivotBarsAsync()
+    {
+        ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(_fixture.DailyDirectory, Symbol, PivotCloses);
+        return await StartAsync();
+    }
+
+    [Fact]
+    public async Task AutoPivots_TwoPointTool_TakesTheLatestTwoAlternatingPivots_InTimeOrder()
+    {
+        var dispatcher = await StartWithPivotBarsAsync();
+
+        JsonElement result = Result(await CallAsync(dispatcher, "TrendLine", $"\"anchorMode\":\"AutoPivots\",\"anchorBars\":30,{Strength3}"));
+
+        JsonElement[] points = result.GetProperty("controlPoints").EnumerateArray().ToArray();
+        Assert.Equal(new[] { DateText(16), DateText(23) }, points.Select(p => p.GetProperty("date").GetString()).ToArray());
+        Assert.Equal(new[] { 106.5m, 98.5m }, points.Select(p => p.GetProperty("price").GetDecimal()).ToArray());
+        Assert.Equal(new[] { "PivotHigh", "PivotLow" }, points.Select(p => p.GetProperty("source").GetString()).ToArray());
+        Assert.Equal(3, result.GetProperty("pivotLeftStrength").GetInt32());
+        Assert.Equal(3, result.GetProperty("pivotRightStrength").GetInt32());
+        Assert.Equal("Latest", result.GetProperty("pivotPreference").GetString());
+        Assert.Equal(30, result.GetProperty("anchorBars").GetInt32());
+    }
+
+    [Fact]
+    public async Task AutoPivots_ThreePointTool_TakesTheLatestThreePivots()
+    {
+        var dispatcher = await StartWithPivotBarsAsync();
+
+        JsonElement result = Result(await CallAsync(dispatcher, "Pitchfork", $"\"anchorMode\":\"AutoPivots\",{Strength3}"));
+
+        Assert.Equal(new[] { DateText(10), DateText(16), DateText(23) }, result.GetProperty("controlPoints").EnumerateArray().Select(p => p.GetProperty("date").GetString()).ToArray());
+        Assert.Equal(new[] { "PivotLow", "PivotHigh", "PivotLow" }, result.GetProperty("controlPoints").EnumerateArray().Select(p => p.GetProperty("source").GetString()).ToArray());
+    }
+
+    [Theory]
+    [InlineData("Latest", 23, 98.5, "PivotLow")]
+    [InlineData("High", 16, 106.5, "PivotHigh")]
+    [InlineData("Low", 23, 98.5, "PivotLow")]
+    public async Task AutoPivots_OnePointTool_TakesTheLatestPivotOfThePreferredKind(string preference, int day, double price, string source)
+    {
+        var dispatcher = await StartWithPivotBarsAsync();
+
+        JsonElement result = Result(await CallAsync(dispatcher, "HorizontalLine", $"\"anchorMode\":\"AutoPivots\",{Strength3},\"pivotPreference\":\"{preference}\""));
+
+        JsonElement point = Assert.Single(result.GetProperty("controlPoints").EnumerateArray());
+        Assert.Equal(DateText(day), point.GetProperty("date").GetString());
+        Assert.Equal((decimal)price, point.GetProperty("price").GetDecimal());
+        Assert.Equal(source, point.GetProperty("source").GetString());
+        Assert.Equal(preference, result.GetProperty("pivotPreference").GetString());
+    }
+
+    [Fact]
+    public async Task AutoPivots_FoldsConsecutivePivotsOfOneKind_ToTheMoreExtremePrice()
+    {
+        // Strength 1: highs at day 1 (105.5) and day 4 (106.5) with no low between them (the bottom is flat), then a low at day 5 (99.5).
+        ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(_fixture.DailyDirectory, Symbol, new List<decimal> { 100, 105, 101, 101, 106, 100, 103, 104 });
+        var dispatcher = await StartAsync();
+
+        JsonElement result = Result(await CallAsync(dispatcher, "TrendLine", "\"anchorMode\":\"AutoPivots\",\"pivotLeftStrength\":1,\"pivotRightStrength\":1"));
+
+        JsonElement[] points = result.GetProperty("controlPoints").EnumerateArray().ToArray();
+        Assert.Equal(new[] { DateText(4), DateText(5) }, points.Select(p => p.GetProperty("date").GetString()).ToArray());
+        Assert.Equal(new[] { 106.5m, 99.5m }, points.Select(p => p.GetProperty("price").GetDecimal()).ToArray());
+    }
+
+    [Fact]
+    public async Task AutoPivots_DefaultsAreFiveAndFive_AndAWindowWithoutEnoughPivotsIsInsufficientMarketData()
+    {
+        var dispatcher = await StartWithPivotBarsAsync();
+
+        JsonElement ok = Result(await CallAsync(dispatcher, "HorizontalLine", "\"anchorMode\":\"AutoPivots\""));
+        Assert.Equal(5, ok.GetProperty("pivotLeftStrength").GetInt32());
+        Assert.Equal(5, ok.GetProperty("pivotRightStrength").GetInt32());
+
+        // Days 23 to 29 (seven bars, the smallest window of strength 3) hold no confirmed pivot: the prices only rise.
+        Assert.Equal(("INSUFFICIENT_MARKET_DATA", "anchorBars"), Error(await CallAsync(dispatcher, "HorizontalLine", $"\"anchorMode\":\"AutoPivots\",\"anchorBars\":7,{Strength3}")));
+        // Days 14 to 29 hold one pivot only (the low of day 23; the high of day 16 is too near the start of the window): a three-point tool needs three.
+        Assert.Equal(("INSUFFICIENT_MARKET_DATA", "anchorBars"), Error(await CallAsync(dispatcher, "Pitchfork", $"\"anchorMode\":\"AutoPivots\",\"anchorBars\":16,{Strength3}")));
+    }
+
+    [Theory]
+    [InlineData("TrendLine", "\"pivotPreference\":\"High\"")]
+    [InlineData("Pitchfork", "\"pivotPreference\":\"Low\"")]
+    public async Task AutoPivots_HighOrLowPreference_IsRefusedForToolsWithMoreThanOnePoint(string tool, string preference)
+    {
+        var dispatcher = await StartWithPivotBarsAsync();
+
+        Assert.Equal(("INVALID_ARGUMENT", "pivotPreference"), Error(await CallAsync(dispatcher, tool, $"\"anchorMode\":\"AutoPivots\",{Strength3},{preference}")));
+    }
+
+    [Theory]
+    [InlineData("LongPosition")]
+    [InlineData("ShortPosition")]
+    public async Task AutoPivots_IsRefusedForThePositionTools(string tool)
+    {
+        var dispatcher = await StartWithPivotBarsAsync();
+
+        Assert.Equal(("INVALID_ARGUMENT", "anchorMode"), Error(await CallAsync(dispatcher, tool, $"\"anchorMode\":\"AutoPivots\",{Strength3}")));
+    }
+
+    [Fact]
+    public async Task AutoPivots_BadArguments_AreRefusedWithTheirName()
+    {
+        var dispatcher = await StartWithPivotBarsAsync();
+        var limits = new McpLimits();
+
+        Assert.Equal(("INVALID_ARGUMENT", "pivotPreference"), Error(await CallAsync(dispatcher, "HorizontalLine", "\"anchorMode\":\"AutoPivots\",\"pivotPreference\":\"latest\"")));
+        Assert.Equal(("INVALID_ARGUMENT", "pivotLeftStrength"), Error(await CallAsync(dispatcher, "HorizontalLine", "\"anchorMode\":\"AutoPivots\",\"pivotLeftStrength\":0")));
+        Assert.Equal(("LIMIT_EXCEEDED", "pivotRightStrength"), Error(await CallAsync(dispatcher, "HorizontalLine", $"\"anchorMode\":\"AutoPivots\",\"pivotRightStrength\":{limits.MaxPivotStrength + 1}")));
+        Assert.Equal(("INVALID_ARGUMENT", "points"), Error(await CallAsync(dispatcher, "HorizontalLine", $"\"anchorMode\":\"AutoPivots\",\"points\":[{{\"date\":\"{DateText(3)}\"}}]")));
+        Assert.Equal(("INVALID_ARGUMENT", "priceField"), Error(await CallAsync(dispatcher, "HorizontalLine", "\"anchorMode\":\"AutoPivots\",\"priceField\":\"High\"")));
+        // A window too small for the strengths is INVALID_ARGUMENT at anchorBars (it must hold left + right + 1 bars).
+        Assert.Equal(("INVALID_ARGUMENT", "anchorBars"), Error(await CallAsync(dispatcher, "HorizontalLine", $"\"anchorMode\":\"AutoPivots\",\"anchorBars\":6,{Strength3}")));
+    }
+
+    [Theory]
+    [InlineData("\"pivotLeftStrength\":3")]
+    [InlineData("\"pivotRightStrength\":3")]
+    [InlineData("\"pivotPreference\":\"Latest\"")]
+    public async Task ThePivotArguments_AreRefusedWithAnotherAnchorMode(string argument)
+    {
+        var dispatcher = await StartAsync();
+
+        Assert.Equal(("INVALID_ARGUMENT", "anchorMode"), Error(await CallAsync(dispatcher, "HorizontalLine", "\"anchorMode\":\"RangeEndpoints\"," + argument)));
     }
 
     // ---- schema ----

@@ -154,11 +154,12 @@ public sealed class ScreenerCrossTickerEvaluationTests : IClassFixture<ScreenerC
 
     // ---- G1-T6: the two symbols do not share a calendar (different holidays): a date-aligned value, or no value, never a positional one ----
 
-    /// <summary>The eight types the Screener enables beyond Correlation and CrossCorrelation (all of them pair the comparison symbol's bars by calendar date).</summary>
+    /// <summary>The two-symbol types the Screener enables beyond Correlation and CrossCorrelation (all of them pair the comparison symbol's bars by calendar date).</summary>
     public static IEnumerable<object[]> DateAlignedEightTypes()
         => new[]
         {
             IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared, IndicatorType.CointegrationSpread,
+            IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
             IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw, IndicatorType.MansfieldRS
         }.Select(type => new object[] { type.ToString() });
 

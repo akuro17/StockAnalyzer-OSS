@@ -31,12 +31,17 @@ public static class SsaRankSelector
     public const double EigenvalueEpsilon = 1e-12;
 
     /// <summary>
+    /// Default cumulative-energy target (fraction of the total eigenvalue sum) used by <see cref="SsaRankSelectionMethod.CumulativeEnergy"/>.
+    /// </summary>
+    public const double DefaultTargetEnergy = 0.90;
+
+    /// <summary>
     /// Estimates the effective signal rank given descending sorted eigenvalues.
     /// </summary>
     public static int EstimateSignalRank(
         ReadOnlySpan<double> eigenvalues,
         SsaRankSelectionMethod method,
-        double targetEnergy = 0.90,
+        double targetEnergy = DefaultTargetEnergy,
         int maxRank = int.MaxValue)
     {
         int l = eigenvalues.Length;
@@ -55,6 +60,46 @@ public static class SsaRankSelector
         };
 
         return Math.Clamp(r, 1, Math.Min(maxRank, l));
+    }
+
+    /// <summary>
+    /// Estimates the effective signal rank of a decomposition. <see cref="SsaDecompositionResult.Eigenvalues"/> is in the raw Jacobi order, so the
+    /// eigenvalues are first read in descending order through <see cref="SsaDecompositionResult.SortedIndices"/>.
+    /// </summary>
+    public static int EstimateSignalRank(
+        SsaDecompositionResult decomposition,
+        SsaRankSelectionMethod method,
+        int maxRank,
+        double targetEnergy = DefaultTargetEnergy)
+    {
+        ArgumentNullException.ThrowIfNull(decomposition);
+
+        return EstimateSignalRank(decomposition.Eigenvalues, decomposition.SortedIndices, method, maxRank, targetEnergy);
+    }
+
+    /// <summary>
+    /// Estimates the effective signal rank from eigenvalues in raw (Jacobi) order plus the indices that sort them descending.
+    /// This is the single place that reads the eigenvalues in descending order; callers that hold the two arrays without a
+    /// <see cref="SsaDecompositionResult"/> (for example a drawing that builds its own lag matrix) use it instead of sorting by hand.
+    /// </summary>
+    public static int EstimateSignalRank(
+        double[] eigenvalues,
+        int[] sortedIndices,
+        SsaRankSelectionMethod method,
+        int maxRank,
+        double targetEnergy = DefaultTargetEnergy)
+    {
+        ArgumentNullException.ThrowIfNull(eigenvalues);
+        ArgumentNullException.ThrowIfNull(sortedIndices);
+
+        int l = sortedIndices.Length;
+        double[] sorted = new double[l];
+        for (int i = 0; i < l; i++)
+        {
+            sorted[i] = eigenvalues[sortedIndices[i]];
+        }
+
+        return EstimateSignalRank(sorted, method, targetEnergy, maxRank);
     }
 
     private static int SelectKaiser(ReadOnlySpan<double> lambda, double sumLambda, int l)

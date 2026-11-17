@@ -117,6 +117,13 @@ public interface IStockAnalyzerSettings
     /// <summary>Pause (ms) after the last key stroke before the scatter metric catalog search runs; see <c>ScatterMetrics:InputDebounceMilliseconds</c>.</summary>
     int ScatterInputDebounceMilliseconds => Models.Settings.ScatterMetricLimits.DefaultInputDebounceMilliseconds;
 
+    /// <summary>
+    /// Pause (ms) after the last data-refreshed message before the Tickers grid recomputes the RS Rating; see <c>MarketDataSettings:RsRatingRefreshDebounceMilliseconds</c>.
+    /// The value has passed the startup validation (<see cref="Models.Settings.RsRatingSettingsValidator"/>), so it is never negative. A default interface member that follows
+    /// the POCO default, so every existing implementer keeps compiling unchanged.
+    /// </summary>
+    int RsRatingRefreshDebounceMilliseconds => new Models.MarketDataSettings().RsRatingRefreshDebounceMilliseconds;
+
     // Drawing interaction resource bounds
     /// <summary>
     /// Undo/redo history and freehand stroke bounds (see <see cref="Models.Settings.DrawingInteractionSettings"/>). Defaulted here (default interface member,

@@ -1,7 +1,16 @@
 namespace StockAnalyzer.McpServer.Resources;
 
-/// <summary>A read-only document the server offers: a fixed URI, a name for the client's list, and the JSON it returns when read.</summary>
-internal sealed record McpResource(string Uri, string Name, string Description, string MimeType, Func<string> Read);
+/// <summary>
+/// A read-only document the server offers: a fixed URI, a name for the client's list, and the JSON it returns when read. A document that has to read a file is read asynchronously
+/// (<paramref name="ReadAsync"/>, cancellable); a document that is already in memory is given as a plain function.
+/// </summary>
+internal sealed record McpResource(string Uri, string Name, string Description, string MimeType, Func<CancellationToken, Task<string>> ReadAsync)
+{
+    public McpResource(string uri, string name, string description, string mimeType, Func<string> read)
+        : this(uri, name, description, mimeType, _ => Task.FromResult(read()))
+    {
+    }
+}
 
 /// <summary>The resources of the server, found by URI. Resources are static documents: the catalogues and the allow-listed settings.</summary>
 internal sealed class McpResourceRegistry

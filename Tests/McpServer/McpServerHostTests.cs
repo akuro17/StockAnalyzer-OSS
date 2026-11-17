@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using StockAnalyzer.McpServer;
@@ -17,6 +18,7 @@ public sealed class McpServerHostTests
     private const string ToolsList = """{"jsonrpc":"2.0","id":2,"method":"tools/list"}""";
     private const string ToolsCall = """{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"sa_nothing","arguments":{}}}""";
     private static readonly TimeSpan ProcessTimeout = TimeSpan.FromSeconds(60);
+    private static readonly ConditionalWeakTable<Process, Task<string>> ErrorOutputs = new();
 
     private static Stream Bytes(string text) => new MemoryStream(new UTF8Encoding(false).GetBytes(text));
 
@@ -145,7 +147,7 @@ public sealed class McpServerHostTests
             using var tools = JsonDocument.Parse((await stdout.ReadLineAsync(cancellation.Token))!);
             Assert.Equal(2, tools.RootElement.GetProperty("id").GetInt32());
             Assert.Equal(
-                new[] { "sa_analyze_cycles", "sa_analyze_market_structure", "sa_build_template", "sa_calculate_chart_series", "sa_calculate_cross_asset_stats", "sa_calculate_drawing_values", "sa_calculate_indicators", "sa_calculate_market_breadth", "sa_calculate_relative_performance", "sa_calculate_reverse_watch", "sa_calculate_volume_profile", "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_detect_candle_patterns", "sa_detect_chart_patterns", "sa_detect_divergences", "sa_extract_signal_events", "sa_filter_tickers", "sa_find_support_resistance", "sa_get_candles", "sa_get_capabilities", "sa_get_model_explanation", "sa_get_seasonality", "sa_get_settings", "sa_get_symbol_coverage", "sa_get_template_detail", "sa_get_ticker_metadata", "sa_list_models", "sa_list_templates", "sa_list_ticker_groups", "sa_list_tickers", "sa_optimize_backtest", "sa_project_price_path", "sa_render_chart_image", "sa_run_backtest", "sa_run_portfolio_backtest", "sa_run_screener", "sa_run_walk_forward_analysis", "sa_validate_condition_tree" },
+                new[] { "sa_analyze_cycles", "sa_analyze_market_structure", "sa_analyze_portfolio_risk", "sa_build_template", "sa_calculate_chart_series", "sa_calculate_cross_asset_stats", "sa_calculate_drawing_values", "sa_calculate_indicators", "sa_calculate_indicators_batch", "sa_calculate_market_breadth", "sa_calculate_relative_performance", "sa_calculate_reverse_watch", "sa_calculate_volume_profile", "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_detect_candle_patterns", "sa_detect_chart_patterns", "sa_detect_divergences", "sa_extract_signal_events", "sa_filter_tickers", "sa_find_support_resistance", "sa_get_active_workspace", "sa_get_candles", "sa_get_capabilities", "sa_get_chart_drawings", "sa_get_model_explanation", "sa_get_portfolio_summary", "sa_get_seasonality", "sa_get_settings", "sa_get_symbol_coverage", "sa_get_template_detail", "sa_get_ticker_metadata", "sa_list_models", "sa_list_templates", "sa_list_ticker_groups", "sa_list_tickers", "sa_list_upcoming_catalysts", "sa_optimize_backtest", "sa_project_price_path", "sa_render_chart_image", "sa_run_backtest", "sa_run_portfolio_backtest", "sa_run_screener", "sa_run_walk_forward_analysis", "sa_search_notes", "sa_validate_condition_tree" },
                 tools.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToArray());
 
             await stdin.WriteLineAsync(ToolsCall);
@@ -161,7 +163,7 @@ public sealed class McpServerHostTests
             Assert.Equal(0, process.ExitCode);
             Assert.Null(await stdout.ReadLineAsync(cancellation.Token));
 
-            string errorOutput = await process.StandardError.ReadToEndAsync(cancellation.Token);
+            string errorOutput = await ErrorOutputAsync(process).WaitAsync(cancellation.Token);
             Assert.Contains("Started", errorOutput);
             Assert.Contains("exiting", errorOutput);
         }
@@ -284,8 +286,18 @@ public sealed class McpServerHostTests
 
         Process process = Process.Start(startInfo)!;
         process.StandardInput.NewLine = "\n";
+
+        // The error pipe is read from the first moment, in step with the server writing to it: a client that reads it only after the session ends stops the server as soon as the pipe is full
+        // (the same defect as an unread output pipe). ErrorOutputAsync returns what was collected once the server has exited.
+        ErrorOutputs.Add(process, process.StandardError.ReadToEndAsync());
         return process;
     }
+
+    /// <summary>The whole error output of a server started by <see cref="StartServer"/>; it completes when the server has exited and its error pipe is closed.</summary>
+    internal static Task<string> ErrorOutputAsync(Process process)
+        => ErrorOutputs.TryGetValue(process, out Task<string>? output)
+            ? output
+            : throw new InvalidOperationException("The process was not started by StartServer.");
 
     /// <summary>The server assembly with its runtime configuration: the test output copy when complete, else the project's own build output.</summary>
     internal static string LocateServerAssembly()

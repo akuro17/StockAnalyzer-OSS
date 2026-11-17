@@ -830,14 +830,15 @@ public class ParameterViewBuilder
 
     private ComboBox CreateEnumComboBox(PropertyInfo prop, object parameterObject, bool isInlineLayout)
     {
-        bool hasSortAttribute =
-            prop.IsDefined(typeof(EnumDisplaySortAttribute), inherit: false) ||
-            prop.PropertyType.IsDefined(typeof(EnumDisplaySortAttribute), inherit: false);
+        // The attribute opts into localized display texts; the items are then sorted by that text unless the attribute says the declaration order is the scale (SortAlphabetically = false).
+        var sortAttribute = prop.GetCustomAttribute<EnumDisplaySortAttribute>(inherit: false)
+            ?? prop.PropertyType.GetCustomAttribute<EnumDisplaySortAttribute>(inherit: false);
+        bool hasSortAttribute = sortAttribute != null;
 
         Array rawValues = Enum.GetValues(prop.PropertyType);
         System.Collections.IEnumerable itemsSource = rawValues;
 
-        if (hasSortAttribute)
+        if (sortAttribute is { SortAlphabetically: true })
         {
             itemsSource = rawValues.Cast<object>()
                 .OrderBy(v => ResolveEnumDisplayText((Enum)v), StringComparer.CurrentCultureIgnoreCase)

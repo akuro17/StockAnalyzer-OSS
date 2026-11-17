@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using StockAnalyzer.McpServer.Execution;
+using StockAnalyzer.McpServer.Prompts;
 using StockAnalyzer.McpServer.Resources;
 using StockAnalyzer.McpServer.Tools;
 
@@ -25,6 +26,8 @@ internal sealed class McpMessageDispatcher
     private const string ResourcesListMethod = "resources/list";
     private const string ResourcesReadMethod = "resources/read";
     private const string ResourceTemplatesListMethod = "resources/templates/list";
+    private const string PromptsListMethod = "prompts/list";
+    private const string PromptsGetMethod = "prompts/get";
     private const string CancelledNotification = "notifications/cancelled";
 
     private readonly LogSink _log;
@@ -32,12 +35,15 @@ internal sealed class McpMessageDispatcher
     private readonly ToolExecutor _executor;
     private readonly McpResourceRegistry? _resources;
     private readonly ClientIdentity? _identity;
+    private readonly McpPromptRegistry? _prompts;
     private bool _initialized;
 
     /// <param name="resources">The resources to serve; null serves none (the capability is then not declared and resources/* are unknown methods).</param>
     /// <param name="identity">Receives <c>clientInfo.name</c> when the client initializes; null keeps no label.</param>
-    public McpMessageDispatcher(LogSink log, McpToolRegistry registry, ToolExecutor executor, McpResourceRegistry? resources = null, ClientIdentity? identity = null)
+    /// <param name="prompts">The prompts to serve; null serves none (the capability is then not declared and prompts/* are unknown methods).</param>
+    public McpMessageDispatcher(LogSink log, McpToolRegistry registry, ToolExecutor executor, McpResourceRegistry? resources = null, ClientIdentity? identity = null, McpPromptRegistry? prompts = null)
     {
+        _prompts = prompts;
         _log = log;
         _registry = registry;
         _executor = executor;
@@ -127,7 +133,9 @@ internal sealed class McpMessageDispatcher
 
             // Only the methods this server serves after initialize need the handshake first. Any other method (for example the
             // server/discover probe some clients send before initialize) is simply unknown: -32601 is the signal to fall back to initialize.
-            if (!_initialized && (method is ToolsListMethod or ToolsCallMethod || (_resources is not null && method is ResourcesListMethod or ResourcesReadMethod or ResourceTemplatesListMethod)))
+            if (!_initialized && (method is ToolsListMethod or ToolsCallMethod
+                || (_resources is not null && method is ResourcesListMethod or ResourcesReadMethod or ResourceTemplatesListMethod)
+                || (_prompts is not null && method is PromptsListMethod or PromptsGetMethod)))
             {
                 throw new JsonRpcException(JsonRpcErrorCodes.InvalidRequest, "Server not initialized.");
             }
@@ -135,6 +143,11 @@ internal sealed class McpMessageDispatcher
             if (method == ToolsCallMethod)
             {
                 return new DispatchOutcome(null, StartCall(id, parameters, cancellationToken));
+            }
+
+            if (method == ResourcesReadMethod && _resources is not null)
+            {
+                return new DispatchOutcome(null, StartResourceRead(id, parameters, cancellationToken));
             }
 
             return new DispatchOutcome(Result(id, WriteResult(method, parameters)));
@@ -168,8 +181,9 @@ internal sealed class McpMessageDispatcher
             PingMethod => WriteEmptyObject,
             ToolsListMethod => ListTools(parameters),
             ResourcesListMethod when _resources is not null => ListResources(parameters),
-            ResourcesReadMethod when _resources is not null => ReadResource(parameters),
             ResourceTemplatesListMethod when _resources is not null => ListResourceTemplates(parameters),
+            PromptsListMethod when _prompts is not null => ListPrompts(parameters),
+            PromptsGetMethod when _prompts is not null => GetPrompt(parameters),
             _ => throw new JsonRpcException(JsonRpcErrorCodes.MethodNotFound, $"Method not found: {method}"),
         };
     }
@@ -212,6 +226,12 @@ internal sealed class McpMessageDispatcher
             if (_resources is not null)
             {
                 writer.WriteStartObject("resources");
+                writer.WriteEndObject();
+            }
+
+            if (_prompts is not null)
+            {
+                writer.WriteStartObject("prompts");
                 writer.WriteEndObject();
             }
 
@@ -308,7 +328,8 @@ internal sealed class McpMessageDispatcher
         };
     }
 
-    private Action<Utf8JsonWriter> ReadResource(JsonElement parameters)
+    /// <summary>Checks the request of resources/read (a bad one is answered at once) and reads the document asynchronously, so a resource that reads a file never blocks the reading loop.</summary>
+    private Task<string?> StartResourceRead(JsonElement id, JsonElement parameters, CancellationToken cancellationToken)
     {
         if (parameters.ValueKind != JsonValueKind.Object
             || !parameters.TryGetProperty("uri", out JsonElement uri)
@@ -323,15 +344,130 @@ internal sealed class McpMessageDispatcher
             throw new JsonRpcException(JsonRpcErrorCodes.ResourceNotFound, "Resource not found.");
         }
 
-        string text = resource!.Read();
+        return ReadResourceAsync(id.Clone(), resource!, cancellationToken);
+    }
+
+    private async Task<string?> ReadResourceAsync(JsonElement id, McpResource resource, CancellationToken cancellationToken)
+    {
+        try
+        {
+            string text = await resource.ReadAsync(cancellationToken).ConfigureAwait(false);
+            return Result(id, writer =>
+            {
+                writer.WriteStartObject();
+                writer.WriteStartArray("contents");
+                writer.WriteStartObject();
+                writer.WriteString("uri", resource.Uri);
+                writer.WriteString("mimeType", resource.MimeType);
+                writer.WriteString("text", text);
+                writer.WriteEndObject();
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            });
+        }
+        catch (JsonRpcException error)
+        {
+            return Error(id, error.Code, error.Message);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return null; // shutdown: the client is gone, nothing is answered
+        }
+        catch (Exception error)
+        {
+            _log.Error($"Unhandled error in '{ResourcesReadMethod}': {error}");
+            return Error(id, JsonRpcErrorCodes.InternalError, "Internal error.");
+        }
+    }
+
+    private Action<Utf8JsonWriter> ListPrompts(JsonElement parameters)
+    {
+        RejectCursor(parameters);
         return writer =>
         {
             writer.WriteStartObject();
-            writer.WriteStartArray("contents");
+            writer.WriteStartArray("prompts");
+            foreach (McpPrompt prompt in _prompts!.Prompts)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("name", prompt.Name);
+                writer.WriteString("title", prompt.Title);
+                writer.WriteString("description", prompt.Description);
+                writer.WriteStartArray("arguments");
+                foreach (McpPromptArgument argument in prompt.Arguments)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("name", argument.Name);
+                    writer.WriteString("description", argument.Description);
+                    writer.WriteBoolean("required", argument.Required);
+                    writer.WriteEndObject();
+                }
+
+                writer.WriteEndArray();
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        };
+    }
+
+    /// <summary>prompts/get: name (a served prompt) and optional arguments (an object of strings). A missing or unknown prompt, a missing required argument and a bad value are -32602.</summary>
+    private Action<Utf8JsonWriter> GetPrompt(JsonElement parameters)
+    {
+        if (parameters.ValueKind != JsonValueKind.Object
+            || !parameters.TryGetProperty("name", out JsonElement name)
+            || name.ValueKind != JsonValueKind.String
+            || string.IsNullOrEmpty(name.GetString()))
+        {
+            throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, "prompts/get requires a prompt name.");
+        }
+
+        if (!_prompts!.TryGet(name.GetString()!, out McpPrompt? prompt))
+        {
+            throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, $"Unknown prompt: {name.GetString()}");
+        }
+
+        var given = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (parameters.TryGetProperty("arguments", out JsonElement arguments))
+        {
+            if (arguments.ValueKind != JsonValueKind.Object)
+            {
+                throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, "Prompt arguments must be an object.");
+            }
+
+            foreach (JsonProperty property in arguments.EnumerateObject())
+            {
+                if (property.Value.ValueKind != JsonValueKind.String)
+                {
+                    throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, $"Prompt argument '{property.Name}' must be a string.");
+                }
+
+                given[property.Name] = property.Value.GetString()!;
+            }
+        }
+
+        string text;
+        try
+        {
+            text = _prompts.Build(prompt!, given);
+        }
+        catch (McpPromptArgumentException error)
+        {
+            throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, error.Message);
+        }
+
+        return writer =>
+        {
             writer.WriteStartObject();
-            writer.WriteString("uri", resource.Uri);
-            writer.WriteString("mimeType", resource.MimeType);
+            writer.WriteString("description", prompt!.Description);
+            writer.WriteStartArray("messages");
+            writer.WriteStartObject();
+            writer.WriteString("role", "user");
+            writer.WriteStartObject("content");
+            writer.WriteString("type", "text");
             writer.WriteString("text", text);
+            writer.WriteEndObject();
             writer.WriteEndObject();
             writer.WriteEndArray();
             writer.WriteEndObject();

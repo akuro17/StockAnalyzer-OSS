@@ -4,6 +4,7 @@ using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using System;
 using System.Collections.Generic;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -335,39 +336,10 @@ public class LongShortPositionObject : IChartObject, IDisposable, IDrawingCalcul
     {
         if (Points.Count < 3) return Array.Empty<DrawingCalculatedValue>();
 
-        var entryPt = Points[0];
-        var stopPt = Points[1];
-        var targetPt = Points[2];
-
-        decimal risk = Math.Abs(entryPt.Price - stopPt.Price);
-        decimal reward = Math.Abs(targetPt.Price - entryPt.Price);
-        decimal ratio = risk != 0 ? reward / risk : 0;
-
         var entryColor = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
         var stopColor = new IndicatorColor(StopColor.A, StopColor.R, StopColor.G, StopColor.B);
         var targetColor = new IndicatorColor(TargetColor.A, TargetColor.R, TargetColor.G, TargetColor.B);
 
-        string FormatDiff(decimal diff) => diff > 0 ? $"+{diff:F2}" : $"{diff:F2}";
-
-        if (IndicatorValueAtEntry.HasValue)
-        {
-            return new DrawingCalculatedValue[]
-            {
-                new DrawingCalculatedValue("Entry", "Entry", entryPt.Price, $"{entryPt.Price:F2}", entryColor),
-                new DrawingCalculatedValue("Target", "Target", targetPt.Price, $"{targetPt.Price:F2} ({FormatDiff(targetPt.Price - entryPt.Price)})", targetColor),
-                new DrawingCalculatedValue("Stop", "Stop Loss", stopPt.Price, $"{stopPt.Price:F2} ({FormatDiff(stopPt.Price - entryPt.Price)})", stopColor),
-                new DrawingCalculatedValue("RiskReward", "R/R Ratio", ratio, $"1 : {ratio:F2}", IndicatorColor.Gray),
-                new DrawingCalculatedValue("ATR_Entry", "ATR (Entry)", IndicatorValueAtEntry.Value, $"{IndicatorValueAtEntry.Value:F3}", IndicatorColor.Gray)
-            };
-        }
-
-        return new DrawingCalculatedValue[]
-        {
-            new DrawingCalculatedValue("Entry", "Entry", entryPt.Price, $"{entryPt.Price:F2}", entryColor),
-            new DrawingCalculatedValue("Target", "Target", targetPt.Price, $"{targetPt.Price:F2} ({FormatDiff(targetPt.Price - entryPt.Price)})", targetColor),
-            new DrawingCalculatedValue("Stop", "Stop Loss", stopPt.Price, $"{stopPt.Price:F2} ({FormatDiff(stopPt.Price - entryPt.Price)})", stopColor),
-            new DrawingCalculatedValue("RiskReward", "R/R Ratio", ratio, $"1 : {ratio:F2}", IndicatorColor.Gray)
-        };
+        return LongShortPositionValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), Points[2].ToAnchor(), entryColor, targetColor, stopColor, IndicatorValueAtEntry);
     }
 }
-

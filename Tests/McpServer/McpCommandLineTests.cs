@@ -360,13 +360,15 @@ public sealed class McpCommandLineTests : IDisposable
         }
 
         // A new integer argument without hints is caught here: every integer argument of every tool states a default.
+        // The one exception is an argument whose absence switches a feature off and so has no number to state as its default (decimalPlaces: absent = no rounding).
+        var withoutNumericDefault = new HashSet<string>(StringComparer.Ordinal) { SeriesOutputOptions.DecimalPlacesArgument };
         foreach (RegisteredTool registered in runtime.Tools.Tools)
         {
             foreach (JsonProperty property in registered.Schema.GetProperty("properties").EnumerateObject())
             {
                 if (property.Value.GetProperty("type").GetString() == "integer")
                 {
-                    Assert.True(property.Value.TryGetProperty("default", out _), $"{registered.Tool.Name}.{property.Name} states no default");
+                    Assert.True(withoutNumericDefault.Contains(property.Name) || property.Value.TryGetProperty("default", out _), $"{registered.Tool.Name}.{property.Name} states no default");
                     Assert.True(property.Value.TryGetProperty("minimum", out _), $"{registered.Tool.Name}.{property.Name} states no minimum");
                 }
             }
@@ -589,7 +591,7 @@ public sealed class McpCommandLineTests : IDisposable
             using var cancellation = new CancellationTokenSource(ProcessTimeout);
             process.StandardInput.Close();
             Task<string> stdout = process.StandardOutput.ReadToEndAsync(cancellation.Token);
-            Task<string> stderr = process.StandardError.ReadToEndAsync(cancellation.Token);
+            Task<string> stderr = McpServerHostTests.ErrorOutputAsync(process).WaitAsync(cancellation.Token);
             await process.WaitForExitAsync(cancellation.Token);
             return (await stdout, await stderr, process.ExitCode);
         }

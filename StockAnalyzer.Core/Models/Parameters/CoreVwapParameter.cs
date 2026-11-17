@@ -41,7 +41,7 @@ public class CoreVwapParameter : CoreIndicatorParameterBase
     public override void Validate()
     {
         if (!Enum.IsDefined(ResetPeriod)) throw new ArgumentOutOfRangeException(nameof(ResetPeriod));
-        if (StdDevMultiplier < (decimal)IndicatorDefaultConstants.VwapMinStdDevMultiplier || StdDevMultiplier > (decimal)IndicatorDefaultConstants.VwapMaxStdDevMultiplier)
+        if (StdDevMultiplier < IndicatorDefaultConstants.VwapMinStdDevMultiplierDecimal || StdDevMultiplier > IndicatorDefaultConstants.VwapMaxStdDevMultiplierDecimal)
             throw new ArgumentOutOfRangeException(nameof(StdDevMultiplier));
     }
 }

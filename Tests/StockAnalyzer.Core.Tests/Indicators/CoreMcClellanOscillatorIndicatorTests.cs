@@ -172,6 +172,55 @@ public sealed class CoreMcClellanOscillatorIndicatorTests
         }
     }
 
+    [Theory]
+    [InlineData(19, 19)]
+    [InlineData(20, 19)]
+    [InlineData(39, 2)]
+    [InlineData(500, 499)]
+    public void Validate_FastNotBelowSlow_IsRejectedAndNamesTheFastPeriod(int fast, int slow)
+    {
+        var parameter = new CoreMcClellanOscillatorParameter { FastPeriod = fast, SlowPeriod = slow };
+
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() => parameter.Validate());
+
+        Assert.Equal(nameof(CoreMcClellanOscillatorParameter.FastPeriod), error.ParamName);
+    }
+
+    [Theory]
+    [InlineData(19, 20)]
+    [InlineData(1, 2)]
+    [InlineData(19, 39)]
+    [InlineData(500, 501)]
+    public void Validate_FastBelowSlow_IsAccepted(int fast, int slow)
+        => new CoreMcClellanOscillatorParameter { FastPeriod = fast, SlowPeriod = slow }.Validate();
+
+    [Fact]
+    public void Validate_AValueOutsideItsOwnRange_IsReportedBeforeTheOrder()
+    {
+        // Slow = 1 is below its range and also not above Fast = 19: the range error (of SlowPeriod) comes first.
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() => new CoreMcClellanOscillatorParameter { SlowPeriod = 1 }.Validate());
+
+        Assert.Equal(nameof(CoreMcClellanOscillatorParameter.SlowPeriod), error.ParamName);
+    }
+
+    [Theory]
+    [InlineData(19, 19, false)]
+    [InlineData(20, 19, false)]
+    [InlineData(19, 20, true)]
+    public void Calculate_FastNotBelowSlow_ReturnsAFailureResultThatNamesTheFastPeriod(int fast, int slow, bool succeeds)
+    {
+        var indicator = new CoreMcClellanOscillatorIndicator { UniverseGroupId = Guid.NewGuid().ToString(), FastPeriod = fast, SlowPeriod = slow };
+        var candles = new List<CoreCandleData> { new(new DateTime(2025, 1, 2), 10m, 11m, 9m, 10m, 100) };
+
+        IIndicatorResult result = indicator.Calculate(candles);
+
+        Assert.Equal(succeeds, result.IsSuccessful);
+        if (!succeeds)
+        {
+            Assert.Contains("FastPeriod", result.ErrorMessage);
+        }
+    }
+
     [Fact]
     public void ParameterValidationAndRegistrations_EnforceContracts()
     {

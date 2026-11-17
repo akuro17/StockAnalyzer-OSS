@@ -100,6 +100,11 @@ public static class ChartTheme
     public const float ProjectionBandBoundaryDashLength = 3f;
 
     /// <summary>
+    /// Dash pattern (line = space) of the projected path of DTW projection drawings, in pixels.
+    /// </summary>
+    public const float DtwProjectedPathDashLength = 5f;
+
+    /// <summary>
     /// Dash pattern (line = space) of the projected path of Pearson projection drawings, in pixels.
     /// </summary>
     public const float PearsonProjectedPathDashLength = 5f;

@@ -963,7 +963,7 @@ public class ChartInteractionController
                         : null);
             }
 
-            int? oldFutureSteps = (editTarget as StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject)?.FutureSteps;
+            var dtwSnapshot = (editTarget as StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject)?.CaptureSearchSettings();
 
             // Generic Apply-without-closing support: commits the just-edited Color/Thickness/panel-
             // specific settings and redraws immediately via the same NotifyObjectChanged path
@@ -1015,12 +1015,11 @@ public class ChartInteractionController
                     DeferredComputationRecalculator.TryRecalculate(editTarget, viewModel.Candles);
                 }
 
-                if (editTarget is StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject dtwObj)
+                if (editTarget is StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject dtwObj &&
+                    dtwSnapshot.HasValue &&
+                    dtwObj.HasSearchSettingsChanged(dtwSnapshot.Value))
                 {
-                    if (oldFutureSteps.HasValue && oldFutureSteps.Value != dtwObj.FutureSteps)
-                    {
-                        OnDrawingFinished?.Invoke(dtwObj);
-                    }
+                    OnDrawingFinished?.Invoke(dtwObj);
                 }
 
                 viewModel.ObjectManager.NotifyObjectChanged(editTarget.Id);

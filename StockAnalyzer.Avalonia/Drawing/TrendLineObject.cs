@@ -7,6 +7,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Constants;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
@@ -34,7 +35,7 @@ public class TrendLineObject : RelativeGeometricRenderer, IDrawingCalculatedValu
     /// </summary>
     public const LineExtendMode ExtendedLineToolDefaultMode = LineExtendMode.Both;
 
-    /// <summary>Which ends of the line run on to the border of the drawing area (click order: Right = beyond P2, Left = beyond P1).</summary>
+    /// <summary>Which ends of the line run on to the border of the drawing area (screen orientation: Right = right-side endpoint, Left = left-side endpoint).</summary>
     [Category("Parameters")]
     [DisplayName("Extend")]
     [ParameterTag(DrawingParameterTags.Analysis)]
@@ -119,40 +120,44 @@ public class TrendLineObject : RelativeGeometricRenderer, IDrawingCalculatedValu
     }
 
     /// <summary>
-    /// The screen segment to draw / hit-test for the screen anchors <paramref name="s1"/> (P1) and <paramref name="s2"/> (P2):
-    /// the segment itself for <see cref="LineExtendMode.None"/>, otherwise the segment prolonged on the chosen end(s) to where
-    /// the infinite line leaves <paramref name="clip"/>. An end whose anchor is already outside the clip is not moved, and a
-    /// line that misses the clip or has anchors closer than <see cref="ChartConstants.ExtendedLineMinSpanPixels"/> is not extended.
+    /// The screen segment to draw / hit-test for the screen anchors <paramref name="s1"/> and <paramref name="s2"/>:
+    /// the segment itself for <see cref="LineExtendMode.None"/>, otherwise the segment prolonged on the chosen screen-side end(s)
+    /// (<see cref="LineExtendMode.Left"/> toward smaller X, <see cref="LineExtendMode.Right"/> toward larger X, breaking vertical ties
+    /// top-to-bottom) to where the infinite line leaves <paramref name="clip"/>. An end whose anchor is already outside the clip is not
+    /// moved, and a line that misses the clip or has anchors closer than <see cref="ChartConstants.ExtendedLineMinSpanPixels"/> is not extended.
     /// </summary>
     internal static (global::Avalonia.Point Start, global::Avalonia.Point End) GetExtendedSegment(
         global::Avalonia.Point s1, global::Avalonia.Point s2, global::Avalonia.Rect clip, LineExtendMode mode)
     {
         if (mode == LineExtendMode.None || clip.Width <= 0 || clip.Height <= 0) return (s1, s2);
 
-        double dx = s2.X - s1.X;
-        double dy = s2.Y - s1.Y;
+        // Normalize into screen left-to-right order (top-to-bottom for vertical lines) regardless of click order.
+        var (left, right) = (s1.X > s2.X || (s1.X == s2.X && s1.Y > s2.Y)) ? (s2, s1) : (s1, s2);
+
+        double dx = right.X - left.X;
+        double dy = right.Y - left.Y;
         if (Math.Sqrt(dx * dx + dy * dy) < ChartConstants.ExtendedLineMinSpanPixels) return (s1, s2);
 
-        // Liang-Barsky on the infinite line P(t) = s1 + t * (s2 - s1): t = 0 is P1, t = 1 is P2.
+        // Liang-Barsky on the infinite line P(t) = left + t * (right - left): t = 0 is left, t = 1 is right.
         double tEnter = double.NegativeInfinity;
         double tExit = double.PositiveInfinity;
-        if (!ClipParameter(-dx, s1.X - clip.Left, ref tEnter, ref tExit) ||
-            !ClipParameter(dx, clip.Right - s1.X, ref tEnter, ref tExit) ||
-            !ClipParameter(-dy, s1.Y - clip.Top, ref tEnter, ref tExit) ||
-            !ClipParameter(dy, clip.Bottom - s1.Y, ref tEnter, ref tExit))
+        if (!ClipParameter(-dx, left.X - clip.Left, ref tEnter, ref tExit) ||
+            !ClipParameter(dx, clip.Right - left.X, ref tEnter, ref tExit) ||
+            !ClipParameter(-dy, left.Y - clip.Top, ref tEnter, ref tExit) ||
+            !ClipParameter(dy, clip.Bottom - left.Y, ref tEnter, ref tExit))
         {
             return (s1, s2);
         }
 
-        var start = s1;
-        var end = s2;
+        var start = left;
+        var end = right;
         if ((mode == LineExtendMode.Left || mode == LineExtendMode.Both) && tEnter < 0.0)
         {
-            start = new global::Avalonia.Point(s1.X + tEnter * dx, s1.Y + tEnter * dy);
+            start = new global::Avalonia.Point(left.X + tEnter * dx, left.Y + tEnter * dy);
         }
         if ((mode == LineExtendMode.Right || mode == LineExtendMode.Both) && tExit > 1.0)
         {
-            end = new global::Avalonia.Point(s1.X + tExit * dx, s1.Y + tExit * dy);
+            end = new global::Avalonia.Point(left.X + tExit * dx, left.Y + tExit * dy);
         }
         return (start, end);
     }

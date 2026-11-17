@@ -4,12 +4,18 @@ using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 
 namespace StockAnalyzer.Avalonia.Drawing.Objects;
 
-public class KalmanFilterProjectionObject : IChartObject
+public class KalmanFilterProjectionObject : IChartObject, IDrawingCalculatedValuesProvider
 {
+    /// <summary>Data Window row name (key and label) of <see cref="KalmanProjectionResult.InnovationScale"/>: the band scale in price units (see DRAWING_TOOLS_SPEC.md).</summary>
+    public const string BandScaleRowName = "Kalman Band Scale";
+
     public string? CustomName { get; set; }
     public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
     public bool IsMoveAxisModeExplicit { get; set; } = false;
@@ -21,7 +27,8 @@ public class KalmanFilterProjectionObject : IChartObject
     public List<ChartPoint> Points { get; } = new(2);
 
     // Core visual properties
-    public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
+    private Color _color = DrawingThemeContext.DefaultColor;
+    public Color Color { get => _color; set { _color = value; InvalidateCalculatedValues(); } }
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
     public bool IsSelected { get; set; }
     public bool IsVisible { get; set; } = true;
@@ -70,11 +77,17 @@ public class KalmanFilterProjectionObject : IChartObject
     public SkiaSharp.SKColor SkiaFillColor => new(FillColor.R, FillColor.G, FillColor.B, FillColor.A);
 
     // Projected path data: Point.X = timestamp (ticks), Point.Y = projected price
-    public List<StockAnalyzer.Core.Models.Point> ProjectedPath { get; set; } = new();
+    public List<StockAnalyzer.Core.Models.Point> ProjectedPath { get => _projectedPath; set { _projectedPath = value; InvalidateCalculatedValues(); } }
+    private List<StockAnalyzer.Core.Models.Point> _projectedPath = new();
 
     // Upper and Lower confidence interval band path data
     public List<StockAnalyzer.Core.Models.Point> UpperBandPath { get; set; } = new();
     public List<StockAnalyzer.Core.Models.Point> LowerBandPath { get; set; } = new();
+
+    /// <summary>Last Kalman state of <see cref="Recalculate"/> (terminal velocity, gains, innovation scale); null when nothing is selected.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public KalmanProjectionResult? CalculatedResult { get => _calculatedResult; private set { _calculatedResult = value; InvalidateCalculatedValues(); } }
+    private KalmanProjectionResult? _calculatedResult;
 
     private readonly StockAnalyzer.Avalonia.Drawing.Renderers.KalmanFilterProjectionRenderer _renderer = new();
 
@@ -151,6 +164,7 @@ public class KalmanFilterProjectionObject : IChartObject
             ProjectedPath?.Clear();
             UpperBandPath?.Clear();
             LowerBandPath?.Clear();
+            CalculatedResult = null;
             return;
         }
 
@@ -179,6 +193,7 @@ public class KalmanFilterProjectionObject : IChartObject
             ProjectedPath?.Clear();
             UpperBandPath?.Clear();
             LowerBandPath?.Clear();
+            CalculatedResult = null;
             return;
         }
 
@@ -188,75 +203,34 @@ public class KalmanFilterProjectionObject : IChartObject
             ProjectedPath?.Clear();
             UpperBandPath?.Clear();
             LowerBandPath?.Clear();
+            CalculatedResult = null;
             return;
         }
 
-        // 2nd-order Kinematic Kalman Filter: State = [price, velocity]^T
-        decimal p = candles[startIndex].Close;
-        decimal v = count > 1 ? (candles[startIndex + 1].Close - candles[startIndex].Close) : 0m;
-
-        decimal p00 = 1m;
-        decimal p01 = 0m;
-        decimal p10 = 0m;
-        decimal p11 = 1m;
-
-        decimal qVal = Math.Max(0.00001m, Q);
-        decimal rVal = Math.Max(0.00001m, R);
-
-        // Track innovation residuals to estimate empirical price scale (sigma_hat)
-        double sumNormalizedResidualSq = 0.0;
-        int validResidualCount = 0;
-
-        for (int i = startIndex + 1; i <= endIndex; i++)
+        // The filter itself lives in KalmanProjectionAnalysis (single source of truth); this method maps it onto the chart.
+        var closes = new decimal[count];
+        for (int i = 0; i < count; i++)
         {
-            // Predict step:
-            // x_pred = [p + v, v]
-            decimal pPred = p + v;
-            decimal vPred = v;
-
-            // P_pred = F * P * F^T + Q
-            decimal predP00 = p00 + p01 + p10 + p11 + qVal;
-            decimal predP01 = p01 + p11;
-            decimal predP10 = p10 + p11;
-            decimal predP11 = p11 + qVal;
-
-            // Update step:
-            decimal measurement = candles[i].Close;
-            decimal y = measurement - pPred;
-            decimal s = predP00 + rVal;
-
-            if (s != 0m)
-            {
-                decimal k0 = predP00 / s;
-                decimal k1 = predP10 / s;
-
-                p = pPred + k0 * y;
-                v = vPred + k1 * y;
-
-                p00 = (1m - k0) * predP00;
-                p01 = (1m - k0) * predP01;
-                p10 = predP10 - k1 * predP00;
-                p11 = predP11 - k1 * predP01;
-
-                sumNormalizedResidualSq += (double)(y * y / s);
-                validResidualCount++;
-            }
-            else
-            {
-                p = pPred;
-                v = vPred;
-                p00 = predP00;
-                p01 = predP01;
-                p10 = predP10;
-                p11 = predP11;
-            }
+            closes[i] = candles[startIndex + i].Close;
         }
 
+        var result = KalmanProjectionAnalysis.CalculateProjection(closes, FutureSteps, Q, R, ConfidenceMultiplier);
+        if (result.IsEmpty)
+        {
+            // The engine refused a band or scale value (non-finite / out of range): draw nothing, keep no start point.
+            ProjectedPath?.Clear();
+            UpperBandPath?.Clear();
+            LowerBandPath?.Clear();
+            CalculatedResult = null;
+            return;
+        }
+
+        CalculatedResult = result;
+
         // Project forward into future coordinates
-        int steps = Math.Clamp(FutureSteps, 1, 100);
-        var projectedPoints = new List<StockAnalyzer.Core.Models.Point>(steps + 1);
-        var upperPoints = new List<StockAnalyzer.Core.Models.Point>(steps + 1);
-        var lowerPoints = new List<StockAnalyzer.Core.Models.Point>(steps + 1);
+        var projectedPoints = new List<StockAnalyzer.Core.Models.Point>(result.Steps.Count + 1);
+        var upperPoints = new List<StockAnalyzer.Core.Models.Point>(result.Steps.Count + 1);
+        var lowerPoints = new List<StockAnalyzer.Core.Models.Point>(result.Steps.Count + 1);
 
         // First point connects from the last selection candle
         var lastCandle = candles[endIndex];
@@ -281,20 +255,8 @@ public class KalmanFilterProjectionObject : IChartObject
             }
         }
 
-        // Compute empirical price innovation scale (sigma_hat) to bring normalized covariance into physical price scale
-        double minScale = Math.Max(0.01, (double)Math.Abs(lastCandle.Close) * 0.005);
-        double sigmaScale = validResidualCount > 0
-            ? Math.Max(minScale, Math.Sqrt(sumNormalizedResidualSq / validResidualCount))
-            : minScale;
-
-        decimal pCov00 = p00;
-        decimal pCov01 = p01;
-        decimal pCov10 = p10;
-        decimal pCov11 = p11;
-
-        decimal multiplier = Math.Max(0m, ConfidenceMultiplier);
-
-        for (int k = 1; k <= steps; k++)
+        var steps = result.Steps;
+        for (int k = 1; k <= steps.Count; k++)
         {
             int targetIndex = endIndex + k;
             DateTime targetTime;
@@ -309,32 +271,50 @@ public class KalmanFilterProjectionObject : IChartObject
                 targetTime = candles[^1].Timestamp + (timeframeSpan * extendedSteps);
             }
 
-            // Propagate error covariance into future (without measurement updates)
-            // P_k = F * P_{k-1} * F^T + Q
-            decimal nextCov00 = pCov00 + pCov01 + pCov10 + pCov11 + qVal;
-            decimal nextCov01 = pCov01 + pCov11;
-            decimal nextCov10 = pCov10 + pCov11;
-            decimal nextCov11 = pCov11 + qVal;
-
-            pCov00 = nextCov00;
-            pCov01 = nextCov01;
-            pCov10 = nextCov10;
-            pCov11 = nextCov11;
-
-            decimal projectedPrice = p + (decimal)k * v;
-            double stdDev = sigmaScale * Math.Sqrt((double)Math.Max(0m, pCov00));
-            decimal margin = (decimal)stdDev * multiplier;
-
-            decimal upperPrice = projectedPrice + margin;
-            decimal lowerPrice = projectedPrice - margin;
-
-            projectedPoints.Add(new StockAnalyzer.Core.Models.Point((double)targetTime.Ticks, (double)projectedPrice));
-            upperPoints.Add(new StockAnalyzer.Core.Models.Point((double)targetTime.Ticks, (double)upperPrice));
-            lowerPoints.Add(new StockAnalyzer.Core.Models.Point((double)targetTime.Ticks, (double)lowerPrice));
+            var step = steps[k - 1];
+            projectedPoints.Add(new StockAnalyzer.Core.Models.Point((double)targetTime.Ticks, (double)step.ProjectedPrice));
+            upperPoints.Add(new StockAnalyzer.Core.Models.Point((double)targetTime.Ticks, (double)step.UpperBand));
+            lowerPoints.Add(new StockAnalyzer.Core.Models.Point((double)targetTime.Ticks, (double)step.LowerBand));
         }
 
         ProjectedPath = projectedPoints;
         UpperBandPath = upperPoints;
         LowerBandPath = lowerPoints;
+    }
+
+    public IReadOnlyList<DrawingCalculatedValue> GetCalculatedValues(DateTime timestamp, decimal? currentPrice = null)
+    {
+        // ChartInteractionController clears the paths IN PLACE while a handle is dragged, which no setter sees:
+        // an empty path means no rows whatever the cache holds (O(1), no allocation).
+        if (ProjectedPath.Count == 0) return Array.Empty<DrawingCalculatedValue>();
+        return _calculatedValuesCache ??= BuildCalculatedValues();
+    }
+
+    // Rows depend only on CalculatedResult, ProjectedPath (first and last point) and Color; their setters call InvalidateCalculatedValues.
+    // ProjectedPath is replaced by Recalculate and Translate; in-place Clear() calls from outside are covered by the empty-path guard in GetCalculatedValues.
+    private DrawingCalculatedValue[]? _calculatedValuesCache;
+
+    private void InvalidateCalculatedValues() => _calculatedValuesCache = null;
+
+    private DrawingCalculatedValue[] BuildCalculatedValues()
+    {
+        var result = CalculatedResult;
+        if (result == null || result.IsEmpty || ProjectedPath.Count == 0) return Array.Empty<DrawingCalculatedValue>();
+
+        var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
+        decimal anchor = (decimal)ProjectedPath[0].Y;
+        decimal target = (decimal)ProjectedPath[^1].Y;
+        decimal pctChange = anchor != 0m ? (target - anchor) / anchor * 100m : 0m;
+        decimal velocity = result.TerminalVelocity;
+
+        return new DrawingCalculatedValue[]
+        {
+            new("Kalman Target Price", "Kalman Target Price", target, string.Create(DrawingValueFormat.Culture, $"{target:F2} ({pctChange:+0.00;-0.00;0.00}%)"), color),
+            new("Kalman Velocity (v)", "Kalman Velocity (v)", Math.Round(velocity, 4), string.Create(DrawingValueFormat.Culture, $"{velocity:+0.0000;-0.0000;0.0000} / bar"),
+                velocity >= 0m ? IndicatorColor.Bullish : IndicatorColor.Bearish),
+            new("Kalman Gain (K0, K1)", "Kalman Gain (K0, K1)", Math.Round(result.TerminalGainPosition, 4),
+                string.Create(DrawingValueFormat.Culture, $"K0={result.TerminalGainPosition:F3}, K1={result.TerminalGainVelocity:F3}"), IndicatorColor.Gray),
+            new(BandScaleRowName, BandScaleRowName, Math.Round(result.InnovationScale, 4), string.Create(DrawingValueFormat.Culture, $"{result.InnovationScale:F4}"), IndicatorColor.Gray)
+        };
     }
 }

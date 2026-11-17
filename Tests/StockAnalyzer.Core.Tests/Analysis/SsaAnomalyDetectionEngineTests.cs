@@ -50,7 +50,10 @@ public class SsaAnomalyDetectionEngineTests
     [Fact]
     public void Test_Engine_NormalSeries_NoAnomaliesDetected()
     {
-        // Smooth sine wave + minimal deterministic variation
+        // Smooth sine wave + minimal deterministic variation.
+        // The auto rank of this series is 2 (the two leading eigenvalues carry 98 % of the energy; the rank used to be estimated from the raw
+        // Jacobi order and came out as 5, which reconstructed the sine exactly). The z-score is RELATIVE (residual / residual std), so the small
+        // edge residual of a noise-free sine reaches |z| of about 3 at the series ends: the threshold is above that (owner decision R-3 = A, 2026-11-17).
         int n = 80;
         var (samples, timestamps) = GenerateSeries(n, i => 100.0 + 10.0 * Math.Sin(2.0 * Math.PI * i / 20.0));
 
@@ -59,7 +62,7 @@ public class SsaAnomalyDetectionEngineTests
             embeddingDimension: 15,
             numComponents: 2,
             autoRank: true,
-            enterThreshold: 2.5,
+            enterThreshold: 3.5,
             exitThreshold: 1.0);
 
         Assert.False(result.IsEmpty);

@@ -139,4 +139,44 @@ public sealed class ReadOnlyWorkspaceSourceTests : IDisposable
         Assert.NotNull(loaded);
         Assert.Equal("RetrySuccess", loaded.Name);
     }
+
+    [Fact]
+    public void GetVersion_WhenFileDoesNotExist_ReturnsNull()
+    {
+        IReadOnlyWorkspaceSource source = new FileReadOnlyWorkspaceSource(_workspacePath);
+
+        Assert.Null(source.GetVersion());
+    }
+
+    [Fact]
+    public async Task GetVersion_ChangesWhenTheFileIsSavedAgain_AndIsStableOtherwise()
+    {
+        IReadOnlyWorkspaceSource source = new FileReadOnlyWorkspaceSource(_workspacePath);
+        await File.WriteAllTextAsync(_workspacePath, "{}");
+        File.SetLastWriteTimeUtc(_workspacePath, new DateTime(2026, 11, 16, 9, 0, 0, DateTimeKind.Utc));
+
+        string? first = source.GetVersion();
+        string? again = source.GetVersion();
+
+        Assert.NotNull(first);
+        Assert.Equal(first, again);
+
+        // Same length, later write time (a save that rewrote the same size).
+        File.SetLastWriteTimeUtc(_workspacePath, new DateTime(2026, 11, 16, 9, 0, 1, DateTimeKind.Utc));
+        string? resaved = source.GetVersion();
+        Assert.NotEqual(first, resaved);
+
+        // Same write time, different length.
+        await File.WriteAllTextAsync(_workspacePath, "{ }");
+        File.SetLastWriteTimeUtc(_workspacePath, new DateTime(2026, 11, 16, 9, 0, 1, DateTimeKind.Utc));
+        Assert.NotEqual(resaved, source.GetVersion());
+    }
+
+    [Fact]
+    public void GetVersion_OfASourceThatDoesNotOverrideIt_IsNull()
+    {
+        IReadOnlyWorkspaceSource source = new LoadOnlyWorkspaceSource();
+
+        Assert.Null(source.GetVersion());
+    }
 }

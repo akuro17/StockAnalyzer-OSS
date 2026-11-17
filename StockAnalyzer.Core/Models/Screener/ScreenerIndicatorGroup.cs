@@ -115,7 +115,8 @@ public class ScreenerIndicatorGroup
                 IndicatorType.GarmanKlassVolatility, IndicatorType.RviVolatility,
                 IndicatorType.Highest, IndicatorType.Lowest, IndicatorType.ExpectedMove,
                 IndicatorType.TrueHigh, IndicatorType.TrueLow, IndicatorType.TrueRange,
-                IndicatorType.ParkinsonVolatility, IndicatorType.RogersSatchellVolatility
+                IndicatorType.ParkinsonVolatility, IndicatorType.RogersSatchellVolatility,
+                IndicatorType.HarRv
             }, "Indicator", "ScreenerGroup_Volatility"),
 
             new("Math", new[]
@@ -131,10 +132,11 @@ public class ScreenerIndicatorGroup
                 IndicatorType.Egarch, IndicatorType.Garch11, IndicatorType.HurstExponent, IndicatorType.Entropy,
                 IndicatorType.WilderSmoothing,
                 IndicatorType.Variance, IndicatorType.VaR, IndicatorType.CVaR,
-                IndicatorType.HiddenMarkovModel, IndicatorType.ARIMA,
+                IndicatorType.HiddenMarkovModel, IndicatorType.ARIMA, IndicatorType.Bocpd,
                 // The two-symbol indicators the Screener evaluates besides Correlation (see ScreenerIndicatorEligibility); the Backtest does not offer them.
                 IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared,
                 IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator,
+                IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
                 IndicatorType.MansfieldRS, IndicatorType.McClellanOscillator, IndicatorType.MarketBreadth
             }, "Indicator", "ScreenerGroup_Math"),
 

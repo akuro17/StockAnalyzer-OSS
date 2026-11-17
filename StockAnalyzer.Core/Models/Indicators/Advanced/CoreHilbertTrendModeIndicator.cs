@@ -19,6 +19,7 @@ public class CoreHilbertTrendModeIndicator : CoreIndicatorBase
     public int MaxPeriod { get; set; } = IndicatorDefaultConstants.HilbertTransformMaxPeriod;
     public decimal SmoothBeta { get; set; } = IndicatorDefaultConstants.HilbertTransformDefaultSmoothBeta;
     public decimal DeltaLimit { get; set; } = IndicatorDefaultConstants.HilbertTransformDefaultDeltaLimit;
+    public HilbertDetrendMode DetrendMode { get; set; } = HilbertDetrendMode.FirDetrender;
     public int StabilityWindow { get; set; } = 10;
     public double StabilityThreshold { get; set; } = IndicatorDefaultConstants.HilbertTrendModeDefaultStabilityThreshold;
 
@@ -35,6 +36,7 @@ public class CoreHilbertTrendModeIndicator : CoreIndicatorBase
             MaxPeriod = p.MaxPeriod;
             SmoothBeta = p.SmoothBeta;
             DeltaLimit = p.DeltaLimit;
+            DetrendMode = p.DetrendMode;
             StabilityWindow = p.StabilityWindow;
             StabilityThreshold = p.StabilityThreshold;
         }
@@ -66,7 +68,8 @@ public class CoreHilbertTrendModeIndicator : CoreIndicatorBase
                 DeltaLimit: DeltaLimit,
                 WarmupBars: IndicatorDefaultConstants.HilbertTransformWarmupBars,
                 StabilityWindow: StabilityWindow,
-                StabilityThresholdDegrees: StabilityThreshold);
+                StabilityThresholdDegrees: StabilityThreshold,
+                DetrendMode: DetrendMode);
 
             var decomp = HilbertDecompositionEngine.Decompose(prices.AsSpan(0, count), decompositionParams);
 

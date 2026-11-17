@@ -47,7 +47,8 @@ public static class IndicatorReferenceHelper
                 bool isSelf = ind.Id == currentIndicatorId;
                 bool isReferenced = ind.Id == selectedSourceId || ind.Id == selectedDriverId;
 
-                if (!isSelf && !string.IsNullOrEmpty(ind.DisplayName) && (ind.IsEnabled || isReferenced))
+                if (!isSelf && !string.IsNullOrEmpty(ind.DisplayName) && (ind.IsEnabled || isReferenced)
+                    && IndicatorTimeframeUiRules.IsUsableAsChainInput(ind, isReferenced))
                 {
                     string suffix = ind.IsEnabled ? string.Empty : disabledSuffix;
                     bool isPeriodNative = AdaptiveSmoothingHelper.IsPeriodNativeDriverType(ind.TypeEnum);
@@ -82,7 +83,8 @@ public static class IndicatorReferenceHelper
         {
             foreach (var ind in registeredSourceIndicators)
             {
-                if (string.IsNullOrEmpty(ind.Id) || ind.Id == currentIndicatorId || sourceAddedIds.Contains(ind.Id))
+                if (string.IsNullOrEmpty(ind.Id) || ind.Id == currentIndicatorId || sourceAddedIds.Contains(ind.Id)
+                    || !IndicatorTimeframeUiRules.IsUsableAsChainInput(ind, ind.Id == selectedSourceId))
                 {
                     continue;
                 }
@@ -130,7 +132,8 @@ public static class IndicatorReferenceHelper
         {
             foreach (var ind in registeredDrivers)
             {
-                if (string.IsNullOrEmpty(ind.Id) || ind.Id == currentIndicatorId || driverAddedIds.Contains(ind.Id))
+                if (string.IsNullOrEmpty(ind.Id) || ind.Id == currentIndicatorId || driverAddedIds.Contains(ind.Id)
+                    || !IndicatorTimeframeUiRules.IsUsableAsChainInput(ind, ind.Id == selectedDriverId))
                 {
                     continue;
                 }

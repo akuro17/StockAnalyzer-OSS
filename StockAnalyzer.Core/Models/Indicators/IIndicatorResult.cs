@@ -61,4 +61,11 @@ public interface IIndicatorResult : IReadOnlyList<decimal?>
     /// Used for confluence orchestration.
     /// </summary>
     IConfluenceSignalProvider? SignalProvider { get; }
+
+    /// <summary>
+    /// Optional per-bar effective dynamic period series (bars), bar-aligned with the input series.
+    /// Present only when the indicator was calculated with a DynamicPeriodIndicatorId driver; null otherwise.
+    /// Display metadata only: it is not an indicator output series and never enters Screener/backtest series discovery.
+    /// </summary>
+    IReadOnlyList<decimal?>? EffectiveDynamicPeriods => null;
 }

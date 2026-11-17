@@ -44,6 +44,14 @@ public sealed class ElliottWaveBehavior : IDrawingToolBehavior
             return false;
         }
 
+        // A click on the coordinate of the previous placed point is not a new pivot: it neither adds a point nor completes the pattern
+        // (double-click, Enter and Shift+click still finish a pattern early; trailing duplicates are removed when finishing).
+        if (wave.Points.Count >= 2 && IsSameCoordinate(wave.Points[wave.Points.Count - 2], chartPoint))
+        {
+            wave.Points[wave.Points.Count - 1] = chartPoint;
+            return false;
+        }
+
         wave.Points[wave.Points.Count - 1] = chartPoint;
         if (wave.Points.Count >= wave.RequiredPointCount)
         {
@@ -53,6 +61,8 @@ public sealed class ElliottWaveBehavior : IDrawingToolBehavior
         wave.AddPoint(chartPoint);
         return false;
     }
+
+    private static bool IsSameCoordinate(ChartPoint a, ChartPoint b) => a.Time == b.Time && a.Price == b.Price;
 
     /// <summary>
     /// Cleans up trailing hover/duplicate coordinates prior to finalizing an <see cref="ElliottWaveObject"/>.
@@ -66,8 +76,7 @@ public sealed class ElliottWaveBehavior : IDrawingToolBehavior
         }
 
         while (wave.Points.Count >= 2 &&
-               wave.Points[wave.Points.Count - 1].Time == wave.Points[wave.Points.Count - 2].Time &&
-               wave.Points[wave.Points.Count - 1].Price == wave.Points[wave.Points.Count - 2].Price)
+               IsSameCoordinate(wave.Points[wave.Points.Count - 1], wave.Points[wave.Points.Count - 2]))
         {
             wave.Points.RemoveAt(wave.Points.Count - 1);
         }

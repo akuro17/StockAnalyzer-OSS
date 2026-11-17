@@ -13,6 +13,15 @@ public static class ArimaMath
 {
     private const double ZeroVarianceTolerance = 1e-9;
     private const double MatrixSingularityTolerance = 1e-12;
+    private const double KpssCriticalValue5Percent = 0.463;
+    private const int KpssMinSampleLength = 8;
+    private const double KpssZeroVarianceThreshold = 1e-20;
+    private const double KpssLongRunVarianceMinRatio = 1e-16;
+    private const double AiccRegVarianceFloor = 1e-16;
+    private const double AiccArSumMax = 0.99;
+    private const double AiccCoefAbsMax = 1.5;
+    private const double AiccImproveTolerance = 1e-9;
+    private const int MaxStepwiseSearchIterations = 16;
 
     /// <summary>
     /// Computes the d-th order difference of an input series.
@@ -863,6 +872,815 @@ public static class ArimaMath
         finally
         {
             if (rentedDiff != null) ArrayPool<double>.Shared.Return(rentedDiff);
+        }
+    }
+
+    /// <summary>
+    /// Computes the level-stationarity KPSS unit-root test statistic with Bartlett / Newey-West long-run variance.
+    /// Returns 0.0 when sample count &lt; 8 or variance is degenerate (<= 1e-20).
+    /// </summary>
+    public static double ComputeKpssStatistic(ReadOnlySpan<double> y)
+    {
+        int tLen = y.Length;
+        if (tLen < KpssMinSampleLength)
+        {
+            return 0.0;
+        }
+
+        double sum = 0.0;
+        for (int t = 0; t < tLen; t++)
+        {
+            double val = y[t];
+            if (!double.IsFinite(val))
+            {
+                return 0.0;
+            }
+            sum += val;
+        }
+
+        double mean = sum / tLen;
+        double gamma0 = 0.0;
+        double partialSum = 0.0;
+        double sumPartialSq = 0.0;
+
+        for (int t = 0; t < tLen; t++)
+        {
+            double e = y[t] - mean;
+            gamma0 += e * e;
+            partialSum += e;
+            sumPartialSq += partialSum * partialSum;
+        }
+
+        gamma0 /= tLen;
+        if (!(gamma0 > KpssZeroVarianceThreshold) || !double.IsFinite(gamma0))
+        {
+            return 0.0;
+        }
+
+        int lagMax = Math.Max(1, (int)Math.Floor(4.0 * Math.Pow(tLen / 100.0, 0.25)));
+        if (lagMax >= tLen)
+        {
+            lagMax = tLen - 1;
+        }
+
+        double longRunVar = gamma0;
+        for (int lag = 1; lag <= lagMax; lag++)
+        {
+            double cov = 0.0;
+            for (int t = lag; t < tLen; t++)
+            {
+                cov += (y[t] - mean) * (y[t - lag] - mean);
+            }
+
+            cov /= tLen;
+            double weight = 1.0 - (double)lag / (lagMax + 1);
+            longRunVar += 2.0 * weight * cov;
+        }
+
+        if (!(longRunVar > KpssLongRunVarianceMinRatio * gamma0) || !double.IsFinite(longRunVar))
+        {
+            longRunVar = gamma0;
+        }
+
+        double numerator = sumPartialSq / ((double)tLen * tLen);
+        return double.IsFinite(numerator) ? numerator / longRunVar : 0.0;
+    }
+
+    /// <summary>
+    /// Selects differencing order d in [0, maxD] via sequential level KPSS tests against the 5% critical value (0.463).
+    /// Reuses <see cref="Difference(ReadOnlySpan{double}, Span{double}, int)"/>.
+    /// </summary>
+    public static int SelectDifferenceOrderKpss(ReadOnlySpan<double> window, int maxD = 2)
+    {
+        int cappedMaxD = Math.Clamp(maxD, 0, 2);
+        if (cappedMaxD == 0 || window.Length < KpssMinSampleLength)
+        {
+            return 0;
+        }
+
+        if (ComputeKpssStatistic(window) <= KpssCriticalValue5Percent)
+        {
+            return 0;
+        }
+
+        if (cappedMaxD == 1)
+        {
+            return 1;
+        }
+
+        int d1Len = window.Length - 1;
+        double[]? rented = null;
+        Span<double> diff1 = d1Len <= MathBufferLimits.StackAllocThreshold
+            ? stackalloc double[d1Len]
+            : (rented = ArrayPool<double>.Shared.Rent(d1Len)).AsSpan(0, d1Len);
+        try
+        {
+            Difference(window, diff1, 1);
+            return ComputeKpssStatistic(diff1) <= KpssCriticalValue5Percent ? 1 : 2;
+        }
+        finally
+        {
+            if (rented != null)
+            {
+                ArrayPool<double>.Shared.Return(rented);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Evaluates small-sample corrected AICc for ARMA(p, q) on an already-differenced series using
+    /// Yule-Walker / Hannan-Rissanen 2-stage estimation and stationarity/invertibility bounds.
+    /// Returns <see cref="double.PositiveInfinity"/> when insufficient samples or invalid/unstable fit.
+    /// </summary>
+    public static double ComputeHannRissanenAicc(ReadOnlySpan<double> diffSeries, int p, int q)
+    {
+        if (p < 0 || p > 5 || q < 0 || q > 5)
+        {
+            return double.PositiveInfinity;
+        }
+
+        int n = diffSeries.Length;
+        int k = p + q + 2;
+        if (n <= k + 2 || n < Math.Max(p, q) + 6)
+        {
+            return double.PositiveInfinity;
+        }
+
+        double sum = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            double v = diffSeries[i];
+            if (!double.IsFinite(v))
+            {
+                return double.PositiveInfinity;
+            }
+            sum += v;
+        }
+
+        double mean = sum / n;
+        double[]? rentedCentered = null;
+        Span<double> yTilde = n <= MathBufferLimits.StackAllocThreshold
+            ? stackalloc double[n]
+            : (rentedCentered = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
+
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                yTilde[i] = diffSeries[i] - mean;
+            }
+
+            double sigmaSq;
+            if (p == 0 && q == 0)
+            {
+                double sq = 0.0;
+                for (int i = 0; i < n; i++)
+                {
+                    sq += yTilde[i] * yTilde[i];
+                }
+                sigmaSq = sq / n;
+            }
+            else if (q == 0)
+            {
+                Span<double> gamma = stackalloc double[p + 1];
+                ComputeSampleAutocovariance(yTilde, p, gamma);
+                Span<double> phi = stackalloc double[p];
+                if (!SolveLevinsonDurbin(gamma, phi, out _))
+                {
+                    return double.PositiveInfinity;
+                }
+
+                double phiSum = 0.0;
+                for (int i = 0; i < p; i++)
+                {
+                    if (!double.IsFinite(phi[i]) || Math.Abs(phi[i]) >= AiccCoefAbsMax)
+                    {
+                        return double.PositiveInfinity;
+                    }
+                    phiSum += phi[i];
+                }
+
+                if (phiSum >= AiccArSumMax)
+                {
+                    return double.PositiveInfinity;
+                }
+
+                double rss = 0.0;
+                int nEff = n - p;
+                for (int t = p; t < n; t++)
+                {
+                    double pred = 0.0;
+                    for (int i = 0; i < p; i++)
+                    {
+                        pred += phi[i] * yTilde[t - 1 - i];
+                    }
+                    double err = yTilde[t] - pred;
+                    rss += err * err;
+                }
+                sigmaSq = rss / nEff;
+            }
+            else
+            {
+                int m = Math.Min(Math.Max(p + q + 2, 5), Math.Min(10, n / 3));
+                if (m < 1 || m >= n - 1)
+                {
+                    return double.PositiveInfinity;
+                }
+
+                Span<double> gammaAux = stackalloc double[m + 1];
+                ComputeSampleAutocovariance(yTilde, m, gammaAux);
+                Span<double> phiAux = stackalloc double[m];
+                if (!SolveLevinsonDurbin(gammaAux, phiAux, out _))
+                {
+                    return double.PositiveInfinity;
+                }
+
+                int t0 = Math.Max(p, m + q);
+                int kTotal = p + q;
+                int nEff = n - t0;
+                if (nEff <= kTotal)
+                {
+                    return double.PositiveInfinity;
+                }
+
+                double[]? rentedResid = null;
+                Span<double> residuals = n <= MathBufferLimits.StackAllocThreshold
+                    ? stackalloc double[n]
+                    : (rentedResid = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
+                try
+                {
+                    residuals.Slice(0, m).Clear();
+                    for (int t = m; t < n; t++)
+                    {
+                        double pred = 0.0;
+                        for (int j = 1; j <= m; j++)
+                        {
+                            pred += phiAux[j - 1] * yTilde[t - j];
+                        }
+                        residuals[t] = yTilde[t] - pred;
+                    }
+
+                    Span<double> ztz = stackalloc double[kTotal * kTotal];
+                    ztz.Clear();
+                    Span<double> zty = stackalloc double[kTotal];
+                    zty.Clear();
+                    Span<double> zRow = stackalloc double[kTotal];
+
+                    for (int t = t0; t < n; t++)
+                    {
+                        for (int i = 0; i < p; i++) zRow[i] = yTilde[t - 1 - i];
+                        for (int j = 0; j < q; j++) zRow[p + j] = residuals[t - 1 - j];
+
+                        double yVal = yTilde[t];
+                        for (int r = 0; r < kTotal; r++)
+                        {
+                            zty[r] += zRow[r] * yVal;
+                            for (int c = 0; c < kTotal; c++)
+                            {
+                                ztz[r * kTotal + c] += zRow[r] * zRow[c];
+                            }
+                        }
+                    }
+
+                    Span<double> beta = stackalloc double[kTotal];
+                    if (!SolveLinearSystem(ztz, zty, beta, kTotal))
+                    {
+                        return double.PositiveInfinity;
+                    }
+
+                    double phiSum = 0.0;
+                    for (int i = 0; i < p; i++)
+                    {
+                        if (!double.IsFinite(beta[i]) || Math.Abs(beta[i]) >= AiccCoefAbsMax)
+                        {
+                            return double.PositiveInfinity;
+                        }
+                        phiSum += beta[i];
+                    }
+
+                    if (phiSum >= AiccArSumMax)
+                    {
+                        return double.PositiveInfinity;
+                    }
+
+                    for (int j = 0; j < q; j++)
+                    {
+                        if (!double.IsFinite(beta[p + j]) || Math.Abs(beta[p + j]) >= AiccCoefAbsMax)
+                        {
+                            return double.PositiveInfinity;
+                        }
+                    }
+
+                    double rss = 0.0;
+                    for (int t = t0; t < n; t++)
+                    {
+                        double pred = 0.0;
+                        for (int i = 0; i < p; i++) pred += beta[i] * yTilde[t - 1 - i];
+                        for (int j = 0; j < q; j++) pred += beta[p + j] * residuals[t - 1 - j];
+                        double err = yTilde[t] - pred;
+                        rss += err * err;
+                    }
+
+                    sigmaSq = rss / nEff;
+                }
+                finally
+                {
+                    if (rentedResid != null)
+                    {
+                        ArrayPool<double>.Shared.Return(rentedResid);
+                    }
+                }
+            }
+
+            if (!(sigmaSq > 0.0) || !double.IsFinite(sigmaSq))
+            {
+                return double.PositiveInfinity;
+            }
+
+            double regVar = Math.Max(sigmaSq, AiccRegVarianceFloor);
+            double aic = n * Math.Log(regVar) + 2.0 * k;
+            double aicc = aic + (2.0 * k * (k + 1)) / (n - k - 1);
+            return double.IsFinite(aicc) ? aicc : double.PositiveInfinity;
+        }
+        finally
+        {
+            if (rentedCentered != null)
+            {
+                ArrayPool<double>.Shared.Return(rentedCentered);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Verifies MA invertibility for recursive error recovery <c>e_t + theta_1 e_{t-1} + ... + theta_q e_{t-q} = 0</c>
+    /// using the Schur-Cohn reflection step-down test on <c>z^q + theta_1 z^{q-1} + ... + theta_q</c>.
+    /// </summary>
+    private static bool IsMaPolynomialInvertible(ReadOnlySpan<double> theta)
+    {
+        int q = theta.Length;
+        if (q == 0)
+        {
+            return true;
+        }
+
+        if (q > 5)
+        {
+            return false;
+        }
+
+        Span<double> cur = stackalloc double[q];
+        Span<double> next = stackalloc double[q];
+        theta.CopyTo(cur);
+
+        for (int m = q; m >= 1; m--)
+        {
+            double km = cur[m - 1];
+            if (!double.IsFinite(km) || Math.Abs(km) >= AiccArSumMax)
+            {
+                return false;
+            }
+
+            if (m == 1)
+            {
+                break;
+            }
+
+            double denom = 1.0 - km * km;
+            if (!(denom > 0.0))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < m - 1; i++)
+            {
+                next[i] = (cur[i] - km * cur[m - 2 - i]) / denom;
+            }
+
+            next.Slice(0, m - 1).CopyTo(cur.Slice(0, m - 1));
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Evaluates Hannan-Rissanen AICc using pre-centered <paramref name="yTilde"/> and
+    /// precomputed long-AR <paramref name="auxResiduals"/> over an identical common sample
+    /// window <c>[tStart .. yTilde.Length - 1]</c> of length <paramref name="nEff"/>.
+    /// </summary>
+    private static double ComputeHannRissanenAiccCommonWindow(
+        ReadOnlySpan<double> yTilde,
+        ReadOnlySpan<double> auxResiduals,
+        int tStart,
+        int nEff,
+        int p,
+        int q)
+    {
+        int n = yTilde.Length;
+        int k = p + q + 2;
+        if (p < 0 || q < 0 || nEff <= k + 1 || tStart < Math.Max(p, q) || tStart + nEff != n)
+        {
+            return double.PositiveInfinity;
+        }
+
+        double sigmaSq;
+        if (p == 0 && q == 0)
+        {
+            double sq = 0.0;
+            for (int t = tStart; t < n; t++)
+            {
+                sq += yTilde[t] * yTilde[t];
+            }
+            sigmaSq = sq / nEff;
+        }
+        else if (q == 0)
+        {
+            Span<double> gamma = stackalloc double[p + 1];
+            ComputeSampleAutocovariance(yTilde, p, gamma);
+            Span<double> phi = stackalloc double[p];
+            if (!SolveLevinsonDurbin(gamma, phi, out _))
+            {
+                return double.PositiveInfinity;
+            }
+
+            double phiSum = 0.0;
+            for (int i = 0; i < p; i++)
+            {
+                if (!double.IsFinite(phi[i]) || Math.Abs(phi[i]) >= AiccCoefAbsMax)
+                {
+                    return double.PositiveInfinity;
+                }
+                phiSum += phi[i];
+            }
+
+            if (phiSum >= AiccArSumMax)
+            {
+                return double.PositiveInfinity;
+            }
+
+            double rss = 0.0;
+            for (int t = tStart; t < n; t++)
+            {
+                double pred = 0.0;
+                for (int i = 0; i < p; i++)
+                {
+                    pred += phi[i] * yTilde[t - 1 - i];
+                }
+                double err = yTilde[t] - pred;
+                rss += err * err;
+            }
+            sigmaSq = rss / nEff;
+        }
+        else
+        {
+            if (auxResiduals.Length < n)
+            {
+                return double.PositiveInfinity;
+            }
+
+            int kTotal = p + q;
+            Span<double> ztz = stackalloc double[kTotal * kTotal];
+            ztz.Clear();
+            Span<double> zty = stackalloc double[kTotal];
+            zty.Clear();
+            Span<double> zRow = stackalloc double[kTotal];
+
+            for (int t = tStart; t < n; t++)
+            {
+                for (int i = 0; i < p; i++) zRow[i] = yTilde[t - 1 - i];
+                for (int j = 0; j < q; j++) zRow[p + j] = auxResiduals[t - 1 - j];
+
+                double yVal = yTilde[t];
+                for (int r = 0; r < kTotal; r++)
+                {
+                    zty[r] += zRow[r] * yVal;
+                    for (int c = 0; c < kTotal; c++)
+                    {
+                        ztz[r * kTotal + c] += zRow[r] * zRow[c];
+                    }
+                }
+            }
+
+            Span<double> beta = stackalloc double[kTotal];
+            if (!SolveLinearSystem(ztz, zty, beta, kTotal))
+            {
+                return double.PositiveInfinity;
+            }
+
+            double phiSum = 0.0;
+            for (int i = 0; i < p; i++)
+            {
+                if (!double.IsFinite(beta[i]) || Math.Abs(beta[i]) >= AiccCoefAbsMax)
+                {
+                    return double.PositiveInfinity;
+                }
+                phiSum += beta[i];
+            }
+
+            if (phiSum >= AiccArSumMax)
+            {
+                return double.PositiveInfinity;
+            }
+
+            for (int j = 0; j < q; j++)
+            {
+                if (!double.IsFinite(beta[p + j]) || Math.Abs(beta[p + j]) >= AiccCoefAbsMax)
+                {
+                    return double.PositiveInfinity;
+                }
+            }
+
+            // Ensure recursive MA residual recovery is invertible (all roots outside the unit disk)
+            // so downstream Box-Jenkins forecasting does not diverge exponentially.
+            if (!IsMaPolynomialInvertible(beta.Slice(p, q)))
+            {
+                return double.PositiveInfinity;
+            }
+
+            double rss = 0.0;
+            for (int t = tStart; t < n; t++)
+            {
+                double pred = 0.0;
+                for (int i = 0; i < p; i++) pred += beta[i] * yTilde[t - 1 - i];
+                for (int j = 0; j < q; j++) pred += beta[p + j] * auxResiduals[t - 1 - j];
+                double err = yTilde[t] - pred;
+                rss += err * err;
+            }
+
+            sigmaSq = rss / nEff;
+        }
+
+        if (!(sigmaSq > 0.0) || !double.IsFinite(sigmaSq))
+        {
+            return double.PositiveInfinity;
+        }
+
+        double regVar = Math.Max(sigmaSq, AiccRegVarianceFloor);
+        double aic = nEff * Math.Log(regVar) + 2.0 * k;
+        double aicc = aic + (2.0 * k * (k + 1)) / (nEff - k - 1);
+        return double.IsFinite(aicc) ? aicc : double.PositiveInfinity;
+    }
+
+    /// <summary>
+    /// Selects ARIMA(p, d, q) order automatically using sequential KPSS unit-root testing and
+    /// Hyndman-Khandakar stepwise AICc search over [0, maxP] x [0, maxQ] on a unified evaluation window.
+    /// </summary>
+    public static (int P, int D, int Q, double Aicc) SelectBestArimaOrder(
+        ReadOnlySpan<double> window,
+        int maxP = 3,
+        int maxQ = 3,
+        int maxD = 2)
+    {
+        int cappedMaxP = Math.Clamp(maxP, 0, 5);
+        int cappedMaxQ = Math.Clamp(maxQ, 0, 5);
+        int cappedMaxD = Math.Clamp(maxD, 0, 2);
+
+        for (int i = 0; i < window.Length; i++)
+        {
+            if (!double.IsFinite(window[i]))
+            {
+                return (0, 0, 0, double.PositiveInfinity);
+            }
+        }
+
+        int dStar = SelectDifferenceOrderKpss(window, cappedMaxD);
+        int n = window.Length - dStar;
+        if (n <= 2)
+        {
+            return (0, dStar, 0, double.PositiveInfinity);
+        }
+
+        double[]? rentedDiff = null;
+        Span<double> yTilde = n <= MathBufferLimits.StackAllocThreshold
+            ? stackalloc double[n]
+            : (rentedDiff = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
+
+        try
+        {
+            Difference(window, yTilde, dStar);
+
+            double sum = 0.0;
+            for (int i = 0; i < n; i++)
+            {
+                double v = yTilde[i];
+                if (!double.IsFinite(v))
+                {
+                    return (0, dStar, 0, double.PositiveInfinity);
+                }
+                sum += v;
+            }
+
+            double mean = sum / n;
+            if (!double.IsFinite(mean))
+            {
+                return (0, dStar, 0, double.PositiveInfinity);
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                yTilde[i] -= mean;
+            }
+
+            // Compute a single common auxiliary AR order m* and evaluation start offset tStart*
+            // across all candidate (p, q) so AICc compares identical sample vectors [tStart* .. n - 1].
+            int effMaxP = cappedMaxP;
+            int effMaxQ = cappedMaxQ;
+            int mStar = 0;
+            int tStartStar = 0;
+            int nEffStar = n;
+
+            for (int step = 0; step <= cappedMaxP + cappedMaxQ + 1; step++)
+            {
+                int mCand;
+                int tStartCand;
+                if (effMaxQ > 0)
+                {
+                    mCand = Math.Min(Math.Max(effMaxP + effMaxQ + 2, 5), Math.Min(10, n / 3));
+                    if (mCand < 1 || mCand >= n - 1)
+                    {
+                        effMaxQ = 0;
+                        continue;
+                    }
+                    tStartCand = Math.Max(effMaxP, mCand + effMaxQ);
+                }
+                else
+                {
+                    mCand = 0;
+                    tStartCand = effMaxP;
+                }
+
+                int nEffCand = n - tStartCand;
+                int kMaxCand = effMaxP + effMaxQ + 2;
+                if (nEffCand > 2 && nEffCand - kMaxCand - 1 >= 1)
+                {
+                    mStar = mCand;
+                    tStartStar = tStartCand;
+                    nEffStar = nEffCand;
+                    break;
+                }
+
+                if (effMaxP == 0 && effMaxQ == 0)
+                {
+                    return (0, dStar, 0, double.PositiveInfinity);
+                }
+
+                if (effMaxQ >= effMaxP && effMaxQ > 0)
+                {
+                    effMaxQ--;
+                }
+                else
+                {
+                    effMaxP--;
+                }
+            }
+
+            double[]? rentedAux = null;
+            Span<double> auxResiduals = effMaxQ > 0 && mStar >= 1
+                ? (n <= MathBufferLimits.StackAllocThreshold
+                    ? stackalloc double[n]
+                    : (rentedAux = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n))
+                : Span<double>.Empty;
+
+            try
+            {
+                if (effMaxQ > 0 && mStar >= 1)
+                {
+                    Span<double> gammaAux = stackalloc double[mStar + 1];
+                    ComputeSampleAutocovariance(yTilde, mStar, gammaAux);
+                    Span<double> phiAux = stackalloc double[mStar];
+                    if (SolveLevinsonDurbin(gammaAux, phiAux, out _))
+                    {
+                        auxResiduals.Slice(0, mStar).Clear();
+                        for (int t = mStar; t < n; t++)
+                        {
+                            double pred = 0.0;
+                            for (int j = 1; j <= mStar; j++)
+                            {
+                                pred += phiAux[j - 1] * yTilde[t - j];
+                            }
+                            auxResiduals[t] = yTilde[t] - pred;
+                        }
+                    }
+                    else
+                    {
+                        effMaxQ = 0;
+                        tStartStar = effMaxP;
+                        nEffStar = n - tStartStar;
+                        while (effMaxP > 0 && (nEffStar <= 2 || nEffStar - (effMaxP + 2) - 1 < 1))
+                        {
+                            effMaxP--;
+                            tStartStar = effMaxP;
+                            nEffStar = n - tStartStar;
+                        }
+
+                        if (nEffStar <= 2 || nEffStar - (effMaxP + 2) - 1 < 1)
+                        {
+                            return (0, dStar, 0, double.PositiveInfinity);
+                        }
+                    }
+                }
+
+                Span<double> visitedAicc = stackalloc double[36];
+                visitedAicc.Fill(double.NaN);
+
+                int bestP = 0;
+                int bestQ = 0;
+                double bestAicc = double.PositiveInfinity;
+
+                static void TryEvaluate(
+                    ReadOnlySpan<double> yCentered,
+                    ReadOnlySpan<double> precomputedAuxResiduals,
+                    int tStart,
+                    int nEff,
+                    Span<double> memo,
+                    int candP,
+                    int candQ,
+                    int maxPBound,
+                    int maxQBound,
+                    ref int bestPOut,
+                    ref int bestQOut,
+                    ref double bestAiccOut)
+                {
+                    if (candP < 0 || candP > maxPBound || candQ < 0 || candQ > maxQBound)
+                    {
+                        return;
+                    }
+
+                    int idx = candP * 6 + candQ;
+                    double aicc = memo[idx];
+                    if (double.IsNaN(aicc))
+                    {
+                        aicc = ComputeHannRissanenAiccCommonWindow(
+                            yCentered, precomputedAuxResiduals, tStart, nEff, candP, candQ);
+                        memo[idx] = aicc;
+                    }
+
+                    if (!double.IsInfinity(aicc) && aicc < bestAiccOut - AiccImproveTolerance)
+                    {
+                        bestPOut = candP;
+                        bestQOut = candQ;
+                        bestAiccOut = aicc;
+                    }
+                }
+
+                // Phase 1: Initial 4 candidates in fixed deterministic order
+                TryEvaluate(yTilde, auxResiduals, tStartStar, nEffStar, visitedAicc, Math.Min(2, effMaxP), Math.Min(2, effMaxQ), effMaxP, effMaxQ, ref bestP, ref bestQ, ref bestAicc);
+                TryEvaluate(yTilde, auxResiduals, tStartStar, nEffStar, visitedAicc, 0, 0, effMaxP, effMaxQ, ref bestP, ref bestQ, ref bestAicc);
+                if (effMaxP >= 1) TryEvaluate(yTilde, auxResiduals, tStartStar, nEffStar, visitedAicc, 1, 0, effMaxP, effMaxQ, ref bestP, ref bestQ, ref bestAicc);
+                if (effMaxQ >= 1) TryEvaluate(yTilde, auxResiduals, tStartStar, nEffStar, visitedAicc, 0, 1, effMaxP, effMaxQ, ref bestP, ref bestQ, ref bestAicc);
+
+                // Phase 2: Greedy 8-neighbor hill climbing
+                ReadOnlySpan<int> dP = [-1, 1, 0, 0, -1, -1, 1, 1];
+                ReadOnlySpan<int> dQ = [0, 0, -1, 1, -1, 1, -1, 1];
+
+                for (int iter = 0; iter < MaxStepwiseSearchIterations; iter++)
+                {
+                    int centerP = bestP;
+                    int centerQ = bestQ;
+                    double baselineAicc = bestAicc;
+
+                    for (int dir = 0; dir < 8; dir++)
+                    {
+                        TryEvaluate(yTilde, auxResiduals, tStartStar, nEffStar, visitedAicc, centerP + dP[dir], centerQ + dQ[dir], effMaxP, effMaxQ, ref bestP, ref bestQ, ref bestAicc);
+                    }
+
+                    if (bestAicc >= baselineAicc - AiccImproveTolerance)
+                    {
+                        break;
+                    }
+                }
+
+                return double.IsInfinity(bestAicc)
+                    ? (0, dStar, 0, double.PositiveInfinity)
+                    : (bestP, dStar, bestQ, bestAicc);
+            }
+            finally
+            {
+                if (rentedAux != null)
+                {
+                    ArrayPool<double>.Shared.Return(rentedAux);
+                }
+            }
+        }
+        finally
+        {
+            if (rentedDiff != null)
+            {
+                ArrayPool<double>.Shared.Return(rentedDiff);
+            }
+        }
+    }
+
+    private static void ComputeSampleAutocovariance(ReadOnlySpan<double> centered, int maxLag, Span<double> gamma)
+    {
+        int n = centered.Length;
+        for (int k = 0; k <= maxLag; k++)
+        {
+            double c = 0.0;
+            for (int i = 0; i < n - k; i++)
+            {
+                c += centered[i] * centered[i + k];
+            }
+            gamma[k] = c / n;
         }
     }
 }

@@ -1,7 +1,9 @@
+using System;
 using Avalonia.Controls;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Objects;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Views.Dialogs;
 
@@ -32,10 +34,14 @@ public sealed class DtwProjectionSettingsPanelDefinition : IDrawingSettingsPanel
         var fillColorPicker = dialogWindow.FindControl<ColorPicker>("DtwFillColorPicker");
         var fillOpacitySpin = dialogWindow.FindControl<NumericUpDown>("DtwFillOpacitySpin");
         var futureStepsSpin = dialogWindow.FindControl<NumericUpDown>("DtwFutureStepsSpin");
+        var useDbaCheck = dialogWindow.FindControl<CheckBox>("DtwUseDbaEnsembleCheck");
+        var topKSpin = dialogWindow.FindControl<NumericUpDown>("DtwTopKMatchesSpin");
         if (unmatchedPicker != null) unmatchedPicker.Color = dtwObj.UnmatchedColor;
         if (fillColorPicker != null) fillColorPicker.Color = dtwObj.FillColor;
         if (fillOpacitySpin != null) fillOpacitySpin.Value = dtwObj.FillOpacity;
         if (futureStepsSpin != null) futureStepsSpin.Value = dtwObj.FutureSteps;
+        if (useDbaCheck != null) useDbaCheck.IsChecked = dtwObj.UseDbaEnsemble;
+        if (topKSpin != null) topKSpin.Value = dtwObj.TopKMatches;
     }
 
     public void Commit(Window dialogWindow, IChartObject drawing)
@@ -45,9 +51,16 @@ public sealed class DtwProjectionSettingsPanelDefinition : IDrawingSettingsPanel
         var fillColorPicker = dialogWindow.FindControl<ColorPicker>("DtwFillColorPicker");
         var fillOpacitySpin = dialogWindow.FindControl<NumericUpDown>("DtwFillOpacitySpin");
         var futureStepsSpin = dialogWindow.FindControl<NumericUpDown>("DtwFutureStepsSpin");
+        var useDbaCheck = dialogWindow.FindControl<CheckBox>("DtwUseDbaEnsembleCheck");
+        var topKSpin = dialogWindow.FindControl<NumericUpDown>("DtwTopKMatchesSpin");
         if (unmatchedPicker != null) dtwObj.UnmatchedColor = unmatchedPicker.Color;
         if (fillColorPicker != null) dtwObj.FillColor = fillColorPicker.Color;
         if (fillOpacitySpin?.Value != null) dtwObj.FillOpacity = (int)fillOpacitySpin.Value;
         if (futureStepsSpin?.Value != null) dtwObj.FutureSteps = (int)futureStepsSpin.Value;
+        if (useDbaCheck?.IsChecked != null) dtwObj.UseDbaEnsemble = useDbaCheck.IsChecked.Value;
+        if (topKSpin?.Value != null)
+        {
+            dtwObj.TopKMatches = Math.Clamp((int)topKSpin.Value.Value, IndicatorDefaultConstants.DbaMinTopK, IndicatorDefaultConstants.DbaMaxTopK);
+        }
     }
 }

@@ -67,6 +67,7 @@ internal static class McpSettingsExposure
         nameof(IStockAnalyzerSettings.ScatterMaxMetricOffset),
         nameof(IStockAnalyzerSettings.ScatterMaxParallelism),
         nameof(IStockAnalyzerSettings.ScatterInputDebounceMilliseconds),
+        nameof(IStockAnalyzerSettings.RsRatingRefreshDebounceMilliseconds),
         nameof(IStockAnalyzerSettings.DrawingInteraction),
         nameof(IStockAnalyzerSettings.PatternRecognitionMinWindow),
         nameof(IStockAnalyzerSettings.PatternRecognitionMaxWindow),

@@ -76,11 +76,12 @@ public sealed class ScreenerIndicatorEligibilityTests
     {
         IndicatorType[] enabled = EnabledByTheScreenerOnly();
 
-        // The eleven types (nine two-ticker types plus MarketBreadth and McClellanOscillator; derived from the registry, then named once as the expectation of the derivation).
+        // The thirteen types (eleven two-symbol types plus MarketBreadth and McClellanOscillator; derived from the registry, then named once as the expectation of the derivation).
         Assert.Equal(
             new[]
             {
-                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.MansfieldRS, IndicatorType.MarketBreadth, IndicatorType.McClellanOscillator,
+                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
+                IndicatorType.MansfieldRS, IndicatorType.MarketBreadth, IndicatorType.McClellanOscillator,
                 IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
             }.OrderBy(type => type.ToString(), StringComparer.Ordinal),
             enabled);
@@ -203,6 +204,7 @@ public sealed class ScreenerIndicatorEligibilityTests
         IndicatorType[] expected =
         {
             IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared, IndicatorType.CointegrationSpread,
+            IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
             IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw, IndicatorType.MansfieldRS,
             IndicatorType.McClellanOscillator, IndicatorType.MarketBreadth
         };

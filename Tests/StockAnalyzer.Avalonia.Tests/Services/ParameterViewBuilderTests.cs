@@ -13,6 +13,7 @@ namespace StockAnalyzer.Avalonia.Tests.Services;
 /// extensibility point (currently unused by any tag - see ParameterViewBuilder.Build's doc comment)
 /// and is asserted here to have no effect, regardless of what is passed.
 /// </summary>
+[Collection("LocalizationSharedState")]
 public class ParameterViewBuilderTests
 {
     private static TextBlock? FindLabel(Control built, string labelText)

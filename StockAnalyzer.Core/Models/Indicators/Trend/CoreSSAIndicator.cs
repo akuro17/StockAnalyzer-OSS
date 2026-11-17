@@ -14,6 +14,8 @@ public class CoreSSAIndicator : CoreIndicatorBase
     public int WindowSize { get; set; } = IndicatorDefaultConstants.SsaDefaultWindowSize;
     public int EmbeddingDimension { get; set; } = IndicatorDefaultConstants.SsaDefaultEmbeddingDimension;
     public int NumComponents { get; set; } = IndicatorDefaultConstants.SsaDefaultNumComponents;
+    public bool AutoRank { get; set; }
+    public SsaRankSelectionMethod RankMethod { get; set; } = SsaRankSelectionMethod.CumulativeEnergy;
     public override string Name => $"SSA ({WindowSize}, {EmbeddingDimension}, {NumComponents})";
     public override bool IsOverlay => true;
 
@@ -24,6 +26,8 @@ public class CoreSSAIndicator : CoreIndicatorBase
             WindowSize = p.WindowSize;
             EmbeddingDimension = p.EmbeddingDimension;
             NumComponents = p.NumComponents;
+            AutoRank = p.AutoRank;
+            RankMethod = p.RankMethod;
         }
     }
 
@@ -59,11 +63,13 @@ public class CoreSSAIndicator : CoreIndicatorBase
         for (int i = window - 1; i < n; i++)
         {
             ReadOnlySpan<double> windowSpan = doublePrices.AsSpan(i - window + 1, window);
-            double endpoint = SsaDecompositionEngine.ComputeCausalEndpoint(
-                windowSpan,
-                EmbeddingDimension,
-                NumComponents,
-                SsaDetrendMode.LeastSquaresLinear);
+            double endpoint = AutoRank
+                ? ComputeAutoRankEndpoint(windowSpan)
+                : SsaDecompositionEngine.ComputeCausalEndpoint(
+                    windowSpan,
+                    EmbeddingDimension,
+                    NumComponents,
+                    SsaDetrendMode.LeastSquaresLinear);
 
             if (double.IsNaN(endpoint) || double.IsInfinity(endpoint))
             {
@@ -76,6 +82,24 @@ public class CoreSSAIndicator : CoreIndicatorBase
         }
 
         return IndicatorResult.Success(_values);
+    }
+
+    /// <summary>
+    /// Causal endpoint with the signal rank estimated from the window's own spectrum (same Decompose + EstimateSignalRank + decomposition-overload
+    /// pattern as <c>CoreSSAAnomalyIndicator</c>). The rank only uses the bars inside the window, so it stays causal.
+    /// </summary>
+    private double ComputeAutoRankEndpoint(ReadOnlySpan<double> window)
+    {
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window.Length);
+        int k = window.Length - l + 1;
+        var decomp = SsaDecompositionEngine.Decompose(window, l, SsaDetrendMode.LeastSquaresLinear);
+        if (decomp.SortedIndices.Length < l || k < 2)
+        {
+            return double.NaN;
+        }
+
+        int r = SsaRankSelector.EstimateSignalRank(decomp, RankMethod, Math.Min(l - 1, k));
+        return SsaDecompositionEngine.ComputeCausalEndpoint(window, decomp, l, r, SsaDetrendMode.LeastSquaresLinear);
     }
 
     public override Task<IIndicatorResult> CalculateAsync(IReadOnlyList<CoreCandleData> candles, IExecutionContext context)

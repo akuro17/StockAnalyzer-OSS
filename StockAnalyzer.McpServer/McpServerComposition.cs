@@ -15,6 +15,7 @@ using StockAnalyzer.Core.Services.ReinforcementLearning;
 using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Execution;
 using StockAnalyzer.McpServer.Limits;
+using StockAnalyzer.McpServer.Prompts;
 using StockAnalyzer.McpServer.Protocol;
 using StockAnalyzer.McpServer.Resources;
 using StockAnalyzer.McpServer.Tools;
@@ -107,6 +108,10 @@ internal static class McpServerComposition
     /// <param name="executionGateway">Only for tests: the gateway the execution tools use instead of the real one.</param>
     /// <param name="workspaceSource">Only for tests: the workspace source used instead of reading the application's default workspace file.</param>
     /// <param name="rlRegistry">Only for tests: the RL model registry used instead of the application's default registry.</param>
+    /// <param name="portfolioSource">Only for tests: the portfolio source used instead of reading the application's saved portfolio files.</param>
+    /// <param name="noteSource">Only for tests: the note source used instead of opening the application's notes database.</param>
+    /// <param name="registeredIndicatorSource">Only for tests: the registered indicator source used instead of reading the application's source indicator and dynamic period driver files.</param>
+    /// <param name="drawingSource">Only for tests: the drawing document source used instead of reading the application's Data/Drawings files.</param>
     /// <param name="gatewayWrapper">Only for tests: wraps the read-only gateway every data tool uses (a decorator that forwards the calls and changes a result).</param>
     /// <param name="enableDiscussion">Offer the discussion tools (<c>--enable-discussion</c>) and record every tool call in the command log; without it neither exists and the discussion settings are never read. The board itself is built when the first discussion tool is called.</param>
     /// <param name="discussionGateway">Only for tests: the gateway the discussion tools use instead of the real board.</param>
@@ -125,7 +130,11 @@ internal static class McpServerComposition
         bool enableDiscussion = false,
         IDiscussionGateway? discussionGateway = null,
         TimeProvider? timeProvider = null,
-        ICommandLog? commandLog = null)
+        ICommandLog? commandLog = null,
+        IReadOnlyPortfolioSource? portfolioSource = null,
+        IReadOnlyNoteSource? noteSource = null,
+        IReadOnlyRegisteredIndicatorSource? registeredIndicatorSource = null,
+        IReadOnlyDrawingDocumentSource? drawingSource = null)
     {
         McpLimits limits = configuration.GetSection(McpLimits.SectionName).Get<McpLimits>() ?? new McpLimits();
         McpLimitsContract.Validate(limits);
@@ -177,6 +186,25 @@ internal static class McpServerComposition
         if (workspaceSource is not null)
         {
             collection.Replace(ServiceDescriptor.Singleton<IReadOnlyWorkspaceSource>(workspaceSource));
+        }
+
+        if (portfolioSource is not null)
+        {
+            collection.Replace(ServiceDescriptor.Singleton<IReadOnlyPortfolioSource>(portfolioSource));
+        }
+
+        if (registeredIndicatorSource is not null)
+        {
+            collection.Replace(ServiceDescriptor.Singleton<IReadOnlyRegisteredIndicatorSource>(registeredIndicatorSource));
+        }
+
+        // The saved drawing file is read under the byte limit of the contract (the registration of the Core library has the library default).
+        // A factory, as the library registration is: the folder is resolved when the source is first needed, not while the composition is built.
+        collection.Replace(ServiceDescriptor.Singleton<IReadOnlyDrawingDocumentSource>(_ => drawingSource ?? FileReadOnlyDrawingDocumentSource.ForApplicationData(limits.MaxDrawingFileBytes)));
+
+        if (noteSource is not null)
+        {
+            collection.Replace(ServiceDescriptor.Singleton<IReadOnlyNoteSource>(noteSource));
         }
 
         if (rlRegistry is not null)
@@ -234,6 +262,8 @@ internal static class McpServerComposition
             var settingsTool = new GetSettingsTool(settings);
             var modelRegistry = services.GetService<IRlModelGenerationRegistry>() as ReadOnlyModelGenerationRegistry ?? new ReadOnlyModelGenerationRegistry();
 
+            var calculateIndicators = new CalculateIndicatorsTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), sanitizer, limits);
+            var activeWorkspaceTool = new GetActiveWorkspaceTool(resolvedWorkspaceSource, services.GetRequiredService<IReadOnlyRegisteredIndicatorSource>(), catalog, limits);
             var tools = new List<IMcpTool>
             {
                 new ListTickersTool(gateway, groupResolver, limits),
@@ -243,7 +273,13 @@ internal static class McpServerComposition
                 new GetTickerMetadataTool(gateway, limits),
                 capabilitiesTool,
                 settingsTool,
-                new CalculateIndicatorsTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), sanitizer, limits),
+                calculateIndicators,
+                new CalculateIndicatorsBatchTool(calculateIndicators, symbols, groupResolver, sanitizer, limits),
+                new GetPortfolioSummaryTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway),
+                new AnalyzePortfolioRiskTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway, symbols, limits),
+                new SearchNotesTool(services.GetRequiredService<IReadOnlyNoteSource>(), limits),
+                new ListUpcomingCatalystsTool(services.GetRequiredService<IReadOnlyNoteSource>(), limits, timeProvider),
+                activeWorkspaceTool,
                 new RunScreenerTool(gateway, groupResolver, screenerBinder, ScreenerValueExtractor.Default, templateAdvisor, settings, limits),
                 new ListTemplatesTool(gateway, templateAdvisor, backtestBinder),
                 new RunBacktestTool(gateway, symbols, backtestBinder, limits),
@@ -254,11 +290,12 @@ internal static class McpServerComposition
                 new RunPortfolioBacktestTool(gateway, groupResolver, symbols, backtestBinder, limits),
                 new CalculateReverseWatchTool(gateway, symbols, limits),
                 new CalculateChartSeriesTool(gateway, symbols, limits),
-                new RenderChartImageTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), limits),
+                new RenderChartImageTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), limits, services.GetRequiredService<IReadOnlyDrawingDocumentSource>()),
                 new CalculateVolumeProfileTool(gateway, symbols, limits),
                 new AnalyzeMarketStructureTool(gateway, symbols, limits),
                 new FindSupportResistanceTool(gateway, symbols, limits),
                 new CalculateDrawingValuesTool(gateway, symbols, limits),
+                new GetChartDrawingsTool(services.GetRequiredService<IReadOnlyDrawingDocumentSource>(), gateway, symbols, limits),
                 new DetectCandlePatternsTool(gateway, symbols, limits),
                 new DetectChartPatternsTool(gateway, symbols, limits),
                 new AnalyzeCyclesTool(gateway, symbols, limits),
@@ -342,17 +379,36 @@ internal static class McpServerComposition
                     "The allow-listed application settings (limits and defaults); the same content as sa_get_settings. File locations and credentials are never included.",
                     McpResourceRegistry.JsonMimeType,
                     () => settingsTool.Build()),
+                new McpResource(
+                    GetActiveWorkspaceTool.ResourceUri,
+                    "Active workspace",
+                    "The chart set-up the user last saved (symbol, time frame, active indicators) and the same indicators as an sa_calculate_indicators request; the same content as sa_get_active_workspace. Unsaved edits are not included.",
+                    McpResourceRegistry.JsonMimeType,
+                    cancellationToken => ReadActiveWorkspaceAsync(activeWorkspaceTool, cancellationToken)),
             });
 
             var registry = new McpToolRegistry(tools);
             registryOfTools = registry;
-            var dispatcher = new McpMessageDispatcher(log, registry, new ToolExecutor(limits, sanitizer, log, observer), resources, identity);
+            var dispatcher = new McpMessageDispatcher(log, registry, new ToolExecutor(limits, sanitizer, log, observer), resources, identity, new McpPromptRegistry(limits));
             return new McpServerRuntime(services, limits, dispatcher, registry, prepareExecution);
         }
         catch
         {
             services.Dispose();
             throw;
+        }
+    }
+
+    /// <summary>The workspace document for resources/read: a document that cannot be read now is a protocol error the client can retry, never a stale or empty document.</summary>
+    private static async Task<string> ReadActiveWorkspaceAsync(GetActiveWorkspaceTool tool, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await tool.BuildAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (ToolException error) when (error.Code == ToolErrorCodes.DataUnavailable)
+        {
+            throw new JsonRpcException(JsonRpcErrorCodes.InternalError, error.Message);
         }
     }
 

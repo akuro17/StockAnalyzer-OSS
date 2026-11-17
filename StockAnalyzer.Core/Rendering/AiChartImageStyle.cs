@@ -148,6 +148,35 @@ public static class AiChartImageStyle
 
     public const byte LegendFillAlpha = 230;
 
+    // ---- Opt-in shapes (plan 5.1, owner decision U-14): none of them is drawn unless the request asks for it ----
+    /// <summary>The radius of a Parabolic SAR dot.</summary>
+    public const float DotRadiusPx = 2.5f;
+
+    /// <summary>The fill of an oscillator histogram bar of a value of zero or more (the up colour) and below zero (the down colour), with this alpha.</summary>
+    public const string HistogramNonNegativeHex = UpHex;
+
+    public const string HistogramNegativeHex = DownHex;
+    public const byte HistogramAlpha = 128;
+
+    /// <summary>The Kumo cloud where Senkou Span A is at or above Senkou Span B (the up colour) and where it is below (the down colour), with this alpha.</summary>
+    public const string CloudBullishHex = UpHex;
+
+    public const string CloudBearishHex = DownHex;
+    public const byte CloudAlpha = 38;
+
+    /// <summary>The colour and width of a saved drawing: fixed, whatever colour the user gave it (a colour made for a dark chart can be unreadable on these backgrounds).</summary>
+    public const string SavedDrawingHex = SignalHex;
+
+    public const float SavedDrawingWidthPx = 1.5f;
+
+    /// <summary>How far an extended saved line is stretched before the panel clips it, as a multiple of the panel's width plus height (more than any diagonal, so the clip alone decides where the visible line ends).</summary>
+    public const double SavedDrawingReachFactor = 2.0;
+
+    /// <summary>The number of dots the legend swatch of a dotted series shows, and the gap between their centres.</summary>
+    public const int LegendDotCount = 3;
+
+    public const float LegendDotGapPx = 9f;
+
     // ---- Drawing details ----
     /// <summary>The centre of a pixel: a line or a marker is drawn at the pixel column and row of its point plus this much, so it covers whole pixels symmetrically.</summary>
     public const float PixelCentreOffsetPx = 0.5f;

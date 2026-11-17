@@ -38,13 +38,18 @@ public class SsaScratchBufferGoldenTests
     private const ulong FnvPrime = 1099511628211UL;
 
     // Captured from the unconditional-stackalloc implementation (Run 6 baseline).
+    // RE-CAPTURED 2026-11-17 (owner decision R-2 = A) for "Anomaly" and "SupportResistance" only (n = 100, 512, 513, 600, 2000): both engines select the rank with
+    // autoRank on, and the rank used to be estimated from the RAW Jacobi eigenvalue order although SsaRankSelector.EstimateSignalRank requires DESCENDING values (M4).
+    // The values now come from the descending order. Cross proof kept: the new hashes were computed on the pooled path (threshold 512) and again with
+    // MathBufferLimits.StackAllocThreshold temporarily raised so that every length used stackalloc; all ten hashes are identical, so the buffer proof of this class still holds.
+    // Decompose, CausalEndpoint, Projection and the wide / many-component entries are unchanged.
     private static readonly Dictionary<(string Engine, int N), ulong> Golden = new()
     {
-        [("Anomaly", 100)] = 4474389141400052009UL,
-        [("Anomaly", 512)] = 8358039342167122982UL,
-        [("Anomaly", 513)] = 4750966699929712907UL,
-        [("Anomaly", 600)] = 4759900806459138974UL,
-        [("Anomaly", 2000)] = 13152503586374360119UL,
+        [("Anomaly", 100)] = 6661868460192346707UL,
+        [("Anomaly", 512)] = 9118839998077980732UL,
+        [("Anomaly", 513)] = 373092656916369030UL,
+        [("Anomaly", 600)] = 11577793498425941664UL,
+        [("Anomaly", 2000)] = 5022915185419220907UL,
         [("CausalEndpoint", 100)] = 8702473894601093991UL,
         [("CausalEndpoint", 512)] = 16241091658026628517UL,
         [("CausalEndpoint", 513)] = 9521442760561991966UL,
@@ -60,11 +65,11 @@ public class SsaScratchBufferGoldenTests
         [("Projection", 513)] = 11660090706624360711UL,
         [("Projection", 600)] = 1599742316742501056UL,
         [("Projection", 2000)] = 11816767159776426368UL,
-        [("SupportResistance", 100)] = 1776538662167155100UL,
-        [("SupportResistance", 512)] = 7211636957459607613UL,
-        [("SupportResistance", 513)] = 9904284521734767853UL,
-        [("SupportResistance", 600)] = 6970284239651525489UL,
-        [("SupportResistance", 2000)] = 7739916987365183524UL,
+        [("SupportResistance", 100)] = 15154678737656847771UL,
+        [("SupportResistance", 512)] = 8473038422058997033UL,
+        [("SupportResistance", 513)] = 18317703050590478915UL,
+        [("SupportResistance", 600)] = 9973100620885183487UL,
+        [("SupportResistance", 2000)] = 824176569481202890UL,
         [("SupportResistanceWide", 400)] = 5992170147046082083UL,
         [("AnomalyWide", 400)] = 11038942471574229293UL,
     };

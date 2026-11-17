@@ -32,6 +32,19 @@ public static class SsaDecompositionEngine
     public const double JacobiConvergenceTolerance = 1e-12;
     public const double DegenerateSeriesEpsilon = 1e-10;
 
+    /// <summary>Smallest embedding dimension (window length L) the SSA engines accept.</summary>
+    public const int MinEmbeddingDimension = 2;
+
+    /// <summary>The embedding dimension never exceeds this fraction of the sample count: L &lt;= N / 2.</summary>
+    private const int EmbeddingDimensionSampleDivisor = 2;
+
+    /// <summary>
+    /// The embedding dimension L actually used for <paramref name="sampleCount"/> samples: <paramref name="embeddingDimension"/> clamped to
+    /// [<see cref="MinEmbeddingDimension"/>, max(<see cref="MinEmbeddingDimension"/>, N / 2)]. Single definition for the SSA engines, indicators and drawings.
+    /// </summary>
+    public static int ClampEmbeddingDimension(int embeddingDimension, int sampleCount)
+        => Math.Clamp(embeddingDimension, MinEmbeddingDimension, Math.Max(MinEmbeddingDimension, sampleCount / EmbeddingDimensionSampleDivisor));
+
     /// <summary>
     /// Applies detrending preprocessing to an input price series.
     /// </summary>
@@ -326,7 +339,7 @@ public static class SsaDecompositionEngine
         {
             Detrend(input, processed, mode, out slope, out intercept);
 
-            l = Math.Clamp(embeddingDimension, 2, Math.Max(2, n / 2));
+            l = SsaDecompositionEngine.ClampEmbeddingDimension(embeddingDimension, n);
             k = n - l + 1;
             if (k < 2)
             {
@@ -480,7 +493,7 @@ public static class SsaDecompositionEngine
             return double.NaN;
         }
 
-        int l = Math.Clamp(embeddingDimension, 2, Math.Max(2, n / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(embeddingDimension, n);
         var decomp = Decompose(input, l, detrendMode);
         return ComputeCausalEndpoint(input, decomp, l, numComponents, detrendMode);
     }

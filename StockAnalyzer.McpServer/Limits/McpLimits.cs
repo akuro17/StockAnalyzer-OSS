@@ -1,4 +1,5 @@
 using StockAnalyzer.Core.Models.Watchlist;
+using StockAnalyzer.Core.ReadOnly;
 
 namespace StockAnalyzer.McpServer.Limits;
 
@@ -56,6 +57,12 @@ public sealed class McpLimits
 
     public int QueueWaitSeconds { get; set; } = 60;
 
+    /// <summary>
+    /// How many light read-only tool calls (not heavy, not execution) may run at the same time. A heavy or execution tool waits until none runs and then runs alone.
+    /// 1 makes every call strictly one at a time (the behaviour before this limit existed). Standard value: 2 (owner decision U-01, 2026-11-16).
+    /// </summary>
+    public int MaxConcurrentReadOnlyCalls { get; set; } = 2;
+
     public int MaxResponseBytes { get; set; } = 4 * 1024 * 1024;
 
     public int MaxRequestBytes { get; set; } = 1024 * 1024;
@@ -83,6 +90,27 @@ public sealed class McpLimits
     /// Standard value: 50.
     /// </summary>
     public int MaxPortfolioBacktestSymbols { get; set; } = 50;
+
+    /// <summary>
+    /// Most symbols one sa_calculate_indicators_batch call may evaluate; more is LIMIT_EXCEEDED (the list is never cut).
+    /// Standard value: 50 (owner decision U-05, 2026-11-16).
+    /// </summary>
+    public int MaxBatchIndicatorSymbols { get; set; } = 50;
+
+    /// <summary>
+    /// Most trailing bars per series one sa_calculate_indicators_batch call may return (outputTailCount); more is LIMIT_EXCEEDED. Small on purpose: every symbol repeats the series.
+    /// Standard value: 5 (owner decision U-05, 2026-11-16).
+    /// </summary>
+    public int MaxBatchIndicatorTailBars { get; set; } = 5;
+
+    /// <summary>Most notes (and catalysts) sa_search_notes and sa_list_upcoming_catalysts return; the answer says when more matched (truncated). Standard value: 100 (owner decision U-08).</summary>
+    public int MaxReturnedNotes { get; set; } = 100;
+
+    /// <summary>Most days ahead of fromDate sa_list_upcoming_catalysts looks (horizonDays); more is LIMIT_EXCEEDED. Standard value: 365 (owner decision U-09).</summary>
+    public int MaxCatalystHorizonDays { get; set; } = 365;
+
+    /// <summary>Largest pivotLeftStrength and pivotRightStrength of anchorMode AutoPivots in sa_calculate_drawing_values (bars each side a swing must dominate); more is LIMIT_EXCEEDED. Standard value: 50 (owner decision U-12).</summary>
+    public int MaxPivotStrength { get; set; } = 50;
 
     /// <summary>Most different comparison symbols (the primary symbol not counted) one relative-performance call aligns; more is LIMIT_EXCEEDED (never cut). Standard value = the chart's limit (the aligner's default, WatchlistConstants.MaxRelativePerformanceTargets).</summary>
     public int MaxComparisonTargets { get; set; } = WatchlistConstants.MaxRelativePerformanceTargets;
@@ -214,6 +242,12 @@ public sealed class McpLimits
 
     /// <summary>Most buy/sell markers one sa_render_chart_image call may name; more is LIMIT_EXCEEDED. Standard value: 50.</summary>
     public int MaxImageMarkers { get; set; } = 50;
+
+    /// <summary>Most saved drawings one sa_render_chart_image call draws with includeSavedDrawings (the first in the saved order; the rest are named in warnings, nothing is refused). Standard value: 50 (owner decision U-14).</summary>
+    public int MaxImageSavedDrawings { get; set; } = 50;
+
+    /// <summary>Largest saved drawing file (bytes) the server reads into memory for sa_get_chart_drawings and includeSavedDrawings; a larger file is DATA_UNAVAILABLE. Standard value: 1 MiB (1048576; the largest file measured in the application's data was about 17 KB).</summary>
+    public int MaxDrawingFileBytes { get; set; } = FileReadOnlyDrawingDocumentSource.DefaultMaxFileBytes;
 
     /// <summary>
     /// Most bars the structured result of sa_render_chart_image lists (the pixel positions of the drawn bars); the bars left out are counted

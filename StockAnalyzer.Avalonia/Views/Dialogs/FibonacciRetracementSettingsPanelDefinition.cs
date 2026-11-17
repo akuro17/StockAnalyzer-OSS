@@ -1,3 +1,4 @@
+using System;
 using Avalonia.Controls;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Services;
@@ -6,6 +7,16 @@ namespace StockAnalyzer.Avalonia.Views.Dialogs;
 
 public sealed class FibonacciRetracementSettingsPanelDefinition : IDrawingSettingsPanelDefinition
 {
+    private static readonly FibonacciRetracementExtendMode[] DisplayOrder =
+    [
+        FibonacciRetracementExtendMode.Default,
+        FibonacciRetracementExtendMode.CyclicLines,
+        FibonacciRetracementExtendMode.FibTimeZone,
+        FibonacciRetracementExtendMode.ExtendRight,
+        FibonacciRetracementExtendMode.ExtendLeft,
+        FibonacciRetracementExtendMode.ExtendBoth
+    ];
+
     public DrawingSettingsWindowHint? WindowHint => null;
 
     public bool CanHandle(IChartObject drawing) => drawing is FibonacciRetracementObject;
@@ -14,6 +25,13 @@ public sealed class FibonacciRetracementSettingsPanelDefinition : IDrawingSettin
     {
         var fibPanel = dialogWindow.FindControl<StackPanel>("FibonacciRetracementPanel");
         if (fibPanel != null) fibPanel.IsVisible = true;
+
+        var extendCombo = dialogWindow.FindControl<ComboBox>("FibRetracementExtendModeCombo");
+        if (extendCombo != null)
+        {
+            extendCombo.ItemsSource = DisplayOrder;
+            extendCombo.ItemTemplate = DrawingParameterViewBuilder.LocalizedEnumItemTemplate;
+        }
     }
 
     public void Populate(Window dialogWindow, IChartObject drawing)
@@ -29,7 +47,14 @@ public sealed class FibonacciRetracementSettingsPanelDefinition : IDrawingSettin
         var extendCombo = dialogWindow.FindControl<ComboBox>("FibRetracementExtendModeCombo");
         if (extendCombo != null)
         {
-            extendCombo.SelectedIndex = (int)fib.ExtendMode;
+            if (extendCombo.ItemsSource == null)
+            {
+                extendCombo.ItemsSource = DisplayOrder;
+                extendCombo.ItemTemplate = DrawingParameterViewBuilder.LocalizedEnumItemTemplate;
+            }
+            extendCombo.SelectedItem = Enum.IsDefined(typeof(FibonacciRetracementExtendMode), fib.ExtendMode)
+                ? fib.ExtendMode
+                : FibonacciRetracementExtendMode.Default;
         }
     }
 
@@ -44,9 +69,10 @@ public sealed class FibonacciRetracementSettingsPanelDefinition : IDrawingSettin
         }
 
         var extendCombo = dialogWindow.FindControl<ComboBox>("FibRetracementExtendModeCombo");
-        if (extendCombo != null && extendCombo.SelectedIndex >= 0)
+        if (extendCombo?.SelectedItem is FibonacciRetracementExtendMode selectedMode &&
+            Enum.IsDefined(typeof(FibonacciRetracementExtendMode), selectedMode))
         {
-            fib.ExtendMode = (FibonacciRetracementExtendMode)extendCombo.SelectedIndex;
+            fib.ExtendMode = selectedMode;
         }
     }
 }

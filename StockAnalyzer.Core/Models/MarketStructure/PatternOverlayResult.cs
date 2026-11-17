@@ -49,20 +49,43 @@ public class PatternOverlayResult
     /// <summary>Error message if the search failed.</summary>
     public string? ErrorMessage { get; }
 
+    /// <summary>Optional Petitjean DBA ensemble barycenter trajectory (percentage change from anchor close).</summary>
+    public IReadOnlyList<double> DbaBarycenterPercentChange { get; }
+
+    /// <summary>Optional weighted 15th percentile DBA ensemble lower band (percentage change from anchor close).</summary>
+    public IReadOnlyList<double> DbaLowerBandPercentChange { get; }
+
+    /// <summary>Optional weighted 85th percentile DBA ensemble upper band (percentage change from anchor close).</summary>
+    public IReadOnlyList<double> DbaUpperBandPercentChange { get; }
+
     internal PatternOverlayResult(
         int queryLength,
         IReadOnlyList<OverlayPattern> patterns,
         bool isSuccessful,
-        string? errorMessage)
+        string? errorMessage,
+        IReadOnlyList<double>? dbaBarycenterPercentChange = null,
+        IReadOnlyList<double>? dbaLowerBandPercentChange = null,
+        IReadOnlyList<double>? dbaUpperBandPercentChange = null)
     {
         QueryLength = queryLength;
         Patterns = patterns;
         IsSuccessful = isSuccessful;
         ErrorMessage = errorMessage;
+        DbaBarycenterPercentChange = dbaBarycenterPercentChange ?? Array.Empty<double>();
+        DbaLowerBandPercentChange = dbaLowerBandPercentChange ?? Array.Empty<double>();
+        DbaUpperBandPercentChange = dbaUpperBandPercentChange ?? Array.Empty<double>();
     }
 
     public static PatternOverlayResult Success(int queryLength, IReadOnlyList<OverlayPattern> patterns)
         => new(queryLength, patterns, true, null);
+
+    public static PatternOverlayResult SuccessWithEnsemble(
+        int queryLength,
+        IReadOnlyList<OverlayPattern> patterns,
+        IReadOnlyList<double> barycenterPercentChange,
+        IReadOnlyList<double> lowerBandPercentChange,
+        IReadOnlyList<double> upperBandPercentChange)
+        => new(queryLength, patterns, true, null, barycenterPercentChange, lowerBandPercentChange, upperBandPercentChange);
 
     public static PatternOverlayResult Failure(string errorMessage)
         => new(0, Array.Empty<OverlayPattern>(), false, errorMessage);

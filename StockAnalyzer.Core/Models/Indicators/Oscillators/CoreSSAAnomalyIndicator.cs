@@ -105,7 +105,7 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
             ExitThresholdSeries.Add(null);
         }
 
-        int l = Math.Clamp(EmbeddingDimension, 2, Math.Max(2, window / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
 
         double[] windowBuffer = new double[window];
@@ -132,11 +132,8 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
                 var decomp = SsaDecompositionEngine.Decompose(windowBuffer, l, DetrendMethod);
                 if (decomp.SortedIndices.Length >= l)
                 {
-                    r = SsaRankSelector.EstimateSignalRank(
-                        decomp.Eigenvalues,
-                        SsaRankSelectionMethod.CumulativeEnergy,
-                        targetEnergy: 0.90,
-                        maxRank: l - 1);
+                    // The decomposition overload reads the eigenvalues in descending order (Eigenvalues is in raw Jacobi order).
+                    r = SsaRankSelector.EstimateSignalRank(decomp, SsaRankSelectionMethod.CumulativeEnergy, maxRank: l - 1);
                 }
                 else
                 {

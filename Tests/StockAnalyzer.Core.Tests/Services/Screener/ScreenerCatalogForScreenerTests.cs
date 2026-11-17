@@ -42,7 +42,8 @@ public sealed class ScreenerCatalogForScreenerTests
         Assert.Equal(
             new[]
             {
-                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.MansfieldRS, IndicatorType.MarketBreadth, IndicatorType.McClellanOscillator,
+                IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
+                IndicatorType.MansfieldRS, IndicatorType.MarketBreadth, IndicatorType.McClellanOscillator,
                 IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
             }.OrderBy(type => type.ToString(), StringComparer.Ordinal),
             types);

@@ -46,6 +46,10 @@ public sealed class SsaMultiComponentSettingsPanelDefinition : IDrawingSettingsP
 
         if (embeddingDimensionSpin != null) embeddingDimensionSpin.Value = ssaObj.EmbeddingDimension;
         if (numComponentsSpin != null) numComponentsSpin.Value = ssaObj.NumComponents;
+        var autoRankCheck = dialogWindow.FindControl<CheckBox>("SsaMultiAutoRankCheck");
+        var rankMethodCombo = dialogWindow.FindControl<ComboBox>("SsaMultiRankMethodCombo");
+        if (autoRankCheck != null) autoRankCheck.IsChecked = ssaObj.AutoRank;
+        if (rankMethodCombo != null) rankMethodCombo.SelectedIndex = (int)ssaObj.RankMethod;
         if (priceFieldCombo != null) priceFieldCombo.SelectedIndex = PriceTypeToIndex(ssaObj.PriceSource);
         if (detrendMethodCombo != null) detrendMethodCombo.SelectedIndex = (int)ssaObj.DetrendMethod;
         if (showTrendCheck != null) showTrendCheck.IsChecked = ssaObj.ShowTrendLayer;
@@ -81,6 +85,13 @@ public sealed class SsaMultiComponentSettingsPanelDefinition : IDrawingSettingsP
 
         if (embeddingDimensionSpin?.Value != null) ssaObj.EmbeddingDimension = (int)embeddingDimensionSpin.Value.Value;
         if (numComponentsSpin?.Value != null) ssaObj.NumComponents = (int)numComponentsSpin.Value.Value;
+        var autoRankCheck = dialogWindow.FindControl<CheckBox>("SsaMultiAutoRankCheck");
+        var rankMethodCombo = dialogWindow.FindControl<ComboBox>("SsaMultiRankMethodCombo");
+        if (autoRankCheck?.IsChecked != null) ssaObj.AutoRank = autoRankCheck.IsChecked.Value;
+        if (rankMethodCombo != null && rankMethodCombo.SelectedIndex >= 0)
+        {
+            ssaObj.RankMethod = (SsaRankSelectionMethod)rankMethodCombo.SelectedIndex;
+        }
         if (priceFieldCombo != null) ssaObj.PriceSource = IndexToPriceType(priceFieldCombo.SelectedIndex);
         if (detrendMethodCombo != null && detrendMethodCombo.SelectedIndex >= 0)
         {

@@ -19,6 +19,7 @@ public class CoreHilbertTransformIndicator : CoreIndicatorBase
     public int MaxPeriod { get; set; } = IndicatorDefaultConstants.HilbertTransformMaxPeriod;
     public decimal SmoothBeta { get; set; } = IndicatorDefaultConstants.HilbertTransformDefaultSmoothBeta;
     public decimal DeltaLimit { get; set; } = IndicatorDefaultConstants.HilbertTransformDefaultDeltaLimit;
+    public HilbertDetrendMode DetrendMode { get; set; } = HilbertDetrendMode.FirDetrender;
 
     public override string Name => $"Hilbert Transform ({MinPeriod}-{MaxPeriod})";
     public override bool IsOverlay => false;
@@ -39,6 +40,7 @@ public class CoreHilbertTransformIndicator : CoreIndicatorBase
             MaxPeriod = p.MaxPeriod;
             SmoothBeta = p.SmoothBeta;
             DeltaLimit = p.DeltaLimit;
+            DetrendMode = p.DetrendMode;
         }
     }
 
@@ -82,7 +84,8 @@ public class CoreHilbertTransformIndicator : CoreIndicatorBase
             MaxPeriod: MaxPeriod,
             SmoothBeta: SmoothBeta,
             DeltaLimit: safeDeltaLimit,
-            WarmupBars: warmupBars);
+            WarmupBars: warmupBars,
+            DetrendMode: DetrendMode);
 
         var decomposition = HilbertDecompositionEngine.Decompose(prices, parameters);
 

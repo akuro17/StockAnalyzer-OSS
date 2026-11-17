@@ -2,6 +2,7 @@ namespace StockAnalyzer.Avalonia.Drawing;
 
 /// <summary>
 /// Specifies the extension and vertical line display mode for Fibonacci Retracement lines.
+/// Values are persisted by name or number: never reorder or renumber existing members.
 /// </summary>
 public enum FibonacciRetracementExtendMode
 {
@@ -21,12 +22,17 @@ public enum FibonacciRetracementExtendMode
     FibTimeZone = 2,
 
     /// <summary>
-    /// Extend Right mode: horizontal lines extend from the start point to the right edge of the chart.
+    /// Extend Right mode: horizontal lines extend from the left-side anchor to the right edge of the chart.
     /// </summary>
     ExtendRight = 3,
 
     /// <summary>
     /// Extend Both mode: horizontal lines extend across both edges of the chart.
     /// </summary>
-    ExtendBoth = 4
+    ExtendBoth = 4,
+
+    /// <summary>
+    /// Extend Left mode: horizontal lines extend from the left edge of the chart to the right-side anchor.
+    /// </summary>
+    ExtendLeft = 5
 }

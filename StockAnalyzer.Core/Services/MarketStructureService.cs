@@ -1,7 +1,9 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
@@ -89,20 +91,45 @@ public class MarketStructureService
         int queryLength = 30,
         int queryStartIndex = -1,
         bool useStructural = false,
-        int warpingRadius = ChartConstants.DtwDefaultWarpingRadius)
+        int warpingRadius = ChartConstants.DtwDefaultWarpingRadius,
+        bool useDbaEnsemble = false,
+        int topKMatches = IndicatorDefaultConstants.DbaDefaultTopK,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         int minRequired = queryLength + futureSteps + 10;
         if (candles == null || candles.Count < minRequired)
         {
             return PatternOverlayResult.Failure($"Insufficient data: need at least {minRequired} candles.");
         }
 
+        if (useDbaEnsemble)
+        {
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return await Task.Run(
+                    () => RunNativeDbaEnsembleSearch(candles, queryLength, queryStartIndex, futureSteps, topKMatches, cancellationToken),
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return PatternOverlayResult.Failure(ex.Message);
+            }
+        }
+
         try
         {
             var queryCandles = candles.Skip(queryStartIndex).Take(queryLength).ToList();
             double[]? volatility = useStructural
-                ? await Task.Run(() => ComputeStructuralVolatility(candles))
+                ? await Task.Run(() => ComputeStructuralVolatility(candles), cancellationToken)
                 : null;
+            cancellationToken.ThrowIfCancellationRequested();
             await _pythonService.InitializeExternalProcessAsync();
 
             var responseJson = await _pythonService.ExecuteTransactionAsync(async () =>
@@ -113,6 +140,10 @@ public class MarketStructureService
             });
 
             return ParseOverlayResponse(responseJson);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -223,5 +254,113 @@ public class MarketStructureService
             list.Add(val.GetDouble());
         }
         return list;
+    }
+
+    internal static PatternOverlayResult RunNativeDbaEnsembleSearch(
+        IReadOnlyList<CandleData> candles,
+        int queryLength,
+        int queryStartIndex,
+        int futureSteps,
+        int topKMatches,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (queryLength < IndicatorDefaultConstants.MatrixProfileMinQueryLength ||
+            queryLength > IndicatorDefaultConstants.MatrixProfileMaxQueryLength)
+        {
+            return PatternOverlayResult.Failure(
+                $"Query length must be in [{IndicatorDefaultConstants.MatrixProfileMinQueryLength}, {IndicatorDefaultConstants.MatrixProfileMaxQueryLength}].");
+        }
+
+        if (futureSteps < 1)
+        {
+            return PatternOverlayResult.Failure("Forecast horizon must be at least 1 bar.");
+        }
+
+        int resolvedK = Math.Clamp(topKMatches, IndicatorDefaultConstants.DbaMinTopK, IndicatorDefaultConstants.DbaMaxTopK);
+        int resolvedStart = queryStartIndex >= 0 ? queryStartIndex : candles.Count - queryLength;
+        if (resolvedStart < 0 || resolvedStart + queryLength > candles.Count)
+        {
+            return PatternOverlayResult.Failure("Query start index is out of range.");
+        }
+
+        int n = candles.Count;
+        double[] closes = ArrayPool<double>.Shared.Rent(n);
+        try
+        {
+            for (int i = 0; i < n; i++)
+            {
+                closes[i] = (double)candles[i].Close;
+            }
+
+            var matches = new List<HistoricalMatch>(resolvedK);
+            MatrixProfileMath.FindTopKMatches(closes.AsSpan(0, n), resolvedStart, queryLength, futureSteps, resolvedK, matches, cancellationToken);
+            if (matches.Count == 0)
+            {
+                return PatternOverlayResult.Success(queryLength, Array.Empty<OverlayPattern>());
+            }
+
+            var sequences = new List<double[]>(matches.Count);
+            var distances = new double[matches.Count];
+            var patterns = new List<OverlayPattern>(matches.Count);
+
+            for (int k = 0; k < matches.Count; k++)
+            {
+                HistoricalMatch match = matches[k];
+                distances[k] = match.Distance;
+
+                double anchorClose = closes[match.EndIndex];
+                double safeAnchor = Math.Abs(anchorClose) > ZNormalization.FlatSigmaEpsilon ? anchorClose : 1.0;
+
+                var matchedPrices = new double[queryLength];
+                Array.Copy(closes, match.StartIndex, matchedPrices, 0, queryLength);
+
+                var relReturns = new double[futureSteps];
+                var futureRaw = new double[futureSteps];
+                var futurePct = new double[futureSteps];
+                for (int h = 0; h < futureSteps; h++)
+                {
+                    double futureClose = closes[match.EndIndex + 1 + h];
+                    double rel = futureClose / safeAnchor - 1.0;
+                    relReturns[h] = rel;
+                    futureRaw[h] = futureClose;
+                    futurePct[h] = rel * 100.0;
+                }
+
+                sequences.Add(relReturns);
+                patterns.Add(new OverlayPattern
+                {
+                    Distance = match.Distance,
+                    Probability = match.Similarity,
+                    StartIndex = match.StartIndex,
+                    EndIndex = match.EndIndex,
+                    MatchedPrices = matchedPrices,
+                    FutureRawPrices = futureRaw,
+                    FuturePercentChange = futurePct
+                });
+            }
+
+            var bary = new double[futureSteps];
+            var lower = new double[futureSteps];
+            var upper = new double[futureSteps];
+            if (!DtwBarycenterMath.ComputeEnsemble(sequences, distances, futureSteps, bary, lower, upper, cancellationToken: cancellationToken))
+            {
+                return PatternOverlayResult.Success(queryLength, patterns);
+            }
+
+            for (int h = 0; h < futureSteps; h++)
+            {
+                bary[h] *= 100.0;
+                lower[h] *= 100.0;
+                upper[h] *= 100.0;
+            }
+
+            return PatternOverlayResult.SuccessWithEnsemble(queryLength, patterns, bary, lower, upper);
+        }
+        finally
+        {
+            ArrayPool<double>.Shared.Return(closes);
+        }
     }
 }

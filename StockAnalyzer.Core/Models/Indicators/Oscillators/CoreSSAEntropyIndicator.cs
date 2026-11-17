@@ -55,7 +55,7 @@ public class CoreSSAEntropyIndicator : CoreIndicatorBase
             return IndicatorResult.Success(_values);
         }
 
-        int l = Math.Clamp(EmbeddingDimension, 2, Math.Max(2, window / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
         if (l < 2 || k < 2)
         {

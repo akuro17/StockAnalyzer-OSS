@@ -199,17 +199,68 @@ public sealed class ResourceTests : IDisposable
         Assert.DoesNotContain("secret", response.RootElement.GetRawText());
     }
 
+    // ---- a resource that reads a file is read asynchronously ----------------------------------------------------
+
+    [Fact]
+    public async Task AResourceThatIsStillReading_DoesNotBlockTheReadingLoop_AndIsAnsweredWhenItCompletes()
+    {
+        var gate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var slow = new McpResource("stockanalyzer://slow", "Slow", "Reads a file.", McpResourceRegistry.JsonMimeType, _ => gate.Task);
+        McpMessageDispatcher dispatcher = await InitializedWithAsync(slow);
+
+        DispatchOutcome outcome = dispatcher.Dispatch("""{"jsonrpc":"2.0","id":7,"method":"resources/read","params":{"uri":"stockanalyzer://slow"}}""", CancellationToken.None);
+
+        Assert.Null(outcome.Immediate);
+        Assert.NotNull(outcome.Deferred);
+        Assert.False(outcome.Deferred!.IsCompleted); // the loop got its turn back while the document was still being read
+        gate.SetResult("{\"a\":1}");
+        using var response = JsonDocument.Parse((await outcome.Deferred)!);
+        Assert.Equal("{\"a\":1}", ReadText(response));
+    }
+
+    [Fact]
+    public async Task AnAsyncResourceThatThrows_IsAnInternalErrorWithoutTheMessage_AndAProtocolErrorKeepsItsCode()
+    {
+        var crashing = new McpResource("stockanalyzer://crash", "Crash", "Fails.", McpResourceRegistry.JsonMimeType, async _ => { await Task.Yield(); throw new InvalidOperationException(@"C:\secret\path"); });
+        var unreadable = new McpResource("stockanalyzer://unreadable", "Unreadable", "Cannot be read now.", McpResourceRegistry.JsonMimeType, async _ => { await Task.Yield(); throw new JsonRpcException(JsonRpcErrorCodes.InternalError, "The document cannot be read now."); });
+        McpMessageDispatcher dispatcher = await InitializedWithAsync(crashing, unreadable);
+
+        using var crash = await SendAsync(dispatcher, "resources/read", """{"uri":"stockanalyzer://crash"}""");
+        using var cannot = await SendAsync(dispatcher, "resources/read", """{"uri":"stockanalyzer://unreadable"}""");
+
+        Assert.Equal(JsonRpcErrorCodes.InternalError, ErrorCode(crash));
+        Assert.DoesNotContain("secret", crash.RootElement.GetRawText());
+        Assert.Equal(JsonRpcErrorCodes.InternalError, ErrorCode(cannot));
+        Assert.Equal("The document cannot be read now.", cannot.RootElement.GetProperty("error").GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public async Task AReadThatIsCancelledByTheShutdown_GetsNoAnswer_AndABadRequestIsStillAnsweredAtOnce()
+    {
+        var waiting = new McpResource("stockanalyzer://wait", "Wait", "Waits.", McpResourceRegistry.JsonMimeType, async cancellationToken => { await Task.Delay(Timeout.Infinite, cancellationToken); return "{}"; });
+        McpMessageDispatcher dispatcher = await InitializedWithAsync(waiting);
+        using var shutdown = new CancellationTokenSource();
+
+        Task<string?> read = dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":8,"method":"resources/read","params":{"uri":"stockanalyzer://wait"}}""", shutdown.Token);
+        shutdown.Cancel();
+        Assert.Null(await read);
+
+        DispatchOutcome bad = dispatcher.Dispatch("""{"jsonrpc":"2.0","id":9,"method":"resources/read","params":{}}""", CancellationToken.None);
+        Assert.NotNull(bad.Immediate);
+        Assert.Null(bad.Deferred);
+    }
+
     // ---- the real resources ---------------------------------------------------------------------------------------
 
     [Fact]
-    public async Task TheServerOffersTheThreeCatalogueAndSettingsResources()
+    public async Task TheServerOffersTheCatalogueSettingsAndActiveWorkspaceResources()
     {
         McpMessageDispatcher dispatcher = await StartRealAsync();
 
         using var response = await SendAsync(dispatcher, "resources/list");
 
         Assert.Equal(
-            new[] { "stockanalyzer://catalog/indicators", "stockanalyzer://catalog/screener", "stockanalyzer://settings/current" },
+            new[] { "stockanalyzer://catalog/indicators", "stockanalyzer://catalog/screener", "stockanalyzer://settings/current", "stockanalyzer://workspace/active" },
             response.RootElement.GetProperty("result").GetProperty("resources").EnumerateArray().Select(r => r.GetProperty("uri").GetString()).ToArray());
     }
 
@@ -259,7 +310,7 @@ public sealed class ResourceTests : IDisposable
         var before = _fixture.Snapshot();
         McpMessageDispatcher dispatcher = await StartRealAsync();
 
-        foreach (string uri in new[] { "stockanalyzer://catalog/indicators", "stockanalyzer://catalog/screener", "stockanalyzer://settings/current", "stockanalyzer://nothing" })
+        foreach (string uri in new[] { "stockanalyzer://catalog/indicators", "stockanalyzer://catalog/screener", "stockanalyzer://settings/current", "stockanalyzer://workspace/active", "stockanalyzer://nothing" })
         {
             (await SendAsync(dispatcher, "resources/read", $$"""{"uri":"{{uri}}"}""")).Dispose();
         }
@@ -273,7 +324,7 @@ public sealed class ResourceTests : IDisposable
         McpMessageDispatcher dispatcher = await StartRealAsync();
         int limit = new StockAnalyzer.McpServer.Limits.McpLimits().MaxResponseBytes;
 
-        foreach (string uri in new[] { "stockanalyzer://catalog/indicators", "stockanalyzer://catalog/screener", "stockanalyzer://settings/current" })
+        foreach (string uri in new[] { "stockanalyzer://catalog/indicators", "stockanalyzer://catalog/screener", "stockanalyzer://settings/current", "stockanalyzer://workspace/active" })
         {
             string response = (await dispatcher.DispatchAsync($$$"""{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"{{{uri}}}"}}""", CancellationToken.None))!;
             Assert.True(System.Text.Encoding.UTF8.GetByteCount(response) < limit, uri);

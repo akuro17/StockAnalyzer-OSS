@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Objects;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 
 namespace StockAnalyzer.Avalonia.Views.Dialogs;
@@ -30,6 +31,9 @@ public sealed class ArimaProjectionSettingsPanelDefinition : IDrawingSettingsPan
     {
         if (drawing is not ArimaProjectionObject arimaObj) return;
 
+        var autoOrderCheck = dialogWindow.FindControl<CheckBox>("ArimaAutoOrderCheck");
+        var maxPSpin = dialogWindow.FindControl<NumericUpDown>("ArimaMaxAutoPSpin");
+        var maxQSpin = dialogWindow.FindControl<NumericUpDown>("ArimaMaxAutoQSpin");
         var pSpin = dialogWindow.FindControl<NumericUpDown>("ArimaPSpin");
         var dSpin = dialogWindow.FindControl<NumericUpDown>("ArimaDSpin");
         var qSpin = dialogWindow.FindControl<NumericUpDown>("ArimaQSpin");
@@ -40,6 +44,9 @@ public sealed class ArimaProjectionSettingsPanelDefinition : IDrawingSettingsPan
         var showConfidenceBandCheck = dialogWindow.FindControl<CheckBox>("ArimaShowConfidenceBandCheck");
         var confidenceMultiplierSpin = dialogWindow.FindControl<NumericUpDown>("ArimaConfidenceMultiplierSpin");
 
+        if (autoOrderCheck != null) autoOrderCheck.IsChecked = arimaObj.AutoOrderSelection;
+        if (maxPSpin != null) maxPSpin.Value = arimaObj.MaxAutoP;
+        if (maxQSpin != null) maxQSpin.Value = arimaObj.MaxAutoQ;
         if (pSpin != null) pSpin.Value = arimaObj.P;
         if (dSpin != null) dSpin.Value = arimaObj.D;
         if (qSpin != null) qSpin.Value = arimaObj.Q;
@@ -59,6 +66,9 @@ public sealed class ArimaProjectionSettingsPanelDefinition : IDrawingSettingsPan
     {
         if (drawing is not ArimaProjectionObject arimaObj) return;
 
+        var autoOrderCheck = dialogWindow.FindControl<CheckBox>("ArimaAutoOrderCheck");
+        var maxPSpin = dialogWindow.FindControl<NumericUpDown>("ArimaMaxAutoPSpin");
+        var maxQSpin = dialogWindow.FindControl<NumericUpDown>("ArimaMaxAutoQSpin");
         var pSpin = dialogWindow.FindControl<NumericUpDown>("ArimaPSpin");
         var dSpin = dialogWindow.FindControl<NumericUpDown>("ArimaDSpin");
         var qSpin = dialogWindow.FindControl<NumericUpDown>("ArimaQSpin");
@@ -69,6 +79,15 @@ public sealed class ArimaProjectionSettingsPanelDefinition : IDrawingSettingsPan
         var showConfidenceBandCheck = dialogWindow.FindControl<CheckBox>("ArimaShowConfidenceBandCheck");
         var confidenceMultiplierSpin = dialogWindow.FindControl<NumericUpDown>("ArimaConfidenceMultiplierSpin");
 
+        if (autoOrderCheck?.IsChecked != null) arimaObj.AutoOrderSelection = autoOrderCheck.IsChecked.Value;
+        if (maxPSpin?.Value != null)
+        {
+            arimaObj.MaxAutoP = Math.Clamp((int)maxPSpin.Value.Value, IndicatorDefaultConstants.ArimaMinMaxAutoOrder, IndicatorDefaultConstants.ArimaMaxMaxAutoOrder);
+        }
+        if (maxQSpin?.Value != null)
+        {
+            arimaObj.MaxAutoQ = Math.Clamp((int)maxQSpin.Value.Value, IndicatorDefaultConstants.ArimaMinMaxAutoOrder, IndicatorDefaultConstants.ArimaMaxMaxAutoOrder);
+        }
         if (pSpin?.Value != null) arimaObj.P = (int)pSpin.Value.Value;
         if (dSpin?.Value != null) arimaObj.D = (int)dSpin.Value.Value;
         if (qSpin?.Value != null) arimaObj.Q = (int)qSpin.Value.Value;

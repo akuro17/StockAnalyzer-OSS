@@ -522,7 +522,8 @@ public sealed class NoteRepository
         command.Parameters.AddWithValue("$catalystDate", (object?)(note.CatalystDate is { } catalyst ? SerializeDateTime(catalyst.Date) : null) ?? DBNull.Value);
     }
 
-    private static Note MapNote(SqliteDataReader reader)
+    /// <summary>The one mapping of a <c>SELECT * FROM Notes</c> row to a <see cref="Note"/> (shared with the read-only MCP source).</summary>
+    internal static Note MapNote(SqliteDataReader reader)
     {
         var id = Guid.Parse(reader.GetString(reader.GetOrdinal("Id")));
         var body = reader.GetString(reader.GetOrdinal("Body"));

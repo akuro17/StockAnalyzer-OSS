@@ -242,6 +242,8 @@ public static class DrawingClipboardService
                     }
                 }
 
+                DrawingRecalculation.AfterObjectsCreated(newObjects, viewModel.CreateDrawingCalculationContext());
+
                 viewModel.ObjectManager.SelectObjects(newObjects.Select(o => o.Id), clearExisting: true);
             }
 
@@ -373,7 +375,8 @@ public static class DrawingClipboardService
 
         void PerformDuplicate()
         {
-            viewModel.ObjectManager.DuplicateObjects(selectedIds, deltaT, deltaP);
+            var clones = viewModel.ObjectManager.DuplicateObjects(selectedIds, deltaT, deltaP);
+            DrawingRecalculation.AfterObjectsCreated(clones, viewModel.CreateDrawingCalculationContext());
         }
 
         if (viewModel.DrawingEditCoordinator != null)

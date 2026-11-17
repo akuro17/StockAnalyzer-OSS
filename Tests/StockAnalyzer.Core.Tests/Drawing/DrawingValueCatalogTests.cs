@@ -14,16 +14,72 @@ public sealed class DrawingValueCatalogTests
         "TrendLine", "Ray", "HorizontalLine", "VerticalLine", "Arrow", "PriceLabel",
         "FibonacciRetracement", "FibonacciFan", "FibonacciExpansion", "FibonacciChannel", "ParallelChannel",
         "GannFan", "GannBox", "SineLine", "TimeCycles", "Pitchfork",
+        "AngleTool", "GannSquareOfNine", "TargetPriceProjection", "LongPosition", "ShortPosition", "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints",
     };
 
-    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3 };
+    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 2, 1, 3, 3, 3, 2, 1, 1 };
+
+    private static readonly string[] CandleTools = { "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints" };
 
     [Fact]
-    public void All_HoldsTheSixteenToolsOfTheSpecificationInOrder_WithUniqueNames()
+    public void TheNamesOtherLayersBranchOn_AreTheCatalogNames_SoARenameCannotLeaveThemBehind()
+    {
+        string[] named =
+        {
+            DrawingValueCatalog.TrendLineName, DrawingValueCatalog.RayName, DrawingValueCatalog.HorizontalLineName, DrawingValueCatalog.VerticalLineName,
+            DrawingValueCatalog.ParallelChannelName, DrawingValueCatalog.LongPositionName, DrawingValueCatalog.ShortPositionName,
+        };
+
+        Assert.All(named, name => Assert.Contains(name, ExpectedNames));
+        Assert.All(named, name => Assert.True(DrawingValueCatalog.TryGet(name, out DrawingValueDescriptor descriptor) && descriptor.Name == name));
+    }
+
+    [Fact]
+    public void All_HoldsTheTwentyFourToolsOfTheSpecificationInOrder_WithUniqueNames()
     {
         Assert.Equal(ExpectedNames, DrawingValueCatalog.All.Select(d => d.Name).ToArray());
         Assert.Equal(ExpectedPointCounts, DrawingValueCatalog.All.Select(d => d.PointCount).ToArray());
+        Assert.Equal(CandleTools, DrawingValueCatalog.All.Where(d => d.RequiresCandles).Select(d => d.Name).ToArray());
         Assert.Equal(ExpectedNames.Length, DrawingValueCatalog.All.Select(d => d.Name).Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void ABarBasedTool_GivenNoBars_ReturnsNoValues_AndEveryOtherToolIgnoresTheBars()
+    {
+        var anchors = new[] { new DrawingAnchor(new DateTime(2026, 1, 5), 100m), new DrawingAnchor(new DateTime(2026, 1, 20), 150m), new DrawingAnchor(new DateTime(2026, 1, 15), 130m) };
+        foreach (DrawingValueDescriptor descriptor in DrawingValueCatalog.All)
+        {
+            var points = anchors.Take(descriptor.PointCount).ToArray();
+            var withoutBars = new DrawingValueRequest(points, new DateTime(2026, 1, 20), 123.456m, IndicatorColor.Gray, new DrawingValueOptions());
+            var withBars = withoutBars with { Candles = DrawingValueTestCandles.Daily() };
+
+            if (descriptor.RequiresCandles)
+            {
+                Assert.Empty(descriptor.Calculate(withoutBars));
+                Assert.NotEmpty(descriptor.Calculate(withBars));
+            }
+            else
+            {
+                Assert.Equal(descriptor.Calculate(withoutBars), descriptor.Calculate(withBars));
+            }
+        }
+    }
+
+    [Fact]
+    public void DefaultOptions_AreTheChartObjectDefaults_AndOnlyTheDefaultValueIsAllZero()
+    {
+        var options = new DrawingValueOptions();
+
+        Assert.Equal(2.0m, options.StdDevMultiplier);
+        Assert.Equal(1.0m, options.Band1Multiplier);
+        Assert.Equal(2.0m, options.Band2Multiplier);
+        Assert.Equal(PriceType.Typical, options.PriceSource);
+        Assert.Equal(PivotPeriod.Day, options.PivotPeriod);
+        Assert.Equal(PivotLineExtendMode.None, options.PivotExtendMode);
+        Assert.False(options.ShowExtensions || options.ExtendRight || options.ShowBand1 || options.ShowBand2);
+        Assert.Null(options.IndicatorValueAtEntry);
+        Assert.Equal(options, new DrawingValueOptions(false));
+        Assert.Equal(0m, default(DrawingValueOptions).StdDevMultiplier);
     }
 
     [Fact]
@@ -54,7 +110,7 @@ public sealed class DrawingValueCatalogTests
 
         foreach (DrawingValueDescriptor descriptor in DrawingValueCatalog.All)
         {
-            var plain = new DrawingValueRequest(anchors.Take(descriptor.PointCount).ToArray(), timestamp, 123.456m, IndicatorColor.Gray, new DrawingValueOptions());
+            var plain = new DrawingValueRequest(anchors.Take(descriptor.PointCount).ToArray(), timestamp, 123.456m, IndicatorColor.Gray, new DrawingValueOptions(), DrawingValueTestCandles.Daily());
             var extended = plain with { Options = new DrawingValueOptions(ShowExtensions: true) };
 
             var plainValues = descriptor.Calculate(plain);

@@ -17,6 +17,12 @@ internal sealed class GetCandlesTool : IMcpTool
     private const string PriceUnit = "price";
     private const string VolumeUnit = "shares";
     private const string PeriodUnit = "bars";
+    private const string CompactRowsArgument = "compactRows";
+    private const string CandleColumnsKey = "candleColumns";
+    private const string CandleRowsKey = "candleRows";
+
+    /// <summary>The column order of every <c>candleRows</c> row (the names of the object form of a candle).</summary>
+    private static readonly string[] CandleColumns = { "timestamp", "open", "high", "low", "close", "volume" };
 
     private readonly CandleWindowLoader _loader;
     private readonly SymbolResolver _symbols;
@@ -41,7 +47,9 @@ internal sealed class GetCandlesTool : IMcpTool
         "Timestamps are bar dates as stored (not UTC-qualified); for W1 and MN1 the timestamp is the first trading day of the period and the oldest bar may cover a partial period. " +
         "The last W1 or MN1 bar is partial when its period (ISO week ending Sunday, calendar month) ends after referenceDate (endDate, or the last stored day); " +
         "lastBarPartial says so, and completeBarsOnly=true drops such a bar (droppedPartialBar). " +
-        "Prices are in the instrument's price units; volume is in shares.";
+        "Prices are in the instrument's price units; volume is in shares. " +
+        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds open, high, low and close (away from zero at the midpoint); volume is never rounded, and without it the prices are as stored. " +
+        $"{CompactRowsArgument} true returns candles as an empty array and the same bars as {CandleColumnsKey} (the column names) plus {CandleRowsKey} (one [timestamp, open, high, low, close, volume] row per bar) to save tokens; default false.";
 
     public bool IsHeavy => false;
 
@@ -54,6 +62,8 @@ internal sealed class GetCandlesTool : IMcpTool
         .String(StartDateArgument, $"First date to include ({ToolJson.DateFormat}).")
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}).")
         .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1 and MN1 only: drop the last bar when its period has not ended yet (see lastBarPartial). Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, $"Round open, high, low and close to this many decimal places (0 to {SeriesOutputOptions.MaxDecimalPlaces}; away from zero at the midpoint). Volume is never rounded. Default: prices as stored.", minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Boolean(CompactRowsArgument, $"true returns 'candles' as an empty array and the bars as '{CandleColumnsKey}' plus '{CandleRowsKey}' (one row per bar, in the order of the columns). Default false.")
         .Build();
 
     public string? OutputSchemaJson => OutputSchema;
@@ -92,7 +102,9 @@ internal sealed class GetCandlesTool : IMcpTool
             .NullableString(PartialBarOutput.LastBarPeriodEndKey, "Period end date for the last bar.")
             .Boolean(PartialBarOutput.LastBarPartialKey, "True when the latest bar covers an incomplete period.", required: true)
             .Boolean(PartialBarOutput.DroppedPartialBarKey, "True when incomplete latest bar was dropped.", required: true)
-            .ObjectArray("candles", "OHLCV bars in chronological order.", candleItem, required: true)
+            .ObjectArray("candles", "OHLCV bars in chronological order; an empty array when compactRows is true.", candleItem, required: true)
+            .StringArray(CandleColumnsKey, "Column names of every candleRows row; present only when compactRows is true.")
+            .RowArray(CandleRowsKey, "One [timestamp, open, high, low, close, volume] row per bar, oldest first; present only when compactRows is true.")
             .Build();
     }
 
@@ -110,6 +122,8 @@ internal sealed class GetCandlesTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{StartDateArgument}' is after '{EndDateArgument}'.", StartDateArgument);
         }
 
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
         bool completeBarsOnly = ToolArgs.Boolean(arguments, PartialBarOutput.CompleteBarsOnlyArgument) ?? false;
         bool aggregated = TimeFrameAggregator.IsPeriodFrame(timeFrame);
         bool filterByDate = start is not null || end is not null;
@@ -186,22 +200,52 @@ internal sealed class GetCandlesTool : IMcpTool
             writer.WriteBoolean("droppedLeadingBar", droppedLeadingBar);
             PartialBarOutput.Write(writer, referenceDate, lastBarPeriodEnd, lastBarPartial, droppedPartialBar);
             writer.WriteStartArray("candles");
-            foreach (CandleData bar in selected)
+            if (!compactRows)
             {
-                writer.WriteStartObject();
-                writer.WriteString("timestamp", ToolJson.FormatDate(bar.Timestamp));
-                writer.WriteNumber("open", bar.Open);
-                writer.WriteNumber("high", bar.High);
-                writer.WriteNumber("low", bar.Low);
-                writer.WriteNumber("close", bar.Close);
-                writer.WriteNumber("volume", bar.Volume);
-                writer.WriteEndObject();
+                foreach (CandleData bar in selected)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("timestamp", ToolJson.FormatDate(bar.Timestamp));
+                    writer.WriteNumber("open", RoundPrice(bar.Open, decimalPlaces));
+                    writer.WriteNumber("high", RoundPrice(bar.High, decimalPlaces));
+                    writer.WriteNumber("low", RoundPrice(bar.Low, decimalPlaces));
+                    writer.WriteNumber("close", RoundPrice(bar.Close, decimalPlaces));
+                    writer.WriteNumber("volume", bar.Volume);
+                    writer.WriteEndObject();
+                }
             }
 
             writer.WriteEndArray();
+            if (compactRows)
+            {
+                writer.WriteStartArray(CandleColumnsKey);
+                foreach (string column in CandleColumns)
+                {
+                    writer.WriteStringValue(column);
+                }
+
+                writer.WriteEndArray();
+                writer.WriteStartArray(CandleRowsKey);
+                foreach (CandleData bar in selected)
+                {
+                    writer.WriteStartArray();
+                    writer.WriteStringValue(ToolJson.FormatDate(bar.Timestamp));
+                    writer.WriteNumberValue(RoundPrice(bar.Open, decimalPlaces));
+                    writer.WriteNumberValue(RoundPrice(bar.High, decimalPlaces));
+                    writer.WriteNumberValue(RoundPrice(bar.Low, decimalPlaces));
+                    writer.WriteNumberValue(RoundPrice(bar.Close, decimalPlaces));
+                    writer.WriteNumberValue(bar.Volume);
+                    writer.WriteEndArray();
+                }
+
+                writer.WriteEndArray();
+            }
+
             writer.WriteEndObject();
         });
     }
+
+    private static decimal RoundPrice(decimal price, int? decimalPlaces) => decimalPlaces is { } places ? SeriesOutputOptions.Round(price, places) : price;
 
     private static bool InRange(DateOnly date, DateOnly? start, DateOnly? end)
         => (start is null || date >= start) && (end is null || date <= end);

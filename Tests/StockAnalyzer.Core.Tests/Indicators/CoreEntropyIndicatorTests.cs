@@ -184,4 +184,40 @@ public class CoreEntropyIndicatorTests
     {
         Assert.IsType<CoreEntropyIndicator>(IndicatorFactory.CreateStatic(IndicatorType.Entropy));
     }
+
+    [Fact]
+    public void Indicator_EmitsPermutationAndSampleEntropyCompanionSeries()
+    {
+        var random = new Random(2026);
+        var returns = Enumerable.Range(0, 100).Select(_ => (random.NextDouble() - 0.5) * 0.03).ToList();
+        var candles = FromReturns(returns);
+
+        var indicator = new CoreEntropyIndicator { Period = 30, BinCount = 10 };
+        var result = indicator.Calculate(candles);
+
+        Assert.True(result.IsSuccessful);
+        var perm = result.GetSeries(CoreEntropyIndicator.PermutationEntropySeriesName);
+        var samp = result.GetSeries(CoreEntropyIndicator.SampleEntropySeriesName);
+
+        Assert.Equal(candles.Count, perm.Count);
+        Assert.Equal(candles.Count, samp.Count);
+        Assert.All(perm.Take(30), v => Assert.Null(v));
+        Assert.All(samp.Take(30), v => Assert.Null(v));
+        Assert.All(perm.Skip(30), v =>
+        {
+            Assert.NotNull(v);
+            Assert.InRange((double)v!.Value, 0.0, 1.0);
+        });
+        Assert.All(samp.Skip(30), v =>
+        {
+            Assert.NotNull(v);
+            Assert.True(v!.Value >= 0m);
+        });
+
+        var p = new CoreEntropyParameter();
+        Assert.Equal("Entropy (30, 10)", p.GetDisplayName("Entropy"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CoreEntropyParameter { EmbeddingDimension = 2 }.Validate());
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CoreEntropyParameter { SampleEntropyDimension = 4 }.Validate());
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CoreEntropyParameter { ToleranceMultiplier = 0.01 }.Validate());
+    }
 }

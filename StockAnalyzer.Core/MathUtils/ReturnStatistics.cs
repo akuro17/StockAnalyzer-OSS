@@ -46,6 +46,12 @@ public sealed class CrossAssetStatsResult
     /// <see cref="ReturnStatistics.MinCommonDates"/> dates are common. Diagnostic only; the statistics use these returns unchanged.
     /// </summary>
     public int MultiBarReturnCount { get; init; }
+
+    /// <summary>The common return dates, oldest first (<see cref="CommonDateCount"/> entries); empty when fewer than <see cref="ReturnStatistics.MinCommonDates"/> are common.</summary>
+    public IReadOnlyList<DateTime> CommonDates { get; init; } = Array.Empty<DateTime>();
+
+    /// <summary>The aligned return series of <see cref="Symbols"/> (same order), one value per entry of <see cref="CommonDates"/>; empty when there are no common dates. Unit: ratio.</summary>
+    public IReadOnlyList<decimal[]> AlignedReturns { get; init; } = Array.Empty<decimal[]>();
 }
 
 /// <summary>
@@ -422,7 +428,9 @@ public static class ReturnStatistics
             BetaAlpha = betaAlphaList,
             ExcludedSymbols = excludedSymbols,
             Notes = notes,
-            MultiBarReturnCount = multiBarReturnCount
+            MultiBarReturnCount = multiBarReturnCount,
+            CommonDates = commonDates,
+            AlignedReturns = alignedReturns
         };
     }
 

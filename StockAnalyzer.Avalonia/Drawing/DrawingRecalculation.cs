@@ -59,4 +59,20 @@ public static class DrawingRecalculation
             DeferredComputationRecalculator.TryRecalculate(obj, context);
         }
     }
+
+    /// <summary>
+    /// Derives the candle-dependent state of drawing objects that were just created as copies (Ctrl+D duplicate, paste, layer-panel copy).
+    /// A copy carries only the public properties and points of its source, never the derived state that
+    /// <see cref="DeferredComputationRecalculator"/> builds, so without this call it keeps showing the empty state
+    /// (for example 0 bars / 0 volume) until the next data refresh or drag. Does nothing when the context carries no candles.
+    /// </summary>
+    public static void AfterObjectsCreated(IEnumerable<IChartObject>? objects, DrawingCalculationContext context)
+    {
+        if (objects == null || !context.HasCandles) return;
+
+        foreach (var obj in objects)
+        {
+            DeferredComputationRecalculator.TryRecalculate(obj, context);
+        }
+    }
 }

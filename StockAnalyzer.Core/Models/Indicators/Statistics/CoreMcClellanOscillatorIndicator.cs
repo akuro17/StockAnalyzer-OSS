@@ -66,6 +66,7 @@ public sealed class CoreMcClellanOscillatorIndicator : CoreIndicatorBase, IUnive
         MarketBreadthDateAligner.ValidateUniverseGroupId(UniverseGroupId, nameof(UniverseGroupId));
         MarketBreadthDateAligner.ValidatePeriod(FastPeriod, IndicatorDefaultConstants.McClellanFastMinPeriod, IndicatorDefaultConstants.McClellanFastMaxPeriod, nameof(FastPeriod));
         MarketBreadthDateAligner.ValidatePeriod(SlowPeriod, IndicatorDefaultConstants.McClellanSlowMinPeriod, IndicatorDefaultConstants.McClellanSlowMaxPeriod, nameof(SlowPeriod));
+        MarketBreadthDateAligner.ValidateFastBelowSlow(FastPeriod, SlowPeriod, nameof(FastPeriod));
 
         int[]? mapped = MarketBreadthDateAligner.MapCandleIndices(candles, _breadthResult, UniverseGroupId, _breadthTimeFrame);
         MarketBreadthSeries? series = _breadthResult?.Series;

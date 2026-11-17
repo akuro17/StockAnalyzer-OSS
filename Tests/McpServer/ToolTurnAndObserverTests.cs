@@ -115,7 +115,7 @@ public sealed class ToolTurnAndObserverTests
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var gate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var holder = new FakeTool("sa_holder", async (_, _) => { started.SetResult(); return await gate.Task; });
-        McpMessageDispatcher dispatcher = await InitializedAsync(new IMcpTool[] { holder, Instant("sa_other") }, new McpLimits { QueueWaitSeconds = 0 });
+        McpMessageDispatcher dispatcher = await InitializedAsync(new IMcpTool[] { holder, Instant("sa_other") }, new McpLimits { QueueWaitSeconds = 0, MaxConcurrentReadOnlyCalls = 1 });
 
         Task<JsonDocument?> first = McpTestSupport.CallAsync(dispatcher, "sa_holder", id: 1);
         await started.Task;
@@ -129,11 +129,11 @@ public sealed class ToolTurnAndObserverTests
     [Fact]
     public async Task AToolThatDoesNotUseTheTurnNeverReleasesATurnItDidNotTake()
     {
-        // The turn is a semaphore of size one: a release without a wait would let two normal calls run together afterwards.
+        // With one shared slot the turn is a semaphore of size one: a release without a wait would let two normal calls run together afterwards.
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var gate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var holder = new FakeTool("sa_holder", async (_, _) => { started.SetResult(); return await gate.Task; });
-        McpMessageDispatcher dispatcher = await InitializedAsync(new IMcpTool[] { Instant("sa_free", usesTurn: false), holder, Instant("sa_other") }, new McpLimits { QueueWaitSeconds = 0 });
+        McpMessageDispatcher dispatcher = await InitializedAsync(new IMcpTool[] { Instant("sa_free", usesTurn: false), holder, Instant("sa_other") }, new McpLimits { QueueWaitSeconds = 0, MaxConcurrentReadOnlyCalls = 1 });
         for (int i = 0; i < 3; i++)
         {
             (await McpTestSupport.CallAsync(dispatcher, "sa_free", id: 10 + i))!.Dispose();
@@ -239,7 +239,7 @@ public sealed class ToolTurnAndObserverTests
         var gate = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         var holder = new FakeTool("sa_holder", async (_, _) => { started.SetResult(); return await gate.Task; });
         var hang = new FakeTool("sa_hang", async (_, token) => { await Task.Delay(Timeout.Infinite, token); return "{}"; }, usesExecutionTurn: false);
-        McpMessageDispatcher dispatcher = await InitializedAsync(new IMcpTool[] { holder, Instant("sa_other"), hang }, new McpLimits { QueueWaitSeconds = 0, ToolTimeoutSeconds = 1, HeavyToolTimeoutSeconds = 1 }, observer);
+        McpMessageDispatcher dispatcher = await InitializedAsync(new IMcpTool[] { holder, Instant("sa_other"), hang }, new McpLimits { QueueWaitSeconds = 0, ToolTimeoutSeconds = 1, HeavyToolTimeoutSeconds = 1, MaxConcurrentReadOnlyCalls = 1 }, observer);
 
         Task<JsonDocument?> first = McpTestSupport.CallAsync(dispatcher, "sa_holder", id: 1);
         await started.Task;

@@ -11,6 +11,7 @@ using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -38,10 +39,10 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
     public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
-    private const decimal DefaultBand1Multiplier = 1.0m;
-    private const decimal DefaultBand2Multiplier = IndicatorDefaultConstants.VwapStdDevMultiplier;
-    private const decimal MinBandMultiplier = (decimal)IndicatorDefaultConstants.VwapMinStdDevMultiplier;
-    private const decimal MaxBandMultiplier = (decimal)IndicatorDefaultConstants.VwapMaxStdDevMultiplier;
+    private const decimal DefaultBand1Multiplier = AnchoredVwapValues.DefaultBand1Multiplier;
+    private const decimal DefaultBand2Multiplier = AnchoredVwapValues.DefaultBand2Multiplier;
+    private const decimal MinBandMultiplier = AnchoredVwapValues.MinBandMultiplier;
+    private const decimal MaxBandMultiplier = AnchoredVwapValues.MaxBandMultiplier;
 
     private decimal _band1Multiplier = DefaultBand1Multiplier;
     private decimal _band2Multiplier = DefaultBand2Multiplier;
@@ -87,9 +88,6 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
     [Browsable(false)]
     public List<(DateTime Time, decimal Price)> VwapCurve { get; private set; } = new List<(DateTime, decimal)>();
     private readonly List<decimal?> _stdDevCurve = new();
-
-    /// <summary>Text of the AnchorDate value; formatted with <see cref="DrawingValueFormat.Culture"/> (en-US, so the '/' stays a '/').</summary>
-    private const string AnchorDateFormat = "yyyy/MM/dd";
 
     private readonly SKPaint _paint = new SKPaint
     {
@@ -429,73 +427,9 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
         if (Points.Count == 0 || VwapCurve == null || VwapCurve.Count == 0) return Array.Empty<DrawingCalculatedValue>();
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
+        int matchedIndex = AnchoredVwapValues.MatchedIndex(VwapCurve, timestamp);
+        decimal? stdDev = (ShowBand1 || ShowBand2) && _stdDevCurve.Count == VwapCurve.Count ? _stdDevCurve[matchedIndex] : null;
 
-        // Find nearest point <= timestamp or fallback to latest
-        int matchedIndex = VwapCurve.Count - 1;
-        for (int i = VwapCurve.Count - 1; i >= 0; i--)
-        {
-            if (VwapCurve[i].Time <= timestamp)
-            {
-                matchedIndex = i;
-                break;
-            }
-        }
-
-        decimal vwapPrice = VwapCurve[matchedIndex].Price;
-
-        if (!ShowBand1 && !ShowBand2)
-        {
-            return new DrawingCalculatedValue[]
-            {
-                new DrawingCalculatedValue("AnchorDate", "Anchor Date", null, Points[0].Time.ToString(AnchorDateFormat, DrawingValueFormat.Culture), IndicatorColor.Gray),
-                new DrawingCalculatedValue("AnchoredVWAP", "Anchored VWAP", vwapPrice, string.Create(DrawingValueFormat.Culture, $"{vwapPrice:F3}"), color)
-            };
-        }
-
-        int extraCount = (ShowBand1 ? 2 : 0) + (ShowBand2 ? 2 : 0);
-        var values = new DrawingCalculatedValue[2 + extraCount];
-        values[0] = new DrawingCalculatedValue("AnchorDate", "Anchor Date", null, Points[0].Time.ToString(AnchorDateFormat, DrawingValueFormat.Culture), IndicatorColor.Gray);
-        values[1] = new DrawingCalculatedValue("AnchoredVWAP", "Anchored VWAP", vwapPrice, string.Create(DrawingValueFormat.Culture, $"{vwapPrice:F3}"), color);
-
-        decimal? stdDev = _stdDevCurve.Count == VwapCurve.Count ? _stdDevCurve[matchedIndex] : null;
-        int writeIdx = 2;
-        if (ShowBand1)
-        {
-            WriteBandCalculatedValues(values, ref writeIdx, "Upper1", "Upper 1", "Lower1", "Lower 1", vwapPrice, stdDev, Band1Multiplier, color);
-        }
-        if (ShowBand2)
-        {
-            WriteBandCalculatedValues(values, ref writeIdx, "Upper2", "Upper 2", "Lower2", "Lower 2", vwapPrice, stdDev, Band2Multiplier, color);
-        }
-
-        return values;
-    }
-
-    private static void WriteBandCalculatedValues(
-        DrawingCalculatedValue[] target,
-        ref int writeIdx,
-        string upperKey,
-        string upperLabel,
-        string lowerKey,
-        string lowerLabel,
-        decimal vwapPrice,
-        decimal? stdDev,
-        decimal multiplier,
-        IndicatorColor color)
-    {
-        if (stdDev is { } sigma)
-        {
-            decimal offset = multiplier * sigma;
-            decimal upper = vwapPrice + offset;
-            decimal lower = vwapPrice - offset;
-            target[writeIdx++] = new DrawingCalculatedValue(upperKey, upperLabel, upper, string.Create(DrawingValueFormat.Culture, $"{upper:F3}"), color);
-            target[writeIdx++] = new DrawingCalculatedValue(lowerKey, lowerLabel, lower, string.Create(DrawingValueFormat.Culture, $"{lower:F3}"), color);
-        }
-        else
-        {
-            target[writeIdx++] = new DrawingCalculatedValue(upperKey, upperLabel, null, "-", color);
-            target[writeIdx++] = new DrawingCalculatedValue(lowerKey, lowerLabel, null, "-", color);
-        }
+        return AnchoredVwapValues.Calculate(Points[0].Time, VwapCurve[matchedIndex].Price, stdDev, ShowBand1, Band1Multiplier, ShowBand2, Band2Multiplier, color);
     }
 }
-

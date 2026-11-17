@@ -66,8 +66,21 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     private readonly ITemplateService? _templateService;
     private readonly IScreenerTemplateEvaluator? _screenerTemplateEvaluator;
     private readonly IRsRatingClosesProvider? _rsRatingClosesProvider;
+    private readonly StockAnalyzer.Core.Services.ITimeFrameManager? _timeFrameManager;
+    private readonly StockAnalyzer.Core.Services.Analysis.IMarketBreadthSeriesProvider? _marketBreadthSeriesProvider;
     private IReadOnlyList<string>? _lastRsUniverseSymbols;
-    private bool _rsRatingsSettledForCurrentUniverse;
+    // The same universe as a case-insensitive set, so that the membership test of every data-refreshed message is O(1) (a bulk sync sends one message per symbol).
+    // Built once per universe and never modified afterwards, so a message thread may read it while the UI thread replaces it.
+    private volatile HashSet<string>? _lastRsUniverseSet;
+    // volatile: the data-refreshed message may arrive on a background thread while the UI thread reads the flag (export path).
+    private volatile bool _rsRatingsSettledForCurrentUniverse;
+    private readonly int _rsRatingRefreshDebounceMilliseconds;
+    private readonly TimeProvider _timeProvider;
+    // The source of the newest refresh run. Whoever takes it out of this field (the next message, Dispose, or the run itself when it ends) is its only owner and
+    // alone cancels and disposes it, so Cancel and Dispose of one source never overlap.
+    private CancellationTokenSource? _rsRatingRefreshCts;
+    // Counts the refresh requests; a run applies its result only while no newer request exists (a result queued for the UI thread can outlive its run's source).
+    private int _rsRatingRefreshGeneration;
     private CancellationTokenSource? _screenerTemplateFilterCts;
     private bool _isInternalChange; // Guard against selection nullification during collection updates
     private readonly List<string> _allTickers = new();
@@ -1176,8 +1189,17 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         StockAnalyzer.Core.Services.Backtest.Configuration.IBacktestDefaultSettingsManager? backtestDefaultSettingsManager = null,
         StockAnalyzer.Avalonia.Services.IBacktestSettingsCoordinator? backtestSettingsCoordinator = null,
         StockAnalyzer.Core.Common.IDataStorageState? dataStorageState = null,
-        StockAnalyzer.Core.Services.Analysis.IRsRatingClosesProvider? rsRatingClosesProvider = null)
+        StockAnalyzer.Core.Services.Analysis.IRsRatingClosesProvider? rsRatingClosesProvider = null,
+        StockAnalyzer.Core.Services.ITimeFrameManager? timeFrameManager = null,
+        StockAnalyzer.Core.Services.Analysis.IMarketBreadthSeriesProvider? marketBreadthSeriesProvider = null,
+        IStockAnalyzerSettings? settings = null,
+        TimeProvider? timeProvider = null)
     {
+        _timeProvider = timeProvider ?? TimeProvider.System;
+        _rsRatingRefreshDebounceMilliseconds = settings?.RsRatingRefreshDebounceMilliseconds
+            ?? new MarketDataSettings().RsRatingRefreshDebounceMilliseconds;
+        _timeFrameManager = timeFrameManager;
+        _marketBreadthSeriesProvider = marketBreadthSeriesProvider;
         _storageGate = new StorageFeatureGate(dataStorageState);
         ToastService = toastService;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TickerListViewModel>.Instance;
@@ -2518,12 +2540,16 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                      {
                          await _marketDataProvider.DeleteLatestTickerDataAsync(symbol, vm.DeleteLatestBarsCount);
                          _marketDataProvider.InvalidateMetadataCache(symbol);
+                         _timeFrameManager?.InvalidateCache(symbol);
+                         _marketBreadthSeriesProvider?.ClearCache();
                      }
 
                      await _pythonService.RunUpdatePipelineAsync(symbol, currentConfig, ivm.ProgressReporter, linkedCts.Token);
                      
                      // Invalidate cache and reload fresh metadata and candles from disk
                      _marketDataProvider.InvalidateMetadataCache(symbol);
+                     _timeFrameManager?.InvalidateCache(symbol);
+                     _marketBreadthSeriesProvider?.ClearCache();
                      var freshMeta = await _marketDataProvider.GetMetadataAsync(symbol);
                      IReadOnlyList<Core.Models.CandleData>? freshCandles = null;
                      try
@@ -3365,6 +3391,10 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     {
         var symbol = message.Value;
         if (string.IsNullOrEmpty(symbol)) return;
+
+        // The RS Rating ranks the whole watchlist universe (also the rows a filter hides), and one symbol's new closes move every other rank.
+        ScheduleRsRatingRefreshFor(symbol);
+
         if (!DisplayItems.Any(i => i.Symbol == symbol)) return;
 
         _dispatcherService.PostAsync(static async state =>
@@ -3559,6 +3589,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
         if (!IsSameRsUniverse(_lastRsUniverseSymbols, rsUniverseSymbols))
         {
+            _lastRsUniverseSet = new HashSet<string>(rsUniverseSymbols, StringComparer.OrdinalIgnoreCase);
             _lastRsUniverseSymbols = rsUniverseSymbols;
             _rsRatingsSettledForCurrentUniverse = false;
             foreach (var cachedItem in _viewModelCache.Values)
@@ -4227,11 +4258,110 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         }
     }
 
+    /// <summary>
+    /// The data of <paramref name="symbol"/> changed on disk (a sync, or any other <see cref="TickerDataRefreshedMessage"/> sender). When the symbol belongs to the
+    /// RS Rating universe, the ratings are recomputed once after <c>MarketDataSettings.RsRatingRefreshDebounceMilliseconds</c> without a further message, so a
+    /// bulk sync costs one query. The old values stay on screen until the new ones arrive. Whether the closes really changed is not tested: the Tickers-tab
+    /// sync updates the row before it sends the message, so the receiver could not see a change, and a notes edit (which sends the same message) only costs one query.
+    /// </summary>
+    private void ScheduleRsRatingRefreshFor(string symbol)
+    {
+        if (_rsRatingClosesProvider == null || _isDisposed) return;
+
+        var universeSet = _lastRsUniverseSet;
+        if (universeSet == null || !universeSet.Contains(symbol)) return;
+
+        _rsRatingsSettledForCurrentUniverse = false;
+
+        int generation = Interlocked.Increment(ref _rsRatingRefreshGeneration);
+        var cts = new CancellationTokenSource();
+        CancelAndDispose(Interlocked.Exchange(ref _rsRatingRefreshCts, cts));
+        _ = RefreshRsRatingsAsync(cts, generation);
+    }
+
+    /// <summary>
+    /// One refresh run: the pause, the snapshot on the UI thread, the recomputation. A newer message (or Dispose) takes <paramref name="cts"/> out of
+    /// <see cref="_rsRatingRefreshCts"/>, cancels and disposes it; a run that is still the newest when it ends takes it out itself and disposes it. The result of
+    /// a run is applied only while <paramref name="generation"/> is the newest request, so a result that reaches the UI thread after a newer message is dropped.
+    /// </summary>
+    private async Task RefreshRsRatingsAsync(CancellationTokenSource cts, int generation)
+    {
+        try
+        {
+            CancellationToken ct = cts.Token;
+            await Task.Delay(TimeSpan.FromMilliseconds(_rsRatingRefreshDebounceMilliseconds), _timeProvider, ct).ConfigureAwait(false);
+
+            var snapshot = new RsRatingRefreshSnapshot();
+            await _dispatcherService.PostAsync(
+                static state => { state.vm.CaptureRsRatingSnapshot(state.snapshot); return Task.CompletedTask; },
+                (vm: this, snapshot)).ConfigureAwait(false);
+
+            if (ct.IsCancellationRequested || snapshot.Universe == null) return;
+            await PopulateRsRatingsForItemsAsync(
+                snapshot.Items,
+                snapshot.Universe,
+                applyOnDispatcher: true,
+                ct,
+                isCurrent: () => generation == Volatile.Read(ref _rsRatingRefreshGeneration)).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // A newer message restarted the wait, or the view model was disposed.
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "RS Rating refresh failed.");
+        }
+        finally
+        {
+            // Only the run that is still the newest owns its source; otherwise the message that replaced it is cancelling and disposing it.
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _rsRatingRefreshCts, null, cts), cts))
+            {
+                cts.Dispose();
+            }
+        }
+    }
+
+    /// <summary>Runs on the UI thread: the cached rows of the current RS universe (the rows are owned by the UI thread).</summary>
+    private void CaptureRsRatingSnapshot(RsRatingRefreshSnapshot snapshot)
+    {
+        var universe = _lastRsUniverseSymbols;
+        if (_isDisposed || universe == null || universe.Count == 0) return;
+
+        var universeSet = new HashSet<string>(universe, StringComparer.OrdinalIgnoreCase);
+        snapshot.Items = _viewModelCache.Values.Where(i => universeSet.Contains(i.Symbol)).ToList();
+        snapshot.Universe = universe;
+    }
+
+    private sealed class RsRatingRefreshSnapshot
+    {
+        public IReadOnlyList<WatchlistItemViewModel> Items { get; set; } = Array.Empty<WatchlistItemViewModel>();
+        public IReadOnlyList<string>? Universe { get; set; }
+    }
+
+    /// <summary>
+    /// Cancels and disposes a source this caller has just taken out of <see cref="_rsRatingRefreshCts"/>. Nobody else can reach it, so the two calls cannot
+    /// overlap with another Cancel or Dispose. A run that still holds its token only reads it: a cancelled token of a disposed source stays valid for that.
+    /// </summary>
+    private static void CancelAndDispose(CancellationTokenSource? cts)
+    {
+        if (cts == null) return;
+        try
+        {
+            cts.Cancel();
+        }
+        finally
+        {
+            cts.Dispose();
+        }
+    }
+
     private async Task PopulateRsRatingsForItemsAsync(
         IReadOnlyList<WatchlistItemViewModel> items,
         IReadOnlyList<string> universeSymbols,
         bool applyOnDispatcher,
-        CancellationToken ct)
+        CancellationToken ct,
+        Func<bool>? isCurrent = null)
     {
         if (_rsRatingClosesProvider == null || items.Count == 0 || universeSymbols.Count == 0)
         {
@@ -4247,6 +4377,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             _dispatcherService.Post(static state =>
             {
                 if (state.ct.IsCancellationRequested ||
+                    state.isCurrent?.Invoke() == false ||
                     state.vm._lastRsUniverseSymbols == null ||
                     !IsSameRsUniverse(state.vm._lastRsUniverseSymbols, state.universeSymbols))
                 {
@@ -4257,7 +4388,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                     item.RsRating = state.ratings.TryGetValue(item.Symbol, out var rating) ? rating : null;
                 }
                 state.vm._rsRatingsSettledForCurrentUniverse = true;
-            }, (vm: this, items, ratings, universeSymbols, ct));
+            }, (vm: this, items, ratings, universeSymbols, ct, isCurrent));
         }
         else
         {
@@ -4614,6 +4745,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         StockAnalyzer.Core.Services.UserStrategyMetadataRepository.Instance.StrategyChanged -= OnStrategyChanged;
         _screenerTemplateFilterCts?.Cancel();
         _screenerTemplateFilterCts?.Dispose();
+        CancelAndDispose(Interlocked.Exchange(ref _rsRatingRefreshCts, null));
         _messenger.UnregisterAll(this);
         if (_tickersSettingsManager != null)
         {

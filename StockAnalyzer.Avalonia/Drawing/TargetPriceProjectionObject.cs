@@ -7,6 +7,8 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 
+using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -123,67 +125,13 @@ public class TargetPriceProjectionObject : IChartObject, IDisposable, IDrawingCa
     public List<ProjectionTarget> CalculateTargetPrices()
     {
         _targetsBuffer.Clear();
-        if (Points.Count < 2) return _targetsBuffer;
+        if (Points.Count < 3) return _targetsBuffer;
 
-        if (Points.Count >= 3)
+        int count = TargetPriceProjectionValues.Targets(Points[0].Price, Points[1].Price, Points[2].Price, Selection, _resultBuffer);
+        for (int i = 0; i < count; i++)
         {
-            if (ShowDoubleReturn)
-            {
-                // V Calculation (Double Return): Target = P2 + (P2 - P3)
-                // A=P1, B=P2, C=P3. V = B + (B - C)
-                // Anchors from P3 and points in the main trend direction.
-                _targetsBuffer.Add(new ProjectionTarget
-                {
-                    Name = "V",
-                    Price = Points[1].Price + (Points[1].Price - Points[2].Price),
-                    Anchor = Points[2]
-                });
-            }
-            if (ShowEqualDistance)
-            {
-                // N: Target = P3.Price + (P2.Price - P1.Price)
-                _targetsBuffer.Add(new ProjectionTarget
-                {
-                    Name = "N",
-                    Price = Points[2].Price + (Points[1].Price - Points[0].Price),
-                    Anchor = Points[2]
-                });
-            }
-
-            if (ShowEqualPercentage && Points[0].Price != 0)
-            {
-                // Percentage: Target = P3.Price * (P2.Price / P1.Price)
-                _targetsBuffer.Add(new ProjectionTarget
-                {
-                    Name = "%",
-                    Price = Points[2].Price * (Points[1].Price / Points[0].Price),
-                    Anchor = Points[2]
-                });
-            }
-
-            if (ShowEProjection)
-            {
-                // E Calculation: Target = P2 + (P2 - P1)
-                // Anchors from P2
-                _targetsBuffer.Add(new ProjectionTarget
-                {
-                    Name = "E",
-                    Price = Points[1].Price + (Points[1].Price - Points[0].Price),
-                    Anchor = Points[1]
-                });
-            }
-
-            if (ShowNTProjection)
-            {
-                // NT Calculation: Target = P3 + (P3 - P1)
-                // Anchors from P3
-                _targetsBuffer.Add(new ProjectionTarget
-                {
-                    Name = "NT",
-                    Price = Points[2].Price + (Points[2].Price - Points[0].Price),
-                    Anchor = Points[2]
-                });
-            }
+            ProjectionTargetResult target = _resultBuffer[i];
+            _targetsBuffer.Add(new ProjectionTarget { Name = target.Name, Price = target.Price, Anchor = Points[target.AnchorIndex] });
         }
 
         return _targetsBuffer;
@@ -357,37 +305,18 @@ public class TargetPriceProjectionObject : IChartObject, IDisposable, IDrawingCa
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-        var values = new List<DrawingCalculatedValue>();
+        return TargetPriceProjectionValues.Calculate(PointAnchors(), currentPrice, color, Selection);
+    }
 
-        var targets = CalculateTargetPrices();
-        foreach (var target in targets)
-        {
-            string formatted;
-            if (currentPrice.HasValue)
-            {
-                decimal diff = target.Price - currentPrice.Value;
-                string diffSign = diff >= 0 ? "+" : "";
-                formatted = $"{target.Price:F3} ({diffSign}{diff:F3})";
-            }
-            else
-            {
-                formatted = $"{target.Price:F3}";
-            }
+    private readonly ProjectionTargetResult[] _resultBuffer = new ProjectionTargetResult[TargetPriceProjectionValues.MaxTargets];
 
-            string label = target.Name switch
-            {
-                "V" => "Target V (Double Return)",
-                "N" => "Target N (Equal Distance)",
-                "%" => "Target % (Equal Ratio)",
-                "E" => "Target E (Expansion)",
-                "NT" => "Target NT (Secondary)",
-                _ => $"Target {target.Name}"
-            };
+    private ProjectionTargetSelection Selection => new(ShowEqualDistance, ShowEqualPercentage, ShowDoubleReturn, ShowEProjection, ShowNTProjection);
 
-            values.Add(new DrawingCalculatedValue($"Target_{target.Name}", label, target.Price, formatted, color));
-        }
-
-        return values;
+    private DrawingAnchor[] PointAnchors()
+    {
+        var anchors = new DrawingAnchor[Points.Count];
+        for (int i = 0; i < anchors.Length; i++) anchors[i] = Points[i].ToAnchor();
+        return anchors;
     }
 
     public void Dispose()

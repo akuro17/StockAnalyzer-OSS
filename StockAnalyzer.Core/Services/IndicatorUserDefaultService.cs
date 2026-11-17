@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Serialization;
 using StockAnalyzer.Core.Utilities;
 
@@ -70,6 +71,7 @@ public class IndicatorUserDefaultService : IIndicatorUserDefaultService, IDispos
                 if (item.TypeEnum.HasValue)
                 {
                     DefaultCoreIndicatorSettings.AutoHeal(item);
+                    IndicatorTimeframePolicy.ForceSameAsChart(item); // a file written before this rule may carry one
                     result[item.TypeEnum.Value] = item;
                 }
             }
@@ -108,6 +110,7 @@ public class IndicatorUserDefaultService : IIndicatorUserDefaultService, IDispos
                 if (item.TypeEnum.HasValue)
                 {
                     DefaultCoreIndicatorSettings.AutoHeal(item);
+                    IndicatorTimeframePolicy.ForceSameAsChart(item); // a file written before this rule may carry one
                     result[item.TypeEnum.Value] = item;
                 }
             }
@@ -133,6 +136,7 @@ public class IndicatorUserDefaultService : IIndicatorUserDefaultService, IDispos
         var defaults = await LoadUserDefaultsAsync().ConfigureAwait(false);
         var clone = settings.Clone();
         clone.IsEnabled = true;
+        IndicatorTimeframePolicy.ForceSameAsChart(clone); // a default is a template of values, never a placement on a time frame
         defaults[settings.TypeEnum.Value] = clone;
 
         await WriteUserDefaultsAsync(defaults.Values.ToList()).ConfigureAwait(false);

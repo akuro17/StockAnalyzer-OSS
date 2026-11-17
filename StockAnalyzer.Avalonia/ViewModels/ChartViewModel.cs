@@ -41,6 +41,7 @@ namespace StockAnalyzer.Avalonia.ViewModels;
 public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IRecipient<TickerSelectedMessage>, IRecipient<TickerRowClickedMessage>, IRecipient<TickerDataRefreshedMessage>, IRecipient<ChartPeriodChangedMessage>, IRecipient<ChartTimeframeChangedMessage>, IRecipient<PredictionConfigurationChangedMessage>, IDisposable
 {
     private static int _dtwRequestIdCounter = 0;
+    private CancellationTokenSource? _dtwSearchCts;
     private readonly Microsoft.Extensions.Logging.ILogger<ChartViewModel>? _logger;
     private readonly IDataService _dataService;
     private readonly ITimeFrameManager? _timeFrameManager;
@@ -794,6 +795,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         _indicatorCalcCts?.Dispose();
         _indicatorCalcCts = null;
 
+        CancelPreviousDtwCts(replacement: null);
+
         _displayModeSubject.OnCompleted();
         _displayModeSubject.Dispose();
 
@@ -1097,6 +1100,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 }
 
                 IReadOnlyDictionary<string, IIndicatorResult> results;
+                IReadOnlyList<CoreIndicatorSettings>? ignoredTimeframeForUi = null;
                 if (!needsFullRecalc && IndicatorResults != null)
                 {
                     // OPTIMIZED: Re-use previous math results, only visual properties changed.
@@ -1181,8 +1185,11 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                     }
 
 
-                    var pipelineSettings = ApplyDynamicUniverseGroupId(snapshotSettings, effectiveDynamicGroupId);
-                    results = _analysisPipelineService is Core.Services.Analysis.ITimeFrameAwareIndicatorCalculation tfPipeline
+                    // A chart type that draws no time-based bars ignores the indicator time frame: the pipeline gets Same as Chart clones and the originals are flagged.
+                    var timeframeSettings = ApplyChartTypeTimeframePolicy(snapshotSettings, chartType, out var ignoredTimeframeSettings);
+                    ignoredTimeframeForUi = ignoredTimeframeSettings;
+                    var pipelineSettings = ApplyDynamicUniverseGroupId(timeframeSettings, effectiveDynamicGroupId);
+                    results =_analysisPipelineService is Core.Services.Analysis.ITimeFrameAwareIndicatorCalculation tfPipeline
                         ? await tfPipeline.CalculateIndicatorsAsync(targetCandles, pipelineSettings, secondaryCandlesBySymbol, timeFrame.ToCoreTimeFrame(), cts.Token).ConfigureAwait(false)
                         : await _analysisPipelineService.CalculateIndicatorsAsync(targetCandles, pipelineSettings, secondaryCandlesBySymbol);
 
@@ -1222,11 +1229,19 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
                 
                 // ID check moved to dispatcher callback to avoid 'this' capture in Task.Run closure
-                dispatcher.Post<(ChartViewModel vm, int id, IReadOnlyDictionary<string, IIndicatorResult> results, CancellationTokenSource cts)>(static (state) => 
+                dispatcher.Post<(ChartViewModel vm, int id, IReadOnlyDictionary<string, IIndicatorResult> results, CancellationTokenSource cts, IReadOnlyList<CoreIndicatorSettings>? ignoredTimeframe)>(static (state) =>
                 {
                     if (state.id != state.vm._indicatorCalcId || state.cts.IsCancellationRequested || state.vm._isDisposed) return;
-                    
+
                     state.vm.IndicatorResults = state.results;
+                    if (state.ignoredTimeframe != null)
+                    {
+                        foreach (var ignored in state.ignoredTimeframe)
+                        {
+                            ignored.ErrorMessage = IndicatorTimeframeMessages.ChartTypeNotApplicable;
+                        }
+                    }
+
                     if (state.vm.Candles != null && state.vm.ObjectManager != null)
                     {
                         var context = new Drawing.DrawingCalculationContext(state.vm.Candles, state.results, state.vm.Indicators, state.vm.Symbol);
@@ -1237,7 +1252,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                     }
                     state.vm.RequestRender(RenderReason.DataChanged); // Trigger redraw
                     state.vm._messenger.Send(new StockAnalyzer.Avalonia.Common.IndicatorResultsUpdatedMessage());
-                }, (this, currentId, results, cts));
+                }, (this, currentId, results, cts, ignoredTimeframeForUi));
             }
             catch (OperationCanceledException)
             {
@@ -1255,6 +1270,56 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 }
             }
         });
+    }
+
+    /// <summary>
+    /// On a chart type that draws no time-based indicator bars (<see cref="IndicatorTimeframePolicy.IsApplicable"/> is false) an indicator time frame has no meaning:
+    /// every enabled setting that would use one is replaced by a Same as Chart snapshot (same Id, so results stay keyed by the original) and listed in
+    /// <paramref name="ignored"/> so the caller can flag the originals. On an applicable chart type the input list is returned unchanged and <paramref name="ignored"/> is null.
+    /// </summary>
+    internal static IReadOnlyList<CoreIndicatorSettings> ApplyChartTypeTimeframePolicy(
+        IReadOnlyList<CoreIndicatorSettings> settings,
+        ChartType chartType,
+        out IReadOnlyList<CoreIndicatorSettings>? ignored)
+    {
+        ignored = null;
+        if (IndicatorTimeframePolicy.IsApplicable(chartType))
+        {
+            return settings;
+        }
+
+        List<CoreIndicatorSettings>? replaced = null;
+        List<CoreIndicatorSettings>? affected = null;
+        for (int i = 0; i < settings.Count; i++)
+        {
+            var setting = settings[i];
+            bool usesTimeframe = setting.IsEnabled
+                && setting.Timeframe != IndicatorTimeframe.SameAsChart
+                && setting.TypeEnum is { } type
+                && IndicatorTimeframePolicy.SupportsIndicatorTimeframe(type, setting.ParameterObject);
+            if (!usesTimeframe)
+            {
+                replaced?.Add(setting);
+                continue;
+            }
+
+            if (replaced == null)
+            {
+                replaced = new List<CoreIndicatorSettings>(settings.Count);
+                for (int j = 0; j < i; j++)
+                {
+                    replaced.Add(settings[j]);
+                }
+            }
+
+            var snapshot = setting.Snapshot();
+            snapshot.Timeframe = IndicatorTimeframe.SameAsChart;
+            replaced.Add(snapshot);
+            (affected ??= new List<CoreIndicatorSettings>()).Add(setting);
+        }
+
+        ignored = affected;
+        return replaced ?? settings;
     }
 
     private static bool HasEmptyUniverseGroupId(CoreIndicatorSettings setting) =>
@@ -2516,7 +2581,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             // a derived brick/column series and are excluded), fetch extra leading historical bars
             // sized to the largest active single-Period indicator, purely as calculation warm-up.
             int requiredLookback = (EnableExtendedLookbackForIndicators && ExtendedLookbackHelper.IsEligibleChartType(ChartType))
-                ? ExtendedLookbackHelper.CalculateRequiredLookback(Indicators)
+                ? ExtendedLookbackHelper.CalculateRequiredLookback(Indicators, tf, applyTimeframeScaling: IndicatorTimeframePolicy.IsApplicable(ChartType))
                 : 0;
             int fetchCount = MaxCandleCount + requiredLookback;
 
@@ -3003,14 +3068,21 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     
     public void OnDrawingFinished(IChartObject obj)
     {
+        if (_isDisposed) return;
+
         if (obj is Drawing.Objects.DtwProjectionObject dtwObj)
         {
             // The user finished drawing the DTW projection box.
-            // Increment the request ID so that previous queries are ignored if they haven't finished
+            // Increment the request ID and cancel any in-flight search CTS.
             var currentRequestId = Interlocked.Increment(ref _dtwRequestIdCounter);
+            var cancellationToken = CancelAndReplaceDtwCts();
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
 
             // Start the ML search using the selected timeframe. Use Task.Run to prevent UI deadlock/freeze during Python initialization.
-            Task.Run(() => ExecuteDtwSearchAsync(dtwObj, currentRequestId));
+            Task.Run(() => ExecuteDtwSearchAsync(dtwObj, currentRequestId, cancellationToken), cancellationToken);
         }
         else if (obj is Drawing.Objects.KalmanFilterProjectionObject kalmanObj)
         {
@@ -3133,30 +3205,55 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         }
     }
 
-    private async Task ExecuteDtwSearchAsync(Drawing.Objects.DtwProjectionObject dtwObj, int requestId)
+    private CancellationToken CancelAndReplaceDtwCts()
+    {
+        var nextCts = new CancellationTokenSource();
+        CancelPreviousDtwCts(nextCts);
+        if (_isDisposed)
+        {
+            CancelPreviousDtwCts(null);
+            return new CancellationToken(canceled: true);
+        }
+        return nextCts.Token;
+    }
+
+    private void CancelPreviousDtwCts(CancellationTokenSource? replacement)
+    {
+        var prevCts = Interlocked.Exchange(ref _dtwSearchCts, replacement);
+        if (prevCts != null)
+        {
+            try { prevCts.Cancel(); } catch (ObjectDisposedException) { }
+            prevCts.Dispose();
+        }
+    }
+
+    private async Task ExecuteDtwSearchAsync(
+        Drawing.Objects.DtwProjectionObject dtwObj,
+        int requestId,
+        CancellationToken cancellationToken)
     {
         var dispatcher = _dispatcherService;
 
-        // Debounce: Wait 250ms to let subsequent drag events (if any) override the request ID
-        await Task.Delay(StockAnalyzer.Avalonia.Common.ChartConstants.DtwSearchDebounceDelay);
-
-        if (requestId != _dtwRequestIdCounter)
-        {
-            return; // Ignore obsolete request before hitting the ML pipeline
-        }
-
-        if (_marketStructureService == null)
-        {
-            return;
-        }
-
-        if (_candles == null || _candles.Count == 0 || dtwObj.Points.Count < 2)
-        {
-            return;
-        }
-
         try
         {
+            // Debounce: Wait 250ms to let subsequent drag events (if any) cancel this request
+            await Task.Delay(StockAnalyzer.Avalonia.Common.ChartConstants.DtwSearchDebounceDelay, cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested || requestId != _dtwRequestIdCounter || _isDisposed)
+            {
+                return; // Ignore obsolete or cancelled request before hitting the ML pipeline
+            }
+
+            if (_marketStructureService == null)
+            {
+                return;
+            }
+
+            if (_candles == null || _candles.Count == 0 || dtwObj.Points.Count < 2)
+            {
+                return;
+            }
+
             // Determine the start and end indices for the selected region
             var t1 = dtwObj.Points[0].Time;
             var t2 = dtwObj.Points[1].Time;
@@ -3201,27 +3298,40 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 threshold: 0.3, // We can lower this if it still doesn't hit
                 queryLength: queryLength,
                 queryStartIndex: startIndex,
-                useStructural: true);
+                useStructural: true,
+                useDbaEnsemble: dtwObj.UseDbaEnsemble,
+                topKMatches: dtwObj.TopKMatches,
+                cancellationToken: cancellationToken);
 
-            if (requestId != _dtwRequestIdCounter)
+            if (cancellationToken.IsCancellationRequested || requestId != _dtwRequestIdCounter || _isDisposed)
             {
                 return;
             }
 
             if (result.IsSuccessful && result.Patterns != null && result.Patterns.Count > 0)
             {
-                // Take the most similar pattern (top 1) and project it
+                // Take the most similar pattern (top 1) or the DBA ensemble barycenter when enabled
                 var topOverlay = result.Patterns.FirstOrDefault();
-                if (topOverlay != null && topOverlay.FuturePercentChange != null)
+                IReadOnlyList<double>? activePct =
+                    (dtwObj.UseDbaEnsemble && result.DbaBarycenterPercentChange.Count > 0)
+                        ? result.DbaBarycenterPercentChange
+                        : topOverlay?.FuturePercentChange;
+
+                if (topOverlay != null && activePct != null && activePct.Count > 0)
                 {
-                    // Map the relative FuturePercentChange to absolute chart coordinates starting from the end of the selection
-                    var projectedPoints = new List<StockAnalyzer.Core.Models.Point>();
+                    // Map the relative percentage changes to absolute chart coordinates starting from the end of the selection
+                    var projectedPoints = new List<StockAnalyzer.Core.Models.Point>(activePct.Count);
+                    var upperPoints = new List<StockAnalyzer.Core.Models.Point>();
+                    var lowerPoints = new List<StockAnalyzer.Core.Models.Point>();
                     var lastCandle = _candles[endIndex];
                     var basePrice = (double)lastCandle.Close;
+                    bool hasEnsembleBand = dtwObj.UseDbaEnsemble
+                        && result.DbaUpperBandPercentChange.Count == activePct.Count
+                        && result.DbaLowerBandPercentChange.Count == activePct.Count;
 
                     var timeframeSpan = SelectedTimeFrame.ToTimeSpan();
 
-                    for (int i = 0; i < topOverlay.FuturePercentChange.Count; i++)
+                    for (int i = 0; i < activePct.Count; i++)
                     {
                         var targetIndex = endIndex + i + 1; // +1 to start after the selection
                         DateTime targetTime;
@@ -3236,10 +3346,13 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                             targetTime = _candles[^1].Timestamp + (timeframeSpan * extendedSteps);
                         }
 
-                        // Values in FuturePercentChange are relative changes. Add to base price.
-                        var projectedPrice = basePrice * (1.0 + topOverlay.FuturePercentChange[i] / 100.0);
-                        // Encode time as ticks in X, and price as Y
-                        projectedPoints.Add(new StockAnalyzer.Core.Models.Point((double)targetTime.Ticks, projectedPrice));
+                        double xTicks = targetTime.Ticks;
+                        projectedPoints.Add(new StockAnalyzer.Core.Models.Point(xTicks, basePrice * (1.0 + activePct[i] / 100.0)));
+                        if (hasEnsembleBand)
+                        {
+                            upperPoints.Add(new StockAnalyzer.Core.Models.Point(xTicks, basePrice * (1.0 + result.DbaUpperBandPercentChange[i] / 100.0)));
+                            lowerPoints.Add(new StockAnalyzer.Core.Models.Point(xTicks, basePrice * (1.0 + result.DbaLowerBandPercentChange[i] / 100.0)));
+                        }
                     }
 
                     // Resolve matched pattern timestamps for chart highlight
@@ -3251,17 +3364,21 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                         matchEnd = _candles[topOverlay.EndIndex].Timestamp;
 
                     // Dispatch to UI thread to update the object and request redraw
-                    dispatcher.Post<(ChartViewModel vm, Drawing.Objects.DtwProjectionObject dtwObj, List<StockAnalyzer.Core.Models.Point> points, DateTime? start, DateTime? end)>(static (state) =>
+                    dispatcher.Post<(ChartViewModel vm, Drawing.Objects.DtwProjectionObject dtwObj, List<StockAnalyzer.Core.Models.Point> points, List<StockAnalyzer.Core.Models.Point> upper, List<StockAnalyzer.Core.Models.Point> lower, DateTime? start, DateTime? end, double distance, double similarityPercent)>(static (state) =>
                     {
-                        var (vm, dtwObj, points, start, end) = state;
+                        var (vm, dtwObj, points, upper, lower, start, end, distance, similarityPercent) = state;
                         if (vm._isDisposed) return;
 
                         dtwObj.ProjectedPath = points;
+                        dtwObj.UpperBandPath = upper;
+                        dtwObj.LowerBandPath = lower;
                         dtwObj.MatchedStartTime = start;
                         dtwObj.MatchedEndTime = end;
+                        dtwObj.BestMatchDistance = distance;
+                        dtwObj.BestMatchSimilarity = similarityPercent;
                         dtwObj.IsUnmatched = false;
                         vm.RequestRender(RenderReason.DataChanged);
-                    }, (this, dtwObj, projectedPoints, matchStart, matchEnd));
+                    }, (this, dtwObj, projectedPoints, upperPoints, lowerPoints, matchStart, matchEnd, topOverlay.Distance, topOverlay.Probability * StockAnalyzer.Core.Models.IndicatorDefaultConstants.PercentScale));
                     return;
                 }
             }
@@ -3273,6 +3390,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 if (vm._isDisposed) return;
 
                 dtwObj.ProjectedPath?.Clear();
+                dtwObj.UpperBandPath?.Clear();
+                dtwObj.LowerBandPath?.Clear();
                 dtwObj.MatchedStartTime = null;
                 dtwObj.MatchedEndTime = null;
                 dtwObj.IsUnmatched = true;
@@ -3292,6 +3411,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 if (vm._isDisposed) return;
 
                 dtwObj.ProjectedPath?.Clear();
+                dtwObj.UpperBandPath?.Clear();
+                dtwObj.LowerBandPath?.Clear();
                 dtwObj.MatchedStartTime = null;
                 dtwObj.MatchedEndTime = null;
                 dtwObj.IsUnmatched = true;

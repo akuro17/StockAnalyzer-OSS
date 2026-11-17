@@ -34,6 +34,9 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(ShowPriceTypeAndSourceIndicator))]
     [NotifyPropertyChangedFor(nameof(IsPriceTypeEnabled))]
     [NotifyPropertyChangedFor(nameof(PriceTypeToolTip))]
+    [NotifyPropertyChangedFor(nameof(ShowTimeframe))]
+    [NotifyPropertyChangedFor(nameof(IsTimeframeEnabled))]
+    [NotifyPropertyChangedFor(nameof(TimeframeToolTip))]
     private CoreIndicatorSettings _editingSettings;
 
     [ObservableProperty]
@@ -70,6 +73,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
             if (EditingSettings != null)
             {
                 EditingSettings.SourceIndicatorId = value?.Id;
+                IndicatorTimeframeUiRules.ResetIfChained(EditingSettings);
 
                 if (value != null && !string.IsNullOrEmpty(value.Id))
                 {
@@ -108,6 +112,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
                 OnPropertyChanged(nameof(SelectedOverlayPanelOption));
                 OnPropertyChanged(nameof(IsPriceTypeEnabled));
                 OnPropertyChanged(nameof(PriceTypeToolTip));
+                NotifyTimeframeRowChanged();
             }
         }
     }
@@ -127,9 +132,11 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
             if (EditingSettings != null)
             {
                 EditingSettings.DynamicPeriodIndicatorId = value?.Id;
+                IndicatorTimeframeUiRules.ResetIfChained(EditingSettings);
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(HasDynamicPeriodDriver));
                 OnPropertyChanged(nameof(HiddenParameterTags));
+                NotifyTimeframeRowChanged();
             }
         }
     }
@@ -150,12 +157,14 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
             bool changed = DynamicPeriodDriverHelper.TrySetHasDynamicPeriodDriver(
                 EditingSettings, AvailableDynamicPeriodDrivers, value);
 
+            IndicatorTimeframeUiRules.ResetIfChained(EditingSettings);
             OnPropertyChanged();
             if (changed)
             {
                 OnPropertyChanged(nameof(SelectedDynamicPeriodDriverOption));
                 OnPropertyChanged(nameof(HiddenParameterTags));
             }
+            NotifyTimeframeRowChanged();
         }
     }
 
@@ -288,6 +297,26 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
         OnPropertyChanged(nameof(ShowPriceTypeAndSourceIndicator));
         OnPropertyChanged(nameof(IsPriceTypeEnabled));
         OnPropertyChanged(nameof(PriceTypeToolTip));
+        NotifyTimeframeRowChanged();
+    }
+
+    /// <summary>The Timeframe choices in scale order (Same as Chart, Weekly, Monthly).</summary>
+    public IReadOnlyList<IndicatorTimeframe> TimeframeOptions => IndicatorTimeframeUiRules.Options;
+
+    /// <summary>Whether the Timeframe row is shown: the setting applies to the edited indicator (see <see cref="IndicatorTimeframePolicy"/>).</summary>
+    public bool ShowTimeframe => IndicatorTimeframeUiRules.IsShown(EditingSettings);
+
+    /// <summary>Whether the Timeframe row can be edited: not while the indicator reads, or is read by, another indicator.</summary>
+    public bool IsTimeframeEnabled => IndicatorTimeframeUiRules.IsEnabled(EditingSettings, _allIndicators);
+
+    /// <summary>Why the row is disabled; null while it is enabled or hidden.</summary>
+    public string? TimeframeToolTip => IndicatorTimeframeUiRules.ToolTip(EditingSettings, _allIndicators);
+
+    private void NotifyTimeframeRowChanged()
+    {
+        OnPropertyChanged(nameof(ShowTimeframe));
+        OnPropertyChanged(nameof(IsTimeframeEnabled));
+        OnPropertyChanged(nameof(TimeframeToolTip));
     }
 
     /// <summary>

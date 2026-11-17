@@ -4,8 +4,10 @@ using StockAnalyzer.Core.Models.Indicators.Chart;
 
 namespace StockAnalyzer.Core.Models.Parameters;
 
-public class CorePivotPointsAdvancedParameter : CoreIndicatorParameterBase
+public class CorePivotPointsAdvancedParameter : CoreIndicatorParameterBase, ISelfTimeframeParameter
 {
+    IndicatorTimeframe ISelfTimeframeParameter.SelfTimeframe => (IndicatorTimeframe)(int)SourcePeriod;
+
     private PivotPointType _pivotType = PivotPointType.Standard;
 
     [DisplayName("Pivot Type")]
@@ -18,7 +20,7 @@ public class CorePivotPointsAdvancedParameter : CoreIndicatorParameterBase
 
     private PivotSourcePeriod _sourcePeriod = PivotSourcePeriod.PreviousBar;
 
-    [DisplayName("Source Period")]
+    [DisplayName("Timeframe")]
     [Description("Bars whose high, low and close give the levels: PreviousBar (the previous bar), Week (the previous ISO week) or Month (the previous calendar month). With Week or Month every bar of a period shows the same levels. Woodie then uses the close of that previous period.")]
     public PivotSourcePeriod SourcePeriod
     {

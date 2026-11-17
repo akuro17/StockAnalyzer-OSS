@@ -47,5 +47,6 @@ public sealed class CoreMcClellanOscillatorParameter : CoreIndicatorParameterBas
         MarketBreadthDateAligner.ValidateUniverseGroupId(UniverseGroupId, nameof(UniverseGroupId));
         ThrowIfOutOfRange(FastPeriod, IndicatorDefaultConstants.McClellanFastMinPeriod, IndicatorDefaultConstants.McClellanFastMaxPeriod, nameof(FastPeriod));
         ThrowIfOutOfRange(SlowPeriod, IndicatorDefaultConstants.McClellanSlowMinPeriod, IndicatorDefaultConstants.McClellanSlowMaxPeriod, nameof(SlowPeriod));
+        MarketBreadthDateAligner.ValidateFastBelowSlow(FastPeriod, SlowPeriod, nameof(FastPeriod));
     }
 }

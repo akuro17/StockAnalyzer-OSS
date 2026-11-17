@@ -514,7 +514,9 @@ public sealed class RlSandboxedExecutionTests : IDisposable
 
         gateway.Dispose();
 
-        Assert.True(runner.CancelledByToken);
+        // The runner reports the cancellation on a pool thread after Task.Yield, and Dispose waits only the short grace: with a starved pool the report comes later, so the test waits for the
+        // outcome itself (the same reproduction with every pool thread held failed the old assertion 3 of 3 times). The session folder is removed by Dispose itself, before it returns.
+        Assert.True(SpinWait.SpinUntil(() => runner.CancelledByToken, Patience), "The run did not report the cancellation by its token.");
         Assert.Empty(Directory.EnumerateDirectories(_root));
     }
 
@@ -602,7 +604,9 @@ public sealed class RlSandboxedExecutionTests : IDisposable
 
         public List<string> Folders { get; } = new();
 
-        public bool CancelledByToken { get; private set; }
+        private volatile bool _cancelledByToken;
+
+        public bool CancelledByToken => _cancelledByToken;
 
         /// <summary>What a run does; by default it waits until <see cref="Release"/> is called.</summary>
         public Func<string, CancellationToken, Task<RlTrainingResult>>? Behavior { get; set; }
@@ -653,7 +657,7 @@ public sealed class RlSandboxedExecutionTests : IDisposable
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                CancelledByToken = true;
+                _cancelledByToken = true;
                 throw;
             }
         }

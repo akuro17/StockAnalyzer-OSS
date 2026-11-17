@@ -15,6 +15,7 @@ using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Analysis;
+using StockAnalyzer.TestSupport;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -31,9 +32,12 @@ public sealed class MarketBreadthSeriesProviderTests
 
     private sealed class StubGroupResolver : ITickerGroupResolver
     {
-        private readonly IReadOnlyList<string> _symbols;
+        private IReadOnlyList<string> _symbols;
 
         public int ResolveCallCount { get; private set; }
+
+        /// <summary>Replaces the members the next resolution returns (the saved workspace was edited).</summary>
+        public void SetSymbols(IReadOnlyList<string> symbols) => _symbols = symbols;
 
         public StubGroupResolver(IReadOnlyList<string> symbols)
         {
@@ -524,5 +528,94 @@ public sealed class MarketBreadthSeriesProviderTests
         // Uncut weekly bar reflects full week Friday close (-50 vs +9 previous week close):
         Assert.Equal(0, fullResult!.Series.Advancers[^1]);
         Assert.Equal(2, fullResult.Series.Decliners[^1]);
+    }
+
+    private static Dictionary<(string, TimeFrame), IReadOnlyList<CandleData>> DailyStore(IEnumerable<string> symbols)
+        => symbols.ToDictionary(
+            s => (s, TimeFrame.D1),
+            s => (IReadOnlyList<CandleData>)BuildTradingSeries(new DateTime(2025, 2, 3), 20, 100m, 0.4m, 100_000));
+
+    [Fact]
+    public async Task GetAsync_WhenTheSavedWorkspaceChanges_ReturnsTheBreadthOfTheNewMembers()
+    {
+        var groupId = Guid.NewGuid();
+        var threeSymbols = new[] { "AAPL", "MSFT", "NVDA" };
+        var fourSymbols = new[] { "AAPL", "MSFT", "NVDA", "TSLA" };
+        var workspace = new VersionedWorkspaceSource { Version = "v1" };
+        var resolver = new StubGroupResolver(threeSymbols);
+        var dataService = new StubDataService(DailyStore(fourSymbols));
+        var provider = new MarketBreadthSeriesProvider(resolver, dataService, workspaceSource: workspace);
+        var parameters = new MarketBreadthParameters { MaBars = 5, HighLowBars = 5 };
+
+        MarketBreadthResult? before = await provider.GetAsync(groupId, TimeFrame.D1, parameters);
+        Assert.Equal(3, before!.SymbolCount);
+
+        // A fourth symbol is added to the watchlist and the workspace is saved: the file has a new version.
+        resolver.SetSymbols(fourSymbols);
+        workspace.Version = "v2";
+        MarketBreadthResult? after = await provider.GetAsync(groupId, TimeFrame.D1, parameters);
+
+        Assert.Equal(4, after!.SymbolCount);
+        Assert.Equal(2, resolver.ResolveCallCount);
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenTheWorkspaceVersionIsUnchanged_DoesNotResolveOrReloadAgain()
+    {
+        var groupId = Guid.NewGuid();
+        var symbols = new[] { "AAPL", "MSFT", "NVDA" };
+        var workspace = new VersionedWorkspaceSource { Version = "v1" };
+        var resolver = new StubGroupResolver(symbols);
+        var dataService = new StubDataService(DailyStore(symbols));
+        var provider = new MarketBreadthSeriesProvider(resolver, dataService, workspaceSource: workspace);
+        var parameters = new MarketBreadthParameters { MaBars = 5, HighLowBars = 5 };
+
+        MarketBreadthResult? first = await provider.GetAsync(groupId, TimeFrame.D1, parameters);
+        MarketBreadthResult? second = await provider.GetAsync(groupId, TimeFrame.D1, parameters);
+
+        Assert.Same(first, second);
+        Assert.Equal(1, resolver.ResolveCallCount);
+        Assert.Equal(symbols.Length, dataService.LoadCallCount);
+    }
+
+    [Fact]
+    public async Task GetAsync_WhenTheSourceCannotTellAVersion_KeepsTheCachingOfTheGroupAndParameters()
+    {
+        var groupId = Guid.NewGuid();
+        var symbols = new[] { "AAPL", "MSFT", "NVDA" };
+        var resolver = new StubGroupResolver(symbols);
+        var dataService = new StubDataService(DailyStore(symbols));
+        var parameters = new MarketBreadthParameters { MaBars = 5, HighLowBars = 5 };
+
+        // No source at all, a source that keeps the default (null) version, and a source that returns null: all key the cache as before.
+        foreach (IReadOnlyWorkspaceSource? source in new IReadOnlyWorkspaceSource?[] { null, new LoadOnlyWorkspaceSource(), new VersionedWorkspaceSource() })
+        {
+            resolver = new StubGroupResolver(symbols);
+            var provider = new MarketBreadthSeriesProvider(resolver, dataService, workspaceSource: source);
+
+            MarketBreadthResult? first = await provider.GetAsync(groupId, TimeFrame.D1, parameters);
+            MarketBreadthResult? second = await provider.GetAsync(groupId, TimeFrame.D1, parameters);
+
+            Assert.Same(first, second);
+            Assert.Equal(1, resolver.ResolveCallCount);
+        }
+    }
+
+    [Fact]
+    public async Task GetAsync_AfterClearCache_RecomputesEvenWithTheSameWorkspaceVersion()
+    {
+        var groupId = Guid.NewGuid();
+        var symbols = new[] { "AAPL", "MSFT", "NVDA" };
+        var resolver = new StubGroupResolver(symbols);
+        var provider = new MarketBreadthSeriesProvider(
+            resolver, new StubDataService(DailyStore(symbols)), workspaceSource: new VersionedWorkspaceSource { Version = "v1" });
+        var parameters = new MarketBreadthParameters { MaBars = 5, HighLowBars = 5 };
+
+        MarketBreadthResult? first = await provider.GetAsync(groupId, TimeFrame.D1, parameters);
+        provider.ClearCache();
+        MarketBreadthResult? second = await provider.GetAsync(groupId, TimeFrame.D1, parameters);
+
+        Assert.NotSame(first, second);
+        Assert.Equal(2, resolver.ResolveCallCount);
     }
 }

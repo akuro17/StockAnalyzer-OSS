@@ -558,7 +558,7 @@ public class DrawingParameterViewBuilder
             var comboBox = new ComboBox
             {
                 ItemsSource = Enum.GetValues(propType),
-                ItemTemplate = BuildLocalizedEnumItemTemplate(),
+                ItemTemplate = LocalizedEnumItemTemplate,
                 Width = 140,
                 Height = 30,
                 HorizontalAlignment = HorizontalAlignment.Right,
@@ -603,6 +603,8 @@ public class DrawingParameterViewBuilder
 
         return null;
     }
+
+    internal static IDataTemplate LocalizedEnumItemTemplate { get; } = BuildLocalizedEnumItemTemplate();
 
     private static IDataTemplate BuildLocalizedEnumItemTemplate()
     {

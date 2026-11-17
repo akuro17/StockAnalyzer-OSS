@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 
@@ -112,25 +113,7 @@ public class AngleObject : RelativeGeometricRenderer, IDrawingCalculatedValuesPr
     {
         if (Points.Count < 2) return Array.Empty<DrawingCalculatedValue>();
 
-        var p1 = Points[0];
-        var p2 = Points[1];
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-
-        decimal linePrice = DrawingMath.InterpolatePrice(p1, p2, timestamp);
-
-        var values = new List<DrawingCalculatedValue>();
-        values.Add(new DrawingCalculatedValue("LinePrice", "Line Price", linePrice, $"{linePrice:F3}", color));
-
-        decimal priceDelta = p2.Price - p1.Price;
-        decimal deltaPct = DrawingMath.CalculatePercentageChange(p1.Price, p2.Price);
-        values.Add(new DrawingCalculatedValue("PriceDelta", "Price Change", priceDelta, $"{priceDelta:+0.000;-0.000;0.000} ({deltaPct:+0.00;-0.00;0.00}%)", IndicatorColor.Gray));
-
-        var slope = DrawingMath.CalculateSlopePerDay(p1, p2);
-        if (slope.HasValue)
-        {
-            values.Add(new DrawingCalculatedValue("Slope", "Slope", slope.Value, $"{slope.Value:+0.000;-0.000;0.000} / day", IndicatorColor.Gray));
-        }
-
-        return values;
+        return AngleToolValues.Calculate(Points[0].ToAnchor(), Points[1].ToAnchor(), timestamp, color);
     }
 }

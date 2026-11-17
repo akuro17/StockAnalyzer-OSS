@@ -5,6 +5,8 @@ using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.GeometricPattern;
 using StockAnalyzer.Core.Theme;
 
@@ -14,15 +16,21 @@ namespace StockAnalyzer.Avalonia.Drawing.Objects;
 /// Represents a drawn Geometric Pattern (channel, flag, pennant, etc.).
 /// Holds the detected formations and renders them on the chart using the coordinate transform.
 /// </summary>
-public class GeometricPatternObject : IChartObject
+public class GeometricPatternObject : IChartObject, IDrawingCalculatedValuesProvider
 {
+    /// <summary>Maximum number of individual "Formation #rank" rows listed in the Data Window.</summary>
+    public const int MaxListedFormations = 5;
+
+    private const string DetectedFormationsKey = "Detected Formations";
+
     public string? CustomName { get; set; }
     public DrawingMoveAxisMode MoveAxisMode { get; set; } = DrawingMoveAxisMode.XY;
     public bool IsMoveAxisModeExplicit { get; set; } = false;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.GeometricPattern;
     public List<ChartPoint> Points { get; private set; }
-    public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
+    private Color _color = DrawingThemeContext.DefaultColor;
+    public Color Color { get => _color; set { _color = value; InvalidateCalculatedValues(); } }
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
     public bool IsSelected { get; set; }
     public bool IsVisible { get; set; } = true;
@@ -36,14 +44,20 @@ public class GeometricPatternObject : IChartObject
     /// The detected geometric formations to render.
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyList<DetectedFormation>? Formations { get; set; }
+    public IReadOnlyList<DetectedFormation>? Formations { get => _formations; set { _formations = value; InvalidateCalculatedValues(); } }
+    private IReadOnlyList<DetectedFormation>? _formations;
 
     // Display Filters
-    public bool ShowChannels { get; set; } = true;
-    public bool ShowWedges { get; set; } = true;
-    public bool ShowTriangles { get; set; } = true;
-    public bool ShowPennantsAndFlags { get; set; } = true;
-    public bool ShowMegaphone { get; set; } = true;
+    private bool _showChannels = true;
+    private bool _showWedges = true;
+    private bool _showTriangles = true;
+    private bool _showPennantsAndFlags = true;
+    private bool _showMegaphone = true;
+    public bool ShowChannels { get => _showChannels; set { _showChannels = value; InvalidateCalculatedValues(); } }
+    public bool ShowWedges { get => _showWedges; set { _showWedges = value; InvalidateCalculatedValues(); } }
+    public bool ShowTriangles { get => _showTriangles; set { _showTriangles = value; InvalidateCalculatedValues(); } }
+    public bool ShowPennantsAndFlags { get => _showPennantsAndFlags; set { _showPennantsAndFlags = value; InvalidateCalculatedValues(); } }
+    public bool ShowMegaphone { get => _showMegaphone; set { _showMegaphone = value; InvalidateCalculatedValues(); } }
     
     // Detection Settings
     /// <summary>
@@ -218,6 +232,60 @@ public class GeometricPatternObject : IChartObject
         // Re-detection happens via Recalculate called by the controller
     }
     
+    /// <summary>
+    /// Data Window rows for the formations that are drawn (<see cref="DetectedFormation.IsBrokenOut"/> and enabled by the display
+    /// filters): the count plus the latest <see cref="MaxListedFormations"/> formations (newest end time first, then highest confidence).
+    /// Confidence is a 0..1 R-squared fit score shown as a percentage; slopes are price units per bar. The formation type carries no
+    /// breakout direction, so every row uses the object colour.
+    /// </summary>
+    public IReadOnlyList<DrawingCalculatedValue> GetCalculatedValues(DateTime timestamp, decimal? currentPrice = null)
+        => _calculatedValuesCache ??= BuildCalculatedValues();
+
+    // Rows depend only on Formations, the five Show* filters and Color; every setter of those properties calls InvalidateCalculatedValues.
+    private DrawingCalculatedValue[]? _calculatedValuesCache;
+
+    private void InvalidateCalculatedValues() => _calculatedValuesCache = null;
+
+    private DrawingCalculatedValue[] BuildCalculatedValues()
+    {
+        var formations = Formations;
+        if (formations == null || formations.Count == 0) return Array.Empty<DrawingCalculatedValue>();
+
+        var visible = formations
+            .Where(f => f.IsBrokenOut && ShouldRender(f.Type))
+            .OrderByDescending(f => f.EndTime)
+            .ThenByDescending(f => f.ConfidenceScore)
+            .ToList();
+        if (visible.Count == 0) return Array.Empty<DrawingCalculatedValue>();
+
+        var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
+        int listed = Math.Min(visible.Count, MaxListedFormations);
+        var values = new List<DrawingCalculatedValue>(listed + 1)
+        {
+            new DrawingCalculatedValue(
+                DetectedFormationsKey,
+                DetectedFormationsKey,
+                visible.Count,
+                string.Create(DrawingValueFormat.Culture, $"{visible.Count}"),
+                color)
+        };
+
+        for (int i = 0; i < listed; i++)
+        {
+            var f = visible[i];
+            double confidencePercent = f.ConfidenceScore * IndicatorDefaultConstants.PercentScale;
+            string label = string.Create(DrawingValueFormat.Culture, $"Formation #{i + 1} ({f.Type})");
+            values.Add(new DrawingCalculatedValue(
+                label,
+                label,
+                (decimal)Math.Round(confidencePercent, 1),
+                string.Create(DrawingValueFormat.Culture, $"Conf={confidencePercent:F0}%, U-Slope={f.UpperSlope:F3}, L-Slope={f.LowerSlope:F3}"),
+                color));
+        }
+
+        return values.ToArray();
+    }
+
     private bool ShouldRender(GeometricFormationType type)
     {
         switch (type)

@@ -27,6 +27,8 @@ namespace StockAnalyzer.Avalonia.Views.Chart
         public string? ErrorMessage => _original.ErrorMessage;
         public object? CustomData => _original.CustomData;
         public IConfluenceSignalProvider? SignalProvider => _original.SignalProvider;
+        public IReadOnlyList<decimal?>? EffectiveDynamicPeriods =>
+            _original.EffectiveDynamicPeriods is { } dp ? new VirtualSlicedList(dp, _startIndex, _count) : null;
 
         public IReadOnlyList<decimal?> MainValues => GetSeries("Main");
 

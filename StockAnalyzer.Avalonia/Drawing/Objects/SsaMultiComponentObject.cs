@@ -44,6 +44,12 @@ public class SsaMultiComponentObject : IChartObject, IDrawingCalculatedValuesPro
     public SsaDetrendMode DetrendMethod { get; set; } = SsaDetrendMode.LeastSquaresLinear;
     public PriceType PriceSource { get; set; } = PriceType.Median;
 
+    /// <summary>When true the component count r is estimated from the selection's spectrum instead of <see cref="NumComponents"/>.</summary>
+    public bool AutoRank { get; set; } = false;
+
+    /// <summary>Heuristic used to estimate r when <see cref="AutoRank"/> is enabled.</summary>
+    public SsaRankSelectionMethod RankMethod { get; set; } = SsaRankSelectionMethod.CumulativeEnergy;
+
     // Layer Visibility
     public bool ShowTrendLayer { get; set; } = true;
     public bool ShowPrimaryCycleLayer { get; set; } = true;
@@ -204,7 +210,7 @@ public class SsaMultiComponentObject : IChartObject, IDrawingCalculatedValuesPro
             doublePrices[i] = (double)prices[i];
         }
 
-        int l = Math.Clamp(EmbeddingDimension, 2, Math.Max(2, count / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, count);
         int k = count - l + 1;
         int r = Math.Clamp(NumComponents, 1, Math.Min(l, k));
 
@@ -229,6 +235,12 @@ public class SsaMultiComponentObject : IChartObject, IDrawingCalculatedValuesPro
             double sumEigenvalues = 0.0;
             for (int i = 0; i < l; i++) sumEigenvalues += eigenvalues[i];
 
+            if (AutoRank)
+            {
+                // The Jacobi output is in raw order; the overload reads it through sortedIndices (descending).
+                r = SsaRankSelector.EstimateSignalRank(eigenvalues, sortedIndices, RankMethod, Math.Min(l - 1, k));
+            }
+
             // 1. Reconstruct all individual components m = 0 ... r-1
             double[][] compSeries = new double[r][];
             for (int m = 0; m < r; m++)
@@ -237,6 +249,8 @@ public class SsaMultiComponentObject : IChartObject, IDrawingCalculatedValuesPro
                 int[] singleIndex = new[] { sortedIndices[m] };
                 SsaDecompositionEngine.ReconstructGroup(processed, l, k, singleIndex.AsSpan(), eigenvectors, compSeries[m]);
             }
+
+            SeparabilityScore = ComputeSeparabilityScore(compSeries, r, count, l);
 
             // 2. Detect dominant harmonic cycle pair (m*, m*+1) if r >= 2
             int bestM = -1;
@@ -378,14 +392,42 @@ public class SsaMultiComponentObject : IChartObject, IDrawingCalculatedValuesPro
         }
     }
 
+    /// <summary>
+    /// Separability (0..100) of the first <paramref name="r"/> reconstructed components via the w-correlation matrix (SsaDiagnostics SSoT).
+    /// A single component is trivially separable (100). Scratch buffers are pooled; the engine writes every matrix element.
+    /// </summary>
+    private static double ComputeSeparabilityScore(double[][] compSeries, int r, int count, int embeddingDimension)
+    {
+        if (r <= 1) return 100.0;
+
+        double[] flat = ArrayPool<double>.Shared.Rent(r * count);
+        double[] wCorr = ArrayPool<double>.Shared.Rent(r * r);
+        try
+        {
+            for (int m = 0; m < r; m++)
+            {
+                compSeries[m].AsSpan(0, count).CopyTo(flat.AsSpan(m * count, count));
+            }
+
+            SsaDiagnostics.ComputeWCorrelationMatrix(flat.AsSpan(0, r * count), r, count, embeddingDimension, wCorr.AsSpan(0, r * r));
+            return SsaDiagnostics.ComputeSeparabilityScore(wCorr.AsSpan(0, r * r), r);
+        }
+        finally
+        {
+            ArrayPool<double>.Shared.Return(flat);
+            ArrayPool<double>.Shared.Return(wCorr);
+        }
+    }
+
     public IReadOnlyList<DrawingCalculatedValue> GetCalculatedValues(DateTime timestamp = default, decimal? currentPrice = null)
     {
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
+        int shownRank = AutoRank && EffectiveRank > 0 ? EffectiveRank : NumComponents;
         var values = new List<DrawingCalculatedValue>
         {
             new("Samples", "Samples", SampleCount, SampleCount.ToString(), color),
             new("Embedding Dimension", "Embedding Dimension", EmbeddingDimension, EmbeddingDimension.ToString(), color),
-            new("Components (r)", "Components (r)", NumComponents, NumComponents.ToString(), color),
+            new("Components (r)", "Components (r)", shownRank, shownRank.ToString(), color),
             new("Variance Ratio", "Variance Ratio", (decimal)(CumulativeVarianceRatio * 100.0), $"{CumulativeVarianceRatio * 100.0:F1}%", color),
             new("Residual StdDev", "Residual StdDev", (decimal)ResidualStdDev, ResidualStdDev.ToString("F4"), color),
             new("Noise Multiplier", "Noise Multiplier", NoiseMultiplier, $"{NoiseMultiplier:F1}x", color),
@@ -393,6 +435,12 @@ public class SsaMultiComponentObject : IChartObject, IDrawingCalculatedValuesPro
             new("SNR (dB)", "SNR (dB)", (decimal)SnrDb, $"{SnrDb:F1} dB", color),
             new("Signal Purity", "Signal Purity", (decimal)SignalPurity, $"{SignalPurity:F1}%", color)
         };
+
+        if (EffectiveRank > 1)
+        {
+            values.Add(SsaCalculatedValueRows.Separability(SeparabilityScore));
+        }
+
         return values;
     }
 }

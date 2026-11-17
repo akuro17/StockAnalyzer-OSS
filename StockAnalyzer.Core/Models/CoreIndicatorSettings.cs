@@ -66,6 +66,19 @@ public partial class CoreIndicatorSettings : ObservableObject
     partial void OnDynamicPeriodIndicatorIdChanged(string? value) => MathematicalVersion++;
 
     /// <summary>
+    /// The time frame the indicator is calculated on (Same as Chart / Weekly / Monthly). Persisted as an integer; a workspace saved before this
+    /// setting existed has no value and keeps <see cref="IndicatorTimeframe.SameAsChart"/>. Applies only where
+    /// <see cref="Indicators.IndicatorTimeframePolicy.SupportsIndicatorTimeframe"/> is true; elsewhere it is reset by the normalisation.
+    /// </summary>
+    [ObservableProperty]
+    private IndicatorTimeframe _timeframe = IndicatorTimeframe.SameAsChart;
+    partial void OnTimeframeChanged(IndicatorTimeframe value)
+    {
+        MathematicalVersion++;
+        UpdateDisplayName();
+    }
+
+    /// <summary>
     /// Selected output series name when this indicator produces multiple series (e.g. "Signal", "Histogram", "UpperBand").
     /// Defaults to IndicatorResult.MainSeriesName ("Main").
     /// </summary>
@@ -236,20 +249,39 @@ public partial class CoreIndicatorSettings : ObservableObject
         string shortName = TypeEnum.HasValue ? TypeEnum.Value.ToString() : "Unknown";
         string longName = TypeEnum.HasValue ? TypeEnum.Value.GetDescription() : "Unknown";
 
+        // The frame label (" [W1]" / " [MN1]") is appended last, after the " (" -> "(" rewrite, so that rewrite never touches it.
+        string frameLabel = TimeframeLabel();
         if (ParameterObject != null)
         {
             // ParameterObject.GetDisplayName(shortName) returns "SMA (20)"
             // Strict Version: Remove the space to get "SMA(20)"
-            ShortDisplayName = ParameterObject.GetDisplayName(shortName).Replace(" (", "(");
-            DisplayName = UseShortName ? ShortDisplayName : ParameterObject.GetDisplayName(longName);
+            ShortDisplayName = ParameterObject.GetDisplayName(shortName).Replace(" (", "(") + frameLabel;
+            DisplayName = UseShortName ? ShortDisplayName : ParameterObject.GetDisplayName(longName) + frameLabel;
         }
         else
         {
-            ShortDisplayName = shortName;
-            DisplayName = UseShortName ? shortName : longName;
+            ShortDisplayName = shortName + frameLabel;
+            DisplayName = UseShortName ? ShortDisplayName : longName + frameLabel;
         }
 
         OnPropertyChanged(nameof(ShortDisplayName));
+    }
+
+    /// <summary>
+    /// The legend suffix of a non-default indicator time frame: " [W1]" / " [MN1]", empty for Same as Chart or where the setting does not apply.
+    /// The label text itself comes from the one shared definition (<see cref="Screener.ScreenerIndicatorSideConfig.FrameLabel"/>).
+    /// </summary>
+    private string TimeframeLabel()
+    {
+        if (Timeframe == IndicatorTimeframe.SameAsChart
+            || TypeEnum is not { } type
+            || !Indicators.IndicatorTimeframePolicy.SupportsIndicatorTimeframe(type, ParameterObject))
+        {
+            return string.Empty;
+        }
+
+        // The chart frame is irrelevant here: Weekly/Monthly map to W1/MN1 on their own.
+        return Screener.ScreenerIndicatorSideConfig.FrameLabel(Timeframe.ToTimeFrame(TimeFrame.D1));
     }
 
     /// <summary>
@@ -273,7 +305,7 @@ public partial class CoreIndicatorSettings : ObservableObject
         }
 
         string baseName = TypeEnum?.GetDescription() ?? (TypeEnum?.ToString() ?? "Unknown");
-        return ParameterObject != null ? ParameterObject.GetDisplayName(baseName) : baseName;
+        return (ParameterObject != null ? ParameterObject.GetDisplayName(baseName) : baseName) + TimeframeLabel();
     }
 
     private static readonly System.Reflection.FieldInfo?[] SubscriberFields =

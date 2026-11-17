@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Globalization;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Indicators.Statistics;
 
@@ -122,7 +123,27 @@ public sealed class CoreMarketBreadthParameter : CoreIndicatorParameterBase, IUn
     }
 
     public override string GetDisplayName(string indicatorType)
-        => $"{indicatorType} ({MetricMode.GetDescription()})";
+        => FormatDisplayName(indicatorType, MetricMode, AdRatioBars, MaBars, HighLowBars);
+
+    /// <summary>
+    /// The one definition of the display name, shared by this parameter and <see cref="StockAnalyzer.Core.Models.Indicators.Statistics.CoreMarketBreadthIndicator.Name"/>:
+    /// <c>Type (Metric)</c>, with the one lookback that the metric uses appended as <c>Type (Metric, bars)</c> (AdRatio: <paramref name="adRatioBars"/>, PctAboveMa: <paramref name="maBars"/>,
+    /// NetNewHighs: <paramref name="highLowBars"/>), so that two instances of one metric with different periods can be told apart. AdLine, Trin and Cvi have no lookback.
+    /// </summary>
+    internal static string FormatDisplayName(string typeLabel, MarketBreadthMetricMode metricMode, int adRatioBars, int maBars, int highLowBars)
+    {
+        int? lookbackBars = metricMode switch
+        {
+            MarketBreadthMetricMode.AdRatio => adRatioBars,
+            MarketBreadthMetricMode.PctAboveMa => maBars,
+            MarketBreadthMetricMode.NetNewHighs => highLowBars,
+            _ => null
+        };
+
+        return lookbackBars is { } bars
+            ? $"{typeLabel} ({metricMode.GetDescription()}, {bars.ToString(CultureInfo.InvariantCulture)})"
+            : $"{typeLabel} ({metricMode.GetDescription()})";
+    }
 
     public override void Validate()
     {

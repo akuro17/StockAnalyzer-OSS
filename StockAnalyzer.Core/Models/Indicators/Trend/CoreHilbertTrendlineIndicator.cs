@@ -18,6 +18,7 @@ public class CoreHilbertTrendlineIndicator : CoreIndicatorBase
     public int MaxPeriod { get; set; } = IndicatorDefaultConstants.HilbertTransformMaxPeriod;
     public decimal SmoothBeta { get; set; } = IndicatorDefaultConstants.HilbertTransformDefaultSmoothBeta;
     public decimal DeltaLimit { get; set; } = IndicatorDefaultConstants.HilbertTransformDefaultDeltaLimit;
+    public HilbertDetrendMode DetrendMode { get; set; } = HilbertDetrendMode.FirDetrender;
 
     public override string Name => $"Hilbert Instantaneous Trendline ({MinPeriod}-{MaxPeriod})";
     public override bool IsOverlay => true;
@@ -32,6 +33,7 @@ public class CoreHilbertTrendlineIndicator : CoreIndicatorBase
             MaxPeriod = p.MaxPeriod;
             SmoothBeta = p.SmoothBeta;
             DeltaLimit = p.DeltaLimit;
+            DetrendMode = p.DetrendMode;
         }
     }
 
@@ -59,7 +61,8 @@ public class CoreHilbertTrendlineIndicator : CoreIndicatorBase
                 MaxPeriod: MaxPeriod,
                 SmoothBeta: SmoothBeta,
                 DeltaLimit: DeltaLimit,
-                WarmupBars: IndicatorDefaultConstants.HilbertTransformWarmupBars);
+                WarmupBars: IndicatorDefaultConstants.HilbertTransformWarmupBars,
+                DetrendMode: DetrendMode);
 
             var decomp = HilbertDecompositionEngine.Decompose(prices.AsSpan(0, count), decompositionParams);
 

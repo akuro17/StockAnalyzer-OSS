@@ -142,7 +142,9 @@ public static class SsaProjectionAnalysis
         SsaDetrendMode detrendMode = SsaDetrendMode.LeastSquaresLinear,
         bool showConfidenceBand = true,
         decimal confidenceMultiplier = 2.0m,
-        SsaForecastMode forecastMode = SsaForecastMode.Recurrent)
+        SsaForecastMode forecastMode = SsaForecastMode.Recurrent,
+        bool autoRank = false,
+        SsaRankSelectionMethod rankMethod = SsaRankSelectionMethod.CumulativeEnergy)
     {
         if (samples == null || timestamps == null || samples.Count < MinSampleCount || samples.Count != timestamps.Count)
         {
@@ -161,7 +163,7 @@ public static class SsaProjectionAnalysis
         double[] sampleArray = (samples is double[] arr) ? arr : samples.ToArray();
 
         // 1. Determine Effective Embedding Dimension (L) and Components Count (r)
-        int l = Math.Clamp(embeddingDimension, 2, Math.Max(2, n / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(embeddingDimension, n);
         int k = n - l + 1;
         if (k < 2)
         {
@@ -169,13 +171,19 @@ public static class SsaProjectionAnalysis
         }
 
         // Enforce r <= L - 1 so LRR projection is always geometrically well-defined
-        int r = Math.Clamp(numComponents, 1, Math.Min(l - 1, k));
+        int maxRank = Math.Min(l - 1, k);
+        int r = Math.Clamp(numComponents, 1, maxRank);
 
         // 2. Perform SSA Matrix Decomposition via SsaDecompositionEngine
         var decomp = SsaDecompositionEngine.Decompose(sampleArray, l, detrendMode);
         if (decomp.SortedIndices.Length < l)
         {
             return SsaProjectionResult.Empty;
+        }
+
+        if (autoRank)
+        {
+            r = SsaRankSelector.EstimateSignalRank(decomp, rankMethod, maxRank);
         }
 
         double slope = decomp.Slope;

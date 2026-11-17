@@ -17,6 +17,7 @@ public sealed class FeatureChannelNormalizationDefaultsTests
     [Theory]
     [InlineData(IndicatorType.SMA)] [InlineData(IndicatorType.EMA)] [InlineData(IndicatorType.BB)] [InlineData(IndicatorType.VWAP)]
     [InlineData(IndicatorType.ParabolicSAR)] [InlineData(IndicatorType.Ichimoku)] [InlineData(IndicatorType.Price)]
+    [InlineData(IndicatorType.ARIMA)]
     public void PriceUnitSeries_AreMinMaxScaledLikeThePriceFields(IndicatorType type)
     {
         Assert.Equal(ChannelNormalization.WindowMinMax, FeatureChannelNormalizationDefaults.ForIndicator(type));

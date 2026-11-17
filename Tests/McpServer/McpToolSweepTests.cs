@@ -136,6 +136,13 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_get_capabilities","""{"indicatorTypeFilter":["RSI"],"includeScreenerCatalog":true}"""),
         ("sa_get_settings", "{}"),
         ("sa_calculate_indicators", """{"symbol":"MSFT","timeFrame":"D1","indicators":""" + Indicators + "}"),
+        ("sa_calculate_indicators_batch", """{"symbols":["MSFT","7203.T"],"timeFrame":"D1","indicators":""" + Indicators + "}"),
+        ("sa_get_portfolio_summary", "{}"),
+        ("sa_analyze_portfolio_risk", "{}"),
+        ("sa_search_notes", """{"query":"x","includeParentContext":true}"""),
+        ("sa_list_upcoming_catalysts", "{}"),
+        ("sa_get_active_workspace", "{}"),
+        ("sa_get_chart_drawings", """{"symbol":"MSFT","timeFrame":"D1"}"""),
         ("sa_run_screener", """{"conditionTree":""" + HighClose + ""","symbols":["MSFT"]}"""),
         ("sa_list_templates", "{}"),
         ("sa_run_backtest", """{"symbol":"MSFT","conditions":{"entryLong":""" + Entry + ""","exitLong":""" + Exit + "}}"),
@@ -176,6 +183,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_get_candles", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_get_ticker_metadata", """{"symbols":["@@"]}"""),
         ("sa_calculate_indicators", """{"symbol":"@@","timeFrame":"D1","indicators":""" + Indicators + "}"),
+        ("sa_calculate_indicators_batch", """{"symbols":["MSFT","@@"],"timeFrame":"D1","indicators":""" + Indicators + "}"),
         ("sa_run_screener", """{"conditionTree":""" + HighClose + ""","symbols":["@@"]}"""),
         ("sa_run_screener", """{"templateId":"@@"}"""),
         ("sa_run_backtest", """{"symbol":"@@","conditions":{"entryLong":""" + Entry + ""","exitLong":""" + Exit + "}}"),
@@ -189,6 +197,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_analyze_market_structure", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_find_support_resistance", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_calculate_drawing_values", """{"symbol":"@@","timeFrame":"D1","tool":"TrendLine","anchorMode":"RangeEndpoints","anchorBars":2}"""),
+        ("sa_get_chart_drawings", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_detect_candle_patterns", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_detect_chart_patterns", """{"symbol":"@@","timeFrame":"D1"}"""),
         ("sa_analyze_cycles", """{"symbol":"@@","timeFrame":"D1"}"""),
@@ -410,6 +419,12 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_calculate_indicators", $"{{{Frame},\"indicators\":[{{\"id\":\"i0\",\"type\":\"RSI\"}}],\"derived\":[{DerivedMany(limits.MaxDerivedSeriesPerCall + 1)}]}}", "derived"),
             ("sa_calculate_indicators", $"{{{Frame},\"indicators\":{Indicators},\"lookbackOffsets\":[{string.Join(",", Enumerable.Range(0, limits.MaxLookbackOffsets + 1))}]}}", "lookbackOffsets"),
             ("sa_calculate_indicators", $"{{{Frame},\"indicators\":{Indicators},\"summary\":true,\"trendBars\":{limits.MaxCandlesPerRequest + 1}}}", "trendBars"),
+            ("sa_search_notes", $"{{\"limit\":{limits.MaxReturnedNotes + 1}}}", "limit"),
+            ("sa_list_upcoming_catalysts", $"{{\"horizonDays\":{limits.MaxCatalystHorizonDays + 1}}}", "horizonDays"),
+            ("sa_calculate_indicators_batch", $"{{\"symbols\":[{Symbols(limits.MaxBatchIndicatorSymbols + 1)}],\"timeFrame\":\"D1\",\"indicators\":{Indicators}}}", "symbols"),
+            ("sa_calculate_indicators_batch", $"{{\"symbols\":[\"MSFT\"],\"timeFrame\":\"D1\",\"indicators\":{Indicators},\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
+            ("sa_calculate_indicators_batch", $"{{\"symbols\":[\"MSFT\"],\"timeFrame\":\"D1\",\"indicators\":{Indicators},\"includeSeries\":true,\"outputTailCount\":{limits.MaxBatchIndicatorTailBars + 1}}}", "outputTailCount"),
+            ("sa_calculate_indicators_batch", $"{{\"symbols\":[\"MSFT\"],\"timeFrame\":\"D1\",\"indicators\":[{Many(limits.MaxIndicatorsPerCall + 1)}]}}", "indicators"),
             ("sa_calculate_reverse_watch", $"{{{Frame},\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
             ("sa_calculate_reverse_watch", $"{{{Frame},\"outputTailCount\":{limits.MaxOutputTailBars + 1}}}", "outputTailCount"),
             ("sa_calculate_reverse_watch", $"{{{Frame},\"period\":{limits.MaxCandlesPerRequest + 1}}}", "period"),
@@ -429,6 +444,9 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_calculate_drawing_values", $"{{{Frame},\"tool\":\"TrendLine\",\"anchorMode\":\"RangeEndpoints\",\"anchorBars\":2,\"evaluationDates\":[{EvaluationDates(limits.MaxDrawingEvaluationDates + 1)}]}}", "evaluationDates"),
             ("sa_calculate_drawing_values", $"{{{Frame},\"tool\":\"TrendLine\",\"anchorMode\":\"RangeEndpoints\",\"anchorBars\":{limits.MaxCandlesPerRequest + 1}}}", "anchorBars"),
             ("sa_calculate_drawing_values", $"{{{Frame},\"tool\":\"TrendLine\",\"anchorMode\":\"RangeEndpoints\",\"anchorBars\":2,\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
+            ("sa_calculate_drawing_values", $"{{{Frame},\"tool\":\"TrendLine\",\"anchorMode\":\"AutoPivots\",\"pivotLeftStrength\":{limits.MaxPivotStrength + 1}}}", "pivotLeftStrength"),
+            ("sa_calculate_drawing_values", $"{{{Frame},\"tool\":\"TrendLine\",\"anchorMode\":\"AutoPivots\",\"pivotRightStrength\":{limits.MaxPivotStrength + 1}}}", "pivotRightStrength"),
+            ("sa_get_chart_drawings", $"{{{Frame},\"lookbackBars\":{limits.MaxCandlesPerRequest + 1}}}", "lookbackBars"),
             ("sa_detect_candle_patterns", $"{{{Frame},\"windowBars\":{limits.MaxOutputTailBars + 1}}}", "windowBars"),
             ("sa_detect_chart_patterns", $"{{{Frame},\"maxPatterns\":{limits.MaxReturnedPatterns + 1}}}", "maxPatterns"),
             ("sa_analyze_cycles", $"{{{Frame},\"topBins\":{limits.MaxCycleBins + 1}}}", "topBins"),
@@ -560,7 +578,7 @@ public sealed class McpToolSweepTests : IDisposable
         }
 
         (await McpTestSupport.CallAsync(dispatcher, "sa_run_screener", $$"""{"templateId":"{{_templateId}}","symbols":["MSFT"]}"""))!.Dispose();
-        foreach (string uri in new[] { "stockanalyzer://catalog/indicators", "stockanalyzer://catalog/screener", "stockanalyzer://settings/current", "stockanalyzer://nothing" })
+        foreach (string uri in new[] { "stockanalyzer://catalog/indicators", "stockanalyzer://catalog/screener", "stockanalyzer://settings/current", "stockanalyzer://workspace/active", "stockanalyzer://nothing" })
         {
             await RawAsync(dispatcher, "resources/read", $$"""{"uri":"{{uri}}"}""");
         }

@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -180,10 +181,20 @@ public class HoughParabolicCurveObject : IChartObject, IDrawingCalculatedValuesP
                 $"Parabola #{i + 1} ({p.CurvatureSign})",
                 $"Parabola #{i + 1} ({p.CurvatureSign})",
                 p.VertexPrice,
-                $"Curvature={p.CurvaturePrice:E3}, Vertex={p.VertexPrice:F2} (R²={p.RSquared:F2}, Touches={p.Votes})",
+                $"Curvature={p.CurvaturePrice:E3}, Vertex={p.VertexPrice:F2} (R²={p.RSquared:F2}, Touches={p.Votes}, ΔBar={FormatVertexTiming(p.VertexBar - p.EndBar)})",
                 color));
         }
 
         return list;
+    }
+
+    /// <summary>Vertex timing relative to the last bar of the analysed slice (bars; positive = the vertex lies in the projected future).</summary>
+    private static string FormatVertexTiming(int vertexBarOffset)
+    {
+        return vertexBarOffset > 0
+            ? string.Create(DrawingValueFormat.Culture, $"+{vertexBarOffset} bars (Future)")
+            : vertexBarOffset < 0
+                ? string.Create(DrawingValueFormat.Culture, $"{vertexBarOffset} bars (Past)")
+                : "At EndBar";
     }
 }

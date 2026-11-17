@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -142,6 +144,7 @@ public static class ChartInformationDataProvider
                     decimal? val = (main != null && globalIndex >= 0 && globalIndex < main.Count) ? main[globalIndex] : null;
                     string valStr = val.HasValue ? val.Value.ToString("0.000") : "N/A";
                     indicatorItems.Add(new IndicatorInformationItem(indicatorName, valStr, indicator.Color));
+                    AddEffectivePeriodItem(indicatorItems, indicator, result, indicatorName, globalIndex);
                     continue;
                 }
 
@@ -196,6 +199,8 @@ public static class ChartInformationDataProvider
                         indicatorItems.Add(new IndicatorInformationItem($"{indicatorName} ({label})", valStr, childColor));
                     }
                 }
+
+                AddEffectivePeriodItem(indicatorItems, indicator, result, indicatorName, globalIndex);
             }
         }
 
@@ -228,6 +233,24 @@ public static class ChartInformationDataProvider
             Indicators: indicatorItems,
             Drawings: drawingItems
         );
+    }
+
+    private static readonly Func<string, string> LocalizeFromManager = key => LocalizationManager.Instance[key];
+
+    private static void AddEffectivePeriodItem(
+        List<IndicatorInformationItem> items,
+        CoreIndicatorSettings indicator,
+        IIndicatorResult result,
+        string indicatorName,
+        int globalIndex)
+    {
+        var periods = EffectiveDynamicPeriodDisplay.Resolve(indicator.DynamicPeriodIndicatorId, result);
+        if (periods == null) return;
+
+        items.Add(new IndicatorInformationItem(
+            $"{indicatorName} {EffectivePeriodText.Label(LocalizeFromManager)}",
+            EffectivePeriodText.Format(periods, globalIndex, LocalizeFromManager),
+            indicator.Color));
     }
 
     /// <summary>

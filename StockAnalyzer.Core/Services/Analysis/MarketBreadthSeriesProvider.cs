@@ -26,6 +26,7 @@ public sealed class MarketBreadthSeriesProvider : IMarketBreadthSeriesProvider
     public const int DefaultCacheCapacity = 8;
 
     private readonly ITickerGroupResolver _groupResolver;
+    private readonly IReadOnlyWorkspaceSource? _workspaceSource;
     private readonly IDataService _dataService;
     private readonly ITimeFrameManager? _timeFrameManager;
     private readonly ILogger<MarketBreadthSeriesProvider> _logger;
@@ -40,12 +41,14 @@ public sealed class MarketBreadthSeriesProvider : IMarketBreadthSeriesProvider
         ILogger<MarketBreadthSeriesProvider>? logger = null,
         int maxBreadthSymbols = DefaultMaxBreadthSymbols,
         int maxFilterEvaluationSymbols = DefaultMaxFilterEvaluationSymbols,
-        int cacheCapacity = DefaultCacheCapacity)
+        int cacheCapacity = DefaultCacheCapacity,
+        IReadOnlyWorkspaceSource? workspaceSource = null)
     {
         _groupResolver = groupResolver ?? throw new ArgumentNullException(nameof(groupResolver));
         _dataService = dataService ?? throw new ArgumentNullException(nameof(dataService));
         _timeFrameManager = timeFrameManager;
         _logger = logger ?? NullLogger<MarketBreadthSeriesProvider>.Instance;
+        _workspaceSource = workspaceSource;
 
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBreadthSymbols);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxFilterEvaluationSymbols);
@@ -70,6 +73,11 @@ public sealed class MarketBreadthSeriesProvider : IMarketBreadthSeriesProvider
             return null;
         }
 
+        // The members of a group come from the saved workspace, so the version of the workspace read here (before the members are resolved) keys the result:
+        // an edit of a watchlist or of a filter rule, once saved, misses the cache instead of returning the old members' breadth. A newer file than the version
+        // can only cost one redundant recomputation. Changes of the stored prices are dropped by ClearCache() after a sync.
+        string? workspaceVersion = _workspaceSource?.GetVersion();
+
         var cacheKey = new MarketBreadthCacheKey(
             groupId,
             timeFrame,
@@ -78,7 +86,8 @@ public sealed class MarketBreadthSeriesProvider : IMarketBreadthSeriesProvider
             parameters.McClellanSlow,
             parameters.MaBars,
             parameters.HighLowBars,
-            parameters.EndDate);
+            parameters.EndDate,
+            workspaceVersion);
 
         if (_cache.TryGet(cacheKey, out MarketBreadthResult cached))
         {
@@ -210,5 +219,6 @@ public sealed class MarketBreadthSeriesProvider : IMarketBreadthSeriesProvider
         int McClellanSlow,
         int MaBars,
         int HighLowBars,
-        DateOnly? EndDate);
+        DateOnly? EndDate,
+        string? WorkspaceVersion);
 }

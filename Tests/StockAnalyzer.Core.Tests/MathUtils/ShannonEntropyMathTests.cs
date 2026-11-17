@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using StockAnalyzer.Core.MathUtils;
 using Xunit;
 
@@ -83,5 +84,41 @@ public class ShannonEntropyMathTests
 
             Assert.Equal(BitConverter.DoubleToInt64Bits(expected), BitConverter.DoubleToInt64Bits(ShannonEntropyMath.Nats(weights, total, ShannonEntropyMath.NegligibleShare)));
         }
+    }
+
+    [Fact]
+    public void PermutationEntropy_StrictlyMonotoneIsZero_AndMaxEntropyIsNearOne()
+    {
+        // Strictly increasing returns => every 3-tuple has ordinal pattern 0 => entropy 0.
+        var increasing = Enumerable.Range(0, 30).Select(i => 0.001 * i).ToArray();
+        Assert.Equal(0.0, ShannonEntropyMath.PermutationEntropy(increasing, 3), 12);
+
+        // Balanced occurrence of all 6 permutations of length 3 in 120 windows.
+        var random = new Random(12345);
+        var noise = Enumerable.Range(0, 500).Select(_ => random.NextDouble()).ToArray();
+        double perm = ShannonEntropyMath.PermutationEntropy(noise, 3);
+        Assert.InRange(perm, 0.95, 1.0);
+
+        // Guard checks: window < d! + d - 1 or invalid d returns NaN.
+        Assert.True(double.IsNaN(ShannonEntropyMath.PermutationEntropy(increasing[..6], 3)));
+        Assert.True(double.IsNaN(ShannonEntropyMath.PermutationEntropy(increasing, 2)));
+        Assert.True(double.IsNaN(ShannonEntropyMath.PermutationEntropy(increasing, 6)));
+    }
+
+    [Fact]
+    public void SampleEntropy_ConstantIsZero_ZeroMatchAppliesFloor_AndNoiseExceedsPeriodic()
+    {
+        Assert.Equal(0.0, ShannonEntropyMath.SampleEntropy(Enumerable.Repeat(0.01, 30).ToArray()), 12);
+        Assert.True(double.IsNaN(ShannonEntropyMath.SampleEntropy(new double[] { 0.1, 0.2, 0.3, 0.4, 0.5 }, 2, 0.2)));
+
+        var periodic = Enumerable.Range(0, 60).Select(i => Math.Sin(i * Math.PI / 4.0) * 0.02).ToArray();
+        var random = new Random(987);
+        var noisy = Enumerable.Range(0, 60).Select(_ => (random.NextDouble() - 0.5) * 0.04).ToArray();
+
+        double sePeriodic = ShannonEntropyMath.SampleEntropy(periodic, 2, 0.2);
+        double seNoisy = ShannonEntropyMath.SampleEntropy(noisy, 2, 0.2);
+        Assert.True(double.IsFinite(sePeriodic));
+        Assert.True(double.IsFinite(seNoisy));
+        Assert.True(seNoisy > sePeriodic, $"Expected noisy SampleEntropy ({seNoisy}) > periodic ({sePeriodic}).");
     }
 }

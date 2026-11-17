@@ -21,6 +21,8 @@ public class IndicatorChartSuppressionTests
     [InlineData(IndicatorType.ClothoidMovingAverage, "EffectiveLag")]
     [InlineData(IndicatorType.ClothoidMovingAverage, "EffectiveSampleSize")]
     [InlineData(IndicatorType.CrossCorrelation, "OptimalLag")]
+    [InlineData(IndicatorType.GrangerCausality, "DccCorrelation")]
+    [InlineData(IndicatorType.JohansenCointegration, "CointegrationSpreadZScore")]
     public void IsSuppressed_ForNonChartedSeries_ReturnsTrue(IndicatorType type, string seriesName)
     {
         Assert.True(IndicatorChartSuppression.IsSuppressed(type, seriesName));

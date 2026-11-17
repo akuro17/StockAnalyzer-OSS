@@ -2,13 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DuckDB.NET.Data;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Analysis;
 using Xunit;
@@ -72,10 +75,28 @@ public sealed class RsRatingCalculatorTests : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    private DuckDbHeatmapReturnProvider CreateProvider()
+    private DuckDbHeatmapReturnProvider CreateProvider(int? maxStaleCalendarDays = null, ILogger<DuckDbHeatmapReturnProvider>? logger = null)
     {
-        var settings = Options.Create(new MarketDataSettings { DailyDataPath = _tempDir });
-        return new DuckDbHeatmapReturnProvider(_dbManager, settings, NullLogger<DuckDbHeatmapReturnProvider>.Instance);
+        var marketData = new MarketDataSettings { DailyDataPath = _tempDir };
+        if (maxStaleCalendarDays.HasValue)
+        {
+            marketData.RsRatingMaxStaleCalendarDays = maxStaleCalendarDays.Value;
+        }
+
+        return new DuckDbHeatmapReturnProvider(_dbManager, Options.Create(marketData), logger ?? NullLogger<DuckDbHeatmapReturnProvider>.Instance);
+    }
+
+    /// <summary>260 ascending bars (one per calendar day) ending on <paramref name="lastDate"/>; the close rises by <paramref name="step"/> per bar.</summary>
+    private static List<(DateOnly Date, float? Close)> RisingBars(DateOnly lastDate, float start, float step)
+    {
+        const int BarCount = 260;
+        var bars = new List<(DateOnly Date, float? Close)>(BarCount);
+        for (int i = 0; i < BarCount; i++)
+        {
+            bars.Add((lastDate.AddDays(i - (BarCount - 1)), start + (i * step)));
+        }
+
+        return bars;
     }
 
     private static RsRatingCloses FlatClosesWithLatest(decimal latest, decimal baseline = 100m)
@@ -334,6 +355,170 @@ public sealed class RsRatingCalculatorTests : IDisposable
         Assert.Equal(1, ratings["FULL"]);
         Assert.Equal(99, ratings["EXACT253"]);
         Assert.DoesNotContain("ZERO_CLOSE", ratings.Keys);
+    }
+
+    [Fact]
+    public async Task DuckDbGetRsRatingClosesAsync_LeavesOutSymbolsOlderThanTheToleranceBehindTheReferenceDate()
+    {
+        var reference = new DateOnly(2026, 11, 13);
+        CreateParquetFile("CURRENT", RisingBars(reference, 1000f, 2f));
+        CreateParquetFile("LAG_AT_LIMIT", RisingBars(reference.AddDays(-10), 1000f, 1f));      // exactly the tolerance: kept
+        CreateParquetFile("LAG_ONE_OVER", RisingBars(reference.AddDays(-11), 1000f, 3f));      // one day over: left out
+        CreateParquetFile("DELISTED", RisingBars(reference.AddDays(-165), 1000f, 4f));         // far older: left out
+
+        var provider = CreateProvider();
+        var closes = await provider.GetRsRatingClosesAsync(new[] { "CURRENT", "LAG_AT_LIMIT", "LAG_ONE_OVER", "DELISTED" });
+
+        Assert.Equal(2, closes.Count);
+        Assert.Contains("CURRENT", closes.Keys);
+        Assert.Contains("LAG_AT_LIMIT", closes.Keys);
+        Assert.DoesNotContain("LAG_ONE_OVER", closes.Keys);
+        Assert.DoesNotContain("DELISTED", closes.Keys);
+
+        // The ranking is the one of the remaining symbols alone: the stale symbols, although stronger, do not take part in M.
+        var ratings = RsRatingCalculator.Calculate(closes);
+        Assert.Equal(2, ratings.Count);
+        Assert.Equal(99, ratings["CURRENT"]);
+        Assert.Equal(1, ratings["LAG_AT_LIMIT"]);
+    }
+
+    [Fact]
+    public async Task DuckDbGetRsRatingClosesAsync_StaleSymbolDoesNotChangeTheValuesOfTheOthers()
+    {
+        var reference = new DateOnly(2026, 11, 13);
+        CreateParquetFile("A", RisingBars(reference, 1000f, 1f));
+        CreateParquetFile("B", RisingBars(reference, 1000f, 2f));
+        CreateParquetFile("C", RisingBars(reference, 1000f, 3f));
+        CreateParquetFile("STALE_STRONG", RisingBars(reference.AddDays(-200), 1000f, 9f));
+
+        var provider = CreateProvider();
+        var without = RsRatingCalculator.Calculate(await provider.GetRsRatingClosesAsync(new[] { "A", "B", "C" }));
+        var with = RsRatingCalculator.Calculate(await provider.GetRsRatingClosesAsync(new[] { "A", "B", "C", "STALE_STRONG" }));
+
+        Assert.Equal(3, with.Count);
+        Assert.DoesNotContain("STALE_STRONG", with.Keys);
+        foreach (string key in without.Keys)
+        {
+            Assert.Equal(without[key], with[key]);
+        }
+    }
+
+    [Fact]
+    public async Task DuckDbGetRsRatingClosesAsync_AllSymbolsEquallyOld_AllTakePart()
+    {
+        var oldDate = new DateOnly(2024, 3, 1);
+        CreateParquetFile("X", RisingBars(oldDate, 1000f, 1f));
+        CreateParquetFile("Y", RisingBars(oldDate, 1000f, 2f));
+
+        var closes = await CreateProvider().GetRsRatingClosesAsync(new[] { "X", "Y" });
+
+        Assert.Equal(2, closes.Count);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(367)]
+    public void DuckDbProvider_RefusesAToleranceOutsideTheHardBand_InsteadOfLeavingEverySymbolOut(int days)
+    {
+        // The provider reads the raw option, so it checks the band itself: a negative tolerance would otherwise exclude even the reference symbol.
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() => CreateProvider(maxStaleCalendarDays: days));
+
+        Assert.Contains(RsRatingSettingsValidator.MaxStaleCalendarDaysKey, error.Message);
+    }
+
+    [Fact]
+    public async Task DuckDbGetRsRatingClosesAsync_ToleranceComesFromTheSettings()
+    {
+        var reference = new DateOnly(2026, 11, 13);
+        CreateParquetFile("CURRENT", RisingBars(reference, 1000f, 2f));
+        CreateParquetFile("ONE_DAY_OLD", RisingBars(reference.AddDays(-1), 1000f, 1f));
+        CreateParquetFile("TWENTY_DAYS_OLD", RisingBars(reference.AddDays(-20), 1000f, 3f));
+        string[] all = { "CURRENT", "ONE_DAY_OLD", "TWENTY_DAYS_OLD" };
+
+        var sameDateOnly = await CreateProvider(maxStaleCalendarDays: 0).GetRsRatingClosesAsync(all);
+        var wide = await CreateProvider(maxStaleCalendarDays: 30).GetRsRatingClosesAsync(all);
+
+        Assert.Equal(new[] { "CURRENT" }, sameDateOnly.Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray());
+        Assert.Equal(3, wide.Count);
+    }
+
+    [Fact]
+    public async Task DuckDbGetRsRatingClosesAsync_SymbolWithTooFewBarsDoesNotSetTheReferenceDate()
+    {
+        var reference = new DateOnly(2026, 11, 13);
+        CreateParquetFile("FULL_A", RisingBars(reference.AddDays(-30), 1000f, 1f));
+        CreateParquetFile("FULL_B", RisingBars(reference.AddDays(-30), 1000f, 2f));
+        // A newly listed symbol (100 bars, the newest date) is not eligible, so it must not make the two full histories "stale".
+        var shortBars = RisingBars(reference, 500f, 1f).Skip(160).ToList();
+        CreateParquetFile("NEW_LISTING", shortBars);
+
+        var closes = await CreateProvider().GetRsRatingClosesAsync(new[] { "FULL_A", "FULL_B", "NEW_LISTING" });
+
+        Assert.Equal(2, closes.Count);
+        Assert.DoesNotContain("NEW_LISTING", closes.Keys);
+    }
+
+    [Fact]
+    public async Task DuckDbGetRsRatingClosesAsync_StaleSymbols_AreReportedAtDebugLevelOnly()
+    {
+        var reference = new DateOnly(2026, 11, 13);
+        CreateParquetFile("CURRENT_A", RisingBars(reference, 1000f, 2f));
+        CreateParquetFile("CURRENT_B", RisingBars(reference, 1000f, 1f));
+        CreateParquetFile("DELISTED", RisingBars(reference.AddDays(-200), 1000f, 3f));
+        var logger = new StockAnalyzer.Core.Tests.Services.CapturingLogger<DuckDbHeatmapReturnProvider>();
+
+        await CreateProvider(logger: logger).GetRsRatingClosesAsync(new[] { "CURRENT_A", "CURRENT_B", "DELISTED" });
+
+        // A symbol that stays stale is left out on every computation: that is a diagnostic, not an Information or Warning event.
+        var entry = Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Debug, entry.Level);
+        Assert.Contains("left out 1 of 3", entry.Message);
+        Assert.DoesNotContain("DELISTED", entry.Message);
+    }
+
+    [Fact]
+    public async Task DuckDbGetRsRatingClosesAsync_NothingLeftOut_LogsNothing()
+    {
+        var reference = new DateOnly(2026, 11, 13);
+        CreateParquetFile("A", RisingBars(reference, 1000f, 2f));
+        CreateParquetFile("B", RisingBars(reference.AddDays(-3), 1000f, 1f));
+        var logger = new StockAnalyzer.Core.Tests.Services.CapturingLogger<DuckDbHeatmapReturnProvider>();
+
+        await CreateProvider(logger: logger).GetRsRatingClosesAsync(new[] { "A", "B" });
+
+        Assert.Empty(logger.Entries);
+    }
+
+    [Fact]
+    public async Task DuckDbGetRsRatingClosesAsync_IsolatedNewestDate_WarnsEvenWhenTwoSymbolsRemain()
+    {
+        var reference = new DateOnly(2026, 11, 13);
+        // One abnormal future-dated symbol: the others are all more than the tolerance (10 days) older, so only the abnormal one remains.
+        CreateParquetFile("FUTURE", RisingBars(reference.AddDays(200), 1000f, 1f));
+        CreateParquetFile("NORMAL_1", RisingBars(reference, 1000f, 2f));
+        CreateParquetFile("NORMAL_2", RisingBars(reference.AddDays(-1), 1000f, 3f));
+        var logger = new StockAnalyzer.Core.Tests.Services.CapturingLogger<DuckDbHeatmapReturnProvider>();
+
+        var closes = await CreateProvider(logger: logger).GetRsRatingClosesAsync(new[] { "FUTURE", "NORMAL_1", "NORMAL_2" });
+
+        Assert.Equal(new[] { "FUTURE" }, closes.Keys.ToArray());
+        var warning = Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning);
+        Assert.Contains("abnormal", warning.Message);
+    }
+
+    [Fact]
+    public async Task DuckDbGetRsRatingClosesAsync_NewestDateWithACloseRunnerUp_DoesNotWarn()
+    {
+        var reference = new DateOnly(2026, 11, 13);
+        // The stale symbol is left out, but the newest date has a runner-up within the tolerance: nothing looks abnormal.
+        CreateParquetFile("A", RisingBars(reference, 1000f, 2f));
+        CreateParquetFile("B", RisingBars(reference.AddDays(-4), 1000f, 1f));
+        CreateParquetFile("DELISTED", RisingBars(reference.AddDays(-200), 1000f, 3f));
+        var logger = new StockAnalyzer.Core.Tests.Services.CapturingLogger<DuckDbHeatmapReturnProvider>();
+
+        await CreateProvider(logger: logger).GetRsRatingClosesAsync(new[] { "A", "B", "DELISTED" });
+
+        Assert.DoesNotContain(logger.Entries, e => e.Level >= LogLevel.Warning);
     }
 
     [Fact]

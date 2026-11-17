@@ -22,6 +22,9 @@ public class DatePriceRangeObject : IChartObject, IDisposable, IDrawingCalculate
     private bool _showPriceLabel = true;
     private bool _showBarLabel = true;
     private bool _showVolumeLabel = true;
+    private bool _showHighLowLabel;
+    private bool _showDrawdownLabel;
+    private bool _showVolatilityLabel;
 
     private IReadOnlyList<CoreCandleData>? _lastCandles;
     private DrawingAnchor _cachedP1;
@@ -108,6 +111,54 @@ public class DatePriceRangeObject : IChartObject, IDisposable, IDrawingCalculate
             if (_showVolumeLabel != value)
             {
                 _showVolumeLabel = value;
+                _labelLinesDirty = true;
+            }
+        }
+    }
+
+    [Category("Analysis")]
+    [DisplayName("Show High/Low Label")]
+    [ParameterTag(DrawingParameterTags.Analysis)]
+    public bool ShowHighLowLabel
+    {
+        get => _showHighLowLabel;
+        set
+        {
+            if (_showHighLowLabel != value)
+            {
+                _showHighLowLabel = value;
+                _labelLinesDirty = true;
+            }
+        }
+    }
+
+    [Category("Analysis")]
+    [DisplayName("Show Max Drawdown Label")]
+    [ParameterTag(DrawingParameterTags.Analysis)]
+    public bool ShowDrawdownLabel
+    {
+        get => _showDrawdownLabel;
+        set
+        {
+            if (_showDrawdownLabel != value)
+            {
+                _showDrawdownLabel = value;
+                _labelLinesDirty = true;
+            }
+        }
+    }
+
+    [Category("Analysis")]
+    [DisplayName("Show Volatility Label")]
+    [ParameterTag(DrawingParameterTags.Analysis)]
+    public bool ShowVolatilityLabel
+    {
+        get => _showVolatilityLabel;
+        set
+        {
+            if (_showVolatilityLabel != value)
+            {
+                _showVolatilityLabel = value;
                 _labelLinesDirty = true;
             }
         }
@@ -235,8 +286,8 @@ public class DatePriceRangeObject : IChartObject, IDisposable, IDrawingCalculate
             // 4. Selection handles
             if (IsSelected)
             {
-                SelectionHandleRenderer.Draw(canvas, pt1, baseColor);
-                SelectionHandleRenderer.Draw(canvas, pt2, baseColor);
+                SelectionHandleRenderer.Draw(canvas, pt1, AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null, radius: ChartConstants.SelectedHandleRadius);
+                SelectionHandleRenderer.Draw(canvas, pt2, AnchorPointIndex == 1 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null, radius: ChartConstants.SelectedHandleRadius);
             }
         }
     }
@@ -330,15 +381,40 @@ public class DatePriceRangeObject : IChartObject, IDisposable, IDrawingCalculate
         _hasCalculated = true;
     }
 
+    /// <summary>
+    /// The rows the summary box currently shows (rebuilt first when a toggle or the values changed). Internal so tests can read the rows without
+    /// reflecting on the private cache; the rendering reads the same cache.
+    /// </summary>
+    internal IReadOnlyList<string> GetLabelLines()
+    {
+        lock (_gate.SyncRoot)
+        {
+            if (_gate.IsDisposed || Points.Count < 2)
+            {
+                return Array.Empty<string>();
+            }
+
+            EnsureCalculatedAndLabelLines();
+            return _cachedLabelLines;
+        }
+    }
+
     private void RebuildLabelLines()
     {
-        if (_cachedValues.Length < 6)
+        if (_cachedValues.Length < DatePriceRangeValues.BaseValueCount)
         {
             _cachedLabelLines = Array.Empty<string>();
             return;
         }
 
-        int lineCount = (_showPriceLabel ? 1 : 0) + (_showBarLabel ? 1 : 0) + (_showVolumeLabel ? 1 : 0);
+        // The appended statistics rows are only built when the array carries them.
+        bool hasExtended = _cachedValues.Length >= DatePriceRangeValues.ValueCount;
+        bool showHighLow = hasExtended && _showHighLowLabel;
+        bool showDrawdown = hasExtended && _showDrawdownLabel;
+        bool showVolatility = hasExtended && _showVolatilityLabel;
+
+        int lineCount = (_showPriceLabel ? 1 : 0) + (_showBarLabel ? 1 : 0) + (_showVolumeLabel ? 1 : 0)
+            + (showHighLow ? 1 : 0) + (showDrawdown ? 1 : 0) + (showVolatility ? 1 : 0);
         if (lineCount == 0)
         {
             _cachedLabelLines = Array.Empty<string>();
@@ -364,6 +440,25 @@ public class DatePriceRangeObject : IChartObject, IDisposable, IDrawingCalculate
         if (_showVolumeLabel)
         {
             lines[index++] = $"Vol: {_cachedValues[4].FormattedText} (Avg: {_cachedValues[5].FormattedText})";
+        }
+
+        // The texts come from Core (DrawingValueFormat.Culture); an undefined value is already "-".
+        if (showHighLow)
+        {
+            lines[index++] = $"High/Low: {_cachedValues[DatePriceRangeValues.HighestHighIndex].FormattedText} / {_cachedValues[DatePriceRangeValues.LowestLowIndex].FormattedText}";
+        }
+
+        if (showDrawdown)
+        {
+            lines[index++] = $"MaxDD: {_cachedValues[DatePriceRangeValues.MaxDrawdownIndex].FormattedText}";
+        }
+
+        if (showVolatility)
+        {
+            string volatilityText = _cachedValues[DatePriceRangeValues.VolatilityIndex].FormattedText;
+            lines[index++] = _cachedValues[DatePriceRangeValues.VolatilityIndex].NumericValue.HasValue
+                ? $"Volatility: {volatilityText}/bar"
+                : $"Volatility: {volatilityText}";
         }
 
         _cachedLabelLines = lines;

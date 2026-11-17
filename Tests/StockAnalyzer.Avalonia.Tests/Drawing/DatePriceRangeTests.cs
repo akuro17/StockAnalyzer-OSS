@@ -11,6 +11,7 @@ using StockAnalyzer.Avalonia.Drawing.Behaviors;
 using StockAnalyzer.Avalonia.Drawing.Serialization;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Tests.Common;
 using Xunit;
@@ -48,7 +49,7 @@ public sealed class DatePriceRangeTests
             t => t.Tool == DrawingTool.DatePriceRange && t.NameKey == "DrawTool_DatePriceRange");
 
         Assert.False(DrawingValueCatalog.TryGet("DatePriceRange", out _));
-        Assert.Equal(16, DrawingValueCatalog.All.Count); // 15 + Pitchfork (WebAiExpansion plan 12 T9)
+        // The size and the order of the catalogue are pinned once, by DrawingValueCatalogTests (Core.Tests); this tool is not in it.
     }
 
     [Fact]
@@ -81,7 +82,7 @@ public sealed class DatePriceRangeTests
     }
 
     [Fact]
-    public void GetCalculatedValues_ReturnsSixDerivedMetrics_AndRecalculatorUpdatesThem()
+    public void GetCalculatedValues_ReturnsTenDerivedMetrics_AndRecalculatorUpdatesThem()
     {
         var p1 = PixelCoordinateTransform.Chart(100, 200);
         var p2 = PixelCoordinateTransform.Chart(200, 100);
@@ -99,11 +100,15 @@ public sealed class DatePriceRangeTests
         Assert.True(DeferredComputationRecalculator.TryRecalculate(obj, candles));
 
         var values = obj.GetCalculatedValues(tMin);
-        Assert.Equal(6, values.Count);
+        Assert.Equal(DatePriceRangeValues.ValueCount, values.Count);
         Assert.Equal(p2.Price - p1.Price, values[0].NumericValue);
         Assert.Equal(3m, values[2].NumericValue);
         Assert.Equal(6_000m, values[4].NumericValue);
         Assert.Equal(2_000m, values[5].NumericValue);
+        Assert.Equal(120m, values[DatePriceRangeValues.HighestHighIndex].NumericValue);
+        Assert.Equal(95m, values[DatePriceRangeValues.LowestLowIndex].NumericValue);
+        Assert.Equal(0m, values[DatePriceRangeValues.MaxDrawdownIndex].NumericValue); // the closes 105, 112, 118 never fall
+        Assert.NotNull(values[DatePriceRangeValues.VolatilityIndex].NumericValue); // 3 bars give 2 returns
         Assert.DoesNotContain(values, v => v.Key is "P1" or "P2" or "Start" or "End");
 
         obj.Points.Clear();

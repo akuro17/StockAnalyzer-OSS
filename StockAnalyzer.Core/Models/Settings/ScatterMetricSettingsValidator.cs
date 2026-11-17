@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 
 namespace StockAnalyzer.Core.Models.Settings;
 
@@ -24,31 +23,14 @@ public static class ScatterMetricSettingsValidator
     public static IReadOnlyList<string> Validate(int maxRegisteredMetrics, int maxOffset, int maxParallelism, int inputDebounceMilliseconds)
     {
         var warnings = new List<string>();
-        CheckBand(MaxRegisteredMetricsKey, nameof(maxRegisteredMetrics), ScatterMetricLimits.MaxRegisteredMetrics, maxRegisteredMetrics, "metrics",
+        SettingBandValidation.Check(MaxRegisteredMetricsKey, nameof(maxRegisteredMetrics), ScatterMetricLimits.MaxRegisteredMetrics, maxRegisteredMetrics, "metrics",
             "a longer Active list is slower to scroll and to pick from", warnings);
-        CheckBand(MaxOffsetKey, nameof(maxOffset), ScatterMetricLimits.MaxOffset, maxOffset, "bars",
+        SettingBandValidation.Check(MaxOffsetKey, nameof(maxOffset), ScatterMetricLimits.MaxOffset, maxOffset, "bars",
             "every ticker loads that many more bars per evaluation", warnings);
-        CheckBand(MaxParallelismKey, nameof(maxParallelism), ScatterMetricLimits.MaxParallelism, maxParallelism, "tickers",
+        SettingBandValidation.Check(MaxParallelismKey, nameof(maxParallelism), ScatterMetricLimits.MaxParallelism, maxParallelism, "tickers",
             "more tickers read their data files at the same time", warnings);
-        CheckBand(InputDebounceMillisecondsKey, nameof(inputDebounceMilliseconds), ScatterMetricLimits.InputDebounceMilliseconds, inputDebounceMilliseconds, "ms",
+        SettingBandValidation.Check(InputDebounceMillisecondsKey, nameof(inputDebounceMilliseconds), ScatterMetricLimits.InputDebounceMilliseconds, inputDebounceMilliseconds, "ms",
             "the search either runs on every key stroke or reacts late", warnings);
         return warnings;
     }
-
-    private static void CheckBand(string key, string parameterName, SettingBand band, int value, string unit, string consequence, List<string> warnings)
-    {
-        if (!band.IsWithinHardLimits(value))
-        {
-            throw new ArgumentOutOfRangeException(parameterName, value,
-                $"{key} must be {Format(band.HardMin)} to {Format(band.HardMax)} {unit}; the value {Format(value)} is outside the system limits.");
-        }
-
-        if (!band.IsWithinStandard(value))
-        {
-            warnings.Add($"{key} = {Format(value)} {unit} is outside the standard range {Format(band.StandardMin)} to {Format(band.StandardMax)}; "
-                + $"the application runs but {consequence}.");
-        }
-    }
-
-    private static string Format(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
 }

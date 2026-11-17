@@ -63,6 +63,20 @@ public class DynamicPeriodDriverServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveDynamicPeriodDriverAsync_NeverStoresATimeframe()
+    {
+        using var service = new DynamicPeriodDriverService(_testFilePath);
+        var driver = new CoreIndicatorSettings { Id = "driver_w", TypeEnum = IndicatorType.HilbertTransform };
+        driver.Timeframe = IndicatorTimeframe.Monthly;
+
+        await service.SaveDynamicPeriodDriverAsync(driver);
+
+        Assert.Equal(IndicatorTimeframe.SameAsChart, service.GetDynamicPeriodDriver("driver_w")!.Timeframe);
+        using var fresh = new DynamicPeriodDriverService(_testFilePath);
+        Assert.Equal(IndicatorTimeframe.SameAsChart, (await fresh.GetDynamicPeriodDriversAsync()).Single().Timeframe);
+    }
+
+    [Fact]
     public async Task DeleteDynamicPeriodDriver_RemovesFromCacheAndDisk()
     {
         // Arrange

@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using StockAnalyzer.Core.Analysis;
 
 namespace StockAnalyzer.Core.Models.Parameters;
 
@@ -82,6 +83,16 @@ public class CoreHilbertTrendModeParameter : CoreIndicatorParameterBase
     {
         get => _stabilityThreshold;
         set => SetProperty(ref _stabilityThreshold, value);
+    }
+
+    private HilbertDetrendMode _detrendMode = HilbertDetrendMode.FirDetrender;
+
+    [DisplayName("Detrend Mode")]
+    [Description("Pre-filter that isolates the cyclical component before the quadrature stage (FirDetrender = Ehlers 7-tap FIR, Wma4 = price minus 4-bar WMA, HighPass = Ehlers 2-pole high-pass).")]
+    public HilbertDetrendMode DetrendMode
+    {
+        get => _detrendMode;
+        set => SetProperty(ref _detrendMode, value);
     }
 
     public override string GetDisplayName(string type) => $"{type} ({MinPeriod}-{MaxPeriod})";

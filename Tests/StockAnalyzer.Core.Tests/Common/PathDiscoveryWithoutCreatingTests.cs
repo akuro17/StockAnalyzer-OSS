@@ -157,4 +157,12 @@ public sealed class PathDiscoveryWithoutCreatingTests : IDisposable
             Environment.SetEnvironmentVariable(PathDiscovery.UiTestEnabledEnvironmentVariable, previousEnabled);
         }
     }
+
+    [Fact]
+    public void TheDataSubfolderNamesOfThePortfolioAndTheNotes_HaveOneDefinitionInThePathResolver()
+    {
+        Assert.Equal("Portfolios", PathDiscovery.PortfoliosFolderName);
+        Assert.Equal("Notes", PathDiscovery.NotesFolderName);
+        Assert.Equal("Data/Notes", PathDiscovery.NotesDataPath);
+    }
 }

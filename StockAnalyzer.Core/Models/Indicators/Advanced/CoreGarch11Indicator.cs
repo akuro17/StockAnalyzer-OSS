@@ -1,4 +1,8 @@
+using System;
+using System.Buffers;
+using System.Collections.Generic;
 using StockAnalyzer.Core.MathUtils;
+using StockAnalyzer.Core.Models.Attributes;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Advanced;
@@ -14,7 +18,9 @@ namespace StockAnalyzer.Core.Models.Indicators.Advanced;
 [StockAnalyzerIndicator(IndicatorType.Garch11)]
 public class CoreGarch11Indicator : CoreIndicatorBase
 {
-    public override string Name => "GARCH(1,1)";
+    public const string GjrGammaSeriesName = nameof(GjrGamma);
+
+    public override string Name => EnableGjrLeverage ? "GJR-GARCH(1,1)" : "GARCH(1,1)";
 
     public override bool IsOverlay => false;
 
@@ -27,11 +33,18 @@ public class CoreGarch11Indicator : CoreIndicatorBase
     /// <summary>Optimizer iteration cap per estimation.</summary>
     public int MaxIterations { get; set; } = IndicatorDefaultConstants.Garch11DefaultMaxIterations;
 
+    /// <summary>When true, estimates GJR-GARCH(1,1) with asymmetric leverage gamma.</summary>
+    public bool EnableGjrLeverage { get; set; }
+
     /// <summary>When true the value is multiplied by sqrt(<see cref="PeriodsPerYear"/>).</summary>
     public bool Annualize { get; set; }
 
     /// <summary>Bars per year for the annualisation; used only when <see cref="Annualize"/> is true.</summary>
     public int PeriodsPerYear { get; set; } = IndicatorDefaultConstants.PeriodsPerYear;
+
+    /// <summary>Estimated asymmetric leverage coefficient (gamma) when <see cref="EnableGjrLeverage"/> is enabled.</summary>
+    [IndicatorResultIgnore]
+    public List<decimal?> GjrGamma { get; } = new();
 
     public override void Configure(CoreIndicatorParameterBase parameters)
     {
@@ -41,6 +54,7 @@ public class CoreGarch11Indicator : CoreIndicatorBase
             Period = p.Period;
             RefitInterval = p.RefitInterval;
             MaxIterations = p.MaxIterations;
+            EnableGjrLeverage = p.EnableGjrLeverage;
             Annualize = p.Annualize;
             PeriodsPerYear = p.PeriodsPerYear;
         }
@@ -49,12 +63,14 @@ public class CoreGarch11Indicator : CoreIndicatorBase
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
         _values.Clear();
+        GjrGamma.Clear();
 
         var parameters = new CoreGarch11Parameter
         {
             Period = Period,
             RefitInterval = RefitInterval,
             MaxIterations = MaxIterations,
+            EnableGjrLeverage = EnableGjrLeverage,
             Annualize = Annualize,
             PeriodsPerYear = PeriodsPerYear
         };
@@ -67,23 +83,46 @@ public class CoreGarch11Indicator : CoreIndicatorBase
             return IndicatorResult.Failure(ex.Message);
         }
 
-        double[] prices = PriceDataHelper.ExtractDoubleSeries(candles, PriceSource);
-        int count = prices.Length;
+        int count = candles?.Count ?? 0;
         if (count == 0)
         {
-            return IndicatorResult.Success(_values);
+            return EnableGjrLeverage
+                ? IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+                {
+                    [IndicatorResult.MainSeriesName] = _values,
+                    [GjrGammaSeriesName] = GjrGamma
+                })
+                : IndicatorResult.Success(_values);
         }
 
-        // returns[k] = 100 ln(P_k / P_(k-1)) in percent; NaN when a price is not positive (returns[0] has no predecessor).
-        var returns = new double[count];
-        returns[0] = double.NaN;
-        for (int k = 1; k < count; k++)
+        decimal[] prices = ArrayPool<decimal>.Shared.Rent(count);
+        double[] returns = ArrayPool<double>.Shared.Rent(count);
+        try
         {
-            returns[k] = EgarchMath.PercentLogReturn(prices[k - 1], prices[k]);
-        }
+            PriceDataHelper.FillPrices(candles!, 0, prices.AsSpan(0, count), PriceSource);
 
-        double annualFactor = IndicatorCalculationHelper.AnnualizationFactor(Annualize, PeriodsPerYear);
-        int firstFitBar = Period;
+            // returns[k] = 100 ln(P_k / P_(k-1)) in percent; NaN when a price is not positive (returns[0] has no predecessor).
+            returns[0] = double.NaN;
+            for (int k = 1; k < count; k++)
+            {
+                returns[k] = EgarchMath.PercentLogReturn((double)prices[k - 1], (double)prices[k]);
+            }
+
+            double annualFactor = IndicatorCalculationHelper.AnnualizationFactor(Annualize, PeriodsPerYear);
+            int firstFitBar = Period;
+            return EnableGjrLeverage
+                ? CalculateGjrSeries(returns, count, firstFitBar, annualFactor)
+                : CalculateStandardSeries(returns, count, firstFitBar, annualFactor);
+        }
+        finally
+        {
+            ArrayPool<decimal>.Shared.Return(prices);
+            ArrayPool<double>.Shared.Return(returns);
+        }
+    }
+
+    private IIndicatorResult CalculateStandardSeries(double[] returns, int count, int firstFitBar, double annualFactor)
+    {
         bool hasEstimate = false;
         Garch11Fit fit = default;
         double variance = 0.0;
@@ -123,5 +162,62 @@ public class CoreGarch11Indicator : CoreIndicatorBase
         }
 
         return IndicatorResult.Success(_values);
+    }
+
+    private IIndicatorResult CalculateGjrSeries(double[] returns, int count, int firstFitBar, double annualFactor)
+    {
+        bool hasEstimate = false;
+        GjrGarchFit fit = default;
+        double variance = 0.0;
+
+        for (int j = 0; j < count; j++)
+        {
+            if (j < firstFitBar)
+            {
+                _values.Add(null);
+                GjrGamma.Add(null);
+                continue;
+            }
+
+            if ((j - firstFitBar) % RefitInterval == 0)
+            {
+                hasEstimate = Garch11Math.TryFitGjr(returns, j - Period + 1, Period, MaxIterations, out fit);
+                if (hasEstimate)
+                {
+                    variance = fit.NextVariance;
+                }
+            }
+            else if (hasEstimate)
+            {
+                double r = returns[j];
+                if (double.IsFinite(r))
+                {
+                    double residual = r - fit.Mean;
+                    variance = Garch11Math.NextVarianceStepGjr(fit.Omega, fit.Alpha, fit.Beta, fit.Gamma, residual, variance);
+                    hasEstimate = double.IsFinite(variance) && variance > 0.0;
+                }
+                else
+                {
+                    hasEstimate = false;
+                }
+            }
+
+            if (hasEstimate)
+            {
+                _values.Add(IndicatorCalculationHelper.ToDecimalOrNull(Math.Sqrt(variance) * annualFactor));
+                GjrGamma.Add(IndicatorCalculationHelper.ToDecimalOrNull(fit.Gamma));
+            }
+            else
+            {
+                _values.Add(null);
+                GjrGamma.Add(null);
+            }
+        }
+
+        return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>>
+        {
+            [IndicatorResult.MainSeriesName] = _values,
+            [GjrGammaSeriesName] = GjrGamma
+        });
     }
 }

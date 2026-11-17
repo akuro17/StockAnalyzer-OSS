@@ -424,6 +424,24 @@
                                                         </Button>
                                                     </Grid>
                                                 </StackPanel>
+
+                                                <!-- Timeframe (Same as Chart / Weekly / Monthly): hidden where it does not apply, disabled while the indicator is part of a chain -->
+                                                <StackPanel IsVisible="{Binding ShowTimeframe}" Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                    <TextBlock Text="{l:Localize Label_TimeFrame}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
+                                                    <ComboBox ItemsSource="{Binding TimeframeOptions}"
+                                                              SelectedItem="{Binding SelectedIndicator.Timeframe, Mode=TwoWay}"
+                                                              IsEnabled="{Binding IsTimeframeEnabled}"
+                                                              ToolTip.Tip="{Binding TimeframeToolTip}"
+                                                              ToolTip.ShowOnDisabled="True"
+                                                              HorizontalAlignment="Stretch"
+                                                              Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}">
+                                                        <ComboBox.ItemTemplate>
+                                                            <DataTemplate x:DataType="models:IndicatorTimeframe">
+                                                                <TextBlock Text="{Binding ., Converter={x:Static converters:EnumToLocalizedDisplayNameConverter.Instance}}"/>
+                                                            </DataTemplate>
+                                                        </ComboBox.ItemTemplate>
+                                                    </ComboBox>
+                                                </StackPanel>
                                             </controls:ResponsiveFormPanel>
 
                                             <!-- Parameters heading -->

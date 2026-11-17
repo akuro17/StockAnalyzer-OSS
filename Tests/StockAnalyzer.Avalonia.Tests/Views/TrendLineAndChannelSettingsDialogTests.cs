@@ -164,4 +164,58 @@ public sealed class TrendLineAndChannelSettingsDialogTests
         Assert.Single(trendView.GetLogicalDescendants().OfType<ComboBox>());
         Assert.Single(channelView.GetLogicalDescendants().OfType<ComboBox>());
     }
+
+    [AvaloniaTheory]
+    [InlineData(FibonacciRetracementExtendMode.Default)]
+    [InlineData(FibonacciRetracementExtendMode.CyclicLines)]
+    [InlineData(FibonacciRetracementExtendMode.FibTimeZone)]
+    [InlineData(FibonacciRetracementExtendMode.ExtendRight)]
+    [InlineData(FibonacciRetracementExtendMode.ExtendLeft)]
+    [InlineData(FibonacciRetracementExtendMode.ExtendBoth)]
+    public void FibonacciRetracementDialog_ExtendMode_RoundTripsEveryMember(FibonacciRetracementExtendMode targetMode)
+    {
+        var registry = new DrawingSettingsPanelRegistry();
+        registry.Register(new FibonacciRetracementSettingsPanelDefinition());
+
+        var fib = new FibonacciRetracementObject(new ChartPoint(T0, 100m), new ChartPoint(T0.AddDays(10), 200m))
+        {
+            ExtendMode = FibonacciRetracementExtendMode.Default
+        };
+
+        var dialog = new DrawingSettingsDialog(fib, registry);
+        try
+        {
+            dialog.Show();
+            Pump();
+
+            var extendCombo = dialog.FindControl<ComboBox>("FibRetracementExtendModeCombo");
+            Assert.NotNull(extendCombo);
+            Assert.Equal(Enum.GetValues<FibonacciRetracementExtendMode>().Length, extendCombo!.Items.Count);
+            Assert.Equal(FibonacciRetracementExtendMode.Default, extendCombo.SelectedItem);
+
+            // Verify UI display order keeps ExtendLeft between ExtendRight and ExtendBoth while preserving enum integer values
+            var items = extendCombo.Items.Cast<FibonacciRetracementExtendMode>().ToArray();
+            Assert.Equal(
+                new[]
+                {
+                    FibonacciRetracementExtendMode.Default,
+                    FibonacciRetracementExtendMode.CyclicLines,
+                    FibonacciRetracementExtendMode.FibTimeZone,
+                    FibonacciRetracementExtendMode.ExtendRight,
+                    FibonacciRetracementExtendMode.ExtendLeft,
+                    FibonacciRetracementExtendMode.ExtendBoth
+                },
+                items);
+
+            extendCombo.SelectedItem = targetMode;
+            dialog.FindControl<Button>("OkButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Pump();
+
+            Assert.Equal(targetMode, fib.ExtendMode);
+        }
+        finally
+        {
+            if (dialog.IsVisible) dialog.Close();
+        }
+    }
 }

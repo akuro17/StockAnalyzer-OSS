@@ -95,6 +95,47 @@ public static class IndicatorChartSuppression
                 CoreMcClellanOscillatorIndicator.SummationIndexSeriesName,
                 CoreMcClellanOscillatorIndicator.AdLineSeriesName,
             },
+            // Fixed [0, 1] panel axis: suppress off-scale statistical series from chart rendering (kept in IndicatorResult / DataWindow / screener).
+            [IndicatorType.HurstExponent] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreHurstExponentIndicator.VarianceRatioSeriesName,
+                CoreHurstExponentIndicator.VarianceRatioZScoreSeriesName,
+                CoreHurstExponentIndicator.DfaAlphaSeriesName,
+            },
+            [IndicatorType.Entropy] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreEntropyIndicator.SampleEntropySeriesName,
+            },
+            // Leverage parameter gamma (dimensionless coefficient) differs in unit/scale from volatility percentage Main series.
+            [IndicatorType.Garch11] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreGarch11Indicator.GjrGammaSeriesName,
+            },
+            // Auto-ARIMA integer orders (0..5) differ in unit from price-native overlay Main series.
+            [IndicatorType.ARIMA] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreArimaIndicator.SelectedPSeriesName,
+                CoreArimaIndicator.SelectedDSeriesName,
+                CoreArimaIndicator.SelectedQSeriesName,
+            },
+            // Fixed [0, 1] panel axis: suppress off-scale run lengths and CUSUM series from chart rendering.
+            [IndicatorType.Bocpd] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreBocpdIndicator.ExpectedRunLengthSeriesName,
+                CoreBocpdIndicator.MapRunLengthSeriesName,
+                CoreBocpdIndicator.CusumUpSeriesName,
+                CoreBocpdIndicator.CusumDownSeriesName,
+            },
+            // Bounded [-1, 1] correlation differs in scale/unit from unbounded F-statistics on the same sub-panel.
+            [IndicatorType.GrangerCausality] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreGrangerCausalityIndicator.DccCorrelationSeriesName,
+            },
+            // Spread Z-score (sigma) differs in unit/scale from likelihood-ratio Trace/MaxEigen statistics.
+            [IndicatorType.JohansenCointegration] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreJohansenCointegrationIndicator.CointegrationSpreadZScoreSeriesName,
+            },
         };
 
     private static readonly IReadOnlyDictionary<IndicatorType, IReadOnlySet<string>> SuppressedDataWindowSeries =

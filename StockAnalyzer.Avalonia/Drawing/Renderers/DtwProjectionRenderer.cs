@@ -4,15 +4,20 @@ using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Objects;
+using StockAnalyzer.Avalonia.Views.Chart;
 
 namespace StockAnalyzer.Avalonia.Drawing.Renderers;
 
 public class DtwProjectionRenderer
 {
+    [ThreadStatic]
+    private static ProjectionRenderScratch? t_scratch;
 
     public void Render(SKCanvas canvas, IChartObject obj, ICoordinateTransform transform, bool isSelected)
     {
         if (obj is not DtwProjectionObject dtwObj || dtwObj.Points.Count < 2) return;
+
+        var scratch = t_scratch ??= new ProjectionRenderScratch(ChartTheme.DtwProjectedPathDashLength);
 
         var p1 = transform.ChartToScreen(dtwObj.Points[0]);
         var p2 = transform.ChartToScreen(dtwObj.Points[1]);
@@ -28,28 +33,16 @@ public class DtwProjectionRenderer
 
         // 1. Draw Selection Range Background Band
         var bandRect = new SKRect(left, clip.Top, right, clip.Bottom);
-        using (var bgPaint = new SKPaint
-        {
-            Color = dtwObj.SkiaFillColor.WithAlpha((byte)(255 * dtwObj.FillOpacity / 100.0)),
-            Style = SKPaintStyle.Fill,
-            IsAntialias = true
-        })
-        {
-            canvas.DrawRect(bandRect, bgPaint);
-        }
+        var fillPaint = scratch.FillPaint;
+        fillPaint.Color = dtwObj.SkiaFillColor.WithAlpha((byte)(255 * dtwObj.FillOpacity / 100.0));
+        canvas.DrawRect(bandRect, fillPaint);
 
         // 2. Draw Vertical Lines at Start (x1) and End (x2)
-        using (var linePaint = new SKPaint
-        {
-            Color = isSelected ? activeColor : activeColor.WithAlpha(180),
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = isSelected ? (float)dtwObj.Thickness + 1 : (float)dtwObj.Thickness,
-            IsAntialias = false
-        })
-        {
-            canvas.DrawLine(x1, clip.Top, x1, clip.Bottom, linePaint);
-            canvas.DrawLine(x2, clip.Top, x2, clip.Bottom, linePaint);
-        }
+        var linePaint = scratch.RangeLinePaint;
+        linePaint.Color = isSelected ? activeColor : activeColor.WithAlpha(180);
+        linePaint.StrokeWidth = isSelected ? (float)dtwObj.Thickness + 1 : (float)dtwObj.Thickness;
+        canvas.DrawLine(x1, clip.Top, x1, clip.Bottom, linePaint);
+        canvas.DrawLine(x2, clip.Top, x2, clip.Bottom, linePaint);
 
         // 3. Draw Handles on the vertical lines if selected
         if (isSelected)
@@ -59,19 +52,75 @@ public class DtwProjectionRenderer
             SelectionHandleRenderer.Draw(canvas, new global::Avalonia.Point(x2, midY), dtwObj.AnchorPointIndex == 1 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null);
         }
 
-        // 4. Draw Projected Path
+        // 4. Draw DBA 15%-85% Ensemble Fan Band (zero per-frame allocations via ProjectionRenderScratch)
+        if (dtwObj.UseDbaEnsemble &&
+            !dtwObj.IsUnmatched &&
+            dtwObj.UpperBandPath != null && dtwObj.UpperBandPath.Count > 1 &&
+            dtwObj.LowerBandPath != null && dtwObj.LowerBandPath.Count > 1)
+        {
+            var bandPath = scratch.BandPath;
+            bandPath.Reset();
+
+            var firstUpper = dtwObj.UpperBandPath[0];
+            var startUpperScreen = transform.ChartToScreen(new ChartPoint(new DateTime((long)firstUpper.X), (decimal)firstUpper.Y));
+            bandPath.MoveTo((float)startUpperScreen.X, (float)startUpperScreen.Y);
+
+            for (int i = 1; i < dtwObj.UpperBandPath.Count; i++)
+            {
+                var pt = dtwObj.UpperBandPath[i];
+                var sPt = transform.ChartToScreen(new ChartPoint(new DateTime((long)pt.X), (decimal)pt.Y));
+                bandPath.LineTo((float)sPt.X, (float)sPt.Y);
+            }
+
+            for (int i = dtwObj.LowerBandPath.Count - 1; i >= 0; i--)
+            {
+                var pt = dtwObj.LowerBandPath[i];
+                var sPt = transform.ChartToScreen(new ChartPoint(new DateTime((long)pt.X), (decimal)pt.Y));
+                bandPath.LineTo((float)sPt.X, (float)sPt.Y);
+            }
+            bandPath.Close();
+
+            fillPaint.Color = dtwObj.SkiaFillColor.WithAlpha((byte)(255 * dtwObj.FillOpacity / 100.0));
+            canvas.DrawPath(bandPath, fillPaint);
+
+            var boundaryPaint = scratch.BoundaryPaint;
+            boundaryPaint.Color = activeColor.WithAlpha(140);
+            boundaryPaint.StrokeWidth = (float)Math.Max(1.0, dtwObj.Thickness * 0.75);
+
+            var upperPath = scratch.UpperPath;
+            upperPath.Reset();
+            upperPath.MoveTo((float)startUpperScreen.X, (float)startUpperScreen.Y);
+            for (int i = 1; i < dtwObj.UpperBandPath.Count; i++)
+            {
+                var pt = dtwObj.UpperBandPath[i];
+                var sPt = transform.ChartToScreen(new ChartPoint(new DateTime((long)pt.X), (decimal)pt.Y));
+                upperPath.LineTo((float)sPt.X, (float)sPt.Y);
+            }
+            canvas.DrawPath(upperPath, boundaryPaint);
+
+            var firstLower = dtwObj.LowerBandPath[0];
+            var startLowerScreen = transform.ChartToScreen(new ChartPoint(new DateTime((long)firstLower.X), (decimal)firstLower.Y));
+            var lowerPath = scratch.LowerPath;
+            lowerPath.Reset();
+            lowerPath.MoveTo((float)startLowerScreen.X, (float)startLowerScreen.Y);
+            for (int i = 1; i < dtwObj.LowerBandPath.Count; i++)
+            {
+                var pt = dtwObj.LowerBandPath[i];
+                var sPt = transform.ChartToScreen(new ChartPoint(new DateTime((long)pt.X), (decimal)pt.Y));
+                lowerPath.LineTo((float)sPt.X, (float)sPt.Y);
+            }
+            canvas.DrawPath(lowerPath, boundaryPaint);
+        }
+
+        // 5. Draw Projected Path
         if (dtwObj.ProjectedPath != null && dtwObj.ProjectedPath.Count > 1)
         {
-            using var pathPaint = new SKPaint
-            {
-                Color = dtwObj.SkiaColor,
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = 2.0f,
-                IsAntialias = true,
-                PathEffect = SKPathEffect.CreateDash(new float[] { 5, 5 }, 0)
-            };
+            var pathPaint = scratch.PathPaint;
+            pathPaint.Color = dtwObj.SkiaColor;
+            pathPaint.StrokeWidth = 2.0f;
 
-            using var path = new SKPath();
+            var path = scratch.ProjectedPath;
+            path.Reset();
             var firstVal = dtwObj.ProjectedPath[0];
             var startScreen = transform.ChartToScreen(new ChartPoint(new DateTime((long)firstVal.X), (decimal)firstVal.Y));
             path.MoveTo((float)startScreen.X, (float)startScreen.Y);
@@ -86,7 +135,7 @@ public class DtwProjectionRenderer
             canvas.DrawPath(path, pathPaint);
         }
 
-        // 5. Draw Matched Pattern Highlight
+        // 6. Draw Matched Pattern Highlight
         if (dtwObj.MatchedStartTime.HasValue && dtwObj.MatchedEndTime.HasValue)
         {
             var matchX1 = (float)transform.ChartToScreen(new ChartPoint(dtwObj.MatchedStartTime.Value, 0m)).X;
@@ -98,23 +147,13 @@ public class DtwProjectionRenderer
                 Math.Max(matchX1, matchX2),
                 clip.Bottom);
 
-            using var highlightPaint = new SKPaint
-            {
-                Color = new SKColor(0, 200, 100, 35), // Green with low alpha
-                Style = SKPaintStyle.Fill,
-                IsAntialias = false
-            };
+            var highlightPaint = scratch.HighlightFillPaint;
+            highlightPaint.Color = new SKColor(0, 200, 100, 35); // Green with low alpha
             canvas.DrawRect(matchRect, highlightPaint);
 
-            // Draw border for the matched region
-            using var borderPaint = new SKPaint
-            {
-                Color = new SKColor(0, 200, 100, 100),
-                Style = SKPaintStyle.Stroke,
-                StrokeWidth = 1,
-                IsAntialias = true,
-                PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0)
-            };
+            var borderPaint = scratch.HighlightBorderPaint;
+            borderPaint.Color = new SKColor(0, 200, 100, 100);
+            borderPaint.StrokeWidth = 1.0f;
             canvas.DrawRect(matchRect, borderPaint);
         }
     }

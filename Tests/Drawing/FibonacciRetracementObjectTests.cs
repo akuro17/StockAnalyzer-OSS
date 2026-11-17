@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using SkiaSharp;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Views.Dialogs;
 using StockAnalyzer.Core.Models;
@@ -200,5 +201,87 @@ public class FibonacciRetracementObjectTests
         // Verify that hit test works up to CanvasWidth
         Assert.True(transform.CanvasWidth > 0);
         Assert.True(fib.HitTest(new global::Avalonia.Point(transform.CanvasWidth - 10, 300), transform));
+    }
+
+    [Fact]
+    public void HitTest_ExtendLeft_HitsBeyondStartPointToCanvasLeftOnly()
+    {
+        var transform = CreateTransform();
+        // p1: X = 300 (2026-01-04), p2: X = 600 (2026-01-07)
+        var p1 = new ChartPoint(new DateTime(2026, 1, 4), 100m);
+        var p2 = new ChartPoint(new DateTime(2026, 1, 7), 200m);
+        using var fib = new FibonacciRetracementObject(p1, p2);
+
+        fib.ExtendMode = FibonacciRetracementExtendMode.ExtendLeft;
+
+        // 50% level Y = 300. Left of p1 (X = 50, Y = 300) => True
+        Assert.True(fib.HitTest(new global::Avalonia.Point(50, 300), transform));
+
+        // Inside span (X = 450, Y = 300) => True
+        Assert.True(fib.HitTest(new global::Avalonia.Point(450, 300), transform));
+
+        // Right of p2 (X = 800, Y = 300) => False
+        Assert.False(fib.HitTest(new global::Avalonia.Point(800, 300), transform));
+    }
+
+    [Fact]
+    public void Render_ExtendLeft_DrawsLeftExtensionWithoutRightExtension()
+    {
+        var transform = CreateTransform();
+        // p1: X = 300, p2: X = 600, 50% level at Y = 300
+        var p1 = new ChartPoint(new DateTime(2026, 1, 4), 100m);
+        var p2 = new ChartPoint(new DateTime(2026, 1, 7), 200m);
+        using var fib = new FibonacciRetracementObject(p1, p2)
+        {
+            Color = global::Avalonia.Media.Colors.White,
+            Thickness = 2,
+            ExtendMode = FibonacciRetracementExtendMode.ExtendLeft
+        };
+
+        using var surface = SKSurface.Create(new SKImageInfo(1000, 600));
+        surface.Canvas.Clear(SKColors.Black);
+        fib.Render(surface.Canvas, transform);
+        using var snapshot = surface.Snapshot();
+        using var bitmap = SKBitmap.FromImage(snapshot);
+
+        // Left extension at X = 50, Y = 300 is drawn
+        Assert.NotEqual(SKColors.Black, bitmap.GetPixel(50, 300));
+        // Right side well beyond p2 + label at X = 850, Y = 300 is NOT drawn
+        Assert.Equal(SKColors.Black, bitmap.GetPixel(850, 300));
+    }
+
+    [Fact]
+    public void ExtendMode_Values_PreserveBackwardCompatibleOrdinals()
+    {
+        Assert.Equal(0, (int)FibonacciRetracementExtendMode.Default);
+        Assert.Equal(1, (int)FibonacciRetracementExtendMode.CyclicLines);
+        Assert.Equal(2, (int)FibonacciRetracementExtendMode.FibTimeZone);
+        Assert.Equal(3, (int)FibonacciRetracementExtendMode.ExtendRight);
+        Assert.Equal(4, (int)FibonacciRetracementExtendMode.ExtendBoth);
+        Assert.Equal(5, (int)FibonacciRetracementExtendMode.ExtendLeft);
+    }
+
+    [Theory]
+    [InlineData(FibonacciRetracementExtendMode.Default, 300f, 600f, 0f, 1000f, 300f, 600f)]
+    [InlineData(FibonacciRetracementExtendMode.ExtendRight, 300f, 600f, 0f, 1000f, 300f, 1000f)]
+    [InlineData(FibonacciRetracementExtendMode.CyclicLines, 300f, 600f, 0f, 1000f, 300f, 1000f)]
+    [InlineData(FibonacciRetracementExtendMode.FibTimeZone, 300f, 600f, 0f, 1000f, 300f, 1000f)]
+    [InlineData(FibonacciRetracementExtendMode.ExtendLeft, 300f, 600f, 0f, 1000f, 0f, 600f)]
+    [InlineData(FibonacciRetracementExtendMode.ExtendBoth, 300f, 600f, 0f, 1000f, 0f, 1000f)]
+    [InlineData(FibonacciRetracementExtendMode.ExtendLeft, -50f, 600f, 0f, 1000f, -50f, 600f)]
+    [InlineData(FibonacciRetracementExtendMode.ExtendLeft, 400f, 400f, 0f, 1000f, 0f, 400f)]
+    [InlineData((FibonacciRetracementExtendMode)999, 300f, 600f, 0f, 1000f, 300f, 600f)]
+    public void GetHorizontalSpan_AllModes_IncludingDegenerateAndOutOfBoundsAnchors(
+        FibonacciRetracementExtendMode mode,
+        float minX,
+        float maxX,
+        float chartLeft,
+        float chartRight,
+        float expectedX1,
+        float expectedX2)
+    {
+        var (x1, x2) = FibonacciRetracementObject.GetHorizontalSpan(minX, maxX, chartLeft, chartRight, mode);
+        Assert.Equal(expectedX1, x1);
+        Assert.Equal(expectedX2, x2);
     }
 }

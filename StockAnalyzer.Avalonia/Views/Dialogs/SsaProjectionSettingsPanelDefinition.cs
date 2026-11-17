@@ -46,6 +46,10 @@ public sealed class SsaProjectionSettingsPanelDefinition : IDrawingSettingsPanel
 
         if (embeddingDimensionSpin != null) embeddingDimensionSpin.Value = ssaObj.EmbeddingDimension;
         if (numComponentsSpin != null) numComponentsSpin.Value = ssaObj.NumComponents;
+        var autoRankCheck = dialogWindow.FindControl<CheckBox>("SsaProjectionAutoRankCheck");
+        var rankMethodCombo = dialogWindow.FindControl<ComboBox>("SsaProjectionRankMethodCombo");
+        if (autoRankCheck != null) autoRankCheck.IsChecked = ssaObj.AutoRank;
+        if (rankMethodCombo != null) rankMethodCombo.SelectedIndex = (int)ssaObj.RankMethod;
         if (priceFieldCombo != null) priceFieldCombo.SelectedIndex = PriceTypeToIndex(ssaObj.PriceSource);
         if (detrendMethodCombo != null) detrendMethodCombo.SelectedIndex = (int)ssaObj.DetrendMethod;
         if (forecastModeCombo != null) forecastModeCombo.SelectedIndex = (int)ssaObj.ForecastMode;
@@ -77,6 +81,13 @@ public sealed class SsaProjectionSettingsPanelDefinition : IDrawingSettingsPanel
 
         if (embeddingDimensionSpin?.Value != null) ssaObj.EmbeddingDimension = (int)embeddingDimensionSpin.Value.Value;
         if (numComponentsSpin?.Value != null) ssaObj.NumComponents = (int)numComponentsSpin.Value.Value;
+        var autoRankCheck = dialogWindow.FindControl<CheckBox>("SsaProjectionAutoRankCheck");
+        var rankMethodCombo = dialogWindow.FindControl<ComboBox>("SsaProjectionRankMethodCombo");
+        if (autoRankCheck?.IsChecked != null) ssaObj.AutoRank = autoRankCheck.IsChecked.Value;
+        if (rankMethodCombo != null && rankMethodCombo.SelectedIndex >= 0)
+        {
+            ssaObj.RankMethod = (SsaRankSelectionMethod)rankMethodCombo.SelectedIndex;
+        }
         if (priceFieldCombo != null) ssaObj.PriceSource = IndexToPriceType(priceFieldCombo.SelectedIndex);
         if (detrendMethodCombo != null && detrendMethodCombo.SelectedIndex >= 0)
         {

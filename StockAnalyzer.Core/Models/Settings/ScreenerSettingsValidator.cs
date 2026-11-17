@@ -22,7 +22,7 @@ public static class ScreenerSettingsValidator
     public static IReadOnlyList<string> Validate(int maxConditionOffset)
     {
         var warnings = new List<string>();
-        CheckBand(MaxConditionOffsetKey, nameof(maxConditionOffset), ScreenerConditionOffsetLimits.MaxConditionOffset, maxConditionOffset, "bars",
+        SettingBandValidation.Check(MaxConditionOffsetKey, nameof(maxConditionOffset), ScreenerConditionOffsetLimits.MaxConditionOffset, maxConditionOffset, "bars",
             "every symbol loads that many more bars per scan", warnings);
         return warnings;
     }
@@ -34,9 +34,9 @@ public static class ScreenerSettingsValidator
     public static IReadOnlyList<string> ValidateFilterTree(int maxFilterTreeNodes, int maxFilterTreeDepth)
     {
         var warnings = new List<string>();
-        CheckBand(MaxFilterTreeNodesKey, nameof(maxFilterTreeNodes), ScreenerFilterTreeLimits.MaxFilterTreeNodes, maxFilterTreeNodes, "nodes",
+        SettingBandValidation.Check(MaxFilterTreeNodesKey, nameof(maxFilterTreeNodes), ScreenerFilterTreeLimits.MaxFilterTreeNodes, maxFilterTreeNodes, "nodes",
             "a larger tree is slower to edit and to evaluate", warnings);
-        CheckBand(MaxFilterTreeDepthKey, nameof(maxFilterTreeDepth), ScreenerFilterTreeLimits.MaxFilterTreeDepth, maxFilterTreeDepth, "levels",
+        SettingBandValidation.Check(MaxFilterTreeDepthKey, nameof(maxFilterTreeDepth), ScreenerFilterTreeLimits.MaxFilterTreeDepth, maxFilterTreeDepth, "levels",
             "a deeper tree is harder to read and to edit", warnings);
 
         if (maxFilterTreeDepth > maxFilterTreeNodes)
@@ -45,21 +45,6 @@ public static class ScreenerSettingsValidator
                 $"{MaxFilterTreeDepthKey} ({Format(maxFilterTreeDepth)}) must not exceed {MaxFilterTreeNodesKey} ({Format(maxFilterTreeNodes)}): a tree cannot be deeper than it has nodes.");
         }
         return warnings;
-    }
-
-    private static void CheckBand(string key, string parameterName, SettingBand band, int value, string unit, string consequence, List<string> warnings)
-    {
-        if (!band.IsWithinHardLimits(value))
-        {
-            throw new ArgumentOutOfRangeException(parameterName, value,
-                $"{key} must be {Format(band.HardMin)} to {Format(band.HardMax)} {unit}; the value {Format(value)} is outside the system limits.");
-        }
-
-        if (!band.IsWithinStandard(value))
-        {
-            warnings.Add($"{key} = {Format(value)} {unit} is outside the standard range {Format(band.StandardMin)} to {Format(band.StandardMax)}; "
-                + $"the application runs but {consequence}.");
-        }
     }
 
     private static string Format(long value) => value.ToString("N0", CultureInfo.InvariantCulture);

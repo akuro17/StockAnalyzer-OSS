@@ -235,6 +235,7 @@ public partial class DrawingObjectItemViewModel : ViewModelBase
     private readonly Func<Guid, bool>? _canUnlink;
     private readonly Action<Guid>? _unlink;
     private readonly Func<Guid, LinkRole>? _getLinkRole;
+    private readonly Func<StockAnalyzer.Avalonia.Drawing.DrawingCalculationContext>? _calculationContextProvider;
 
     public DrawingObjectItemViewModel(
         IChartObject model,
@@ -248,7 +249,8 @@ public partial class DrawingObjectItemViewModel : ViewModelBase
         Action<Guid>? linkAsParent = null,
         Func<Guid, bool>? canUnlink = null,
         Action<Guid>? unlink = null,
-        Func<Guid, LinkRole>? getLinkRole = null)
+        Func<Guid, LinkRole>? getLinkRole = null,
+        Func<StockAnalyzer.Avalonia.Drawing.DrawingCalculationContext>? calculationContextProvider = null)
     {
         Model = model ?? throw new ArgumentNullException(nameof(model));
         _manager = manager ?? throw new ArgumentNullException(nameof(manager));
@@ -257,6 +259,7 @@ public partial class DrawingObjectItemViewModel : ViewModelBase
         _iconDrawingService = iconDrawingService;
         _layerService = layerService;
         _coordinatorProvider = coordinatorProvider;
+        _calculationContextProvider = calculationContextProvider;
         _canLinkAsParent = canLinkAsParent;
         _linkAsParent = linkAsParent;
         _canUnlink = canUnlink;
@@ -467,6 +470,7 @@ public partial class DrawingObjectItemViewModel : ViewModelBase
             coord.ExecuteEdit(StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.Duplicate, () =>
             {
                 var clone = _manager.DuplicateObject(Model.Id);
+                RecalculateCopy(clone);
                 if (clone != null && _layerService != null)
                 {
                     var srcLayer = _layerService.GetLayerForObject(Model.Id);
@@ -480,6 +484,7 @@ public partial class DrawingObjectItemViewModel : ViewModelBase
         else
         {
             var clone = _manager.DuplicateObject(Model.Id);
+            RecalculateCopy(clone);
             if (clone != null && _layerService != null)
             {
                 var srcLayer = _layerService.GetLayerForObject(Model.Id);
@@ -489,6 +494,13 @@ public partial class DrawingObjectItemViewModel : ViewModelBase
                 }
             }
         }
+    }
+
+    /// <summary>A copy has no candle-dependent derived state yet; derive it so the copy shows the same values as a fresh object.</summary>
+    private void RecalculateCopy(IChartObject? clone)
+    {
+        if (clone == null || _calculationContextProvider == null) return;
+        StockAnalyzer.Avalonia.Drawing.DrawingRecalculation.AfterObjectsCreated(new[] { clone }, _calculationContextProvider());
     }
 
     [RelayCommand]

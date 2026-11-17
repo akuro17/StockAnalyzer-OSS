@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using StockAnalyzer.Core.Analysis;
 
 namespace StockAnalyzer.Core.Models.Parameters;
 
@@ -40,6 +41,26 @@ public class CoreSSAParameter : CoreIndicatorParameterBase
     {
         get => _numComponents;
         set => SetProperty(ref _numComponents, value);
+    }
+
+    private bool _autoRank;
+
+    [DisplayName("Auto Rank")]
+    [Description("Automatically select the signal rank for each window (overrides Number of Components).")]
+    public bool AutoRank
+    {
+        get => _autoRank;
+        set => SetProperty(ref _autoRank, value);
+    }
+
+    private SsaRankSelectionMethod _rankMethod = SsaRankSelectionMethod.CumulativeEnergy;
+
+    [DisplayName("Rank Method")]
+    [Description("Automatic rank selection heuristic used when Auto Rank is enabled.")]
+    public SsaRankSelectionMethod RankMethod
+    {
+        get => _rankMethod;
+        set => SetProperty(ref _rankMethod, value);
     }
 
     public override string GetDisplayName(string type) => $"{type} ({WindowSize}, {EmbeddingDimension}, {NumComponents})";

@@ -9,8 +9,10 @@ using StockAnalyzer.McpServer.Tools;
 namespace StockAnalyzer.McpServer.Execution;
 
 /// <summary>
-/// Runs tool calls one at a time. A later call waits up to <see cref="McpLimits.QueueWaitSeconds"/> for its turn, then fails
-/// with SERVER_BUSY. Every call has a time limit and can be cancelled by the client. The turn is released when the tool's own
+/// Runs tool calls under a reader/writer turn. A light read-only call (neither heavy nor execution) takes one of
+/// <see cref="McpLimits.MaxConcurrentReadOnlyCalls"/> shared slots; a heavy or execution call takes the exclusive turn first and then every shared slot,
+/// so it runs alone (with one slot the executor is strictly one call at a time). A later call waits up to <see cref="McpLimits.QueueWaitSeconds"/> for its
+/// turn, then fails with SERVER_BUSY. Every call has a time limit and can be cancelled by the client. The turn is released when the tool's own
 /// task ends, not when the caller stops waiting: a tool that cannot be cancelled (it keeps running after a timeout) keeps the
 /// turn, so abandoned work never accumulates. Returns the MCP call result as JSON text, or null when the client cancelled.
 /// </summary>
@@ -19,7 +21,9 @@ internal sealed class ToolExecutor
     private readonly McpLimits _limits;
     private readonly ErrorMessageSanitizer _sanitizer;
     private readonly LogSink _log;
-    private readonly SemaphoreSlim _turn = new(McpLimitsContract.MaxConcurrentToolCalls, McpLimitsContract.MaxConcurrentToolCalls);
+    private readonly int _readOnlySlots;
+    private readonly SemaphoreSlim _readOnlyTurn;
+    private readonly SemaphoreSlim _heavyTurn = new(McpLimitsContract.MaxConcurrentToolCalls, McpLimitsContract.MaxConcurrentToolCalls);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _inFlight = new(StringComparer.Ordinal);
     private readonly IToolCallObserver? _observer;
     private int _observerFailureLogged;
@@ -31,6 +35,21 @@ internal sealed class ToolExecutor
         _sanitizer = sanitizer;
         _log = log;
         _observer = observer;
+        _readOnlySlots = Math.Max(1, limits.MaxConcurrentReadOnlyCalls); // the start-up check keeps it inside 1..16; a semaphore cannot have no slot
+        _readOnlyTurn = new SemaphoreSlim(_readOnlySlots, _readOnlySlots);
+    }
+
+    /// <summary>What a call holds of the turn, so that exactly that is given back when the tool's own task ends.</summary>
+    private readonly record struct TurnHold(bool IsHeld, bool IsExclusive, int ReadOnlySlots)
+    {
+        public static TurnHold None { get; } = new(false, false, 0);
+    }
+
+    private enum TurnResult
+    {
+        Acquired,
+        Busy,
+        Cancelled,
     }
 
     /// <summary>How a call ended; starts as cancelled because a cancelled call is the one path that returns no result to name it.</summary>
@@ -76,26 +95,25 @@ internal sealed class ToolExecutor
             }
 
             // A tool that does not use the turn (a bounded wait for other participants) runs beside the other calls and never holds the turn they wait for.
-            bool usesTurn = registered.Tool.UsesExecutionTurn;
-            if (usesTurn)
+            TurnHold hold = TurnHold.None;
+            if (registered.Tool.UsesExecutionTurn)
             {
-                bool acquired;
-                try
-                {
-                    acquired = await _turn.WaitAsync(TimeSpan.FromSeconds(_limits.QueueWaitSeconds), callCancellation.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
+                bool exclusive = registered.Tool.IsHeavy || registered.Tool.IsExecution;
+                (TurnResult result, TurnHold acquired) = await AcquireTurnAsync(exclusive, callCancellation.Token).ConfigureAwait(false);
+                if (result == TurnResult.Cancelled)
                 {
                     return null;
                 }
 
-                if (!acquired)
+                if (result == TurnResult.Busy)
                 {
                     return Fail(outcome, new ToolException(ToolErrorCodes.ServerBusy, "Another tool call is still running.", hint: "Retry in a moment."));
                 }
+
+                hold = acquired;
             }
 
-            return await RunAsync(registered, arguments, callCancellation, usesTurn, outcome).ConfigureAwait(false);
+            return await RunAsync(registered, arguments, callCancellation, hold, outcome).ConfigureAwait(false);
         }
         finally
         {
@@ -108,7 +126,86 @@ internal sealed class ToolExecutor
         }
     }
 
-    private async Task<string?> RunAsync(RegisteredTool registered, JsonElement arguments, CancellationTokenSource callCancellation, bool holdsTurn, CallOutcome outcome)
+    /// <summary>
+    /// Takes the turn within <see cref="McpLimits.QueueWaitSeconds"/> in total. An exclusive call takes the exclusive turn and then every shared slot (so no light call runs
+    /// beside it); a light call takes one shared slot. A call that cannot get all it needs gives back what it already took before it reports Busy or Cancelled.
+    /// </summary>
+    private async Task<(TurnResult Result, TurnHold Hold)> AcquireTurnAsync(bool exclusive, CancellationToken cancellationToken)
+    {
+        long started = Stopwatch.GetTimestamp();
+        TimeSpan total = TimeSpan.FromSeconds(_limits.QueueWaitSeconds);
+        TimeSpan Remaining()
+        {
+            TimeSpan left = total - Stopwatch.GetElapsedTime(started);
+            return left < TimeSpan.Zero ? TimeSpan.Zero : left;
+        }
+
+        int wanted = exclusive ? _readOnlySlots : 1;
+        bool exclusiveHeld = false;
+        int slotsHeld = 0;
+        bool succeeded = false;
+        try
+        {
+            if (exclusive)
+            {
+                if (!await _heavyTurn.WaitAsync(Remaining(), cancellationToken).ConfigureAwait(false))
+                {
+                    return (TurnResult.Busy, TurnHold.None);
+                }
+
+                exclusiveHeld = true;
+            }
+
+            while (slotsHeld < wanted)
+            {
+                if (!await _readOnlyTurn.WaitAsync(Remaining(), cancellationToken).ConfigureAwait(false))
+                {
+                    return (TurnResult.Busy, TurnHold.None);
+                }
+
+                slotsHeld++;
+            }
+
+            succeeded = true;
+            return (TurnResult.Acquired, new TurnHold(true, exclusive, wanted));
+        }
+        catch (OperationCanceledException)
+        {
+            return (TurnResult.Cancelled, TurnHold.None);
+        }
+        finally
+        {
+            if (!succeeded)
+            {
+                if (slotsHeld > 0)
+                {
+                    _readOnlyTurn.Release(slotsHeld);
+                }
+
+                if (exclusiveHeld)
+                {
+                    _heavyTurn.Release();
+                }
+            }
+        }
+    }
+
+    /// <summary>Gives back exactly what <see cref="AcquireTurnAsync"/> took; a call that took nothing (a tool without a turn) gives back nothing.</summary>
+    private void ReleaseTurn(TurnHold hold)
+    {
+        if (!hold.IsHeld)
+        {
+            return;
+        }
+
+        _readOnlyTurn.Release(hold.ReadOnlySlots);
+        if (hold.IsExclusive)
+        {
+            _heavyTurn.Release();
+        }
+    }
+
+    private async Task<string?> RunAsync(RegisteredTool registered, JsonElement arguments, CancellationTokenSource callCancellation, TurnHold hold, CallOutcome outcome)
     {
         int timeoutSeconds = registered.Tool.IsHeavy ? _limits.HeavyToolTimeoutSeconds : _limits.ToolTimeoutSeconds;
         var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
@@ -121,10 +218,7 @@ internal sealed class ToolExecutor
                 _ = finished.Exception; // observed: an abandoned call must not raise an unobserved-task event
                 execution.Dispose();
                 timeout.Dispose();
-                if (holdsTurn)
-                {
-                    _turn.Release();
-                }
+                ReleaseTurn(hold);
             },
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,

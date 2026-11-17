@@ -11,7 +11,7 @@ using Xunit;
 namespace StockAnalyzer.Avalonia.Tests.Drawing;
 
 /// <summary>
-/// Guards that the Core drawing-value catalog and the GUI drawing objects describe the same 16 tools:
+/// Guards that the Core drawing-value catalog and the GUI drawing objects describe the same 24 tools:
 /// every name is a <see cref="ChartObjectType"/>, and the catalog result equals what the GUI object returns.
 /// </summary>
 public sealed class DrawingValueCatalogGuardTests
@@ -19,7 +19,7 @@ public sealed class DrawingValueCatalogGuardTests
     private static readonly Color ObjectColor = Color.FromArgb(255, 10, 20, 30);
     private static readonly DateTime T1 = new(2026, 1, 1);
 
-    private static readonly Dictionary<string, Func<ChartPoint[], IChartObject>> Factories = new(StringComparer.Ordinal)
+    internal static readonly Dictionary<string, Func<ChartPoint[], IChartObject>> Factories = new(StringComparer.Ordinal)
     {
         ["TrendLine"] = p => new TrendLineObject(p[0], p[1]),
         ["Ray"] = p => new RayObject(p[0], p[1]),
@@ -37,7 +37,35 @@ public sealed class DrawingValueCatalogGuardTests
         ["SineLine"] = p => new SineLineObject(p[0], p[1]),
         ["TimeCycles"] = p => new TimeCyclesObject(p[0], p[1]),
         ["Pitchfork"] = p => new PitchforkObject(p[0], p[1], p[2]),
+        ["AngleTool"] = p => new AngleObject(p[0], p[1]),
+        ["GannSquareOfNine"] = p => new GannSquareOfNineObject(p[0]),
+        ["TargetPriceProjection"] = p => new TargetPriceProjectionObject(p[0], p[1], p[2]),
+        ["LongPosition"] = p => new LongShortPositionObject(p[0], p[1], p[2], isLong: true),
+        ["ShortPosition"] = p => new LongShortPositionObject(p[0], p[1], p[2], isLong: false),
+        ["RegressionTrend"] = p => new RegressionTrendObject(p[0], p[1]),
+        ["AnchoredVWAP"] = p => new AnchoredVwapObject(p[0]),
+        ["ClassicPivotPoints"] = p => new ClassicPivotPointsObject(p[0]),
     };
+
+    /// <summary>Daily bars (one per calendar day, from 2025-11-01) with a wavy close, so the regression has a spread, the VWAP a deviation and the pivot periods differ from each other.</summary>
+    internal static readonly List<CoreCandleData> Candles = Enumerable.Range(0, 150)
+        .Select(day =>
+        {
+            decimal close = 100m + day * 0.3m + Math.Round((decimal)Math.Sin(day / 4.0) * 5m, 2);
+            return new CoreCandleData(new DateTime(2025, 11, 1).AddDays(day), close - 0.2m, close + 0.9m, close - 0.8m, close, 1000 + 7L * day);
+        })
+        .ToList();
+
+    /// <summary>The state the chart gives a bar-based object before it is asked for values (the chart calls Recalculate with its bars).</summary>
+    internal static void Prepare(IChartObject obj)
+    {
+        switch (obj)
+        {
+            case RegressionTrendObject regression: regression.Recalculate(Candles); break;
+            case AnchoredVwapObject vwap: vwap.Recalculate(Candles); break;
+            case ClassicPivotPointsObject pivots: pivots.Recalculate(Candles); break;
+        }
+    }
 
     [Fact]
     public void EveryCatalogName_IsAChartObjectType_WhoseGuiObjectProvidesCalculatedValues()
@@ -83,6 +111,14 @@ public sealed class DrawingValueCatalogGuardTests
                             try
                             {
                                 obj.Color = ObjectColor;
+                                if (obj is LongShortPositionObject position)
+                                {
+                                    // The catalog gives the three items the colour of the tool; the chart object has a colour of its own for the target and the stop.
+                                    position.TargetColor = ObjectColor;
+                                    position.StopColor = ObjectColor;
+                                }
+
+                                Prepare(obj);
                                 if (obj is FibonacciRetracementObject retracement)
                                 {
                                     retracement.ShowExtensions = showExtensions;
@@ -95,7 +131,7 @@ public sealed class DrawingValueCatalogGuardTests
 
                                 var request = new DrawingValueRequest(
                                     points.Take(descriptor.PointCount).Select(p => p.ToAnchorForTest()).ToArray(),
-                                    timestamp, price, objectColor, new DrawingValueOptions(showExtensions, kind));
+                                    timestamp, price, objectColor, new DrawingValueOptions(showExtensions, kind), Candles);
 
                                 IReadOnlyList<DrawingCalculatedValue> gui = ((IDrawingCalculatedValuesProvider)obj).GetCalculatedValues(timestamp, price);
                                 IReadOnlyList<DrawingCalculatedValue> core = descriptor.Calculate(request);
@@ -110,6 +146,89 @@ public sealed class DrawingValueCatalogGuardTests
                     }
                 }
             }
+        }
+    }
+
+    public static TheoryData<string, string> CandleToolOptions() => new()
+    {
+        { "RegressionTrend", "multiplier 1.5, extend right" },
+        { "RegressionTrend", "multiplier 0.1, not extended" },
+        { "AnchoredVWAP", "both bands" },
+        { "AnchoredVWAP", "band 1 only, close" },
+        { "AnchoredVWAP", "band 2 only, weighted" },
+        { "ClassicPivotPoints", "week, extend both" },
+        { "ClassicPivotPoints", "month, extend left" },
+    };
+
+    [Theory]
+    [MemberData(nameof(CandleToolOptions))]
+    public void CandleToolOptions_GiveTheSameValuesAsTheGuiObjectWithTheSameSettings(string toolName, string setting)
+    {
+        Assert.True(DrawingValueCatalog.TryGet(toolName, out DrawingValueDescriptor descriptor));
+        var points = new[] { new ChartPoint(new DateTime(2025, 12, 5), 100m), new ChartPoint(new DateTime(2026, 2, 20), 150m) };
+        var objectColor = new IndicatorColor(ObjectColor.A, ObjectColor.R, ObjectColor.G, ObjectColor.B);
+        IChartObject obj = Factories[toolName](points.Take(descriptor.PointCount).ToArray());
+        try
+        {
+            obj.Color = ObjectColor;
+            DrawingValueOptions options;
+            switch (obj)
+            {
+                case RegressionTrendObject regression when setting.StartsWith("multiplier 1.5"):
+                    regression.StdDevMultiplier = 1.5m;
+                    regression.ExtendRight = true;
+                    options = new DrawingValueOptions(StdDevMultiplier: 1.5m, ExtendRight: true);
+                    break;
+                case RegressionTrendObject regression:
+                    regression.StdDevMultiplier = 0.1m;
+                    options = new DrawingValueOptions(StdDevMultiplier: 0.1m);
+                    break;
+                case AnchoredVwapObject vwap when setting == "both bands":
+                    vwap.ShowBand1 = true;
+                    vwap.Band1Multiplier = 1.5m;
+                    vwap.ShowBand2 = true;
+                    vwap.Band2Multiplier = 3m;
+                    options = new DrawingValueOptions(ShowBand1: true, Band1Multiplier: 1.5m, ShowBand2: true, Band2Multiplier: 3m);
+                    break;
+                case AnchoredVwapObject vwap when setting.StartsWith("band 1 only"):
+                    vwap.ShowBand1 = true;
+                    vwap.PriceSource = PriceType.Close;
+                    options = new DrawingValueOptions(ShowBand1: true, PriceSource: PriceType.Close);
+                    break;
+                case AnchoredVwapObject vwap:
+                    vwap.ShowBand2 = true;
+                    vwap.PriceSource = PriceType.Weighted;
+                    options = new DrawingValueOptions(ShowBand2: true, PriceSource: PriceType.Weighted);
+                    break;
+                case ClassicPivotPointsObject pivots when setting.StartsWith("week"):
+                    pivots.Period = PivotPeriod.Week;
+                    pivots.ExtendMode = PivotLineExtendMode.ExtendBoth;
+                    options = new DrawingValueOptions(PivotPeriod: PivotPeriod.Week, PivotExtendMode: PivotLineExtendMode.ExtendBoth);
+                    break;
+                case ClassicPivotPointsObject pivots:
+                    pivots.Period = PivotPeriod.Month;
+                    pivots.ExtendMode = PivotLineExtendMode.ExtendLeft;
+                    options = new DrawingValueOptions(PivotPeriod: PivotPeriod.Month, PivotExtendMode: PivotLineExtendMode.ExtendLeft);
+                    break;
+                default:
+                    throw new InvalidOperationException(setting);
+            }
+
+            Prepare(obj);
+            foreach (DateTime timestamp in new[] { new DateTime(2025, 12, 20), new DateTime(2026, 1, 15), new DateTime(2026, 2, 20), new DateTime(2026, 3, 30) })
+            {
+                var request = new DrawingValueRequest(points.Take(descriptor.PointCount).Select(p => p.ToAnchorForTest()).ToArray(), timestamp, 123.456m, objectColor, options, Candles);
+
+                IReadOnlyList<DrawingCalculatedValue> gui = ((IDrawingCalculatedValuesProvider)obj).GetCalculatedValues(timestamp, 123.456m);
+                IReadOnlyList<DrawingCalculatedValue> core = descriptor.Calculate(request);
+
+                Assert.NotEmpty(core);
+                Assert.True(gui.SequenceEqual(core), $"{toolName} ({setting}) ts={timestamp:o}");
+            }
+        }
+        finally
+        {
+            (obj as IDisposable)?.Dispose();
         }
     }
 }

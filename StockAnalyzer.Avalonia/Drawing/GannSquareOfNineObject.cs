@@ -5,6 +5,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Views.Chart;
+using StockAnalyzer.Core.Drawing.Values;
 
 using StockAnalyzer.Core.Models;
 
@@ -34,13 +35,7 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
     public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
-    // Factors corresponding to angles: 45, 90, 135, 180, 225, 270, 315, 360
-    // 360 degrees = factor 2.0
-    // 180 = 1.0
-    // 90 = 0.5
-    // 45 = 0.25
-    private readonly double[] _factors = { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0 };
-    private readonly string[] _labels = { "45°", "90°", "135°", "180°", "225°", "270°", "315°", "360°" };
+    // The factor and label tables (45, 90 ... 360 degrees = 0.25 ... 2.0) are GannSquareOfNineValues.Factors / Labels, the one definition of the values.
 
     public GannSquareOfNineObject(ChartPoint start)
     {
@@ -89,9 +84,11 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
         // Let's draw BOTH for versatility, or prioritize Up if no second point to define direction.
         // Or assume Up for now as it's "Square of Nine" usually for projections.
         
-        for (int i = 0; i < _factors.Length; i++)
+        ReadOnlySpan<double> factors = GannSquareOfNineValues.Factors;
+        ReadOnlySpan<string> labels = GannSquareOfNineValues.Labels;
+        for (int i = 0; i < factors.Length; i++)
         {
-            double factor = _factors[i];
+            double factor = factors[i];
             
             // Resistance (Up)
             double priceUp = Math.Pow(baseSqrt + factor, 2);
@@ -100,7 +97,7 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
             if (pUp.Y >= clip.Top - 20 && pUp.Y <= clip.Bottom + 20)
             {
                 canvas.DrawLine(clip.Left, (float)pUp.Y, clip.Right, (float)pUp.Y, paint);
-                canvas.DrawText($"+{_labels[i]} ({priceUp:F2})", clip.Right - 5, (float)pUp.Y - 5, textPaint);
+                canvas.DrawText($"+{labels[i]} ({priceUp:F2})", clip.Right - 5, (float)pUp.Y - 5, textPaint);
             }
 
             // Support (Down)
@@ -111,7 +108,7 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
                  if (pDown.Y >= clip.Top - 20 && pDown.Y <= clip.Bottom + 20)
                 {
                     canvas.DrawLine(clip.Left, (float)pDown.Y, clip.Right, (float)pDown.Y, paint);
-                    canvas.DrawText($"-{_labels[i]} ({priceDown:F2})", clip.Right - 5, (float)pDown.Y - 5, textPaint);
+                    canvas.DrawText($"-{labels[i]} ({priceDown:F2})", clip.Right - 5, (float)pDown.Y - 5, textPaint);
                 }
             }
         }
@@ -167,36 +164,7 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
     {
         if (Points.Count < 1) return Array.Empty<DrawingCalculatedValue>();
 
-        var basePrice = Points[0].Price;
-        if (basePrice < 0) return Array.Empty<DrawingCalculatedValue>();
-
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-        double baseSqrt = Math.Sqrt((double)basePrice);
-
-        var values = new List<DrawingCalculatedValue>(_factors.Length * 2 + 1)
-        {
-            new DrawingCalculatedValue("Base", "Base Price", basePrice, $"{basePrice:F3}", IndicatorColor.Gray)
-        };
-
-        // Resistance (Up)
-        for (int i = 0; i < _factors.Length; i++)
-        {
-            decimal priceUp = (decimal)Math.Pow(baseSqrt + _factors[i], 2);
-            values.Add(new DrawingCalculatedValue($"Res_{_labels[i]}", $"Resistance +{_labels[i]}", priceUp, $"{priceUp:F3}", color));
-        }
-
-        // Support (Down)
-        for (int i = 0; i < _factors.Length; i++)
-        {
-            double sqrtDown = baseSqrt - _factors[i];
-            if (sqrtDown > 0)
-            {
-                decimal priceDown = (decimal)Math.Pow(sqrtDown, 2);
-                values.Add(new DrawingCalculatedValue($"Sup_{_labels[i]}", $"Support -{_labels[i]}", priceDown, $"{priceDown:F3}", IndicatorColor.FromRgb(33, 150, 243)));
-            }
-        }
-
-        return values;
+        return GannSquareOfNineValues.Calculate(Points[0].ToAnchor(), color);
     }
 }
-

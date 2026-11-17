@@ -175,7 +175,7 @@ public static class SsaSupportResistanceEngine
             }
         }
 
-        int l = Math.Clamp(embeddingDimension, 2, Math.Max(2, n / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(embeddingDimension, n);
         int k = n - l + 1;
         if (k < 2 || n < l + 1)
         {
@@ -195,7 +195,8 @@ public static class SsaSupportResistanceEngine
         int r;
         if (autoRank)
         {
-            r = SsaRankSelector.EstimateSignalRank(decomp.Eigenvalues, SsaRankSelectionMethod.CumulativeEnergy, targetEnergy: 0.90, maxRank: l - 1);
+            // The decomposition overload reads the eigenvalues in descending order (Eigenvalues is in raw Jacobi order).
+            r = SsaRankSelector.EstimateSignalRank(decomp, SsaRankSelectionMethod.CumulativeEnergy, maxRank: l - 1);
         }
         else
         {

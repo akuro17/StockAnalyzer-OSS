@@ -99,6 +99,20 @@ public static class ReadOnlyCoreServiceCollectionExtensions
         services.AddSingleton<IReadOnlyWorkspaceSource>(_ => new FileReadOnlyWorkspaceSource(
             PathDiscovery.ResolveConfigPathWithoutCreating(LayoutConstants.DefaultWorkspaceFileName)));
 
+        // The saved portfolio is read as the application reads it, without recovering an unfinished save or creating the folder.
+        services.AddSingleton<IReadOnlyPortfolioSource>(sp => new FileReadOnlyPortfolioSource(
+            Path.Combine(PathDiscovery.ResolveDataRootWithoutCreating(), PathDiscovery.PortfoliosFolderName),
+            sp.GetRequiredService<DuckDBConnectionManager>()));
+        // The registered source indicators and dynamic period drivers are read as the application parses them, without quarantining or writing.
+        services.AddSingleton<IReadOnlyRegisteredIndicatorSource>(_ => new FileReadOnlyRegisteredIndicatorSource(
+            PathDiscovery.ResolveSourceIndicatorsPathWithoutCreating(SourceIndicatorService.FileName),
+            PathDiscovery.ResolveDynamicPeriodDriversPathWithoutCreating(DynamicPeriodDriverService.FileName)));
+        // The saved chart drawings are read as the repository reads them, without creating the folder, a backup or a .corrupted copy.
+        services.AddSingleton<IReadOnlyDrawingDocumentSource>(_ => FileReadOnlyDrawingDocumentSource.ForApplicationData());
+
+        // The Ticker Notes database is opened read-only and never created.
+        services.AddSingleton<IReadOnlyNoteSource>(_ => new SqliteReadOnlyNoteSource(
+            Path.Combine(PathDiscovery.ResolveDataRootWithoutCreating(), PathDiscovery.NotesFolderName, Services.Notes.NoteDatabaseConnectionManager.DatabaseFileName)));
         // The backtest path of the Backtest window: preparation (reads stored bars), engine, report generator, evaluation. All pure in-memory
         // code (the engine and the report use memory streams only); exporters, run history and the configuration managers are not registered.
         services.AddSingleton<ITimeFrameManager>(sp => new TimeFrameManager(sp.GetRequiredService<IDataService>()));

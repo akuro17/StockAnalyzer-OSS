@@ -174,25 +174,53 @@ public sealed class CoreMarketBreadthIndicatorTests
     }
 
     [Theory]
-    [InlineData(MarketBreadthMetricMode.AdRatio, 0, "Advance/Decline Ratio (%)")]
-    [InlineData(MarketBreadthMetricMode.PctAboveMa, 1, "Percentage Above Moving Average (%)")]
-    [InlineData(MarketBreadthMetricMode.AdLine, 2, "Advance-Decline Line")]
-    [InlineData(MarketBreadthMetricMode.NetNewHighs, 3, "Net New Highs")]
-    [InlineData(MarketBreadthMetricMode.Trin, 4, "Arms Index (Trading Index)")]
-    [InlineData(MarketBreadthMetricMode.Cvi, 5, "Cumulative Volume Index")]
+    [InlineData(MarketBreadthMetricMode.AdRatio, 0, "Advance/Decline Ratio (%)", ", 20")]
+    [InlineData(MarketBreadthMetricMode.PctAboveMa, 1, "Percentage Above Moving Average (%)", ", 50")]
+    [InlineData(MarketBreadthMetricMode.AdLine, 2, "Advance-Decline Line", "")]
+    [InlineData(MarketBreadthMetricMode.NetNewHighs, 3, "Net New Highs", ", 20")]
+    [InlineData(MarketBreadthMetricMode.Trin, 4, "Arms Index (Trading Index)", "")]
+    [InlineData(MarketBreadthMetricMode.Cvi, 5, "Cumulative Volume Index", "")]
     public void MetricModeMetadata_PreservesIntegerValuesAndUsesFormalNames(
         MarketBreadthMetricMode mode,
         int expectedIntValue,
-        string expectedFormalDescription)
+        string expectedFormalDescription,
+        string expectedLookbackSuffix)
     {
         Assert.Equal(expectedIntValue, (int)mode);
         Assert.Equal(expectedFormalDescription, mode.GetDescription());
 
         var param = new CoreMarketBreadthParameter { MetricMode = mode };
-        Assert.Equal($"Market Breadth ({expectedFormalDescription})", param.GetDisplayName("Market Breadth"));
+        Assert.Equal($"Market Breadth ({expectedFormalDescription}{expectedLookbackSuffix})", param.GetDisplayName("Market Breadth"));
 
         var indicator = Assert.IsType<CoreMarketBreadthIndicator>(IndicatorFactory.Default.Create(IndicatorType.MarketBreadth, param));
-        Assert.Equal($"{IndicatorType.MarketBreadth.GetDescription()} ({expectedFormalDescription})", indicator.Name);
+        Assert.Equal($"{IndicatorType.MarketBreadth.GetDescription()} ({expectedFormalDescription}{expectedLookbackSuffix})", indicator.Name);
+    }
+
+    [Fact]
+    public void DisplayName_OfTwoInstancesOfOneMetricWithDifferentLookbacks_DiffersAndOnlyTheUsedLookbackCounts()
+    {
+        var shortMa = new CoreMarketBreadthParameter { MetricMode = MarketBreadthMetricMode.PctAboveMa, MaBars = 20 };
+        var longMa = new CoreMarketBreadthParameter { MetricMode = MarketBreadthMetricMode.PctAboveMa, MaBars = 200 };
+        Assert.Equal("Market Breadth (Percentage Above Moving Average (%), 20)", shortMa.GetDisplayName("Market Breadth"));
+        Assert.Equal("Market Breadth (Percentage Above Moving Average (%), 200)", longMa.GetDisplayName("Market Breadth"));
+
+        // A lookback the mode does not use does not change the name.
+        var otherUnused = new CoreMarketBreadthParameter { MetricMode = MarketBreadthMetricMode.PctAboveMa, MaBars = 20, AdRatioBars = 5, HighLowBars = 7 };
+        Assert.Equal(shortMa.GetDisplayName("Market Breadth"), otherUnused.GetDisplayName("Market Breadth"));
+
+        // The indicator and the parameter use the same definition.
+        var indicator = Assert.IsType<CoreMarketBreadthIndicator>(IndicatorFactory.Default.Create(IndicatorType.MarketBreadth, longMa));
+        Assert.Equal(longMa.GetDisplayName(IndicatorType.MarketBreadth.GetDescription()), indicator.Name);
+    }
+
+    [Fact]
+    public void RsRatingColumnDescription_NamesTheApproximationTheUniverseAndWhenItIsBlank()
+    {
+        var column = StockAnalyzer.Core.Models.Watchlist.WatchlistColumnRegistry.AllColumns.Single(c => c.MemberName == "RsRating");
+
+        Assert.Contains("approximation", column.Description);
+        Assert.Contains("selected watchlist (before filters)", column.Description);
+        Assert.Contains("Blank when", column.Description);
     }
 
     [Fact]

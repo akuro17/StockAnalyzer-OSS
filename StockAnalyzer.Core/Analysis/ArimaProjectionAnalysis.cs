@@ -29,6 +29,9 @@ public sealed class ArimaProjectionResult
     public double TargetPrice { get; }
     public int SampleCount { get; }
     public bool IsLowerBandClamped { get; }
+    public int SelectedP { get; init; }
+    public int SelectedD { get; init; }
+    public int SelectedQ { get; init; }
 
     public ArimaProjectionResult(
         IReadOnlyList<Point> projectedPoints,
@@ -52,6 +55,9 @@ public sealed class ArimaProjectionResult
         TargetPrice = targetPrice;
         SampleCount = sampleCount;
         IsLowerBandClamped = isLowerBandClamped;
+        SelectedP = p;
+        SelectedD = d;
+        SelectedQ = q;
     }
 }
 
@@ -74,7 +80,10 @@ public static class ArimaProjectionAnalysis
         PriceType priceSource = PriceType.Close,
         TimeSpan timeframeSpan = default,
         bool showConfidenceBand = true,
-        decimal confidenceMultiplier = 2.0m)
+        decimal confidenceMultiplier = 2.0m,
+        bool autoSelectOrder = false,
+        int maxAutoP = 3,
+        int maxAutoQ = 3)
     {
         if (candles == null || candles.Count == 0 || startIndex < 0 || endIndex >= candles.Count || startIndex > endIndex)
         {
@@ -82,7 +91,7 @@ public static class ArimaProjectionAnalysis
         }
 
         int count = endIndex - startIndex + 1;
-        if (count <= d)
+        if (!autoSelectOrder && count <= d)
         {
             return ArimaProjectionResult.Empty;
         }
@@ -116,12 +125,25 @@ public static class ArimaProjectionAnalysis
                 ArrayPool<decimal>.Shared.Return(rentedSource);
             }
 
+            int usedP = p;
+            int usedD = d;
+            int usedQ = q;
+            if (autoSelectOrder)
+            {
+                (usedP, usedD, usedQ, _) = ArimaMath.SelectBestArimaOrder(prices, maxAutoP, maxAutoQ);
+            }
+
+            if (count <= usedD)
+            {
+                return ArimaProjectionResult.Empty;
+            }
+
             Span<double> forecasted = stackalloc double[steps];
             Span<double> errorVariances = stackalloc double[steps];
 
             bool success = ArimaMath.EstimateArimaMultiStepForecast(
                 prices,
-                p, d, q,
+                usedP, usedD, usedQ,
                 steps,
                 forecasted,
                 errorVariances,
@@ -204,12 +226,17 @@ public static class ArimaProjectionAnalysis
                 projectedPoints,
                 upperPoints,
                 lowerPoints,
-                p, d, q,
+                usedP, usedD, usedQ,
                 innovationVariance,
                 residualStdDev,
                 targetPrice,
                 count,
-                isLowerClamped);
+                isLowerClamped)
+            {
+                SelectedP = usedP,
+                SelectedD = usedD,
+                SelectedQ = usedQ
+            };
         }
         finally
         {

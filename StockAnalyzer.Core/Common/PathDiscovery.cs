@@ -10,6 +10,15 @@ public static class PathDiscovery
 {
     private const string DataFolderName = "Data";
 
+    /// <summary>The folder of the saved portfolio below Data (the one definition; the repository, the resolver and the read-only source use it).</summary>
+    public const string PortfoliosFolderName = "Portfolios";
+
+    /// <summary>The folder of the Ticker Notes database below Data.</summary>
+    public const string NotesFolderName = "Notes";
+
+    /// <summary>The Ticker Notes folder as a path relative to the project root, in the form <see cref="ResolveDataPath"/> takes.</summary>
+    public const string NotesDataPath = DataFolderName + "/" + NotesFolderName;
+
     /// <summary>Folder below the OS temp directory that holds every StockAnalyzer temporary or lease file (never <c>Data</c>).</summary>
     public const string TempFolderName = "StockAnalyzer";
     public const string UiTestEnabledEnvironmentVariable = "SA_UI_TESTS_ENABLED";
@@ -365,7 +374,7 @@ public static class PathDiscovery
     {
         fileName = SanitizeFileName(fileName);
         var dataDir = ResolveDataPath(null, "Data");
-        var portfolioDir = EnsureDirectory(Path.Combine(dataDir, "Portfolios"));
+        var portfolioDir = EnsureDirectory(Path.Combine(dataDir, PortfoliosFolderName));
         return Path.Combine(portfolioDir, fileName);
     }
 

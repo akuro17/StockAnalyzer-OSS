@@ -283,12 +283,16 @@ public partial class DataWindowViewModel : ViewModelBase,
     {
     }
 
+    /// <summary>The localiser as a delegate created ONCE: an instance method group (<c>_localizationService.GetString</c>) would allocate a new delegate at every hover.</summary>
+    private readonly Func<string, string> _localize;
+
     public DataWindowViewModel(ChartViewModel chartViewModel, IMessenger messenger, IDispatcherService dispatcherService, ILocalizationService? localizationService)
     {
         _chartViewModel = chartViewModel;
         _messenger = messenger;
         _dispatcherService = dispatcherService;
         _localizationService = localizationService ?? new DesignTimeLocalizationService();
+        _localize = _localizationService.GetString;
 
         _indicatorSectionTitle = _localizationService.GetString("DataWindow_Section_Indicators");
         var localizedDrawingTitle = _localizationService.GetString("DataWindow_Section_Drawings");
@@ -1006,6 +1010,17 @@ public partial class DataWindowViewModel : ViewModelBase,
                     childItem.ShowCheckbox = false;
                     childItem.OpenSettingsCommand = vm.OpenSettingsCommand;
                 }
+
+                var folderPeriods = EffectiveDynamicPeriodDisplay.Resolve(Settings.DynamicPeriodIndicatorId, Result);
+                if (folderPeriods != null)
+                {
+                    var periodChild = vm.UpdateOrAddChildItem(parentItem, childIndex++, EffectivePeriodText.Label(vm._localize),
+                        EffectivePeriodText.Format(folderPeriods, lookupIndex, vm._localize), parentColor, false);
+                    periodChild.IsEnabled = Settings.IsEnabled;
+                    periodChild.AssociateId = Settings.Id;
+                    periodChild.ShowCheckbox = false;
+                }
+
                 while (parentItem.Children.Count > childIndex)
                 {
                     var removed = parentItem.Children[parentItem.Children.Count - 1];
@@ -1033,6 +1048,16 @@ public partial class DataWindowViewModel : ViewModelBase,
 
                 item.IsEnabled = Settings.IsEnabled;
                 item.AssociateId = Settings.Id;
+
+                var singlePeriods = EffectiveDynamicPeriodDisplay.Resolve(Settings.DynamicPeriodIndicatorId, Result);
+                if (singlePeriods != null)
+                {
+                    var periodItem = vm.UpdateOrAddItem(itemIndex++, $"{indicatorName} {EffectivePeriodText.Label(vm._localize)}",
+                        EffectivePeriodText.Format(singlePeriods, lookupIndex, vm._localize), c, false, false, false);
+                    periodItem.IsEnabled = Settings.IsEnabled;
+                    periodItem.AssociateId = Settings.Id;
+                    periodItem.OpenSettingsCommand = vm.OpenSettingsCommand;
+                }
             }
         }
     }
@@ -1079,6 +1104,16 @@ public partial class DataWindowViewModel : ViewModelBase,
                 childItem.IsEnabled = indicator.IsEnabled;
                 childItem.AssociateId = indicator.Id;
                 childItem.ShowCheckbox = true;
+
+                var groupedPeriods = EffectiveDynamicPeriodDisplay.Resolve(indicator.DynamicPeriodIndicatorId, result);
+                if (groupedPeriods != null)
+                {
+                    var periodChild = vm.UpdateOrAddChildItem(parentItem, childIndex++, $"{displayLabel} {EffectivePeriodText.Label(vm._localize)}",
+                        EffectivePeriodText.Format(groupedPeriods, lookupIndex, vm._localize), c, false);
+                    periodChild.IsEnabled = indicator.IsEnabled;
+                    periodChild.AssociateId = indicator.Id;
+                    periodChild.ShowCheckbox = false;
+                }
             }
             while (parentItem.Children.Count > childIndex)
             {
@@ -1272,7 +1307,11 @@ public partial class DataWindowViewModel : ViewModelBase,
 
     private DataWindowItemViewModel UpdateOrAddChildItem(DataWindowItemViewModel parent, int index, string displayName, decimal? val, IndicatorColor color, bool useCustomColor = false)
     {
-        string valStr = val.HasValue ? DisplayFormat.Price(val.Value) : "N/A";
+        return UpdateOrAddChildItem(parent, index, displayName, val.HasValue ? DisplayFormat.Price(val.Value) : "N/A", color, useCustomColor);
+    }
+
+    private DataWindowItemViewModel UpdateOrAddChildItem(DataWindowItemViewModel parent, int index, string displayName, string valStr, IndicatorColor color, bool useCustomColor = false)
+    {
         DataWindowItemViewModel item;
         if (index < parent.Children.Count)
         {

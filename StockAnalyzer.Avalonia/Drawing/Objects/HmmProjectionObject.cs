@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -24,7 +25,8 @@ public class HmmProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
     public List<ChartPoint> Points { get; } = new(2);
 
     // Core visual properties
-    public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
+    private Color _color = DrawingThemeContext.DefaultColor;
+    public Color Color { get => _color; set { _color = value; InvalidateCalculatedValues(); } }
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
     public bool IsSelected { get; set; }
     public bool IsVisible { get; set; } = true;
@@ -52,7 +54,8 @@ public class HmmProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
     /// <summary>
     /// Number of hidden regime states (2 or 3).
     /// </summary>
-    public int States { get; set; } = 2;
+    public int States { get => _states; set { _states = value; InvalidateCalculatedValues(); } }
+    private int _states = 2;
 
     /// <summary>
     /// Maximum iterations for Baum-Welch EM convergence.
@@ -120,17 +123,23 @@ public class HmmProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
 
     // HMM estimation results
     [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyList<double> FilteredStateProbabilities { get; set; } = Array.Empty<double>();
+    public IReadOnlyList<double> FilteredStateProbabilities { get => _filteredStateProbabilities; set { _filteredStateProbabilities = value; InvalidateCalculatedValues(); } }
+    private IReadOnlyList<double> _filteredStateProbabilities = Array.Empty<double>();
     [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyList<double> StateMeans { get; set; } = Array.Empty<double>();
+    public IReadOnlyList<double> StateMeans { get => _stateMeans; set { _stateMeans = value; InvalidateCalculatedValues(); } }
+    private IReadOnlyList<double> _stateMeans = Array.Empty<double>();
     [System.Text.Json.Serialization.JsonIgnore]
-    public IReadOnlyList<double> StateStdDevs { get; set; } = Array.Empty<double>();
+    public IReadOnlyList<double> StateStdDevs { get => _stateStdDevs; set { _stateStdDevs = value; InvalidateCalculatedValues(); } }
+    private IReadOnlyList<double> _stateStdDevs = Array.Empty<double>();
     [System.Text.Json.Serialization.JsonIgnore]
-    public double[,] TransitionMatrix { get; set; } = new double[0, 0];
+    public double[,] TransitionMatrix { get => _transitionMatrix; set { _transitionMatrix = value; InvalidateCalculatedValues(); } }
+    private double[,] _transitionMatrix = new double[0, 0];
     [System.Text.Json.Serialization.JsonIgnore]
-    public int CurrentRegimeIndex { get; set; }
+    public int CurrentRegimeIndex { get => _currentRegimeIndex; set { _currentRegimeIndex = value; InvalidateCalculatedValues(); } }
+    private int _currentRegimeIndex;
     [System.Text.Json.Serialization.JsonIgnore]
-    public double BullStateProbability { get; set; }
+    public double BullStateProbability { get => _bullStateProbability; set { _bullStateProbability = value; InvalidateCalculatedValues(); } }
+    private double _bullStateProbability;
 
     private readonly StockAnalyzer.Avalonia.Drawing.Renderers.HmmProjectionRenderer _renderer = new();
 
@@ -291,6 +300,15 @@ public class HmmProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
     }
 
     public IReadOnlyList<DrawingCalculatedValue> GetCalculatedValues(DateTime timestamp, decimal? currentPrice = null)
+        => _calculatedValuesCache ??= BuildCalculatedValues();
+
+    // Rows depend only on Color, States and the estimation results (FilteredStateProbabilities, StateMeans, StateStdDevs, TransitionMatrix,
+    // CurrentRegimeIndex, BullStateProbability), which are always assigned as a whole; every setter calls InvalidateCalculatedValues.
+    private DrawingCalculatedValue[]? _calculatedValuesCache;
+
+    private void InvalidateCalculatedValues() => _calculatedValuesCache = null;
+
+    private DrawingCalculatedValue[] BuildCalculatedValues()
     {
         if (FilteredStateProbabilities == null || FilteredStateProbabilities.Count == 0) return Array.Empty<DrawingCalculatedValue>();
 
@@ -333,6 +351,28 @@ public class HmmProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
                 color));
         }
 
-        return list;
+        for (int i = 0; i < StateStdDevs.Count; i++)
+        {
+            double stdPct = StateStdDevs[i] * 100.0;
+            list.Add(new DrawingCalculatedValue(
+                $"HMM State #{i + 1} Volatility",
+                $"HMM State #{i + 1} Volatility",
+                IndicatorCalculationHelper.ToDecimalOrNull(stdPct),
+                string.Create(DrawingValueFormat.Culture, $"{stdPct:F2}%"),
+                color));
+        }
+
+        for (int i = 0; i < StateMeans.Count && i < TransitionMatrix.GetLength(0) && i < TransitionMatrix.GetLength(1); i++)
+        {
+            double persistPct = TransitionMatrix[i, i] * 100.0;
+            list.Add(new DrawingCalculatedValue(
+                $"HMM State #{i + 1} Persistence",
+                $"HMM State #{i + 1} Persistence",
+                IndicatorCalculationHelper.ToDecimalOrNull(Math.Round(persistPct, 1)),
+                string.Create(DrawingValueFormat.Culture, $"{persistPct:F1}%"),
+                color));
+        }
+
+        return list.ToArray();
     }
 }

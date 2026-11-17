@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Core.Drawing.Values;
@@ -9,6 +10,36 @@ namespace StockAnalyzer.Core.Drawing.Values;
 /// </summary>
 public static class DatePriceRangeValues
 {
+    // Positions in the array returned by Calculate. This is the single definition of the layout: the object that shows the values and the tests read
+    // these constants instead of repeating the numbers (the first six keep their original positions; 6..9 were appended later).
+
+    /// <summary>Number of values the first six positions hold (price, bars, volume); the later values start after them.</summary>
+    public const int BaseValueCount = 6;
+
+    /// <summary>Position of <c>HighestHigh</c>.</summary>
+    public const int HighestHighIndex = 6;
+
+    /// <summary>Position of <c>LowestLow</c>.</summary>
+    public const int LowestLowIndex = 7;
+
+    /// <summary>Position of <c>MaxDrawdown</c>.</summary>
+    public const int MaxDrawdownIndex = 8;
+
+    /// <summary>Position of <c>Volatility</c>.</summary>
+    public const int VolatilityIndex = 9;
+
+    /// <summary>Length of the array returned by Calculate.</summary>
+    public const int ValueCount = 10;
+
+    /// <summary>Text of a price value (HighestHigh, LowestLow): three decimals.</summary>
+    private const string PriceFormat = "F3";
+
+    /// <summary>Text of a percentage (MaxDrawdown, Volatility): two decimals, then the percent sign.</summary>
+    private const string PercentFormat = "F2";
+
+    /// <summary>Text of a value that is not defined.</summary>
+    private const string NoValueText = "-";
+
     public static DrawingCalculatedValue[] Calculate(
         DrawingAnchor p1,
         DrawingAnchor p2,
@@ -27,6 +58,18 @@ public static class DatePriceRangeValues
             ? null
             : (decimal)totalVolume.Value / barCount;
 
+        // Extreme prices and close-based risk statistics: their own pass, so they stay defined when the volume sum overflows.
+        RangeRiskStats? risk = null;
+        if (candles != null && TryGetRangeIndices(candles, tMin, tMax, out int firstIndex, out int lastIndex))
+        {
+            risk = RangeRiskMath.Compute(candles, firstIndex, lastIndex);
+        }
+
+        decimal? highestHigh = risk?.HighestHigh;
+        decimal? lowestLow = risk?.LowestLow;
+        decimal? maxDrawdown = risk?.MaxDrawdownPercent;
+        decimal? volatility = risk?.VolatilityPercent;
+
         return new[]
         {
             new DrawingCalculatedValue(
@@ -41,7 +84,7 @@ public static class DatePriceRangeValues
                 priceChangePercent,
                 priceChangePercent.HasValue
                     ? $"{FormatSignedTwoDecimals(priceChangePercent.Value)}%"
-                    : "-",
+                    : NoValueText,
                 color),
             new DrawingCalculatedValue(
                 "BarCount",
@@ -61,7 +104,7 @@ public static class DatePriceRangeValues
                 totalVolume,
                 totalVolume.HasValue
                     ? totalVolume.Value.ToString("N0", DrawingValueFormat.Culture)
-                    : "-",
+                    : NoValueText,
                 color),
             new DrawingCalculatedValue(
                 "AverageVolume",
@@ -69,10 +112,40 @@ public static class DatePriceRangeValues
                 averageVolume,
                 averageVolume.HasValue
                     ? averageVolume.Value.ToString("N0", DrawingValueFormat.Culture)
-                    : "-",
+                    : NoValueText,
+                color),
+            new DrawingCalculatedValue(
+                "HighestHigh",
+                "Highest High",
+                highestHigh,
+                FormatOrDash(highestHigh, PriceFormat),
+                color),
+            new DrawingCalculatedValue(
+                "LowestLow",
+                "Lowest Low",
+                lowestLow,
+                FormatOrDash(lowestLow, PriceFormat),
+                color),
+            new DrawingCalculatedValue(
+                "MaxDrawdown",
+                "Max Drawdown %",
+                maxDrawdown,
+                FormatPercentOrDash(maxDrawdown),
+                color),
+            new DrawingCalculatedValue(
+                "Volatility",
+                "Volatility %/bar",
+                volatility,
+                FormatPercentOrDash(volatility),
                 color)
         };
     }
+
+    private static string FormatOrDash(decimal? value, string format)
+        => value.HasValue ? value.Value.ToString(format, DrawingValueFormat.Culture) : NoValueText;
+
+    private static string FormatPercentOrDash(decimal? value)
+        => value.HasValue ? value.Value.ToString(PercentFormat, DrawingValueFormat.Culture) + "%" : NoValueText;
 
     private static string FormatSignedTwoDecimals(decimal value)
         => value.ToString("+0.00;-0.00;0.00", DrawingValueFormat.Culture);
@@ -82,19 +155,7 @@ public static class DatePriceRangeValues
         DateTime tMin,
         DateTime tMax)
     {
-        if (candles == null || candles.Count == 0)
-        {
-            return (0, 0L);
-        }
-
-        int lowerIdx = FindLowerBound(candles, tMin);
-        if (lowerIdx >= candles.Count || candles[lowerIdx].Timestamp > tMax)
-        {
-            return (0, 0L);
-        }
-
-        int upperIdx = FindUpperBound(candles, lowerIdx, tMax);
-        if (upperIdx < lowerIdx)
+        if (candles == null || !TryGetRangeIndices(candles, tMin, tMax, out int lowerIdx, out int upperIdx))
         {
             return (0, 0L);
         }
@@ -117,6 +178,31 @@ public static class DatePriceRangeValues
         {
             return (barCount, null);
         }
+    }
+
+    /// <summary>The first and last index of the bars whose <c>Timestamp</c> lies in [tMin, tMax]; false when no bar does.</summary>
+    private static bool TryGetRangeIndices(
+        IReadOnlyList<CoreCandleData> candles,
+        DateTime tMin,
+        DateTime tMax,
+        out int lowerIdx,
+        out int upperIdx)
+    {
+        lowerIdx = 0;
+        upperIdx = -1;
+        if (candles.Count == 0)
+        {
+            return false;
+        }
+
+        lowerIdx = FindLowerBound(candles, tMin);
+        if (lowerIdx >= candles.Count || candles[lowerIdx].Timestamp > tMax)
+        {
+            return false;
+        }
+
+        upperIdx = FindUpperBound(candles, lowerIdx, tMax);
+        return upperIdx >= lowerIdx;
     }
 
     private static int FindLowerBound(IReadOnlyList<CoreCandleData> candles, DateTime tMin)

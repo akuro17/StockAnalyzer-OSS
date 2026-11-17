@@ -54,6 +54,8 @@ public static class BacktestIndicatorEligibility
     {
         IndicatorType.CointegrationSpread,
         IndicatorType.CrossTickerDtw,
+        IndicatorType.GrangerCausality,
+        IndicatorType.JohansenCointegration,
         IndicatorType.MansfieldRS,
         IndicatorType.MarketBreadth,
         IndicatorType.McClellanOscillator,

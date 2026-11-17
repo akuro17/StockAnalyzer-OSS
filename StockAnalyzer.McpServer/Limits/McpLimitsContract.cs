@@ -21,8 +21,14 @@ public sealed class McpLimitsException : Exception
 /// </summary>
 public static class McpLimitsContract
 {
-    /// <summary>Exactly one tool call executes at a time (the pipeline is not thread-safe per call, and a calculation that is already running cannot be interrupted); not configurable.</summary>
+    /// <summary>
+    /// Exactly one heavy or execution tool call executes at a time, and then no other call takes the turn (a calculation that is already running cannot be interrupted); not configurable.
+    /// Light read-only calls may share the turn up to <see cref="McpLimits.MaxConcurrentReadOnlyCalls"/>.
+    /// </summary>
     public const int MaxConcurrentToolCalls = 1;
+
+    /// <summary>Hard maximum of <see cref="McpLimits.MaxConcurrentReadOnlyCalls"/>.</summary>
+    private const int MaxConcurrentReadOnlyCallsBandMaximum = 16;
 
     /// <summary>Maximum nesting depth when traversing the group tree (All Tickers / category roots are depth 0); deeper subtrees are truncated.</summary>
     public const int MaxGroupTreeDepth = 16;
@@ -70,6 +76,7 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.ToolTimeoutSeconds), limits.ToolTimeoutSeconds, 1, 900);
         Band(nameof(McpLimits.HeavyToolTimeoutSeconds), limits.HeavyToolTimeoutSeconds, limits.ToolTimeoutSeconds, 1800);
         Band(nameof(McpLimits.QueueWaitSeconds), limits.QueueWaitSeconds, 0, 600);
+        Band(nameof(McpLimits.MaxConcurrentReadOnlyCalls), limits.MaxConcurrentReadOnlyCalls, 1, MaxConcurrentReadOnlyCallsBandMaximum);
         Band(nameof(McpLimits.MaxResponseBytes), limits.MaxResponseBytes, 64 * Kibibyte, 8 * Mebibyte);
         Band(nameof(McpLimits.MaxRequestBytes), limits.MaxRequestBytes, 4 * Kibibyte, 8 * Mebibyte);
         Band(nameof(McpLimits.MaxScreenerSymbols), limits.MaxScreenerSymbols, 1, 5000);
@@ -78,6 +85,11 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.MaxCrossAssetSymbols), limits.MaxCrossAssetSymbols, 2, 500);
         Band(nameof(McpLimits.MaxBreadthSymbols), limits.MaxBreadthSymbols, 1, 5000);
         Band(nameof(McpLimits.MaxPortfolioBacktestSymbols), limits.MaxPortfolioBacktestSymbols, 1, 500);
+        Band(nameof(McpLimits.MaxBatchIndicatorSymbols), limits.MaxBatchIndicatorSymbols, 1, 200);
+        Band(nameof(McpLimits.MaxBatchIndicatorTailBars), limits.MaxBatchIndicatorTailBars, 1, 50);
+        Band(nameof(McpLimits.MaxReturnedNotes), limits.MaxReturnedNotes, 1, 500);
+        Band(nameof(McpLimits.MaxCatalystHorizonDays), limits.MaxCatalystHorizonDays, 1, 3650);
+        Band(nameof(McpLimits.MaxPivotStrength), limits.MaxPivotStrength, 1, 500);
         Band(nameof(McpLimits.MaxComparisonTargets), limits.MaxComparisonTargets, 1, WatchlistConstants.MaxRelativePerformanceTargets);
         Band(nameof(McpLimits.MaxTickersPerPage), limits.MaxTickersPerPage, 1, 5000);
         Band(nameof(McpLimits.DefaultTickerPageSize), limits.DefaultTickerPageSize, 1, limits.MaxTickersPerPage);
@@ -108,7 +120,9 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.DefaultChartImageBars), limits.DefaultChartImageBars, 1, limits.MaxChartImageBars);
         Band(nameof(McpLimits.MaxImageOverlays), limits.MaxImageOverlays, 1, 16);
         Band(nameof(McpLimits.MaxImageMarkers), limits.MaxImageMarkers, 0, 500);
+        Band(nameof(McpLimits.MaxImageSavedDrawings), limits.MaxImageSavedDrawings, 1, 500);
         Band(nameof(McpLimits.MaxImageBarsListed), limits.MaxImageBarsListed, 0, MaxChartImageBarsBandMaximum);
+        Band(nameof(McpLimits.MaxDrawingFileBytes), limits.MaxDrawingFileBytes, 64 * Kibibyte, 64 * Mebibyte);
     }
 
     /// <summary>

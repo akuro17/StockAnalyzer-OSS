@@ -38,6 +38,19 @@ public class MarketDataSettings
     public string? TickerListPath { get; set; } = "StockAnalyzer.Python/tickers.json";
 
     /// <summary>
+    /// RS Rating: a symbol whose latest daily bar is more than this many calendar days older than the latest bar of the universe is left out of the
+    /// ranking (value null). A key that is absent from the configuration keeps this default. The accepted range is the code contract
+    /// <see cref="StockAnalyzer.Core.Models.Settings.RsRatingLimits"/>, checked at startup by <see cref="StockAnalyzer.Core.Models.Settings.RsRatingSettingsValidator"/>.
+    /// </summary>
+    public int RsRatingMaxStaleCalendarDays { get; set; } = StockAnalyzer.Core.Models.Settings.RsRatingLimits.DefaultMaxStaleCalendarDays;
+
+    /// <summary>
+    /// RS Rating column of the Tickers grid: the pause (ms) after the last data-refreshed message before the ratings are recomputed. A key that is absent from
+    /// the configuration keeps this default. The accepted range is <see cref="StockAnalyzer.Core.Models.Settings.RsRatingLimits"/>.
+    /// </summary>
+    public int RsRatingRefreshDebounceMilliseconds { get; set; } = StockAnalyzer.Core.Models.Settings.RsRatingLimits.DefaultRefreshDebounceMilliseconds;
+
+    /// <summary>
     /// Validates the settings.
     /// </summary>
     public void Validate()

@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,25 @@ public sealed class FileReadOnlyWorkspaceSource : IReadOnlyWorkspaceSource
     {
         _workspaceFilePath = workspaceFilePath ?? throw new ArgumentNullException(nameof(workspaceFilePath));
         _serializer = serializer ?? new WorkspaceSerializationService();
+    }
+
+    /// <summary>
+    /// The last write time (UTC ticks) and the length of the workspace file. The application saves the file by replacing it, which changes the write time,
+    /// so a saved edit of a watchlist or of a filter rule always changes the token. Null when the file does not exist or its attributes cannot be read now.
+    /// </summary>
+    public string? GetVersion()
+    {
+        try
+        {
+            var file = new FileInfo(_workspaceFilePath);
+            return file.Exists
+                ? string.Create(CultureInfo.InvariantCulture, $"{file.LastWriteTimeUtc.Ticks}:{file.Length}")
+                : null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null; // replaced at this moment; the next call sees the new file
+        }
     }
 
     public async Task<WorkspaceSettings?> LoadAsync(CancellationToken cancellationToken = default)

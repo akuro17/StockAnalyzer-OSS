@@ -6,7 +6,9 @@ using System.Linq;
 using System.Reflection;
 using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Settings;
+using StockAnalyzer.Core.Services.Analysis;
 
 namespace StockAnalyzer.Core.Services;
 
@@ -126,7 +128,20 @@ public static class WorkspaceSettingsNormalizer
         {
             try
             {
+                // AutoHeal resets an invalid or unsupported time frame silently; the change is reported here by comparing before and after.
+                var timeframeBefore = indicators[i].Timeframe;
                 DefaultCoreIndicatorSettings.AutoHeal(indicators[i]);
+                if (timeframeBefore != IndicatorTimeframe.SameAsChart && indicators[i].Timeframe == IndicatorTimeframe.SameAsChart)
+                {
+                    // Two reasons lead to the same reset: the setting does not apply to the indicator, or the indicator reads another one's output (a chain).
+                    // The chain reason is reported only when the setting would otherwise have been kept.
+                    bool keptButChained = Enum.IsDefined(timeframeBefore)
+                        && indicators[i].TypeEnum is { } healedType
+                        && IndicatorTimeframePolicy.SupportsIndicatorTimeframe(healedType, indicators[i].ParameterObject)
+                        && IndicatorTimeframePolicy.HasOwnChainInput(indicators[i]);
+                    warnings.Add(Cosmetic($"{path}[{i}]", TimeframeResetMessage(indicators[i], keptButChained ? ChainResetReason : NotApplicableResetReason)));
+                }
+
                 healthy.Add(indicators[i]);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -143,7 +158,40 @@ public static class WorkspaceSettingsNormalizer
             indicators.Clear();
             indicators.AddRange(healthy);
         }
+
+        ResetChainedTimeframes(indicators, path, warnings);
     }
+
+    /// <summary>
+    /// An indicator that reads another indicator's output (Source Indicator / Dynamic Period Driver) or is read by one must stay on the chart's own time frame:
+    /// the chain is calculated on one bar series. Positions are those of the healed list.
+    /// </summary>
+    private static void ResetChainedTimeframes(List<CoreIndicatorSettings> indicators, string path, List<WorkspaceLoadWarning> warnings)
+    {
+        // The one definition of "part of a chain" (reads another indicator or is read by one) is shared with the pipeline.
+        HashSet<string>? chainParticipants = null;
+        foreach (var indicator in indicators)
+        {
+            if (indicator.Timeframe == IndicatorTimeframe.SameAsChart)
+            {
+                continue;
+            }
+
+            chainParticipants ??= IndicatorTimeframePlan.CollectChainParticipants(indicators);
+            if (chainParticipants.Contains(indicator.Id))
+            {
+                indicator.Timeframe = IndicatorTimeframe.SameAsChart;
+                warnings.Add(Cosmetic($"{path}[{indicators.IndexOf(indicator)}]", TimeframeResetMessage(indicator, ChainResetReason)));
+            }
+        }
+    }
+
+    private const string ChainResetReason = "cannot differ from the chart while the indicator is part of an indicator chain";
+
+    private const string NotApplicableResetReason = "is not defined or does not apply to this indicator";
+
+    private static string TimeframeResetMessage(CoreIndicatorSettings indicator, string reason) =>
+        $"The timeframe of the indicator ({indicator.TypeEnum}) {reason} and was reset to {nameof(IndicatorTimeframe.SameAsChart)}.";
 
     // ---- scalars --------------------------------------------------------------------------------------------
 

@@ -75,6 +75,26 @@ public class SourceIndicatorServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveSourceIndicatorAsync_NeverStoresATimeframe_AndAFileCarryingOneLoadsAsSameAsChart()
+    {
+        var source = new CoreIndicatorSettings { Id = "SMA_Source", TypeEnum = IndicatorType.SMA, ParameterObject = new CoreSmaParameter { Period = 20 } };
+        source.Timeframe = IndicatorTimeframe.Weekly;
+
+        await _service.SaveSourceIndicatorAsync(source);
+
+        Assert.Equal(IndicatorTimeframe.SameAsChart, (await _service.GetSourceIndicatorsAsync()).Single().Timeframe);
+        Assert.Equal(IndicatorTimeframe.SameAsChart, _service.GetSourceIndicator("SMA_Source")!.Timeframe);
+
+        // A file written before the rule existed: Weekly is on disk, a fresh service must still hand out Same as Chart.
+        string json = File.ReadAllText(_filePath);
+        Assert.Contains("\"Timeframe\"", json, StringComparison.OrdinalIgnoreCase);
+        File.WriteAllText(_filePath, System.Text.RegularExpressions.Regex.Replace(json, "\"Timeframe\"\\s*:\\s*0", "\"Timeframe\": 1", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        Assert.Contains("\"Timeframe\": 1", File.ReadAllText(_filePath));
+        using var fresh = new SourceIndicatorService(_filePath);
+        Assert.Equal(IndicatorTimeframe.SameAsChart, (await fresh.GetSourceIndicatorsAsync()).Single().Timeframe);
+    }
+
+    [Fact]
     public async Task SaveSourceIndicatorAsync_WhenUpdatingExisting_ReplacesSettings()
     {
         var initial = new CoreIndicatorSettings

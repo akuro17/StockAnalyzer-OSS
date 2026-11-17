@@ -321,7 +321,7 @@ public sealed class ToolInfrastructureTests
             return "{}";
         });
         var after = Tool("sa_after", (_, _) => Task.FromResult("{}"));
-        var dispatcher = await McpTestSupport.InitializedAsync(new IMcpTool[] { stubborn, after }, new McpLimits { ToolTimeoutSeconds = 1, HeavyToolTimeoutSeconds = 1, QueueWaitSeconds = 0 });
+        var dispatcher = await McpTestSupport.InitializedAsync(new IMcpTool[] { stubborn, after }, new McpLimits { ToolTimeoutSeconds = 1, HeavyToolTimeoutSeconds = 1, QueueWaitSeconds = 0, MaxConcurrentReadOnlyCalls = 1 });
 
         using var timedOut = (await McpTestSupport.CallAsync(dispatcher, "sa_stubborn", id: 1))!;
         using var busy = (await McpTestSupport.CallAsync(dispatcher, "sa_after", id: 2))!;
@@ -353,7 +353,7 @@ public sealed class ToolInfrastructureTests
             lock (order) { order.Add("end " + label); }
             return "{}";
         }, ToolSchema.Object().String("label", "l", required: true).Build());
-        var dispatcher = await McpTestSupport.InitializedAsync(new[] { tool }, new McpLimits { QueueWaitSeconds = 10 });
+        var dispatcher = await McpTestSupport.InitializedAsync(new[] { tool }, new McpLimits { QueueWaitSeconds = 10, MaxConcurrentReadOnlyCalls = 1 });
 
         Task<JsonDocument?> first = McpTestSupport.CallAsync(dispatcher, "sa_serial", """{"label":"a"}""", id: 1);
         Task<JsonDocument?> second = McpTestSupport.CallAsync(dispatcher, "sa_serial", """{"label":"b"}""", id: 2);
@@ -370,7 +370,7 @@ public sealed class ToolInfrastructureTests
     public async Task ACallThatWaitsLongerThanTheQueueWaitIsServerBusy()
     {
         var tool = Tool("sa_hold", async (_, _) => { await Task.Delay(2500); return "{}"; });
-        var dispatcher = await McpTestSupport.InitializedAsync(new[] { tool }, new McpLimits { QueueWaitSeconds = 1 });
+        var dispatcher = await McpTestSupport.InitializedAsync(new[] { tool }, new McpLimits { QueueWaitSeconds = 1, MaxConcurrentReadOnlyCalls = 1 });
 
         Task<JsonDocument?> first = McpTestSupport.CallAsync(dispatcher, "sa_hold", id: 1);
         using var second = (await McpTestSupport.CallAsync(dispatcher, "sa_hold", id: 2))!;
@@ -405,7 +405,7 @@ public sealed class ToolInfrastructureTests
         int queuedRuns = 0;
         var holder = Tool("sa_holder", async (_, _) => { started.Release(); await release.WaitAsync(); return "{}"; });
         var queued = Tool("sa_queued", (_, _) => { Interlocked.Increment(ref queuedRuns); return Task.FromResult("{}"); });
-        var dispatcher = await McpTestSupport.InitializedAsync(new IMcpTool[] { holder, queued }, new McpLimits { QueueWaitSeconds = 30 });
+        var dispatcher = await McpTestSupport.InitializedAsync(new IMcpTool[] { holder, queued }, new McpLimits { QueueWaitSeconds = 30, MaxConcurrentReadOnlyCalls = 1 });
 
         Task<JsonDocument?> first = McpTestSupport.CallAsync(dispatcher, "sa_holder", id: 1);
         Assert.True(await started.WaitAsync(TimeSpan.FromSeconds(30)));

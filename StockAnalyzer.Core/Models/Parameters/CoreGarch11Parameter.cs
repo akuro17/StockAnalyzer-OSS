@@ -41,7 +41,18 @@ public class CoreGarch11Parameter : CoreAnnualizableVolatilityParameterBase
         set => SetProperty(ref _maxIterations, value);
     }
 
-    public override string GetDisplayName(string type) => $"{type} ({Period})";
+    private bool _enableGjrLeverage;
+
+    [DisplayName("Enable GJR Leverage")]
+    [Description("When true, estimates Glosten-Jagannathan-Runkle GJR-GARCH(1,1) capturing asymmetric leverage (gamma) on negative return shocks.")]
+    [Category("Model")]
+    public bool EnableGjrLeverage
+    {
+        get => _enableGjrLeverage;
+        set => SetProperty(ref _enableGjrLeverage, value);
+    }
+
+    public override string GetDisplayName(string type) => EnableGjrLeverage ? $"{type} ({Period}, GJR)" : $"{type} ({Period})";
 
     // The first value is at bar index Period.
     public override int GetRequiredWarmupBars() => Period;

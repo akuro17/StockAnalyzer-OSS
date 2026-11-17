@@ -424,4 +424,155 @@ public sealed class WorkspaceSettingsNormalizerTests
             File.Delete(path);
         }
     }
+
+    // ---- indicator timeframe (Indicator Timeframe, Sprint 1 / T2) -------------------------------------------------
+
+    private static CoreIndicatorSettings WithTimeframe(string id, IndicatorType type, CoreIndicatorParameterBase? parameter, IndicatorTimeframe timeframe)
+    {
+        var indicator = new CoreIndicatorSettings { Id = id, TypeEnum = type, ParameterObject = parameter };
+        indicator.Timeframe = timeframe;
+        return indicator;
+    }
+
+    [Fact]
+    public void Normalize_SupportedIndicatorWithWeeklyTimeframe_IsKeptAndSilent()
+    {
+        var settings = new WorkspaceSettings();
+        settings.Indicators.Add(WithTimeframe("a", IndicatorType.SMA, new CoreSmaParameter { Period = 14 }, IndicatorTimeframe.Weekly));
+
+        var warnings = WorkspaceSettingsNormalizer.Normalize(settings);
+
+        Assert.Empty(warnings);
+        Assert.Equal(IndicatorTimeframe.Weekly, settings.Indicators[0].Timeframe);
+    }
+
+    [Fact]
+    public void Normalize_UndefinedTimeframeValue_IsResetWithOneCosmeticWarning()
+    {
+        var settings = new WorkspaceSettings();
+        settings.Indicators.Add(WithTimeframe("a", IndicatorType.SMA, new CoreSmaParameter { Period = 14 }, (IndicatorTimeframe)99));
+
+        var warnings = WorkspaceSettingsNormalizer.Normalize(settings);
+
+        AssertSingle(warnings, WorkspaceWarningSeverity.Cosmetic, "Indicators[0]");
+        Assert.Equal(IndicatorTimeframe.SameAsChart, settings.Indicators[0].Timeframe);
+        Assert.Empty(WorkspaceSettingsNormalizer.Normalize(settings));
+    }
+
+    [Theory]
+    [InlineData(IndicatorType.PivotPointsAdvanced)]
+    [InlineData(IndicatorType.ClassicPivotPoints)]
+    [InlineData(IndicatorType.Renko)]
+    [InlineData(IndicatorType.ThreeLineBreak)]
+    [InlineData(IndicatorType.Correlation)]
+    [InlineData(IndicatorType.Price)]
+    [InlineData(IndicatorType.AnchoredVWAP)]
+    public void Normalize_UnsupportedIndicatorWithMonthlyTimeframe_IsResetWithOneCosmeticWarning(IndicatorType type)
+    {
+        var settings = new WorkspaceSettings();
+        var indicator = new CoreIndicatorSettings { Id = "a", TypeEnum = type };
+        DefaultCoreIndicatorSettings.AutoHeal(indicator); // gives the type its real parameter object, as a loaded workspace has
+        indicator.Timeframe = IndicatorTimeframe.Monthly;
+        settings.Indicators.Add(indicator);
+
+        var warnings = WorkspaceSettingsNormalizer.Normalize(settings);
+
+        AssertSingle(warnings, WorkspaceWarningSeverity.Cosmetic, "Indicators[0]");
+        Assert.Equal(IndicatorTimeframe.SameAsChart, settings.Indicators[0].Timeframe);
+        Assert.Empty(WorkspaceSettingsNormalizer.Normalize(settings));
+    }
+
+    [Fact]
+    public void Normalize_ChainedIndicators_UpstreamAndDownstreamAreResetWithOneWarningEach()
+    {
+        var settings = new WorkspaceSettings();
+        var upstream = WithTimeframe("up", IndicatorType.SMA, new CoreSmaParameter { Period = 5 }, IndicatorTimeframe.Weekly);
+        var downstream = WithTimeframe("down", IndicatorType.EMA, new CoreEmaParameter { Period = 5 }, IndicatorTimeframe.Monthly);
+        downstream.SourceIndicatorId = "up";
+        var free = WithTimeframe("free", IndicatorType.SMA, new CoreSmaParameter { Period = 9 }, IndicatorTimeframe.Weekly);
+        settings.Indicators.Add(upstream);
+        settings.Indicators.Add(downstream);
+        settings.Indicators.Add(free);
+
+        var warnings = WorkspaceSettingsNormalizer.Normalize(settings);
+
+        Assert.Equal(2, warnings.Count);
+        Assert.All(warnings, w => Assert.Equal(WorkspaceWarningSeverity.Cosmetic, w.Severity));
+        Assert.Contains(warnings, w => w.Path == "Indicators[0]");
+        Assert.Contains(warnings, w => w.Path == "Indicators[1]");
+        Assert.Equal(IndicatorTimeframe.SameAsChart, upstream.Timeframe);
+        Assert.Equal(IndicatorTimeframe.SameAsChart, downstream.Timeframe);
+        Assert.Equal(IndicatorTimeframe.Weekly, free.Timeframe);
+        Assert.Empty(WorkspaceSettingsNormalizer.Normalize(settings));
+    }
+
+    [Fact]
+    public void Normalize_DynamicPeriodDriverChain_IsResetOnBothSides_AlsoInPanelCharts()
+    {
+        var settings = new WorkspaceSettings();
+        var driver = WithTimeframe("driver", IndicatorType.SMA, new CoreSmaParameter { Period = 5 }, IndicatorTimeframe.Weekly);
+        var driven = WithTimeframe("driven", IndicatorType.EMA, new CoreEmaParameter { Period = 5 }, IndicatorTimeframe.Weekly);
+        driven.DynamicPeriodIndicatorId = "driver";
+        settings.PanelCharts.Add(new PanelChartSettings { TabId = "t0", Indicators = { driver, driven } });
+
+        var warnings = WorkspaceSettingsNormalizer.Normalize(settings);
+
+        Assert.Equal(2, warnings.Count);
+        Assert.All(warnings, w => Assert.StartsWith("PanelCharts[0].Indicators[", w.Path));
+        Assert.Equal(IndicatorTimeframe.SameAsChart, driver.Timeframe);
+        Assert.Equal(IndicatorTimeframe.SameAsChart, driven.Timeframe);
+        Assert.Empty(WorkspaceSettingsNormalizer.Normalize(settings));
+    }
+
+    [Fact]
+    public void Normalize_ChainedIndicator_WarnsWithTheChainReason_AndAnUnsupportedOneWithTheNotApplicableReason()
+    {
+        var settings = new WorkspaceSettings();
+        var downstream = WithTimeframe("down", IndicatorType.EMA, new CoreEmaParameter { Period = 5 }, IndicatorTimeframe.Weekly);
+        downstream.SourceIndicatorId = "up";
+        var unsupported = new CoreIndicatorSettings { Id = "p", TypeEnum = IndicatorType.Price };
+        DefaultCoreIndicatorSettings.AutoHeal(unsupported);
+        unsupported.Timeframe = IndicatorTimeframe.Weekly;
+        settings.Indicators.Add(downstream);
+        settings.Indicators.Add(unsupported);
+
+        var warnings = WorkspaceSettingsNormalizer.Normalize(settings);
+
+        Assert.Equal(2, warnings.Count);
+        Assert.Contains("indicator chain", warnings.Single(w => w.Path == "Indicators[0]").Message);
+        Assert.Contains("does not apply", warnings.Single(w => w.Path == "Indicators[1]").Message);
+        Assert.Equal(IndicatorTimeframe.SameAsChart, downstream.Timeframe);
+    }
+
+    [Theory]
+    [InlineData(true, false, IndicatorTimeframe.SameAsChart)]
+    [InlineData(false, true, IndicatorTimeframe.SameAsChart)]
+    [InlineData(false, false, IndicatorTimeframe.Weekly)]
+    public void AutoHeal_ResetsTheTimeframeOfAnIndicatorThatReadsAnotherIndicator_AndOnlyThen(bool hasSource, bool hasDriver, IndicatorTimeframe expected)
+    {
+        var indicator = WithTimeframe("a", IndicatorType.SMA, new CoreSmaParameter { Period = 14 }, IndicatorTimeframe.Weekly);
+        if (hasSource) indicator.SourceIndicatorId = "other";
+        if (hasDriver) indicator.DynamicPeriodIndicatorId = "other";
+
+        DefaultCoreIndicatorSettings.AutoHeal(indicator);
+
+        Assert.Equal(expected, indicator.Timeframe);
+        Assert.Equal(expected == IndicatorTimeframe.Weekly, indicator.DisplayName.EndsWith("[W1]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Normalize_ReferenceToAnIndicatorOutsideTheList_DoesNotChainAnythingElse()
+    {
+        var settings = new WorkspaceSettings();
+        var other = WithTimeframe("other", IndicatorType.SMA, new CoreSmaParameter { Period = 5 }, IndicatorTimeframe.Weekly);
+        settings.Indicators.Add(other);
+        settings.PanelCharts.Add(new PanelChartSettings { TabId = "t0", Indicators = { WithTimeframe("x", IndicatorType.EMA, new CoreEmaParameter { Period = 5 }, IndicatorTimeframe.SameAsChart) } });
+        settings.PanelCharts[0].Indicators[0].SourceIndicatorId = "other"; // a different list: no chain inside either list
+
+        var warnings = WorkspaceSettingsNormalizer.Normalize(settings);
+
+        Assert.Empty(warnings);
+        Assert.Equal(IndicatorTimeframe.Weekly, other.Timeframe);
+    }
+
 }

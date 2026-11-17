@@ -115,16 +115,15 @@ public static class DrawingDocumentCodec
 
     public static readonly Guid FallbackDefaultLayerId = new("00000000-0000-0000-0000-000000000001");
 
-    public static readonly JsonSerializerOptions SerializerOptions = new()
+    public static readonly JsonSerializerOptions SerializerOptions = CreateSerializerOptions();
+
+    /// <summary>The options of <see cref="DrawingDocumentJsonOptions"/> (shared with the read-only reader) plus the colour converter of the chart, in front as it always was.</summary>
+    private static JsonSerializerOptions CreateSerializerOptions()
     {
-        WriteIndented = true,
-        NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals,
-        Converters =
-        {
-            new AvaloniaColorJsonConverter(),
-            new JsonStringEnumConverter()
-        }
-    };
+        JsonSerializerOptions options = DrawingDocumentJsonOptions.Create();
+        options.Converters.Insert(0, new AvaloniaColorJsonConverter());
+        return options;
+    }
 
     /// <summary>
     /// Captures the complete state of a ChartObjectManager into an immutable DrawingDocumentState DTO.

@@ -5,6 +5,7 @@
         xmlns:vm="clr-namespace:StockAnalyzer.Avalonia.ViewModels.Dialogs;assembly=StockAnalyzer.Avalonia"
         xmlns:controls="clr-namespace:StockAnalyzer.Avalonia.Views.Controls;assembly=StockAnalyzer.Avalonia"
         xmlns:converters="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
+        xmlns:models="clr-namespace:StockAnalyzer.Core.Models;assembly=StockAnalyzer.Core"
         xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
@@ -104,6 +105,27 @@
                                           Width="164"/>
                             </DockPanel>
                         </StackPanel>
+
+                        <!-- Timeframe (Same as Chart / Weekly / Monthly): hidden where it does not apply, disabled while the indicator is part of a chain -->
+                        <DockPanel IsVisible="{Binding ShowTimeframe}">
+                            <TextBlock Text="{l:Localize Label_TimeFrame}"
+                                       Width="150"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <ComboBox ItemsSource="{Binding TimeframeOptions}"
+                                      SelectedItem="{Binding EditingSettings.Timeframe, Mode=TwoWay}"
+                                      IsEnabled="{Binding IsTimeframeEnabled}"
+                                      ToolTip.Tip="{Binding TimeframeToolTip}"
+                                      ToolTip.ShowOnDisabled="True"
+                                      HorizontalAlignment="Right"
+                                      Width="200">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="models:IndicatorTimeframe">
+                                        <TextBlock Text="{Binding ., Converter={x:Static converters:EnumToLocalizedDisplayNameConverter.Instance}}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </DockPanel>
                     </StackPanel>
                 </Border>
 

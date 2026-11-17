@@ -10,6 +10,27 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility;
 public static class RangeVolatilityMath
 {
     /// <summary>
+    /// Single-bar Rogers-Satchell variance step: <c>ln(H/O)*ln(H/C) + ln(L/O)*ln(L/C)</c>.
+    /// Returns <see cref="double.NaN"/> when any OHLC value is non-positive or non-finite.
+    /// </summary>
+    public static double ComputeRogersSatchellStep(decimal open, decimal high, decimal low, decimal close)
+    {
+        double o = (double)open;
+        double h = (double)high;
+        double l = (double)low;
+        double c = (double)close;
+        if (!(o > 0.0 && h > 0.0 && l > 0.0 && c > 0.0) ||
+            !double.IsFinite(o) ||
+            !double.IsFinite(h) ||
+            !double.IsFinite(l) ||
+            !double.IsFinite(c))
+        {
+            return double.NaN;
+        }
+
+        return Math.Log(h / o) * Math.Log(h / c) + Math.Log(l / o) * Math.Log(l / c);
+    }
+    /// <summary>
     /// Rolling volatility: bar i is null for i &lt; period - 1 and when any bar of the window [i - period + 1, i] is invalid;
     /// otherwise <c>sqrt(max(0, sum(v) / period)) x (annualize ? sqrt(periodsPerYear) : 1) x 100</c>, null when the result is not a finite decimal-range value.
     /// The window sum is rebuilt from its <paramref name="period"/> terms at every bar (no incremental update, so no accumulated rounding drift).

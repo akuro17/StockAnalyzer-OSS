@@ -166,22 +166,9 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
     private IReadOnlyDictionary<CurrencyCode, ExchangeRate> GetLatestExchangeRates()
     {
-        var dict = new Dictionary<CurrencyCode, ExchangeRate>();
-        if (_currentPortfolio?.History == null) return dict;
-
-        for (int i = _currentPortfolio.History.Count - 1; i >= 0; i--)
-        {
-            var tx = _currentPortfolio.History[i];
-            if (tx.AppliedRate.HasValue)
-            {
-                var rate = tx.AppliedRate.Value;
-                dict.TryAdd(rate.BaseCurrency, rate);
-
-                var inverse = rate.Inverse();
-                dict.TryAdd(inverse.BaseCurrency, inverse);
-            }
-        }
-        return dict;
+        return _currentPortfolio?.History == null
+            ? new Dictionary<CurrencyCode, ExchangeRate>()
+            : PortfolioExchangeRates.ExtractLatest(_currentPortfolio.History);
     }
 
     public PortfolioSummaryViewModel(

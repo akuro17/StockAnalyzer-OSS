@@ -347,6 +347,9 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
 
         TimeFrame resolvedTimeFrame = InferTimeFrame(candles);
         Dictionary<UniverseBreadthKey, MarketBreadthResult?>? breadthCache = null;
+        // Per call, created only when an indicator actually needs a plan / higher-frame bars (an all-Same call allocates neither).
+        HashSet<string>? chainParticipants = null;
+        IndicatorTimeframeFrameCache? frameCache = null;
 
         foreach (var setting in orderedSettings)
         {
@@ -391,7 +394,7 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
                     IIndicatorResult indicatorResult;
 
 
-                    bool hasChaining = !string.IsNullOrEmpty(setting.SourceIndicatorId) || !string.IsNullOrEmpty(setting.DynamicPeriodIndicatorId);
+                    bool hasChaining = IndicatorTimeframePolicy.HasOwnChainInput(setting);
                     List<string>? chainWarnings = null;
 
                     if (hasChaining)
@@ -399,14 +402,34 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
                         var chained = ResolveChainedInputs(setting, result, settingsById, candles);
                         chainWarnings = chained.ChainWarnings;
                         indicatorResult = indicator.CalculateSeries(chained.InputSeries, chained.DynamicPeriods);
+                        if (chained.DynamicPeriods != null && indicatorResult is IndicatorResult concreteResult)
+                        {
+                            concreteResult.SetEffectiveDynamicPeriods(chained.DynamicPeriods);
+                        }
                     }
                     else
                     {
                         IExecutionContext context = new CoreExecutionContext(_pythonService);
-                        indicatorResult = Task.Run(async () =>
+                        var timeframePlan = PlanTimeframe(setting, resolvedTimeFrame, allSettings, ref chainParticipants);
+                        if (timeframePlan.IsRefused)
                         {
-                            return await indicator.CalculateAsync(candles, context).ConfigureAwait(false);
-                        }).GetAwaiter().GetResult();
+                            indicatorResult = IndicatorResult.Failure(timeframePlan.RefusalMessage(resolvedTimeFrame));
+                        }
+                        else if (timeframePlan.Mode == IndicatorTimeframeMode.Aligned)
+                        {
+                            frameCache ??= new IndicatorTimeframeFrameCache(candles);
+                            indicatorResult = Task.Run(async () =>
+                            {
+                                return await IndicatorTimeframeCalculator.CalculateAsync(indicator, context, frameCache, timeframePlan.EffectiveFrame).ConfigureAwait(false);
+                            }).GetAwaiter().GetResult();
+                        }
+                        else
+                        {
+                            indicatorResult = Task.Run(async () =>
+                            {
+                                return await indicator.CalculateAsync(candles, context).ConfigureAwait(false);
+                            }).GetAwaiter().GetResult();
+                        }
                     }
 
                     result[setting.Id] = indicatorResult;
@@ -495,6 +518,9 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
         }
 
         Dictionary<UniverseBreadthKey, MarketBreadthResult?>? breadthCache = null;
+        // Per call, created only when an indicator actually needs a plan / higher-frame bars (an all-Same call allocates neither).
+        HashSet<string>? chainParticipants = null;
+        IndicatorTimeframeFrameCache? frameCache = null;
 
         foreach (var setting in orderedSettings)
         {
@@ -542,7 +568,7 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
                     IIndicatorResult indicatorResult;
 
 
-                    bool hasChaining = !string.IsNullOrEmpty(setting.SourceIndicatorId) || !string.IsNullOrEmpty(setting.DynamicPeriodIndicatorId);
+                    bool hasChaining = IndicatorTimeframePolicy.HasOwnChainInput(setting);
                     List<string>? chainWarnings = null;
 
                     if (hasChaining)
@@ -550,11 +576,28 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
                         var chained = ResolveChainedInputs(setting, result, settingsById, candles);
                         chainWarnings = chained.ChainWarnings;
                         indicatorResult = indicator.CalculateSeries(chained.InputSeries, chained.DynamicPeriods);
+                        if (chained.DynamicPeriods != null && indicatorResult is IndicatorResult concreteResult)
+                        {
+                            concreteResult.SetEffectiveDynamicPeriods(chained.DynamicPeriods);
+                        }
                     }
                     else
                     {
                         IExecutionContext context = new CoreExecutionContext(_pythonService);
-                        indicatorResult = await indicator.CalculateAsync(candles, context).ConfigureAwait(false);
+                        var timeframePlan = PlanTimeframe(setting, timeFrame, allSettings, ref chainParticipants);
+                        if (timeframePlan.IsRefused)
+                        {
+                            indicatorResult = IndicatorResult.Failure(timeframePlan.RefusalMessage(timeFrame));
+                        }
+                        else if (timeframePlan.Mode == IndicatorTimeframeMode.Aligned)
+                        {
+                            frameCache ??= new IndicatorTimeframeFrameCache(candles);
+                            indicatorResult = await IndicatorTimeframeCalculator.CalculateAsync(indicator, context, frameCache, timeframePlan.EffectiveFrame).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            indicatorResult = await indicator.CalculateAsync(candles, context).ConfigureAwait(false);
+                        }
                     }
 
                     result[setting.Id] = indicatorResult;
@@ -589,6 +632,21 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// The settings-level time-frame decision of one non-chained indicator. Cheap for the common case: Same as Chart without a self-owned frame returns
+    /// <see cref="IndicatorTimeframeMode.None"/> without looking at the chain. Chain participants are worked out once per call over the complete (resolved) list.
+    /// </summary>
+    private static IndicatorTimeframePlan PlanTimeframe(CoreIndicatorSettings setting, TimeFrame chartFrame, List<CoreIndicatorSettings> allSettings, ref HashSet<string>? chainParticipants)
+    {
+        if (!IndicatorTimeframePlan.NeedsPlan(setting))
+        {
+            return new IndicatorTimeframePlan(IndicatorTimeframeMode.None, chartFrame);
+        }
+
+        chainParticipants ??= IndicatorTimeframePlan.CollectChainParticipants(allSettings);
+        return IndicatorTimeframePlan.Classify(setting, chartFrame, chainParticipants);
     }
 
     public ReverseWatchCurveData? CalculateReverseWatch(

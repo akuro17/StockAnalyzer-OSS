@@ -107,6 +107,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         $"{SeriesOutputOptions.LookbackOffsetsArgument} adds pastValues (value k bars before the last calculated bar), {SeriesOutputOptions.IncludeSeriesArgument} false returns only the compact figures (latestValues, summary, pastValues) to save tokens. " +
         "A call that runs out of time starts no further indicator, but the indicator running at that moment is not interrupted and keeps the server busy until it ends " +
         "(a heavy type such as HiddenMarkovModel with a large Period can take a long time on its own): ask for few heavy indicators per call. " +
+        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds every decimal number of the result (series, projectedValues, latestValues, summary, pastValues; away from zero at the midpoint) to that many decimal places to save tokens; counts (count, trendBars, leadingNullCount, divisionByZeroCount) are never rounded, the calculation itself is not rounded, and without it the numbers are as calculated. " +
         "Prices are in the instrument's units; the application stores no output unit per indicator (see unitUndefined in sa_get_capabilities).";
 
     public bool IsHeavy => false;
@@ -124,26 +125,13 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         .ObjectArray(
             IndicatorsArgument,
             $"The indicators to calculate (1 to {_limits.MaxIndicatorsPerCall}).",
-            ToolSchema.Object()
-                .String("id", "Unique id chosen by the client; the result is keyed by it.", required: true)
-                .String("type", "Indicator type name from sa_get_capabilities (case-insensitive), for example RSI.", required: true)
-                .FreeObject("parameters", "Parameter values by name (case-insensitive), for example {\"Period\": 14}. Names, types and ranges: sa_get_capabilities.")
-                .String(IndicatorTimeFrameKey, $"Time frame of the bars this indicator is calculated on: the call's timeFrame (same as omitted) or a coarser one ({ToolArgs.SupportedTimeFrameNames}). A coarser one is aligned to the call's timestamps as the value of the previous closed period.", allowedValues: Enum.GetNames<TimeFrame>())
-                .String("priceSource", "Price the indicator reads (for example Close). Affects indicators that work on one price series. Default: the indicator's default.", allowedValues: Enum.GetNames<PriceType>())
-                .String("sourceIndicatorId", "Id of another indicator in this call whose output series is this indicator's input instead of the price.")
-                .String("sourceOutputSeriesName", "Output series of the source indicator (default: its main series).")
-                .String("dynamicPeriodIndicatorId", "Id of another indicator in this call whose output series drives this indicator's adaptive period.")
-                .String("dynamicPeriodOutputSeriesName", "Output series of the dynamic-period indicator (default: its main series)."),
+            IndicatorItemSchema(),
             required: true,
             minItems: 1)
         .ObjectArray(
             DerivedArgument,
             $"Optional series computed from two series of this call (at most {_limits.MaxDerivedSeriesPerCall}); a derived series may read the ones declared before it. Omit or send [] for none.",
-            ToolSchema.Object()
-                .String(DerivedSeriesPlan.IdKey, "Unique id chosen by the client (unique across indicators and derived series); the result is keyed by it.", required: true)
-                .String(DerivedSeriesPlan.OperationKey, $"The operation (exact name): {string.Join(", ", Enum.GetNames<SeriesOperation>())}.", required: true, allowedValues: Enum.GetNames<SeriesOperation>())
-                .FreeObject(DerivedSeriesPlan.LeftKey, $"{{\"{DerivedSeriesPlan.ReferenceKey}\":\"<indicator or earlier derived id>\"}} (+ optional \"{DerivedSeriesPlan.SeriesNameKey}\" for an indicator) or {{\"{DerivedSeriesPlan.ConstantKey}\":<number>}}.", required: true)
-                .FreeObject(DerivedSeriesPlan.RightKey, $"Same forms as {DerivedSeriesPlan.LeftKey}.", required: true))
+            DerivedItemSchema())
         .Integer(LookbackArgument, $"Stored bars the calculation runs over, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Integer(TailArgument, $"Number of trailing bars returned per series. Default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, the latest bar is the last bar dated on or before it. Default: the latest stored bar.")
@@ -153,7 +141,29 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Offsets (0 or more, at most {_limits.MaxLookbackOffsets}) of bars before the last calculated bar: adds pastValues with the value of every returned series that many bars back (0 = the last bar). A bar that does not exist or has no value gives null.")
         .Boolean(SeriesOutputOptions.IncludeSeriesArgument, "false leaves out series, projectedValues and timestamps (latestValues, leadingNullCount, summary and pastValues stay); it needs summary true or lookbackOffsets, cannot be combined with outputTailCount, and returnedBarCount is then 0. Default true.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol (and comparison symbols) that is not in the ticker list but has stored daily bars. Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, $"Round every decimal number of the result to this many decimal places (0 to {SeriesOutputOptions.MaxDecimalPlaces}; away from zero at the midpoint). Counts are never rounded. Default: numbers as calculated.", minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
+
+    /// <summary>The schema of one entry of <c>indicators</c>: the one definition shared by sa_calculate_indicators and sa_calculate_indicators_batch.</summary>
+    internal static ToolSchema IndicatorItemSchema()
+        => ToolSchema.Object()
+        .String("id", "Unique id chosen by the client; the result is keyed by it.", required: true)
+        .String("type", "Indicator type name from sa_get_capabilities (case-insensitive), for example RSI.", required: true)
+        .FreeObject("parameters", "Parameter values by name (case-insensitive), for example {\"Period\": 14}. Names, types and ranges: sa_get_capabilities.")
+        .String(IndicatorTimeFrameKey, $"Time frame of the bars this indicator is calculated on: the call's timeFrame (same as omitted) or a coarser one ({ToolArgs.SupportedTimeFrameNames}). A coarser one is aligned to the call's timestamps as the value of the previous closed period.", allowedValues: Enum.GetNames<TimeFrame>())
+        .String("priceSource", "Price the indicator reads (for example Close). Affects indicators that work on one price series. Default: the indicator's default.", allowedValues: Enum.GetNames<PriceType>())
+        .String("sourceIndicatorId", "Id of another indicator in this call whose output series is this indicator's input instead of the price.")
+        .String("sourceOutputSeriesName", "Output series of the source indicator (default: its main series).")
+        .String("dynamicPeriodIndicatorId", "Id of another indicator in this call whose output series drives this indicator's adaptive period.")
+        .String("dynamicPeriodOutputSeriesName", "Output series of the dynamic-period indicator (default: its main series).");
+
+    /// <summary>The schema of one entry of <c>derived</c>: shared by sa_calculate_indicators and sa_calculate_indicators_batch.</summary>
+    internal static ToolSchema DerivedItemSchema()
+        => ToolSchema.Object()
+        .String(DerivedSeriesPlan.IdKey, "Unique id chosen by the client (unique across indicators and derived series); the result is keyed by it.", required: true)
+        .String(DerivedSeriesPlan.OperationKey, $"The operation (exact name): {string.Join(", ", Enum.GetNames<SeriesOperation>())}.", required: true, allowedValues: Enum.GetNames<SeriesOperation>())
+        .FreeObject(DerivedSeriesPlan.LeftKey, $"{{\"{DerivedSeriesPlan.ReferenceKey}\":\"<indicator or earlier derived id>\"}} (+ optional \"{DerivedSeriesPlan.SeriesNameKey}\" for an indicator) or {{\"{DerivedSeriesPlan.ConstantKey}\":<number>}}.", required: true)
+        .FreeObject(DerivedSeriesPlan.RightKey, $"Same forms as {DerivedSeriesPlan.LeftKey}.", required: true);
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
@@ -172,14 +182,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
 
         JsonElement indicators = arguments.GetProperty(IndicatorsArgument);
-        if (indicators.GetArrayLength() > _limits.MaxIndicatorsPerCall)
-        {
-            throw new ToolException(
-                ToolErrorCodes.LimitExceeded,
-                $"At most {_limits.MaxIndicatorsPerCall} indicators per call.",
-                IndicatorsArgument,
-                $"Send {_limits.MaxIndicatorsPerCall} or fewer indicators, or split the call.");
-        }
+        CheckIndicatorCount(indicators);
 
         SeriesOutputOptions output = SeriesOutputOptions.Read(arguments, _limits);
         if (!output.IncludeSeries && ToolArgs.Integer(arguments, TailArgument) is not null)
@@ -191,15 +194,102 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
                 $"Set {SeriesOutputOptions.IncludeSeriesArgument} to true, or omit {TailArgument}.");
         }
 
+        (List<RequestedIndicator> requests, IReadOnlyList<DerivedSeriesRequest> derived) = PlanIndicators(arguments, indicators, timeFrame);
+        List<string> comparisonSymbols = await ResolveComparisonSymbolsAsync(requests, symbol, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
+
+        // completeBarsOnly concerns the bars of the call's own W1 or MN1 frame; given (true or false) it adds the partial-bar keys, not given nothing changes (the answer stays byte-identical).
+        bool? completeBarsOnly = ToolArgs.Boolean(arguments, PartialBarOutput.CompleteBarsOnlyArgument);
+        IndicatorEvaluation evaluation = await EvaluateAsync(symbol, timeFrame, lookback, endDate, completeBarsOnly, requests, derived, comparisonSymbols, warnings, null, cancellationToken).ConfigureAwait(false);
+        return ToolJson.Build(writer => WriteResult(writer, timeFrame, endDate, lookback, evaluation, tail, output, warnings));
+    }
+
+    /// <summary>The refusal of a call that names more indicators than <see cref="McpLimits.MaxIndicatorsPerCall"/> (the list is never cut).</summary>
+    internal void CheckIndicatorCount(JsonElement indicators)
+    {
+        if (indicators.GetArrayLength() > _limits.MaxIndicatorsPerCall)
+        {
+            throw new ToolException(
+                ToolErrorCodes.LimitExceeded,
+                $"At most {_limits.MaxIndicatorsPerCall} indicators per call.",
+                IndicatorsArgument,
+                $"Send {_limits.MaxIndicatorsPerCall} or fewer indicators, or split the call.");
+        }
+    }
+
+    /// <summary>
+    /// Binds the call's indicators (and its optional derived series) to fresh settings. The settings are changed by the call that uses them (a comparison symbol is written back
+    /// in canonical form), so a tool that evaluates several symbols plans once per symbol.
+    /// </summary>
+    internal (List<RequestedIndicator> Requests, IReadOnlyList<DerivedSeriesRequest> Derived) PlanIndicators(JsonElement arguments, JsonElement indicators, TimeFrame timeFrame)
+    {
         List<RequestedIndicator> requests = _requestBinder.Bind(indicators.EnumerateArray().Select((item, i) => (item, $"{IndicatorsArgument}[{i}]")), timeFrame);
         _chain.Apply(requests);
         IReadOnlyList<DerivedSeriesRequest> derived = arguments.TryGetProperty(DerivedArgument, out JsonElement derivedElement)
             ? DerivedSeriesPlan.Parse(derivedElement, requests, _chain, _limits)
             : Array.Empty<DerivedSeriesRequest>();
-        List<string> comparisonSymbols = await ResolveComparisonSymbolsAsync(requests, symbol, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
+        return (requests, derived);
+    }
 
-        // completeBarsOnly concerns the bars of the call's own W1 or MN1 frame; given (true or false) it adds the partial-bar keys, not given nothing changes (the answer stays byte-identical).
-        bool? completeBarsOnly = ToolArgs.Boolean(arguments, PartialBarOutput.CompleteBarsOnlyArgument);
+    /// <summary>
+    /// Everything the calculation of one symbol produced, ready to be written (<see cref="WriteEvaluation"/>). The indicator and derived requests are the ones that were calculated.
+    /// </summary>
+    internal sealed class IndicatorEvaluation
+    {
+        public IndicatorEvaluation(
+            string symbol,
+            List<CandleData> loaded,
+            bool droppedLeadingBar,
+            PartialBarReport? partialBars,
+            List<RequestedIndicator> requests,
+            IReadOnlyList<DerivedSeriesRequest> derived,
+            Dictionary<string, IIndicatorResult> results,
+            HashSet<string> excludedComparisons)
+        {
+            Symbol = symbol;
+            Loaded = loaded;
+            DroppedLeadingBar = droppedLeadingBar;
+            PartialBars = partialBars;
+            Requests = requests;
+            Derived = derived;
+            Results = results;
+            ExcludedComparisons = excludedComparisons;
+        }
+
+        public string Symbol { get; }
+
+        public List<CandleData> Loaded { get; }
+
+        public bool DroppedLeadingBar { get; }
+
+        public PartialBarReport? PartialBars { get; }
+
+        public List<RequestedIndicator> Requests { get; }
+
+        public IReadOnlyList<DerivedSeriesRequest> Derived { get; }
+
+        public Dictionary<string, IIndicatorResult> Results { get; }
+
+        public HashSet<string> ExcludedComparisons { get; }
+    }
+
+    /// <summary>
+    /// Loads the bars of one symbol and calculates the requested indicators on them exactly as sa_calculate_indicators does (partial-bar rule, comparison alignment, own time frames).
+    /// <paramref name="comparisonData"/> lets a caller that evaluates many symbols hand in the data service the comparison symbols are read through for a given window end
+    /// (the one the call would build itself when null); the primary symbol is read through it too.
+    /// </summary>
+    internal async Task<IndicatorEvaluation> EvaluateAsync(
+        string symbol,
+        TimeFrame timeFrame,
+        int lookback,
+        DateOnly? endDate,
+        bool? completeBarsOnly,
+        List<RequestedIndicator> requests,
+        IReadOnlyList<DerivedSeriesRequest> derived,
+        List<string> comparisonSymbols,
+        List<string> warnings,
+        Func<DateOnly?, IDataService>? comparisonData,
+        CancellationToken cancellationToken)
+    {
         bool reportPartial = completeBarsOnly is not null && TimeFrameAggregator.IsPeriodFrame(timeFrame);
         DateTime? referenceDate = reportPartial ? await _loader.ReferenceDateAsync(symbol, endDate, cancellationToken).ConfigureAwait(false) : null;
 
@@ -252,7 +342,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
 
         List<CoreCandleData> candles = loaded.Select(ToCore).ToList();
         IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondary =
-            await AlignComparisonAsync(symbol, comparisonSymbols, timeFrame, candles.Count, windowEnd, warnings, cancellationToken).ConfigureAwait(false);
+            await AlignComparisonAsync(symbol, comparisonSymbols, timeFrame, candles.Count, windowEnd, warnings, comparisonData, cancellationToken).ConfigureAwait(false);
 
         var excluded = new HashSet<string>(
             comparisonSymbols.Where(c => secondary is null || !secondary.ContainsKey(c)),
@@ -281,7 +371,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        return ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, endDate, lookback, loaded, droppedLeadingBar, partialBars, tail, requests, derived, output, results, warnings, excluded));
+        return new IndicatorEvaluation(symbol, loaded, droppedLeadingBar, partialBars, requests, derived, results, excluded);
     }
 
     /// <summary>
@@ -302,7 +392,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
                 : _gateway.CalculateIndicatorsAsync(candles, settings, secondary);
 
     /// <summary>What the call reports about the running last period of its W1 or MN1 bars when <c>completeBarsOnly</c> was given.</summary>
-    private sealed record PartialBarReport(bool CompleteBarsOnly, DateTime? ReferenceDate, DateTime LastBarPeriodEnd, bool LastBarPartial, bool DroppedPartialBar);
+    internal sealed record PartialBarReport(bool CompleteBarsOnly, DateTime? ReferenceDate, DateTime LastBarPeriodEnd, bool LastBarPartial, bool DroppedPartialBar);
 
     private static void Merge(Dictionary<string, IIndicatorResult> into, Dictionary<string, IIndicatorResult> part)
     {
@@ -340,7 +430,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
     /// Cross-ticker indicators need a comparison symbol: it must be a stored ticker and is written back in canonical form.
     /// Returns the distinct comparison symbols, the primary symbol included when an indicator compares a symbol with itself.
     /// </summary>
-    private async Task<List<string>> ResolveComparisonSymbolsAsync(
+    internal async Task<List<string>> ResolveComparisonSymbolsAsync(
         List<RequestedIndicator> requests, string primary, bool allowUnregistered, List<string> warnings, CancellationToken cancellationToken)
     {
         var symbols = new List<string>();
@@ -394,6 +484,10 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         return symbols;
     }
 
+    /// <summary>The data service the comparison symbols (and the primary symbol) are read through for a window that ends at <paramref name="endDate"/> (the latest bars when null).</summary>
+    internal IDataService CreateComparisonDataService(DateOnly? endDate)
+        => endDate is null ? new WindowedDataService(_loader) : new EndDateAwareDataService(_loader, endDate);
+
     /// <summary>Aligns the comparison symbols to the primary timeline exactly as the chart does (carry-forward of gaps, fragmented series excluded).</summary>
     private async Task<IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>?> AlignComparisonAsync(
         string symbol,
@@ -402,6 +496,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         int barCount,
         DateOnly? endDate,
         List<string> warnings,
+        Func<DateOnly?, IDataService>? comparisonData,
         CancellationToken cancellationToken)
     {
         if (comparisonSymbols.Count == 0)
@@ -410,7 +505,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         }
 
         // With an end date every symbol is cut at the same day; without one the loader is the unchanged latest-bars path.
-        IDataService data = endDate is null ? new WindowedDataService(_loader) : new EndDateAwareDataService(_loader, endDate);
+        IDataService data = comparisonData?.Invoke(endDate) ?? CreateComparisonDataService(endDate);
         var aligner = new ComparisonDataAligner(data) { MaxComparisonSymbols = _limits.MaxSecondarySymbolsPerCall };
         ComparisonAlignedData aligned = await aligner.AlignAsync(symbol, comparisonSymbols, timeFrame, barCount, cancellationToken).ConfigureAwait(false);
         warnings.AddRange(aligned.Warnings.Select(_sanitizer.Sanitize));
@@ -428,27 +523,16 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
 
     private void WriteResult(
         Utf8JsonWriter writer,
-        string symbol,
         TimeFrame timeFrame,
         DateOnly? endDate,
         int lookback,
-        List<CandleData> loaded,
-        bool droppedLeadingBar,
-        PartialBarReport? partialBars,
+        IndicatorEvaluation evaluation,
         int tail,
-        List<RequestedIndicator> requests,
-        IReadOnlyList<DerivedSeriesRequest> derived,
         SeriesOutputOptions output,
-        Dictionary<string, IIndicatorResult> results,
-        List<string> warnings,
-        HashSet<string> excludedComparisons)
+        List<string> warnings)
     {
-        int barCount = loaded.Count;
-        int returned = output.IncludeSeries ? Math.Min(tail, barCount) : 0;
-        int firstReturned = barCount - returned;
-
         writer.WriteStartObject();
-        writer.WriteString("symbol", symbol);
+        writer.WriteString("symbol", evaluation.Symbol);
         writer.WriteString("timeFrame", timeFrame.ToString());
         if (endDate is not null)
         {
@@ -458,12 +542,30 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         writer.WriteString("periodUnit", GetCapabilitiesTool.PeriodUnit);
         writer.WriteString("timestampFormat", ToolJson.DateFormat);
         writer.WriteNumber("lookbackBars", lookback);
+        WriteEvaluation(writer, evaluation, tail, output, warnings);
+        writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// The members of a result that belong to one evaluated symbol, from <c>calculatedBarCount</c> to <c>results</c> (the caller writes the object around them and whatever
+    /// identifies the call or the symbol before them). The one writer of sa_calculate_indicators and of every item of sa_calculate_indicators_batch.
+    /// </summary>
+    internal void WriteEvaluation(Utf8JsonWriter writer, IndicatorEvaluation evaluation, int tail, SeriesOutputOptions output, IEnumerable<string> warnings)
+    {
+        List<CandleData> loaded = evaluation.Loaded;
+        List<RequestedIndicator> requests = evaluation.Requests;
+        IReadOnlyList<DerivedSeriesRequest> derived = evaluation.Derived;
+        Dictionary<string, IIndicatorResult> results = evaluation.Results;
+        int barCount = loaded.Count;
+        int returned = output.IncludeSeries ? Math.Min(tail, barCount) : 0;
+        int firstReturned = barCount - returned;
+
         writer.WriteNumber("calculatedBarCount", barCount);
         writer.WriteNumber("returnedBarCount", returned);
         writer.WriteString("earliestCalculatedTimestamp", ToolJson.FormatDate(loaded[0].Timestamp));
         writer.WriteString("latestTimestamp", ToolJson.FormatDate(loaded[^1].Timestamp));
-        writer.WriteBoolean("droppedLeadingBar", droppedLeadingBar);
-        if (partialBars is { } partial)
+        writer.WriteBoolean("droppedLeadingBar", evaluation.DroppedLeadingBar);
+        if (evaluation.PartialBars is { } partial)
         {
             // The same names, types and format as sa_get_candles (PartialBarOutput); written only when completeBarsOnly was given, so an answer without it is unchanged.
             writer.WriteBoolean(PartialBarOutput.CompleteBarsOnlyArgument, partial.CompleteBarsOnly);
@@ -494,7 +596,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         foreach (RequestedIndicator request in requests)
         {
             writer.WritePropertyName(request.Id);
-            WriteIndicator(writer, request, requests, results, seriesById[request.Id], output, barCount, firstReturned, excludedComparisons);
+            WriteIndicator(writer, request, requests, results, seriesById[request.Id], output, barCount, firstReturned, evaluation.ExcludedComparisons);
         }
 
         if (derived.Count > 0)
@@ -507,7 +609,6 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
             }
         }
 
-        writer.WriteEndObject();
         writer.WriteEndObject();
     }
 
@@ -575,7 +676,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
                 writer.WriteStartArray();
                 for (int i = firstReturned; i < barCount; i++)
                 {
-                    WriteNullable(writer, values[i]);
+                    WriteNullable(writer, output.Round(values[i]));
                 }
 
                 writer.WriteEndArray();
@@ -584,7 +685,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
 
             writer.WriteStartObject("latestValues");
             writer.WritePropertyName(main);
-            WriteNullable(writer, values[barCount - 1]);
+            WriteNullable(writer, output.Round(values[barCount - 1]));
             writer.WriteEndObject();
 
             int leading = 0;
@@ -675,7 +776,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
                     writer.WriteStartArray();
                     for (int i = firstReturned; i < barCount; i++)
                     {
-                        WriteNullable(writer, i < values.Count ? values[i] : null);
+                        WriteNullable(writer, output.Round(i < values.Count ? values[i] : null));
                     }
 
                     writer.WriteEndArray();
@@ -688,7 +789,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
             foreach ((string name, IReadOnlyList<decimal?> values) in series)
             {
                 writer.WritePropertyName(name);
-                WriteNullable(writer, barCount - 1 < values.Count ? values[barCount - 1] : null);
+                WriteNullable(writer, output.Round(barCount - 1 < values.Count ? values[barCount - 1] : null));
             }
 
             writer.WriteEndObject();
@@ -719,7 +820,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
                     writer.WriteStartArray();
                     for (int i = barCount; i < values.Count; i++)
                     {
-                        WriteNullable(writer, values[i]);
+                        WriteNullable(writer, output.Round(values[i]));
                     }
 
                     writer.WriteEndArray();

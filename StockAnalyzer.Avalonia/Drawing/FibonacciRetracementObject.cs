@@ -77,27 +77,7 @@ public class FibonacciRetracementObject : RelativeGeometricRenderer, IDrawingCal
         float chartBottom = bounds.Bottom;
 
         // Determine horizontal line span based on ExtendMode
-        float lineX1 = minX;
-        float lineX2 = maxX;
-
-        switch (ExtendMode)
-        {
-            case FibonacciRetracementExtendMode.ExtendRight:
-            case FibonacciRetracementExtendMode.CyclicLines:
-            case FibonacciRetracementExtendMode.FibTimeZone:
-                lineX1 = minX;
-                lineX2 = Math.Max(maxX, chartRight);
-                break;
-            case FibonacciRetracementExtendMode.ExtendBoth:
-                lineX1 = Math.Min(minX, chartLeft);
-                lineX2 = Math.Max(maxX, chartRight);
-                break;
-            case FibonacciRetracementExtendMode.Default:
-            default:
-                lineX1 = minX;
-                lineX2 = maxX;
-                break;
-        }
+        var (lineX1, lineX2) = GetHorizontalSpan(minX, maxX, chartLeft, chartRight, ExtendMode);
 
         _textPaint.Color = SkiaColor;
         _textPaint.TextSize = DrawingThemeContext.DrawingFontSize;
@@ -161,15 +141,15 @@ public class FibonacciRetracementObject : RelativeGeometricRenderer, IDrawingCal
             canvas.DrawLine(lineX1, y, lineX2, y, _cachedPaint);
 
             // Draw Text (Legacy Layout: Right side of line, Top: %, Bottom: Value)
-            float textX = lineX2 + 5;
+            float textX = lineX2 + ChartConstants.FibonacciTextOffsetX;
             if (lineX2 >= chartRight && lineX1 < lineX2)
             {
-                textX = Math.Min(chartRight - 65, maxX + 5);
-                if (textX < lineX1) textX = lineX1 + 5;
+                textX = Math.Min(chartRight - 65, maxX + ChartConstants.FibonacciTextOffsetX);
+                if (textX < lineX1) textX = lineX1 + ChartConstants.FibonacciTextOffsetX;
             }
 
-            float textY_Percent = y - 3;
-            float textY_Value = y + 10;
+            float textY_Percent = y + ChartConstants.FibonacciTextOffsetYPercent;
+            float textY_Value = y + ChartConstants.FibonacciTextOffsetYValue;
 
             string textPercent = $"{level:P1}";
             string textValue = $"{GetPrice(y, transform):F2}";
@@ -177,6 +157,28 @@ public class FibonacciRetracementObject : RelativeGeometricRenderer, IDrawingCal
             canvas.DrawText(textPercent, textX, textY_Percent, _textPaint);
             canvas.DrawText(textValue, textX, textY_Value, _textPaint);
         }
+    }
+
+    /// <summary>
+    /// Computes the horizontal screen span <c>(LineX1, LineX2)</c> of Fibonacci Retracement level lines
+    /// for the given anchor X bounds and chart boundaries under <paramref name="extendMode"/>.
+    /// </summary>
+    internal static (float LineX1, float LineX2) GetHorizontalSpan(
+        float minX,
+        float maxX,
+        float chartLeft,
+        float chartRight,
+        FibonacciRetracementExtendMode extendMode)
+    {
+        return extendMode switch
+        {
+            FibonacciRetracementExtendMode.ExtendRight
+                or FibonacciRetracementExtendMode.CyclicLines
+                or FibonacciRetracementExtendMode.FibTimeZone => (minX, Math.Max(maxX, chartRight)),
+            FibonacciRetracementExtendMode.ExtendLeft => (Math.Min(minX, chartLeft), maxX),
+            FibonacciRetracementExtendMode.ExtendBoth => (Math.Min(minX, chartLeft), Math.Max(maxX, chartRight)),
+            _ => (minX, maxX)
+        };
     }
 
     private static decimal GetPrice(float y, ICoordinateTransform transform)
@@ -196,33 +198,26 @@ public class FibonacciRetracementObject : RelativeGeometricRenderer, IDrawingCal
         float minX = Math.Min(baseStartX, baseEndX);
         float maxX = Math.Max(baseStartX, baseEndX);
 
-        float lineX1 = minX;
-        float lineX2 = maxX;
-
-        float canvasWidth = (float)transform.CanvasWidth;
-        if (canvasWidth <= 0)
+        var screenRect = transform.ScreenRect;
+        float chartLeft;
+        float chartRight;
+        if (screenRect.Width > 0 && screenRect.Height > 0 && double.IsFinite(screenRect.Left) && double.IsFinite(screenRect.Right))
         {
-            canvasWidth = 10000;
+            chartLeft = (float)screenRect.Left;
+            chartRight = (float)screenRect.Right;
+        }
+        else if (transform.CanvasWidth > 0 && double.IsFinite(transform.CanvasWidth))
+        {
+            chartLeft = 0f;
+            chartRight = (float)transform.CanvasWidth;
+        }
+        else
+        {
+            chartLeft = minX;
+            chartRight = maxX;
         }
 
-        switch (ExtendMode)
-        {
-            case FibonacciRetracementExtendMode.ExtendRight:
-            case FibonacciRetracementExtendMode.CyclicLines:
-            case FibonacciRetracementExtendMode.FibTimeZone:
-                lineX1 = minX;
-                lineX2 = Math.Max(maxX, canvasWidth);
-                break;
-            case FibonacciRetracementExtendMode.ExtendBoth:
-                lineX1 = 0;
-                lineX2 = Math.Max(maxX, canvasWidth);
-                break;
-            case FibonacciRetracementExtendMode.Default:
-            default:
-                lineX1 = minX;
-                lineX2 = maxX;
-                break;
-        }
+        var (lineX1, lineX2) = GetHorizontalSpan(minX, maxX, chartLeft, chartRight, ExtendMode);
 
         // Check levels
         float yDiff = (float)p1.Y - (float)p2.Y;

@@ -31,6 +31,21 @@ internal static class MarketBreadthDateAligner
     }
 
     /// <summary>
+    /// The fast EMA period of the McClellan Oscillator must be strictly shorter than the slow one: equal periods give an oscillator of 0 on every bar,
+    /// and a fast period above the slow one reverses its sign. Called after the range checks of both periods, so a value outside its own range is reported first.
+    /// </summary>
+    internal static void ValidateFastBelowSlow(int fastPeriod, int slowPeriod, string fastParamName)
+    {
+        if (fastPeriod >= slowPeriod)
+        {
+            throw new ArgumentOutOfRangeException(
+                fastParamName,
+                fastPeriod,
+                $"{fastParamName} ({fastPeriod}) must be strictly less than the slow period ({slowPeriod}).");
+        }
+    }
+
+    /// <summary>
     /// Maps each candle bar index to its matching index in <paramref name="result"/>.<c>Series.Dates</c>,
     /// or <c>-1</c> when that trading date is absent from the universe breadth series.
     /// Returns <c>null</c> when no universe result is injected or <paramref name="universeGroupId"/> is empty/invalid.

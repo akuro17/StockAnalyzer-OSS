@@ -32,6 +32,10 @@ public class IndicatorResult : IIndicatorResult
     public IReadOnlyDictionary<string, string> SeriesLabels => _seriesLabels ??= new Dictionary<string, string>();
     public object? CustomData { get; }
     public IConfluenceSignalProvider? SignalProvider { get; private set; }
+    public IReadOnlyList<decimal?>? EffectiveDynamicPeriods { get; private set; }
+
+    /// <summary>Attaches the per-bar effective dynamic periods used to calculate this result (display metadata).</summary>
+    public void SetEffectiveDynamicPeriods(IReadOnlyList<decimal?>? dynamicPeriods) => EffectiveDynamicPeriods = dynamicPeriods;
 
     private IndicatorResult(bool isSuccessful, string? errorMessage, Dictionary<string, IReadOnlyList<decimal?>> series, object? customData = null, IConfluenceSignalProvider? signalProvider = null)
     {

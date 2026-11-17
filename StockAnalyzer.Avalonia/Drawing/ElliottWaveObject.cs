@@ -280,7 +280,8 @@ public class ElliottWaveObject : IChartObject, IDisposable, IDrawingCalculatedVa
                     SelectionHandleRenderer.Draw(
                         canvas,
                         new global::Avalonia.Point(screenPoints[i].X, screenPoints[i].Y),
-                        baseColor);
+                        AnchorPointIndex == i ? DrawingThemeContext.AnchorPointColor : (SKColor?)null,
+                        radius: ChartConstants.SelectedHandleRadius);
                 }
             }
         }

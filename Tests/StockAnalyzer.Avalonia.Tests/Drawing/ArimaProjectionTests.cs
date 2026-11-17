@@ -1,8 +1,13 @@
 using System;
 using System.Collections.Generic;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Avalonia.Threading;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Objects;
+using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Views.Dialogs;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
@@ -176,5 +181,93 @@ public class ArimaProjectionTests
         var def = new ArimaProjectionSettingsPanelDefinition();
         Assert.True(def.CanHandle(new ArimaProjectionObject()));
         Assert.False(def.CanHandle(new KalmanFilterProjectionObject()));
+    }
+
+    [Fact]
+    public void ArimaProjectionObject_AutoOrderSelection_PopulatesSelectedOrderBadge()
+    {
+        var candles = MakeSampleCandles(45);
+        var obj = new ArimaProjectionObject
+        {
+            FutureSteps = 8,
+            AutoOrderSelection = true,
+            MaxAutoP = 3,
+            MaxAutoQ = 3
+        };
+        obj.Points.Add(new ChartPoint(candles[0].Timestamp, candles[0].Close));
+        obj.Points.Add(new ChartPoint(candles[40].Timestamp, candles[40].Close));
+
+        obj.Recalculate(candles, TimeSpan.FromHours(1));
+
+        Assert.InRange(obj.SelectedP, 0, 3);
+        Assert.InRange(obj.SelectedD, 0, 2);
+        Assert.InRange(obj.SelectedQ, 0, 3);
+        var values = obj.GetCalculatedValues(DateTime.UtcNow);
+        Assert.NotEmpty(values);
+        Assert.Equal($"Auto-ARIMA({obj.SelectedP},{obj.SelectedD},{obj.SelectedQ})", values[0].FormattedText);
+    }
+
+    [AvaloniaFact]
+    public void ArimaProjectionSettingsPanel_AutoOrderControls_RoundTripAndClamp()
+    {
+        var obj = new ArimaProjectionObject
+        {
+            AutoOrderSelection = false,
+            MaxAutoP = 3,
+            MaxAutoQ = 2
+        };
+
+        var panelDef = new ArimaProjectionSettingsPanelDefinition();
+        var registry = new DrawingSettingsPanelRegistry();
+        registry.Register(panelDef);
+
+        var dialog = new DrawingSettingsDialog(obj, registry);
+        try
+        {
+            dialog.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            var autoCheck = dialog.FindControl<CheckBox>("ArimaAutoOrderCheck");
+            var maxPSpin = dialog.FindControl<NumericUpDown>("ArimaMaxAutoPSpin");
+            var maxQSpin = dialog.FindControl<NumericUpDown>("ArimaMaxAutoQSpin");
+            var pSpin = dialog.FindControl<NumericUpDown>("ArimaPSpin");
+
+            Assert.NotNull(autoCheck);
+            Assert.NotNull(maxPSpin);
+            Assert.NotNull(maxQSpin);
+            Assert.NotNull(pSpin);
+
+            Assert.False(autoCheck!.IsChecked);
+            Assert.Equal(3m, maxPSpin!.Value);
+            Assert.Equal(2m, maxQSpin!.Value);
+            Assert.True(pSpin!.IsEffectivelyEnabled);
+
+            autoCheck.IsChecked = true;
+            maxPSpin.Value = 5m;
+            maxQSpin.Value = 4m;
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(pSpin.IsEffectivelyEnabled);
+
+            panelDef.Commit(dialog, obj);
+            Assert.True(obj.AutoOrderSelection);
+            Assert.Equal(5, obj.MaxAutoP);
+            Assert.Equal(4, obj.MaxAutoQ);
+
+            // Verify defensive clamping when out-of-range values are committed
+            maxPSpin.Value = 12m;
+            maxQSpin.Value = 0m;
+            panelDef.Commit(dialog, obj);
+            Assert.Equal(IndicatorDefaultConstants.ArimaMaxMaxAutoOrder, obj.MaxAutoP);
+            Assert.Equal(IndicatorDefaultConstants.ArimaMinMaxAutoOrder, obj.MaxAutoQ);
+        }
+        finally
+        {
+            dialog.Close();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+        }
     }
 }

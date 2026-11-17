@@ -678,7 +678,8 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
                 else
                 {
                     var newVM = new DrawingObjectItemViewModel(model, manager, () => NotifySelectedProperties(), m => OpenSettingsForModelAsync(m), _iconDrawingService, layerService, () => _chartViewModel?.DrawingEditCoordinator,
-                        CanLinkAsParent, LinkAsParent, CanUnlink, Unlink, GetLinkRole);
+                        CanLinkAsParent, LinkAsParent, CanUnlink, Unlink, GetLinkRole,
+                        () => _chartViewModel?.CreateDrawingCalculationContext() ?? StockAnalyzer.Avalonia.Drawing.DrawingCalculationContext.Empty);
                     Items.Insert(targetIndex, newVM);
                     itemMap[model.Id] = newVM;
                 }
@@ -1144,7 +1145,7 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         //
         // Apply live-commits the dialog's current values without closing it, so the chart must be
         // redrawn and persisted immediately -- the same steps taken below for a "Changed" close.
-        int? oldFutureSteps = (editTarget as StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject)?.FutureSteps;
+        var dtwSnapshot = (editTarget as StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject)?.CaptureSearchSettings();
         var result = await dialogService.ShowDrawingSettingsDialogAsync(editTarget, onApply: obj =>
         {
             if (_chartViewModel?.Candles != null)
@@ -1190,12 +1191,11 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
                 Drawing.DeferredComputationRecalculator.TryRecalculate(editTarget, _chartViewModel.Candles);
             }
 
-            if (editTarget is StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject dtwObj)
+            if (editTarget is StockAnalyzer.Avalonia.Drawing.Objects.DtwProjectionObject dtwObj &&
+                dtwSnapshot.HasValue &&
+                dtwObj.HasSearchSettingsChanged(dtwSnapshot.Value))
             {
-                if (oldFutureSteps.HasValue && oldFutureSteps.Value != dtwObj.FutureSteps)
-                {
-                    _chartViewModel?.OnDrawingFinished(dtwObj);
-                }
+                _chartViewModel?.OnDrawingFinished(dtwObj);
             }
 
             ObjectManager?.NotifyObjectChanged(editTarget.Id);

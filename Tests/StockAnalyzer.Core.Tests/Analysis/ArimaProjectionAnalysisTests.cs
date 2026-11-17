@@ -67,4 +67,24 @@ public class ArimaProjectionAnalysisTests
         Assert.Equal(raw.Count - 1 - 10 + 1, result.SampleCount);
         Assert.NotEmpty(result.ProjectedPoints);
     }
+
+    [Fact]
+    public void AutoSelectOrder_ReportsSelectedOrder_WhileFalsePreservesFixedOrder()
+    {
+        var candles = WavyCandles(60);
+
+        var fixedResult = ArimaProjectionAnalysis.CalculateProjection(candles, 0, 59, p: 1, d: 1, q: 1, autoSelectOrder: false);
+        Assert.Equal(1, fixedResult.SelectedP);
+        Assert.Equal(1, fixedResult.SelectedD);
+        Assert.Equal(1, fixedResult.SelectedQ);
+
+        var autoResult = ArimaProjectionAnalysis.CalculateProjection(candles, 0, 59, autoSelectOrder: true, maxAutoP: 3, maxAutoQ: 3);
+        Assert.NotEqual(ArimaProjectionResult.Empty, autoResult);
+        Assert.InRange(autoResult.SelectedP, 0, 3);
+        Assert.InRange(autoResult.SelectedD, 0, 2);
+        Assert.InRange(autoResult.SelectedQ, 0, 3);
+        Assert.Equal(autoResult.SelectedP, autoResult.P);
+        Assert.Equal(autoResult.SelectedD, autoResult.D);
+        Assert.Equal(autoResult.SelectedQ, autoResult.Q);
+    }
 }

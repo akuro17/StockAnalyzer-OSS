@@ -2138,6 +2138,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         public IReadOnlyDictionary<string, string> SeriesLabels => _original.SeriesLabels;
         public object? CustomData => _original.CustomData;
         public IConfluenceSignalProvider? SignalProvider => _original.SignalProvider;
+        public IReadOnlyList<decimal?>? EffectiveDynamicPeriods =>
+            _original.EffectiveDynamicPeriods is { } dp ? new VirtualAlignedList(dp, _indexMapping) : null;
         public decimal? this[int index] => MainValues[index];
         public int Count => MainValues.Count;
         public IEnumerator<decimal?> GetEnumerator() => MainValues.GetEnumerator();

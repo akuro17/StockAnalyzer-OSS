@@ -17,6 +17,7 @@ public class CoreHoughTrendStrengthIndicator : CoreIndicatorBase
     public int VoteThreshold { get; set; } = 3;
     public int MaxLines { get; set; } = 5;
     public HoughNormalizationMode Normalization { get; set; } = HoughNormalizationMode.MinMax;
+    public bool UseVolumeWeight { get; set; }
 
     public override string Name => $"HoughTrendStrength({Lookback},{PivotWindow},{VoteThreshold})";
     public override bool IsOverlay => false;
@@ -30,6 +31,7 @@ public class CoreHoughTrendStrengthIndicator : CoreIndicatorBase
             VoteThreshold = p.VoteThreshold;
             MaxLines = p.MaxLines;
             Normalization = p.Normalization;
+            UseVolumeWeight = p.UseVolumeWeight;
         }
     }
 
@@ -76,7 +78,8 @@ public class CoreHoughTrendStrengthIndicator : CoreIndicatorBase
                 pivotWindow: PivotWindow,
                 voteThreshold: VoteThreshold,
                 maxLines: MaxLines,
-                normalization: Normalization);
+                normalization: Normalization,
+                useVolumeWeight: UseVolumeWeight);
 
             if (result.Lines.Count > 0)
             {

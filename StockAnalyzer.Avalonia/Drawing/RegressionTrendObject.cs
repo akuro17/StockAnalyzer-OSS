@@ -8,6 +8,7 @@ using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Drawing;
+using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Services.Analysis;
 
@@ -36,9 +37,9 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
     public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
 
-    private const decimal DefaultStdDevMultiplier = 2.0m;
-    private const double MinStdDevMultiplierRange = 0.1;
-    private const double MaxStdDevMultiplierRange = 10.0;
+    private const decimal DefaultStdDevMultiplier = RegressionTrendValues.DefaultStdDevMultiplier;
+    private const double MinStdDevMultiplierRange = RegressionTrendValues.MinStdDevMultiplierRange;
+    private const double MaxStdDevMultiplierRange = RegressionTrendValues.MaxStdDevMultiplierRange;
     private const decimal MinStdDevMultiplier = (decimal)MinStdDevMultiplierRange;
     private const decimal MaxStdDevMultiplier = (decimal)MaxStdDevMultiplierRange;
     private const double MinExtendScreenDeltaX = 0.5;
@@ -65,9 +66,8 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         }
     }
 
-    /// <summary>The band item name: sign, multiplier with at most two decimals, then "σ Band"; formatted with <see cref="DrawingValueFormat.Culture"/> so the decimal separator is always ".".</summary>
-    private static string BandName(char sign, decimal multiplier)
-        => string.Create(DrawingValueFormat.Culture, $"{sign}{multiplier:0.##}σ Band");
+    /// <summary>The band item name (see <see cref="RegressionTrendValues.BandName"/>).</summary>
+    private static string BandName(char sign, decimal multiplier) => RegressionTrendValues.BandName(sign, multiplier);
 
     [Category("Parameters")]
     [DisplayName("Extend Right")]
@@ -600,49 +600,7 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         if (!_result.IsValid) return Array.Empty<DrawingCalculatedValue>();
 
         var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
-
-        int x = 0;
-        if (_start != _end && _result.Count > 1)
-        {
-            if (timestamp >= _start && timestamp <= _end)
-            {
-                // Inside the range: the bar number is the position of the newest bar at or before the time (non-trading days do not shift it).
-                int index = Array.BinarySearch(_barTimes, timestamp);
-                if (index < 0) index = ~index - 1;
-                x = Math.Clamp(index, 0, _result.Count - 1);
-            }
-            else if (ExtendRight && _tailTimes.Length > 0 && timestamp > _end && timestamp <= _tailTimes[^1])
-            {
-                // On trailing existing bars when ExtendRight is enabled: j = index + 1 (1-based after range end), so x = (n - 1) + j = n + index.
-                int index = Array.BinarySearch(_tailTimes, timestamp);
-                if (index < 0) index = ~index - 1;
-                index = Math.Clamp(index, 0, _tailTimes.Length - 1);
-                x = _result.Count + index;
-            }
-            else
-            {
-                double totalSec = (_end - _start).TotalSeconds;
-                if (totalSec != 0)
-                {
-                    double curSec = (timestamp - _start).TotalSeconds;
-                    x = (int)Math.Round((curSec / totalSec) * (_result.Count - 1));
-                }
-            }
-        }
-
-        decimal center = _result.GetValueAt(x);
-        decimal std = _result.StdDev * StdDevMultiplier;
-        decimal upper2 = center + std;
-        decimal lower2 = center - std;
-
-        return new DrawingCalculatedValue[]
-        {
-            new DrawingCalculatedValue("RegressionCenter", "Regression Center", center, $"{center:F3}", color),
-            new DrawingCalculatedValue("RegressionUpper2", _upperBandName, upper2, $"{upper2:F3}", color),
-            new DrawingCalculatedValue("RegressionLower2", _lowerBandName, lower2, $"{lower2:F3}", color),
-            new DrawingCalculatedValue("Slope", "Slope", _result.Slope, $"{_result.Slope:F4}", color),
-            new DrawingCalculatedValue("StdDev", "StdDev", _result.StdDev, $"{_result.StdDev:F3}", IndicatorColor.Gray)
-        };
+        var fit = new RegressionTrendFit(_result, _start, _end, _barTimes, _tailTimes);
+        return RegressionTrendValues.Calculate(fit, timestamp, StdDevMultiplier, ExtendRight, _upperBandName, _lowerBandName, color);
     }
 }
-

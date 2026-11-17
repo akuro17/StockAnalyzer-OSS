@@ -70,6 +70,35 @@ public class IndicatorUserDefaultServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task SaveUserDefaultAsync_NeverStoresATimeframe_AndTheCallersSettingsAreUnchanged()
+    {
+        var settings = new CoreIndicatorSettings { TypeEnum = IndicatorType.SMA, ParameterObject = new CoreSmaParameter { Period = 25 } };
+        settings.Timeframe = IndicatorTimeframe.Weekly;
+
+        await _service.SaveUserDefaultAsync(settings);
+
+        var loaded = (await _service.LoadUserDefaultsAsync())[IndicatorType.SMA];
+        Assert.Equal(IndicatorTimeframe.SameAsChart, loaded.Timeframe);
+        Assert.DoesNotContain("[W1]", loaded.DisplayName);
+        Assert.Equal(25, Assert.IsType<CoreSmaParameter>(loaded.ParameterObject).Period);
+        Assert.Equal(IndicatorTimeframe.Weekly, settings.Timeframe); // the clone is forced, not the argument
+    }
+
+    [Fact]
+    public async Task LoadUserDefaults_FromAFileThatCarriesATimeframe_ReturnsSameAsChart_OnBothLoadPaths()
+    {
+        var settings = new CoreIndicatorSettings { TypeEnum = IndicatorType.SMA, ParameterObject = new CoreSmaParameter { Period = 25 } };
+        await _service.SaveUserDefaultAsync(settings);
+        string json = File.ReadAllText(_defaultsFilePath);
+        Assert.Contains("\"Timeframe\"", json, StringComparison.OrdinalIgnoreCase); // pins that the property is persisted at all
+        File.WriteAllText(_defaultsFilePath, System.Text.RegularExpressions.Regex.Replace(json, "\"Timeframe\"\\s*:\\s*0", "\"Timeframe\": 1", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        Assert.Contains("\"Timeframe\": 1", File.ReadAllText(_defaultsFilePath)); // the file now carries Weekly
+
+        Assert.Equal(IndicatorTimeframe.SameAsChart, (await _service.LoadUserDefaultsAsync())[IndicatorType.SMA].Timeframe);
+        Assert.Equal(IndicatorTimeframe.SameAsChart, _service.LoadUserDefaults()[IndicatorType.SMA].Timeframe);
+    }
+
+    [Fact]
     public async Task ResetToSystemDefaultAsync_RemovesSpecificIndicatorType()
     {
         var smaSettings = new CoreIndicatorSettings

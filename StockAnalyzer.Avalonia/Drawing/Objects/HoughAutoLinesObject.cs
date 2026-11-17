@@ -5,6 +5,7 @@ using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Core.Analysis;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 
@@ -64,6 +65,13 @@ public class HoughAutoLinesObject : IChartObject, IDrawingCalculatedValuesProvid
     public bool ShowChannels { get; set; } = true;
     public bool ShowLabels { get; set; } = true;
     public bool ExtendLinesToRight { get; set; } = false;
+
+    /// <summary>When true pivot votes are weighted by median-normalized log volume (engine <c>useVolumeWeight</c>).</summary>
+    public bool UseVolumeWeight { get; set; } = false;
+
+    // Evaluation point of the last Recalculate (slice-local last bar and its close) used to place the price inside the top channel.
+    private int _evalLocalBar;
+    private decimal _evalClose;
 
     // Calculation result cache
     public HoughTransformResult? CalculatedResult { get; set; }
@@ -187,7 +195,11 @@ public class HoughAutoLinesObject : IChartObject, IDrawingCalculatedValuesProvid
             pivotWindow: PivotWindow,
             voteThreshold: VoteThreshold,
             maxLines: MaxLines,
-            normalization: Normalization);
+            normalization: Normalization,
+            useVolumeWeight: UseVolumeWeight);
+
+        _evalLocalBar = count - 1;
+        _evalClose = slice[count - 1].Close;
     }
 
     public IReadOnlyList<DrawingCalculatedValue> GetCalculatedValues(DateTime timestamp, decimal? currentPrice = null)
@@ -205,6 +217,28 @@ public class HoughAutoLinesObject : IChartObject, IDrawingCalculatedValuesProvid
         if (result.Channels.Count > 0)
         {
             list.Add(new("Detected Channels", "Detected Channels", result.Channels.Count, result.Channels.Count.ToString(), color));
+
+            if (ShowChannels)
+            {
+                // RelativePosition holds the channel quality score in [0, 1] (not the price position), see HoughChannel.
+                var channel = result.Channels[0];
+                decimal width = channel.GetWidthAt(_evalLocalBar);
+                double scorePercent = channel.RelativePosition * 100.0;
+                decimal positionPercent = channel.GetPricePositionPercent(_evalLocalBar, _evalClose);
+
+                list.Add(new(
+                    "Channel #1 Width",
+                    "Channel #1 Width",
+                    Math.Round(width, 2),
+                    string.Format(DrawingValueFormat.Culture, "{0:F2} (Score={1:F0}%)", width, scorePercent),
+                    color));
+                list.Add(new(
+                    "Channel #1 Position",
+                    "Channel #1 Position",
+                    Math.Round(positionPercent, 1),
+                    string.Format(DrawingValueFormat.Culture, "{0:F1}%", positionPercent),
+                    IndicatorColor.Gray));
+            }
         }
 
         for (int i = 0; i < Math.Min(5, result.Lines.Count); i++)

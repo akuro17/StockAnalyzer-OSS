@@ -16,7 +16,7 @@ public sealed class McpStdoutPurityTests
     private static readonly string[] Tools =
     {
         "sa_list_tickers", "sa_list_ticker_groups", "sa_get_candles", "sa_get_ticker_metadata", "sa_get_capabilities", "sa_get_settings",
-        "sa_calculate_indicators", "sa_run_screener", "sa_list_templates", "sa_run_backtest", "sa_calculate_reverse_watch", "sa_calculate_chart_series",
+        "sa_calculate_indicators", "sa_calculate_indicators_batch", "sa_get_portfolio_summary", "sa_analyze_portfolio_risk", "sa_search_notes", "sa_list_upcoming_catalysts", "sa_get_active_workspace", "sa_get_chart_drawings", "sa_run_screener", "sa_list_templates", "sa_run_backtest", "sa_calculate_reverse_watch", "sa_calculate_chart_series",
         "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_calculate_relative_performance", "sa_calculate_cross_asset_stats", "sa_calculate_market_breadth", "sa_filter_tickers", "sa_optimize_backtest", "sa_run_walk_forward_analysis",
         "sa_run_portfolio_backtest",
         "sa_extract_signal_events", "sa_detect_divergences",
@@ -49,6 +49,14 @@ public sealed class McpStdoutPurityTests
             (13, McpTestSupport.CallMessage(13, "sa_get_capabilities", """{"indicatorTypeFilter":["RSI"],"includeScreenerCatalog":true}""")),
             (14, McpTestSupport.CallMessage(14, "sa_get_settings", "{}")),
             (15, McpTestSupport.CallMessage(15, "sa_calculate_indicators", """{"symbol":"NOSUCH","timeFrame":"D1","indicators":""" + Indicators + "}")),
+            (61, McpTestSupport.CallMessage(61, "sa_calculate_indicators_batch", """{"symbols":["NOSUCH"],"timeFrame":"D1","indicators":""" + Indicators + "}")),
+            (62, McpTestSupport.CallMessage(62, "sa_get_portfolio_summary", "{}")),
+            (63, McpTestSupport.CallMessage(63, "sa_analyze_portfolio_risk", "{}")),
+            (64, McpTestSupport.CallMessage(64, "sa_search_notes", """{"query":"x"}""")),
+            (65, McpTestSupport.CallMessage(65, "sa_list_upcoming_catalysts", "{}")),
+            (66, McpTestSupport.CallMessage(66, "sa_get_active_workspace", "{}")),
+            (68, McpTestSupport.CallMessage(68, "sa_get_chart_drawings", """{"symbol":"NOSUCH","timeFrame":"D1"}""")),
+            (67, """{"jsonrpc":"2.0","id":67,"method":"resources/read","params":{"uri":"stockanalyzer://workspace/active"}}"""),
             (16, McpTestSupport.CallMessage(16, "sa_run_screener", """{"templateId":"00000000-0000-0000-0000-000000000000"}""")),
             (17, McpTestSupport.CallMessage(17, "sa_list_templates", "{}")),
             (18, McpTestSupport.CallMessage(18, "sa_run_backtest", """{"symbol":"NOSUCH","conditions":{"entryLong":""" + Entry + "}}")),
@@ -103,6 +111,21 @@ public sealed class McpStdoutPurityTests
             var stdin = process.StandardInput;
             var stdout = process.StandardOutput;
 
+            int expected = 1 + ParseErrorAnswers + requests.Count; // initialize + the malformed line + every request
+            var lines = new List<string>();
+
+            // The answers are read while the requests are written: the answers together are larger than a pipe buffer, so a server that has not been read from stops
+            // reading its own input, and a client that writes everything first then waits for ever on a full input pipe.
+            Task reading = Task.Run(async () =>
+            {
+                while (lines.Count < expected)
+                {
+                    string? line = await stdout.ReadLineAsync(cancellation.Token);
+                    Assert.NotNull(line);
+                    lines.Add(line!);
+                }
+            });
+
             await stdin.WriteLineAsync(McpTestSupport.InitializeMessage);
             await stdin.WriteLineAsync("""{"jsonrpc":"2.0","method":"notifications/initialized"}""");
             await stdin.WriteLineAsync("{not json");
@@ -111,14 +134,7 @@ public sealed class McpStdoutPurityTests
                 await stdin.WriteLineAsync(line);
             }
 
-            int expected = 1 + ParseErrorAnswers + requests.Count; // initialize + the malformed line + every request
-            var lines = new List<string>();
-            while (lines.Count < expected)
-            {
-                string? line = await stdout.ReadLineAsync(cancellation.Token);
-                Assert.NotNull(line);
-                lines.Add(line!);
-            }
+            await reading;
 
             stdin.Close();
             Assert.True(process.WaitForExit((int)SessionTimeout.TotalMilliseconds), "the server must exit when stdin closes");
@@ -153,7 +169,7 @@ public sealed class McpStdoutPurityTests
             Assert.Equal(Tools.OrderBy(n => n, StringComparer.Ordinal), listedTools!.OrderBy(n => n, StringComparer.Ordinal));
             Assert.Equal(new[] { 0 }.Concat(requests.Select(r => r.Id)).OrderBy(i => i), ids.OrderBy(i => i));
 
-            string errorOutput = await process.StandardError.ReadToEndAsync(cancellation.Token);
+            string errorOutput = await McpServerHostTests.ErrorOutputAsync(process).WaitAsync(cancellation.Token);
             Assert.Contains("Started", errorOutput);
             Assert.DoesNotContain(lines, line => line.Contains("Started", StringComparison.Ordinal));
         }

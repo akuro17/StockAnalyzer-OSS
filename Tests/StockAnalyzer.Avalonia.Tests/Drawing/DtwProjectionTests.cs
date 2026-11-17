@@ -1,7 +1,13 @@
 using System;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Avalonia.Threading;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Objects;
+using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Avalonia.Views.Dialogs;
 using StockAnalyzer.Core.Models.Settings;
 using Xunit;
 
@@ -73,5 +79,57 @@ public class DtwProjectionTests
         // Test miss outside range
         Assert.False(obj.HitTest(new global::Avalonia.Point(pStart.X - 50, 300), t));
         Assert.False(obj.HitTest(new global::Avalonia.Point(pEnd.X + 50, 300), t));
+    }
+
+    [AvaloniaFact]
+    public void DtwProjectionSettingsPanel_DbaControls_RoundTripAndClamp()
+    {
+        var obj = new DtwProjectionObject
+        {
+            UseDbaEnsemble = false,
+            TopKMatches = 5
+        };
+
+        var panelDef = new DtwProjectionSettingsPanelDefinition();
+        var registry = new DrawingSettingsPanelRegistry();
+        registry.Register(panelDef);
+
+        var dialog = new DrawingSettingsDialog(obj, registry);
+        try
+        {
+            dialog.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            var useDbaCheck = dialog.FindControl<CheckBox>("DtwUseDbaEnsembleCheck");
+            var topKSpin = dialog.FindControl<NumericUpDown>("DtwTopKMatchesSpin");
+
+            Assert.NotNull(useDbaCheck);
+            Assert.NotNull(topKSpin);
+            Assert.False(useDbaCheck!.IsChecked);
+            Assert.Equal(5m, topKSpin!.Value);
+
+            var before = obj.CaptureSearchSettings();
+            Assert.False(obj.HasSearchSettingsChanged(before));
+
+            useDbaCheck.IsChecked = true;
+            topKSpin.Value = 8m;
+            panelDef.Commit(dialog, obj);
+
+            Assert.True(obj.UseDbaEnsemble);
+            Assert.Equal(8, obj.TopKMatches);
+            Assert.True(obj.HasSearchSettingsChanged(before));
+
+            // Verify defensive clamping when out-of-range values are committed
+            topKSpin.Value = 25m;
+            panelDef.Commit(dialog, obj);
+            Assert.Equal(StockAnalyzer.Core.Models.IndicatorDefaultConstants.DbaMaxTopK, obj.TopKMatches);
+        }
+        finally
+        {
+            dialog.Close();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+        }
     }
 }

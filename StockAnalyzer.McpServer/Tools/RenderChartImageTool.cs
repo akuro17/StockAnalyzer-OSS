@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Indicators.Trend;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Rendering;
@@ -15,6 +16,8 @@ namespace StockAnalyzer.McpServer.Tools;
 /// sa_render_chart_image: a PNG chart of the stored bars of one symbol (candles, volume, overlay lines, oscillator panels, buy/sell markers) in the fixed style
 /// "AiRecognitionV1", returned as an image block together with the mapping that turns pixels back into values. The tool only maps the request to the Core renderer
 /// and the result to JSON; the drawing is <see cref="AiChartImageRenderer"/> and the indicators are those of sa_calculate_indicators. It reads stored data only and writes no file.
+/// Opt-in extras (owner decision U-14; a request without them gives the same picture and the same answer as before): Parabolic SAR dots, the causal lines and the cloud of Ichimoku,
+/// the histogram of an oscillator (includeHistogram) and the saved drawings of the user in the fixed high-contrast colour (includeSavedDrawings).
 /// </summary>
 internal sealed class RenderChartImageTool : IMcpImageTool
 {
@@ -30,13 +33,26 @@ internal sealed class RenderChartImageTool : IMcpImageTool
     private const string OverlaysArgument = "overlays";
     private const string OscillatorsArgument = "oscillators";
     private const string MarkersArgument = "markers";
+    private const string IncludeHistogramArgument = "includeHistogram";
+    private const string IncludeSavedDrawingsArgument = "includeSavedDrawings";
+    private const string IchimokuOmissionNote = "Ichimoku ChikouSpan is omitted because it is non-causal; TenkanSen, KijunSen, SenkouSpanA, SenkouSpanB and the Kumo cloud are drawn.";
+    private const string IchimokuFutureNote = "The Senkou spans are plotted ahead of the bar they are calculated from, so the part of the cloud beyond the last drawn bar is not drawn.";
     private const string BackgroundWhite = "White";
     private const string BackgroundLightGray = "LightGray";
     private const string SideBuy = "Buy";
     private const string SideSell = "Sell";
     private const string CalculatorHint = "Use sa_calculate_indicators for this indicator.";
 
+    private static readonly string[] IchimokuDrawnSeries =
+    {
+        CoreIchimokuIndicator.TenkanSenSeriesName,
+        CoreIchimokuIndicator.KijunSenSeriesName,
+        CoreIchimokuIndicator.SenkouSpanASeriesName,
+        CoreIchimokuIndicator.SenkouSpanBSeriesName,
+    };
+
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
+    private readonly IReadOnlyDrawingDocumentSource? _drawings;
     private readonly SymbolResolver _symbols;
     private readonly CandleWindowLoader _loader;
     private readonly IndicatorRequestBinder _binder;
@@ -49,9 +65,11 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         IndicatorCatalog catalog,
         IndicatorSettingsBinder binder,
         IndicatorChainPlan chain,
-        McpLimits limits)
+        McpLimits limits,
+        IReadOnlyDrawingDocumentSource? drawings = null)
     {
         _gateway = gateway;
+        _drawings = drawings;
         _symbols = symbols;
         _loader = new CandleWindowLoader(gateway);
         _binder = new IndicatorRequestBinder(catalog, binder);
@@ -70,11 +88,16 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         $"Up pixel colour {AiChartImageStyle.UpHex}, down {AiChartImageStyle.DownHex}, a bar with open equal to close {AiChartImageStyle.DojiHex} (also in colors). Pixel coordinates: origin at the top left of the image, pixel-edge coordinates, the pixel that holds the point (x, y) is (floor x, floor y). " +
         "overlays are indicators drawn on the price panel (prices scale: moving averages, bands) and oscillators each get a panel of their own; both use the item shape of sa_calculate_indicators (id, type, parameters, priceSource, sourceIndicatorId, ...), " +
         "the type names come from sa_get_capabilities, and an indicator whose type belongs to the other list is INVALID_ARGUMENT. Not drawn (INVALID_ARGUMENT): indicators that look ahead (ZigZag, and any indicator that takes one as input; they are listed in nonCausalSeries of sa_calculate_indicators), indicators with their own timeFrame or a second symbol, and types the chart draws in a special way " +
-        "(Ichimoku, ParabolicSAR, volume profile, GranvilleLaw, market structure, Renko-like series). At most " + AiChartImageStyle.MaxSeriesPerIndicator + " lines per indicator (signal series, histograms and aliases of the main line are left out). " +
+        "(volume profile, GranvilleLaw, market structure, Renko-like series). Parabolic SAR is drawn as dots and Ichimoku as its four causal lines (TenkanSen, KijunSen, SenkouSpanA, SenkouSpanB) with the Kumo cloud under them; the ChikouSpan looks ahead and is left out (named in notes). At most " + AiChartImageStyle.MaxSeriesPerIndicator + " lines per indicator (signal series, histograms and aliases of the main line are left out). " +
         "Moving averages take the short, mid and long colours by the rank of their period (a single long average is the short colour); every n-th line of a panel is solid, dashed or dotted by n mod 3, so no line is told apart by colour alone. " +
         $"The indicators are calculated over up to lookbackBars stored bars (default and maximum {_limits.MaxCandlesPerRequest}) and only the last barCount bars are drawn, so a line is the same as in sa_calculate_indicators for the same lookbackBars. " +
         $"endDate ({ToolJson.DateFormat}, inclusive) ends the window at the last bar dated on or before it. markers use {{date, side Buy or Sell}}; date must be the date of a drawn bar exactly (see bars). " +
         $"Each bar needs at least {AiChartImageStyle.MinBarSpacingPx.ToString("0.#", CultureInfo.InvariantCulture)} pixels of plot width (the plot area is the width minus {AiChartImageStyle.MarginLeftPx + AiChartImageStyle.MarginRightPx} pixels of margins) and the panels need a minimum height: a request that does not fit is INVALID_ARGUMENT and the message states what would. " +
+        $"includeHistogram true also draws the histogram series of an oscillator (for example the MACD histogram) as bars from zero behind its lines ({AiChartImageStyle.HistogramNonNegativeHex} for zero or more, {AiChartImageStyle.HistogramNegativeHex} below zero, half transparent; the panel range then includes zero and the bars). " +
+        $"includeSavedDrawings true also draws the horizontal lines, vertical lines, trend lines, rays and parallel channels the user saved on the price panel (the drawings of the same daily, weekly or monthly chart; hidden objects and layers are skipped) in the fixed colour {AiChartImageStyle.SavedDrawingHex}, whatever colour the user gave them, and lists the visible ones in drawingsDrawn with their pixel positions; " +
+        "a time is placed as the application's chart places it (between two bars linearly, outside the loaded bars by the average bar interval; the bars loaded are lookbackBars), objects are drawn in layer order and an object in no layer is not drawn, and at most MaxImageSavedDrawings are drawn. " +
+        "With endDate, a saved drawing that has a control point dated after endDate is not drawn (it may not have been known then); this is tested before the limit, so such a drawing takes none of the places, and the answer gives savedDrawingsAfterEndDate and a warning. " +
+        "The file stores no creation time, so a drawing whose points are all on or before endDate can still have been made later. " +
         "A response over the size limit is LIMIT_EXCEEDED; nothing is cut. allowUnregistered true also accepts a symbol that is not in the ticker list but has stored daily bars.";
 
     public bool IsHeavy => false;
@@ -122,9 +145,11 @@ internal sealed class RenderChartImageTool : IMcpImageTool
                 .Integer(HeightArgument, "Image height in pixels.", defaultValue: _limits.DefaultChartImageHeight, minimum: AiChartImageStyle.MinImageHeightPx, maximum: _limits.MaxChartImageHeight)
                 .String(BackgroundArgument, $"Background colour: {BackgroundWhite} ({AiChartImageStyle.BackgroundWhiteHex}, default) or {BackgroundLightGray} ({AiChartImageStyle.BackgroundLightGrayHex}).", allowedValues: new[] { BackgroundWhite, BackgroundLightGray })
                 .Boolean(IncludeVolumeArgument, "Draw the volume panel under the price panel. Default true.")
+                .Boolean(IncludeHistogramArgument, "Also draw the histogram series of each oscillator (for example the MACD histogram) as bars from zero behind its lines. Default false.")
+                .Boolean(IncludeSavedDrawingsArgument, $"Also draw the user's saved horizontal lines, vertical lines, trend lines, rays and parallel channels on the price panel in the fixed colour {AiChartImageStyle.SavedDrawingHex} (the drawings of the same daily, weekly or monthly chart). Default false.")
                 .Integer(
                     LookbackArgument,
-                    $"Stored bars the indicators are calculated over (at least barCount). Default and maximum {_limits.MaxCandlesPerRequest}; the same meaning as in sa_calculate_indicators. Used only when indicators are given.",
+                    $"Stored bars the indicators are calculated over (at least barCount). Default and maximum {_limits.MaxCandlesPerRequest}; the same meaning as in sa_calculate_indicators. Used only when indicators are given or includeSavedDrawings is true (the saved drawings are placed by every loaded bar).",
                     defaultValue: _limits.MaxCandlesPerRequest,
                     minimum: 1,
                     maximum: _limits.MaxCandlesPerRequest)
@@ -143,6 +168,8 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         TimeFrame timeFrame = ToolArgs.SupportedTimeFrame(arguments, TimeFrameArgument);
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         bool includeVolume = ToolArgs.Boolean(arguments, IncludeVolumeArgument) ?? true;
+        bool includeHistogram = ToolArgs.Boolean(arguments, IncludeHistogramArgument) ?? false;
+        bool includeSavedDrawings = ToolArgs.Boolean(arguments, IncludeSavedDrawingsArgument) ?? false;
         bool lightGray = string.Equals(ToolArgs.String(arguments, BackgroundArgument), BackgroundLightGray, StringComparison.Ordinal);
         int barCount = ToolArgs.PositiveWithin(arguments, BarCountArgument, McpLimitsContract.EffectiveDefaultChartImageBars(_limits), McpLimitsContract.EffectiveMaxChartImageBars(_limits));
         int width = ReadSize(arguments, WidthArgument, _limits.DefaultChartImageWidth, AiChartImageStyle.MinImageWidthPx, _limits.MaxChartImageWidth);
@@ -182,8 +209,8 @@ internal sealed class RenderChartImageTool : IMcpImageTool
             warnings.Add(SymbolResolver.OffListWarning(new[] { symbol }));
         }
 
-        // ---- the bars: the whole calculation window when indicators are drawn, else only the drawn bars ----
-        int count = requests.Count > 0 ? lookback : barCount;
+        // ---- the bars: the whole calculation window when indicators or saved drawings are drawn (the chart places a drawing by every loaded bar), else only the drawn bars ----
+        int count = requests.Count > 0 || includeSavedDrawings ? lookback : barCount;
         List<CandleData> loaded;
         if (endDate is { } asOf)
         {
@@ -239,7 +266,10 @@ internal sealed class RenderChartImageTool : IMcpImageTool
                         CalculatorHint);
                 }
 
-                IReadOnlyList<AiChartSelectedSeries> selected = AiChartSeriesSelector.Select(type, result, windowStart, drawn, request.Settings.ParameterObject);
+                bool ichimoku = type == IndicatorType.Ichimoku;
+                IReadOnlyList<AiChartSelectedSeries> selected = ichimoku
+                    ? AiChartSeriesSelector.SelectNamed(result, IchimokuDrawnSeries, windowStart, drawn)
+                    : AiChartSeriesSelector.Select(type, result, windowStart, drawn, request.Settings.ParameterObject);
                 if (selected.Count == 0)
                 {
                     notes.Add($"'{request.Id}' ({request.Entry.Type}) has no value to draw in the drawn window (the stored history may be shorter than its warm-up), so it is not drawn.");
@@ -249,11 +279,26 @@ internal sealed class RenderChartImageTool : IMcpImageTool
                 AiChartLineSeries[] series = selected.Select(s => new AiChartLineSeries(s.Name, s.Values)).ToArray();
                 if (i < overlayItems.Count)
                 {
-                    overlays.Add(new AiChartOverlay(request.Id, type, AiChartMovingAverageSet.RepresentativePeriod(type, request.Settings.ParameterObject), series));
+                    AiChartCloud? cloud = ichimoku ? CloudOf(selected) : null;
+                    AiChartLineShape shape = type == IndicatorType.ParabolicSAR ? AiChartLineShape.Dots : AiChartLineShape.Line;
+                    overlays.Add(new AiChartOverlay(request.Id, type, AiChartMovingAverageSet.RepresentativePeriod(type, request.Settings.ParameterObject), series, shape, cloud));
+                    if (ichimoku)
+                    {
+                        AddOnce(notes, IchimokuOmissionNote);
+                        AddOnce(notes, IchimokuFutureNote);
+                    }
                 }
                 else
                 {
-                    oscillators.Add(new AiChartOscillator(request.Id, series, request.Settings.MinValue, request.Settings.MaxValue, request.Settings.IncludeZeroBaseline));
+                    IReadOnlyList<decimal?>? histogram = includeHistogram
+                        ? AiChartSeriesSelector.SelectHistogram(type, result, windowStart, drawn, request.Settings.ParameterObject)
+                        : null;
+                    if (includeHistogram && histogram is null)
+                    {
+                        notes.Add($"'{request.Id}' ({request.Entry.Type}) has no histogram series with a value in the drawn window, so no histogram is drawn for it.");
+                    }
+
+                    oscillators.Add(new AiChartOscillator(request.Id, series, request.Settings.MinValue, request.Settings.MaxValue, request.Settings.IncludeZeroBaseline, histogram));
                 }
             }
         }
@@ -285,6 +330,15 @@ internal sealed class RenderChartImageTool : IMcpImageTool
             markerEcho.Add((text, side, index));
         }
 
+        // ---- saved drawings: read last, because they are placed on the drawn bars ----
+        ImageSavedDrawingSelection savedSelection = ImageSavedDrawingSelection.Empty;
+        if (includeSavedDrawings)
+        {
+            savedSelection = await ReadSavedDrawingsAsync(symbol, timeFrame, loaded, windowStart, endDate, notes, warnings, cancellationToken).ConfigureAwait(false);
+        }
+
+        IReadOnlyList<ImageSavedDrawing> savedDrawings = savedSelection.Drawings;
+
         cancellationToken.ThrowIfCancellationRequested();
         var request2 = new AiChartImageRequest(
             drawnCandles,
@@ -294,12 +348,84 @@ internal sealed class RenderChartImageTool : IMcpImageTool
             includeVolume,
             overlays,
             oscillators,
-            markers);
+            markers,
+            includeSavedDrawings ? savedDrawings.Select(d => d.Drawing).ToList() : null);
         AiChartImageResult image = AiChartImageRenderer.Render(request2, cancellationToken);
+        if (includeSavedDrawings && savedDrawings.Count > 0)
+        {
+            int outside = image.Drawings!.Count(placement => !placement.IsVisible);
+            if (outside > 0)
+            {
+                notes.Add($"{outside.ToString(CultureInfo.InvariantCulture)} saved drawing(s) lie outside the visible part of the price panel and leave no pixels.");
+            }
+        }
 
-        string json = ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, endDate, lightGray, includeVolume, image, markerEcho, notes, warnings));
+        var extras = new ImageExtras(
+            includeHistogram,
+            includeSavedDrawings,
+            oscillators.Where(o => o.HistogramValues is not null).Select(o => o.Id).ToList(),
+            overlays.Any(o => o.Cloud is not null),
+            savedDrawings,
+            overlays.Any(o => o.Shape == AiChartLineShape.Dots),
+            includeSavedDrawings && endDate is not null ? savedSelection.AfterEndDate : null);
+        string json = ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, endDate, lightGray, includeVolume, image, markerEcho, notes, warnings, extras));
         return new ToolImageResult(json, image.Png);
     }
+
+    /// <summary>The cloud between the two Senkou spans, when both were drawn (a series without any value in the window is not selected, so a short history gives no cloud).</summary>
+    private static AiChartCloud? CloudOf(IReadOnlyList<AiChartSelectedSeries> selected)
+    {
+        AiChartSelectedSeries? spanA = selected.FirstOrDefault(s => s.Name == CoreIchimokuIndicator.SenkouSpanASeriesName);
+        AiChartSelectedSeries? spanB = selected.FirstOrDefault(s => s.Name == CoreIchimokuIndicator.SenkouSpanBSeriesName);
+        return spanA is not null && spanB is not null ? new AiChartCloud(spanA.Values, spanB.Values) : null;
+    }
+
+    private static void AddOnce(List<string> notes, string note)
+    {
+        if (!notes.Contains(note))
+        {
+            notes.Add(note);
+        }
+    }
+
+    private async Task<ImageSavedDrawingSelection> ReadSavedDrawingsAsync(
+        string symbol,
+        TimeFrame timeFrame,
+        IReadOnlyList<CandleData> loaded,
+        int firstDrawnIndex,
+        DateOnly? endDate,
+        List<string> notes,
+        List<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        if (_drawings is null)
+        {
+            notes.Add("Saved drawings are not available in this server, so none is drawn.");
+            return ImageSavedDrawingSelection.Empty;
+        }
+
+        DrawingDocumentReadResult read;
+        try
+        {
+            read = await _drawings.ReadAsync(symbol, timeFrame, cancellationToken).ConfigureAwait(false);
+        }
+        catch (DataUnavailableException)
+        {
+            throw new ToolException(ToolErrorCodes.DataUnavailable, "The drawing file is temporarily unreadable.", hint: "Retry in a moment, or omit includeSavedDrawings.");
+        }
+
+        return ImageSavedDrawings.Select(read, loaded.Select(c => c.Timestamp).ToList(), firstDrawnIndex, _limits.MaxImageSavedDrawings, endDate, notes, warnings);
+    }
+
+    /// <summary>What the opt-in extras added to the picture, for the answer.</summary>
+    private sealed record ImageExtras(
+        bool IncludeHistogram,
+        bool IncludeSavedDrawings,
+        IReadOnlyList<string> HistogramOscillatorIds,
+        bool HasCloud,
+        IReadOnlyList<ImageSavedDrawing> SavedDrawings,
+        bool HasDots,
+        int? SavedDrawingsAfterEndDate);
 
     private static int ReadSize(JsonElement arguments, string name, int defaultValue, int minimum, int maximum)
     {
@@ -393,7 +519,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
                 $"{CalculatorHint} Volume has its own panel: set {IncludeVolumeArgument}.");
         }
 
-        if (_chain.NonCausalCauseOf(request, requests) is { } cause)
+        if (_chain.NonCausalCauseOf(request, requests) is { } cause && !IsOmittedIchimokuChikou(type, request, cause))
         {
             throw NonCausalRefusal(request, cause);
         }
@@ -416,6 +542,17 @@ internal sealed class RenderChartImageTool : IMcpImageTool
                 $"Put it in {OverlaysArgument}.");
         }
     }
+
+    /// <summary>
+    /// True for the one look-ahead the image draws around: the ChikouSpan of an Ichimoku that takes no other indicator as input. The image leaves that series out (and says so), and the four
+    /// causal lines are drawn; an Ichimoku that is fed by another indicator keeps the refusal of that chain.
+    /// </summary>
+    private static bool IsOmittedIchimokuChikou(IndicatorType type, RequestedIndicator request, IndicatorChainPlan.NonCausalCause cause)
+        => type == IndicatorType.Ichimoku
+           && ReferenceEquals(cause.Origin, request)
+           && cause.Argument == RequestedIndicator.TypeKey
+           && request.SourceId is null
+           && request.DynamicId is null;
 
     /// <summary>
     /// The refusal of an indicator whose values at a bar depend on later bars (owner decision M-1 = A, M-1b = the one list of the backtest eligibility rule and the chain rule of
@@ -448,6 +585,35 @@ internal sealed class RenderChartImageTool : IMcpImageTool
                 ? cancellable.CalculateIndicatorsAsync(candles, settings, null, cancellationToken)
                 : _gateway.CalculateIndicatorsAsync(candles, settings, null);
 
+    /// <summary>The saved drawings that left pixels, in the saved order: the object, its kind, its control points as saved (date, price) with their image pixels.</summary>
+    private static void WriteSavedDrawings(Utf8JsonWriter writer, AiChartImageResult image, IReadOnlyList<ImageSavedDrawing> drawings)
+    {
+        writer.WriteStartArray("drawingsDrawn");
+        IReadOnlyList<AiChartDrawingPlacement> placements = image.Drawings ?? Array.Empty<AiChartDrawingPlacement>();
+        foreach (AiChartDrawingPlacement placement in placements.Where(p => p.IsVisible))
+        {
+            ImageSavedDrawing drawing = drawings[placement.Index];
+            writer.WriteStartObject();
+            writer.WriteString("objectId", drawing.ObjectId);
+            writer.WriteString("tool", drawing.Tool);
+            writer.WriteStartArray("points");
+            for (int i = 0; i < drawing.Anchors.Count; i++)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("date", ToolJson.FormatDate(drawing.Anchors[i].Time));
+                writer.WriteNumber("price", drawing.Anchors[i].Price);
+                writer.WriteNumber("xPx", placement.Points[i].XPx);
+                writer.WriteNumber("yPx", placement.Points[i].YPx);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+    }
+
     private void WriteResult(
         System.Text.Json.Utf8JsonWriter writer,
         string symbol,
@@ -458,7 +624,8 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         AiChartImageResult image,
         IReadOnlyList<(string Date, string Side, int Index)> markers,
         IReadOnlyList<string> notes,
-        IReadOnlyList<string> warnings)
+        IReadOnlyList<string> warnings,
+        ImageExtras extras)
     {
         writer.WriteStartObject();
         writer.WriteString("style", AiChartImageStyle.Name);
@@ -474,6 +641,16 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         writer.WriteNumber("heightPx", image.HeightPx);
         writer.WriteString("background", lightGray ? BackgroundLightGray : BackgroundWhite);
         writer.WriteBoolean("includeVolume", includeVolume);
+        if (extras.IncludeHistogram)
+        {
+            writer.WriteBoolean("includeHistogram", true);
+        }
+
+        if (extras.IncludeSavedDrawings)
+        {
+            writer.WriteBoolean("includeSavedDrawings", true);
+        }
+
         writer.WriteNumber("barCountDrawn", image.Bars.Count);
         writer.WriteString("firstBarDate", ToolJson.FormatDate(image.Bars[0].Date));
         writer.WriteString("lastBarDate", ToolJson.FormatDate(image.Bars[^1].Date));
@@ -482,6 +659,26 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         writer.WriteString("upHex", AiChartImageStyle.UpHex);
         writer.WriteString("downHex", AiChartImageStyle.DownHex);
         writer.WriteString("dojiHex", AiChartImageStyle.DojiHex);
+        if (extras.HistogramOscillatorIds.Count > 0)
+        {
+            writer.WriteString("histogramNonNegativeHex", AiChartImageStyle.HistogramNonNegativeHex);
+            writer.WriteString("histogramNegativeHex", AiChartImageStyle.HistogramNegativeHex);
+            writer.WriteNumber("histogramAlpha", AiChartImageStyle.HistogramAlpha);
+        }
+
+        if (extras.HasCloud)
+        {
+            writer.WriteString("cloudBullishHex", AiChartImageStyle.CloudBullishHex);
+            writer.WriteString("cloudBearishHex", AiChartImageStyle.CloudBearishHex);
+            writer.WriteNumber("cloudAlpha", AiChartImageStyle.CloudAlpha);
+        }
+
+        if (extras.IncludeSavedDrawings)
+        {
+            writer.WriteString("savedDrawingHex", AiChartImageStyle.SavedDrawingHex);
+            writer.WriteNumber("savedDrawingWidthPx", AiChartImageStyle.SavedDrawingWidthPx);
+        }
+
         writer.WriteEndObject();
 
         writer.WriteStartObject("axes");
@@ -524,6 +721,11 @@ internal sealed class RenderChartImageTool : IMcpImageTool
             writer.WriteString("colorHex", entry.ColorHex);
             writer.WriteString("lineStyle", entry.LineStyle.ToString());
             writer.WriteNumber("lineWidthPx", entry.LineWidthPx);
+            if (entry.Shape != AiChartLineShape.Line)
+            {
+                writer.WriteString("shape", entry.Shape.ToString());
+            }
+
             writer.WriteEndObject();
         }
 
@@ -541,6 +743,31 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         }
 
         writer.WriteEndArray();
+
+        if (extras.HistogramOscillatorIds.Count > 0)
+        {
+            writer.WriteStartArray("histograms");
+            foreach (string id in extras.HistogramOscillatorIds)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("id", id);
+                writer.WriteString("panelId", id);
+                writer.WriteNumber("baselineValue", 0);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+        }
+
+        if (extras.IncludeSavedDrawings)
+        {
+            WriteSavedDrawings(writer, image, extras.SavedDrawings);
+
+            if (extras.SavedDrawingsAfterEndDate is { } afterEndDate)
+            {
+                writer.WriteNumber("savedDrawingsAfterEndDate", afterEndDate);
+            }
+        }
 
         int listed = Math.Min(image.Bars.Count, _limits.MaxImageBarsListed);
         int first = image.Bars.Count - listed;

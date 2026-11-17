@@ -6,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Behaviors;
 using StockAnalyzer.Avalonia.Services;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Constants;
 using StockAnalyzer.Core.Models;
 using Xunit;

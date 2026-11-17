@@ -18,6 +18,7 @@ public class CoreHoughTrendAngleIndicator : CoreIndicatorBase
     public int VoteThreshold { get; set; } = 3;
     public int MaxLines { get; set; } = 5;
     public HoughNormalizationMode Normalization { get; set; } = HoughNormalizationMode.MinMax;
+    public bool UseVolumeWeight { get; set; }
 
     public override string Name => $"HoughTrendAngle({Lookback},{PivotWindow},{VoteThreshold})";
     public override bool IsOverlay => false;
@@ -31,6 +32,7 @@ public class CoreHoughTrendAngleIndicator : CoreIndicatorBase
             VoteThreshold = p.VoteThreshold;
             MaxLines = p.MaxLines;
             Normalization = p.Normalization;
+            UseVolumeWeight = p.UseVolumeWeight;
         }
     }
 
@@ -75,7 +77,8 @@ public class CoreHoughTrendAngleIndicator : CoreIndicatorBase
                 pivotWindow: PivotWindow,
                 voteThreshold: VoteThreshold,
                 maxLines: MaxLines,
-                normalization: Normalization);
+                normalization: Normalization,
+                useVolumeWeight: UseVolumeWeight);
 
             if (result.Lines.Count > 0)
             {

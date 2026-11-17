@@ -31,7 +31,8 @@ public sealed class CoreMarketBreadthIndicator : CoreIndicatorBase, IUniverseBre
 
     public override bool IsOverlay => false;
 
-    public override string Name => $"{IndicatorType.MarketBreadth.GetDescription()} ({MetricMode.GetDescription()})";
+    public override string Name
+        => CoreMarketBreadthParameter.FormatDisplayName(IndicatorType.MarketBreadth.GetDescription(), MetricMode, AdRatioBars, MaBars, HighLowBars);
 
     public MarketBreadthParameters BreadthParameters => new()
     {

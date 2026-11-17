@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Xunit;
 using StockAnalyzer.Core.MathUtils;
 
@@ -436,6 +437,111 @@ public class ArimaMathTests
         Assert.False(double.IsNaN(forecast));
         Assert.False(double.IsInfinity(forecast));
         Assert.NotEqual(window30[^1], forecast);
+    }
+
+    [Fact]
+    public void ComputeKpssStatistic_ShortOrConstantSeries_ReturnsZero()
+    {
+        Assert.Equal(0.0, ArimaMath.ComputeKpssStatistic([1.0, 2.0, 3.0]));
+        double[] constant = Enumerable.Repeat(42.0, 40).ToArray();
+        Assert.Equal(0.0, ArimaMath.ComputeKpssStatistic(constant));
+        Assert.Equal(0, ArimaMath.SelectDifferenceOrderKpss(constant));
+    }
+
+    [Fact]
+    public void ComputeKpssStatistic_WhiteNoiseVsTrend_DistinguishesStationarity()
+    {
+        var rng = new Random(101);
+        double[] noise = new double[120];
+        for (int i = 0; i < noise.Length; i++)
+        {
+            noise[i] = (rng.NextDouble() - 0.5) * 2.0;
+        }
+
+        double kpssNoise = ArimaMath.ComputeKpssStatistic(noise);
+        Assert.True(kpssNoise <= 0.463, $"Expected stationary KPSS <= 0.463, got {kpssNoise}");
+        Assert.Equal(0, ArimaMath.SelectDifferenceOrderKpss(noise));
+
+        double[] trend = Enumerable.Range(0, 120).Select(i => 100.0 + i * 0.8 + Math.Sin(i * 0.2) * 0.1).ToArray();
+        double kpssTrend = ArimaMath.ComputeKpssStatistic(trend);
+        Assert.True(kpssTrend > 0.463, $"Expected trend KPSS > 0.463, got {kpssTrend}");
+        Assert.True(ArimaMath.SelectDifferenceOrderKpss(trend) >= 1);
+    }
+
+    [Fact]
+    public void ComputeHannRissanenAicc_AndStepwiseSelector_IdentifyAr1Structure()
+    {
+        var rng = new Random(2026);
+        double[] ar1 = new double[140];
+        double prev = 0.0;
+        for (int i = 0; i < ar1.Length; i++)
+        {
+            double u1 = 1.0 - rng.NextDouble();
+            double u2 = rng.NextDouble();
+            double eps = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2) * 0.4;
+            prev = 0.7 * prev + eps;
+            ar1[i] = prev;
+        }
+
+        double aicc00 = ArimaMath.ComputeHannRissanenAicc(ar1, 0, 0);
+        double aicc10 = ArimaMath.ComputeHannRissanenAicc(ar1, 1, 0);
+        Assert.True(double.IsFinite(aicc00));
+        Assert.True(double.IsFinite(aicc10));
+        Assert.True(aicc10 < aicc00);
+        Assert.True(double.IsPositiveInfinity(ArimaMath.ComputeHannRissanenAicc([1.0, 2.0, 3.0], 1, 1)));
+
+        var best = ArimaMath.SelectBestArimaOrder(ar1, maxP: 3, maxQ: 3);
+        Assert.Equal(0, best.D);
+        Assert.True(best.P >= 1 || best.Q >= 1);
+        Assert.True(best.Aicc <= aicc00);
+    }
+
+    [Fact]
+    public void SelectBestArimaOrder_ScaleInvariance_MatchesAcrossTenOrdersOfMagnitude()
+    {
+        var rng = new Random(777);
+        int n = 100;
+        double[] baseSeries = new double[n];
+        double diffPrev = 0.0;
+        double epsPrev = 0.0;
+        double price = 100.0;
+
+        for (int i = 0; i < n; i++)
+        {
+            double u1 = 1.0 - rng.NextDouble();
+            double u2 = rng.NextDouble();
+            double eps = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2) * 1.2;
+            double diff = 0.65 * diffPrev + eps + 0.4 * epsPrev;
+            price += diff;
+            baseSeries[i] = price;
+            diffPrev = diff;
+            epsPrev = eps;
+        }
+
+        double[] scaledUp = baseSeries.Select(v => v * 1e5).ToArray();
+        double[] scaledDown = baseSeries.Select(v => v * 1e-5).ToArray();
+
+        var bestBase = ArimaMath.SelectBestArimaOrder(baseSeries, maxP: 3, maxQ: 3, maxD: 2);
+        var bestUp = ArimaMath.SelectBestArimaOrder(scaledUp, maxP: 3, maxQ: 3, maxD: 2);
+        var bestDown = ArimaMath.SelectBestArimaOrder(scaledDown, maxP: 3, maxQ: 3, maxD: 2);
+
+        Assert.True(double.IsFinite(bestBase.Aicc));
+        Assert.Equal(bestBase.P, bestUp.P);
+        Assert.Equal(bestBase.D, bestUp.D);
+        Assert.Equal(bestBase.Q, bestUp.Q);
+        Assert.Equal(bestBase.P, bestDown.P);
+        Assert.Equal(bestBase.D, bestDown.D);
+        Assert.Equal(bestBase.Q, bestDown.Q);
+    }
+
+    [Fact]
+    public void SelectBestArimaOrder_SmallWindow_ShrinksCapsSafelyWithoutThrowing()
+    {
+        double[] shortWindow = [10.0, 10.4, 10.1, 10.7, 10.5, 11.0, 10.8, 11.3, 11.1, 11.6];
+        var result = ArimaMath.SelectBestArimaOrder(shortWindow, maxP: 3, maxQ: 3, maxD: 2);
+        Assert.InRange(result.P, 0, 3);
+        Assert.InRange(result.D, 0, 2);
+        Assert.InRange(result.Q, 0, 3);
     }
 }
 

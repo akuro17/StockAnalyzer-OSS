@@ -274,13 +274,8 @@ public class SsaSupportResistanceObject : IChartObject, IDrawingCalculatedValues
             $"{result.ResidualStdDev:F2}",
             color));
 
-        string grade = SsaDiagnostics.GetSeparabilityGrade(result.SeparabilityScore);
-        list.Add(new DrawingCalculatedValue(
-            "SSA Separability",
-            "SSA Separability",
-            (decimal)result.SeparabilityScore,
-            $"{result.SeparabilityScore:F1}% ({grade})",
-            result.SeparabilityScore >= 75.0 ? IndicatorColor.Bullish : IndicatorColor.Bearish));
+        list.Add(SsaCalculatedValueRows.Separability(result.SeparabilityScore));
+        list.Add(SsaCalculatedValueRows.Stability(result.NuSquared, result.IsStable));
 
         return list;
     }

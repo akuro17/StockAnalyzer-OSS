@@ -70,6 +70,16 @@ public class SsaProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
     public SsaForecastMode ForecastMode { get; set; } = SsaForecastMode.Recurrent;
 
     /// <summary>
+    /// When true the number of components r is estimated from the selection's own spectrum instead of <see cref="NumComponents"/>.
+    /// </summary>
+    public bool AutoRank { get; set; } = false;
+
+    /// <summary>
+    /// Heuristic used to estimate r when <see cref="AutoRank"/> is enabled.
+    /// </summary>
+    public SsaRankSelectionMethod RankMethod { get; set; } = SsaRankSelectionMethod.CumulativeEnergy;
+
+    /// <summary>
     /// Overall separability score (0.0% to 100.0%) of the extracted components.
     /// </summary>
     public double SeparabilityScore { get; set; } = 100.0;
@@ -300,7 +310,9 @@ public class SsaProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
             detrendMode: DetrendMethod,
             showConfidenceBand: ShowConfidenceBand,
             confidenceMultiplier: ConfidenceMultiplier,
-            forecastMode: ForecastMode);
+            forecastMode: ForecastMode,
+            autoRank: AutoRank,
+            rankMethod: RankMethod);
 
         ProjectedPath = result.ProjectedPoints.ToList();
         UpperBandPath = result.UpperBandPoints.ToList();
@@ -314,9 +326,10 @@ public class SsaProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
         SampleCount = result.SampleCount;
 
         // Compute SSA Separability Score across extracted components
-        int l = Math.Clamp(EmbeddingDimension, 2, Math.Max(2, count / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, count);
         int k = count - l + 1;
-        int r = Math.Clamp(NumComponents, 1, Math.Min(l - 1, k));
+        // The engine's effective rank (equals the clamped NumComponents unless AutoRank is on).
+        int r = result.NumComponents;
 
         if (r > 1 && count >= 4)
         {
@@ -375,21 +388,10 @@ public class SsaProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
 
         if (Components.Count > 1)
         {
-            string grade = SsaDiagnostics.GetSeparabilityGrade(SeparabilityScore);
-            list.Add(new DrawingCalculatedValue(
-                "SSA Separability",
-                "SSA Separability",
-                (decimal)SeparabilityScore,
-                $"{SeparabilityScore:F1}% ({grade})",
-                SeparabilityScore >= 75.0 ? IndicatorColor.Bullish : IndicatorColor.Bearish));
+            list.Add(SsaCalculatedValueRows.Separability(SeparabilityScore));
         }
 
-        list.Add(new DrawingCalculatedValue(
-            "SSA Stability (ν²)",
-            "SSA Stability (ν²)",
-            (decimal)NuSquared,
-            $"{NuSquared:F3} ({(IsStable ? "Stable" : "Caution")})",
-            IsStable ? IndicatorColor.Bullish : IndicatorColor.Bearish));
+        list.Add(SsaCalculatedValueRows.Stability(NuSquared, IsStable));
 
         if (SampleCount > 0 && FutureSteps > 0)
         {

@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Drawing.Serialization;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Helpers;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Drawing;
@@ -31,15 +32,6 @@ namespace StockAnalyzer.Avalonia.Services.Drawing;
 /// </summary>
 public class ChartDrawingRepository : IChartDrawingRepository
 {
-    // Windows reserved device names (case-insensitive); a ticker like "CON" or "NUL" would pass
-    // ticker-format validation but produce an unusable/reserved file name.
-    private static readonly HashSet<string> ReservedFileNames = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
-    };
-
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         WriteIndented = true,
@@ -323,34 +315,32 @@ public class ChartDrawingRepository : IChartDrawingRepository
     {
         path = string.Empty;
         if (string.IsNullOrWhiteSpace(ticker)) return false;
-        if (StockAnalyzer.Core.Helpers.SyntheticSymbolParser.IsSyntheticExpression(ticker))
-        {
-            return false;
-        }
+        // The file name rule (synthetic expressions, invalid characters, reserved device names) is DrawingFileNames, shared with the read-only reader.
+        // Keyed by the normalized ticker so spelling variants share one entry; the checks run once per key (GetRevision is called on every pointer press).
         var normalized = TickerHelper.NormalizeTicker(ticker);
-        // Keyed by the normalized ticker so spelling variants share one entry; the checks below run once per key
-        // (GetRevision is called on every pointer press).
         if (_resolvedPaths.TryGetValue((normalized, timeframe), out var cached))
         {
             path = cached;
             return true;
         }
 
-        if (normalized.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
-            normalized.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+        DrawingFileNameRefusal refusal = DrawingFileNames.TryCreate(ticker, timeframe, out _, out string fileName);
+        if (refusal != DrawingFileNameRefusal.None)
         {
-            _logger.LogWarning("Refusing to resolve chart drawings path: ticker '{Ticker}' normalizes to an invalid file name", ticker);
+            if (refusal == DrawingFileNameRefusal.InvalidCharacters)
+            {
+                _logger.LogWarning("Refusing to resolve chart drawings path: ticker '{Ticker}' normalizes to an invalid file name", ticker);
+            }
+            else if (refusal == DrawingFileNameRefusal.ReservedDeviceName)
+            {
+                _logger.LogWarning("Refusing to resolve chart drawings path: ticker '{Ticker}' normalizes to a Windows-reserved device name", ticker);
+            }
+
             return false;
         }
 
-        if (ReservedFileNames.Contains(normalized))
-        {
-            _logger.LogWarning("Refusing to resolve chart drawings path: ticker '{Ticker}' normalizes to a Windows-reserved device name", ticker);
-            return false;
-        }
-
-        var dir = PathDiscovery.ResolveDataPath(null, "Data/Drawings");
-        path = Path.Combine(dir, $"{normalized}.{timeframe}.json");
+        var dir = PathDiscovery.ResolveDataPath(null, DrawingFileNames.FolderName);
+        path = Path.Combine(dir, fileName);
         _resolvedPaths[(normalized, timeframe)] = path;
         return true;
     }

@@ -19,6 +19,7 @@ public class CoreHilbertSineIndicator : CoreIndicatorBase
     public int MaxPeriod { get; set; } = IndicatorDefaultConstants.HilbertTransformMaxPeriod;
     public decimal SmoothBeta { get; set; } = IndicatorDefaultConstants.HilbertTransformDefaultSmoothBeta;
     public decimal DeltaLimit { get; set; } = IndicatorDefaultConstants.HilbertTransformDefaultDeltaLimit;
+    public HilbertDetrendMode DetrendMode { get; set; } = HilbertDetrendMode.FirDetrender;
 
     public override string Name => $"Hilbert Sine Wave ({MinPeriod}-{MaxPeriod})";
     public override bool IsOverlay => false;
@@ -36,6 +37,7 @@ public class CoreHilbertSineIndicator : CoreIndicatorBase
             MaxPeriod = p.MaxPeriod;
             SmoothBeta = p.SmoothBeta;
             DeltaLimit = p.DeltaLimit;
+            DetrendMode = p.DetrendMode;
         }
     }
 
@@ -65,7 +67,8 @@ public class CoreHilbertSineIndicator : CoreIndicatorBase
                 MaxPeriod: MaxPeriod,
                 SmoothBeta: SmoothBeta,
                 DeltaLimit: DeltaLimit,
-                WarmupBars: IndicatorDefaultConstants.HilbertTransformWarmupBars);
+                WarmupBars: IndicatorDefaultConstants.HilbertTransformWarmupBars,
+                DetrendMode: DetrendMode);
 
             var decomp = HilbertDecompositionEngine.Decompose(prices.AsSpan(0, count), decompositionParams);
 

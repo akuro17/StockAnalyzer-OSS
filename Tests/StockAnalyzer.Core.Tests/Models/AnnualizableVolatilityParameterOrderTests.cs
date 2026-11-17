@@ -36,7 +36,7 @@ public class AnnualizableVolatilityParameterOrderTests
     [Fact]
     public void Garch11_PutsTheAnnualizationAfterItsOwnProperties()
     {
-        Assert.Equal(new[] { "Period", "RefitInterval", "MaxIterations", "Annualize", "PeriodsPerYear" }, PropertyNames(typeof(CoreGarch11Parameter)));
+        Assert.Equal(new[] { "Period", "RefitInterval", "MaxIterations", "EnableGjrLeverage", "Annualize", "PeriodsPerYear" }, PropertyNames(typeof(CoreGarch11Parameter)));
     }
 
     private static string DescriptionOf(System.Type type, string propertyName) =>

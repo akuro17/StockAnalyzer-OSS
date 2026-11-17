@@ -105,7 +105,7 @@ public static class ChartExportFileNameGenerator
     {
         try
         {
-            var notesDir = StockAnalyzer.Core.Common.PathDiscovery.ResolveDataPath(null, "Data/Notes");
+            var notesDir = StockAnalyzer.Core.Common.PathDiscovery.ResolveDataPath(null, StockAnalyzer.Core.Common.PathDiscovery.NotesDataPath);
             var targetDir = Path.Combine(notesDir, "Attachments");
             if (!Directory.Exists(targetDir))
             {

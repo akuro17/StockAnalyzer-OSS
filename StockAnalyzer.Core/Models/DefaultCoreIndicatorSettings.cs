@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Indicators.Advanced;
 using StockAnalyzer.Core.Models.Indicators.Chart;
 using StockAnalyzer.Core.Models.Indicators.Oscillators;
 using StockAnalyzer.Core.Models.Indicators.Statistics;
@@ -1659,6 +1660,79 @@ public static class DefaultCoreIndicatorSettings
             },
             new CoreIndicatorSettings
             {
+                // Colours by role (decision U-01=A): volatility main line = RsiColor.
+                TypeEnum = IndicatorType.HarRv,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreHarRvParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "HAR-RV", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreHarRvIndicator.RvShortSeriesName, DisplayName = "RV Short", Color = IndicatorDefaultConstants.HarRvShortColor, TargetSeries = new List<string> { CoreHarRvIndicator.RvShortSeriesName } },
+                    new SeriesColorConfig { Name = CoreHarRvIndicator.RvMediumSeriesName, DisplayName = "RV Medium", Color = IndicatorDefaultConstants.HarRvMediumColor, TargetSeries = new List<string> { CoreHarRvIndicator.RvMediumSeriesName } },
+                    new SeriesColorConfig { Name = CoreHarRvIndicator.RvLongSeriesName, DisplayName = "RV Long", Color = IndicatorDefaultConstants.HarRvLongColor, TargetSeries = new List<string> { CoreHarRvIndicator.RvLongSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Fixed [0, 1] panel axis for changepoint probability; auxiliary run-length / CUSUM series are chart-suppressed.
+                TypeEnum = IndicatorType.Bocpd,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreBocpdParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = IndicatorDefaultConstants.UnitIntervalMinValue,
+                MaxValue = IndicatorDefaultConstants.UnitIntervalMaxValue,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "BOCPD Changepoint Prob", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.GrangerCausality,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreGrangerCausalityParameter(),
+                Color = IndicatorDefaultConstants.CointegrationSpreadColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = "Values", DisplayName = "Granger F (Y -> X)", Color = IndicatorDefaultConstants.CointegrationSpreadColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreGrangerCausalityIndicator.ReverseFStatSeriesName, DisplayName = "Reverse F (X -> Y)", Color = IndicatorDefaultConstants.CointegrationSpreadZScoreColor, TargetSeries = new List<string> { CoreGrangerCausalityIndicator.ReverseFStatSeriesName } },
+                    new SeriesColorConfig { Name = CoreGrangerCausalityIndicator.DirectionalDiffSeriesName, DisplayName = "Directional Diff (dF)", Color = IndicatorDefaultConstants.CointegrationSpreadHedgeRatioColor, TargetSeries = new List<string> { CoreGrangerCausalityIndicator.DirectionalDiffSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.JohansenCointegration,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreJohansenCointegrationParameter(),
+                Color = IndicatorDefaultConstants.CointegrationSpreadColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = "Values", DisplayName = "Trace Stat (r=0)", Color = IndicatorDefaultConstants.CointegrationSpreadColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreJohansenCointegrationIndicator.MaxEigenStatSeriesName, DisplayName = "Max-Eigen Stat", Color = IndicatorDefaultConstants.CointegrationSpreadZScoreColor, TargetSeries = new List<string> { CoreJohansenCointegrationIndicator.MaxEigenStatSeriesName } },
+                    new SeriesColorConfig { Name = CoreJohansenCointegrationIndicator.CriticalValue95SeriesName, DisplayName = "95% Critical Value", Color = IndicatorDefaultConstants.CointegrationSpreadHedgeRatioColor, TargetSeries = new List<string> { CoreJohansenCointegrationIndicator.CriticalValue95SeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
                 // Colours by role (decision U-01=A): complexity main line = RsiColor; fixed axis 0..1 (dimensionless).
                 TypeEnum = IndicatorType.HurstExponent,
                 Category = CoreIndicatorCategory.Other,
@@ -1672,7 +1746,8 @@ public static class DefaultCoreIndicatorSettings
                 MaxValue = IndicatorDefaultConstants.HurstMaxValue,
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
-                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Hurst Exponent", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Hurst Exponent", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreHurstExponentIndicator.ModifiedHurstSeriesName, DisplayName = "Lo Modified Hurst", Color = IndicatorDefaultConstants.HurstModifiedColor, TargetSeries = new List<string> { CoreHurstExponentIndicator.ModifiedHurstSeriesName } }
                 }
             },
             new CoreIndicatorSettings
@@ -1690,7 +1765,8 @@ public static class DefaultCoreIndicatorSettings
                 MaxValue = IndicatorDefaultConstants.EntropyMaxValue,
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
-                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Entropy", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Entropy", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreEntropyIndicator.PermutationEntropySeriesName, DisplayName = "Permutation Entropy", Color = IndicatorDefaultConstants.EntropyPermutationColor, TargetSeries = new List<string> { CoreEntropyIndicator.PermutationEntropySeriesName } }
                 }
             },
             new CoreIndicatorSettings
@@ -1776,6 +1852,20 @@ public static class DefaultCoreIndicatorSettings
                 indicator.ParameterObject = fallbackParameterObject;
                 indicator.DisplayName = savedDisplayName;
             }
+        }
+
+        // The settings-level time frame must be a defined member and may only differ from Same as Chart where the policy supports it
+        // (a hand-edited or older workspace could carry it on a Pivot, a block indicator, Price ...). It sits before the default-settings
+        // early return below because that return depends on the type's default entry, not on this setting. An indicator that itself reads another
+        // indicator's output is part of a chain and stays on the chart's frame. Being READ by another indicator is a list-level fact and is
+        // handled by WorkspaceSettingsNormalizer, which also reports the resets.
+        if (indicator.Timeframe != IndicatorTimeframe.SameAsChart
+            && (!Enum.IsDefined(indicator.Timeframe)
+                || indicator.TypeEnum is not { } timeframeType
+                || !IndicatorTimeframePolicy.SupportsIndicatorTimeframe(timeframeType, indicator.ParameterObject)
+                || IndicatorTimeframePolicy.HasOwnChainInput(indicator)))
+        {
+            indicator.Timeframe = IndicatorTimeframe.SameAsChart;
         }
 
         var defaultSettings = GetDefault().FirstOrDefault(s => s.TypeEnum == indicator.TypeEnum);
@@ -1884,16 +1974,38 @@ public static class DefaultCoreIndicatorSettings
                     indicator.SeriesColors.Remove(orphanIntercept);
                 }
             }
-            // Remove unrendered auxiliary series configs from McClellanOscillator (SummationIndex / AdLine are DataWindow-only)
+            // Remove unrendered auxiliary series configs from McClellanOscillator, GrangerCausality, and JohansenCointegration
             if (indicator.TypeEnum == IndicatorType.McClellanOscillator)
             {
-                var orphanSeries = indicator.SeriesColors
-                    .Where(sc => sc.Name == CoreMcClellanOscillatorIndicator.SummationIndexSeriesName
-                              || sc.Name == CoreMcClellanOscillatorIndicator.AdLineSeriesName)
-                    .ToList();
-                foreach (var orphan in orphanSeries)
+                RemoveOrphanSeries(
+                    indicator.SeriesColors,
+                    CoreMcClellanOscillatorIndicator.SummationIndexSeriesName,
+                    CoreMcClellanOscillatorIndicator.AdLineSeriesName);
+            }
+            if (indicator.TypeEnum == IndicatorType.GrangerCausality)
+            {
+                RemoveOrphanSeries(indicator.SeriesColors, CoreGrangerCausalityIndicator.DccCorrelationSeriesName);
+            }
+            if (indicator.TypeEnum == IndicatorType.JohansenCointegration)
+            {
+                RemoveOrphanSeries(indicator.SeriesColors, CoreJohansenCointegrationIndicator.CointegrationSpreadZScoreSeriesName);
+            }
+        }
+    }
+
+    private static void RemoveOrphanSeries(
+        System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> seriesColors,
+        params string[] orphanNames)
+    {
+        for (int i = seriesColors.Count - 1; i >= 0; i--)
+        {
+            string name = seriesColors[i].Name;
+            for (int j = 0; j < orphanNames.Length; j++)
+            {
+                if (name == orphanNames[j])
                 {
-                    indicator.SeriesColors.Remove(orphan);
+                    seriesColors.RemoveAt(i);
+                    break;
                 }
             }
         }

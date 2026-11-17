@@ -46,6 +46,8 @@ public sealed class HoughAutoLinesSettingsPanelDefinition : IDrawingSettingsPane
         if (showChannelsCheck != null) showChannelsCheck.IsChecked = obj.ShowChannels;
         if (showLabelsCheck != null) showLabelsCheck.IsChecked = obj.ShowLabels;
         if (extendRightCheck != null) extendRightCheck.IsChecked = obj.ExtendLinesToRight;
+        var useVolumeWeightCheck = dialogWindow.FindControl<CheckBox>("HoughAutoLinesUseVolumeWeightCheck");
+        if (useVolumeWeightCheck != null) useVolumeWeightCheck.IsChecked = obj.UseVolumeWeight;
 
         if (showTrendCheck != null) showTrendCheck.IsChecked = obj.ShowTrendLines;
         if (trendColorPicker != null) trendColorPicker.Color = obj.TrendLineColor;
@@ -79,6 +81,8 @@ public sealed class HoughAutoLinesSettingsPanelDefinition : IDrawingSettingsPane
         if (showChannelsCheck != null) obj.ShowChannels = showChannelsCheck.IsChecked ?? true;
         if (showLabelsCheck != null) obj.ShowLabels = showLabelsCheck.IsChecked ?? true;
         if (extendRightCheck != null) obj.ExtendLinesToRight = extendRightCheck.IsChecked ?? false;
+        var useVolumeWeightCheck = dialogWindow.FindControl<CheckBox>("HoughAutoLinesUseVolumeWeightCheck");
+        if (useVolumeWeightCheck != null) obj.UseVolumeWeight = useVolumeWeightCheck.IsChecked ?? false;
 
         if (showTrendCheck != null) obj.ShowTrendLines = showTrendCheck.IsChecked ?? true;
         if (trendColorPicker != null) obj.TrendLineColor = trendColorPicker.Color;

@@ -143,7 +143,7 @@ public class CoreSSASqueezeIndicator : CoreIndicatorBase
         double[] ssaSigmaRes = new double[n];
         bool[] ssaValid = new bool[n];
 
-        int l = Math.Clamp(EmbeddingDimension, 2, Math.Max(2, window / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
         int r = Math.Clamp(NumComponents, 1, Math.Min(l, k));
 

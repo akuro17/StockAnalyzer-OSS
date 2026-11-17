@@ -184,9 +184,8 @@ public sealed class RenderChartImageToolTests : IDisposable
     }
 
     [Theory]
-    [InlineData("Ichimoku")]
-    [InlineData("ParabolicSAR")]
     [InlineData("VolumeProfile")]
+    [InlineData("GranvilleLaw")]
     public async Task ATypeTheChartDrawsInASpecialWayIsRefusedWithAHint(string type)
     {
         using JsonDocument response = await RenderAsync(await StartAsync(), $",\"overlays\":[{{\"id\":\"x\",\"type\":\"{type}\"}}]");

@@ -6,8 +6,10 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using StockAnalyzer.Avalonia.Common;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Tests.Services;
+using StockAnalyzer.Core.Tests.Services;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Avalonia.ViewModels.TickerList;
 using StockAnalyzer.Avalonia.ViewModels.Watchlist;
@@ -30,7 +32,7 @@ public sealed class TickerListViewModelRsRatingTests
 {
     private sealed class StubRsRatingClosesProvider : IRsRatingClosesProvider
     {
-        private readonly IReadOnlyDictionary<string, RsRatingCloses> _closes;
+        private IReadOnlyDictionary<string, RsRatingCloses> _closes;
         private readonly bool _shouldThrow;
 
         public StubRsRatingClosesProvider(IReadOnlyDictionary<string, RsRatingCloses> closes, bool shouldThrow = false)
@@ -38,6 +40,9 @@ public sealed class TickerListViewModelRsRatingTests
             _closes = closes;
             _shouldThrow = shouldThrow;
         }
+
+        /// <summary>Replaces the closes the next call returns (the data on disk changed after a sync).</summary>
+        public void SetCloses(IReadOnlyDictionary<string, RsRatingCloses> closes) => _closes = closes;
 
         public int CallCount { get; private set; }
         public IReadOnlyList<string>? LastUniverse { get; private set; }
@@ -67,6 +72,57 @@ public sealed class TickerListViewModelRsRatingTests
             BatchCompleted?.TrySetResult(true);
             return Task.FromResult<IReadOnlyDictionary<string, RsRatingCloses>>(result);
         }
+    }
+
+    /// <summary>
+    /// The synchronous dispatcher, except that while <see cref="DeferPosts"/> is set every stateful Post is queued instead of run, so a test can decide when a result
+    /// "reaches the UI thread" (the real dispatcher runs it later, after anything that happened in between).
+    /// </summary>
+    private sealed class DeferringDispatcherService : IDispatcherService
+    {
+        private readonly SynchronousDispatcherService _inner = new();
+        private readonly Queue<Action> _deferred = new();
+        private readonly object _gate = new();
+
+        public volatile bool DeferPosts;
+
+        public int DeferredCount { get { lock (_gate) return _deferred.Count; } }
+
+        public void RunDeferred()
+        {
+            while (true)
+            {
+                Action? next;
+                lock (_gate)
+                {
+                    next = _deferred.Count > 0 ? _deferred.Dequeue() : null;
+                }
+
+                if (next == null) return;
+                _inner.Post(next);
+            }
+        }
+
+        public void Post(Action action) => _inner.Post(action);
+
+        public void Post<T>(Action<T> action, T state)
+        {
+            if (!DeferPosts)
+            {
+                _inner.Post(action, state);
+                return;
+            }
+
+            lock (_gate)
+            {
+                _deferred.Enqueue(() => action(state));
+            }
+        }
+
+        public Task PostAsync(Func<Task> action) => _inner.PostAsync(action);
+        public Task PostAsync<TState>(Func<TState, Task> action, TState state) => _inner.PostAsync(action, state);
+        public bool CheckAccess() => true;
+        public void VerifyAccess() { }
     }
 
     private sealed class FakeScreenerService : IScreenerService
@@ -106,20 +162,276 @@ public sealed class TickerListViewModelRsRatingTests
         IMarketDataProvider marketDataProvider,
         IWatchlistManager watchlistManager,
         IDialogService? dialogService = null,
-        IRsRatingClosesProvider? rsProvider = null)
+        IRsRatingClosesProvider? rsProvider = null,
+        int? refreshDebounceMilliseconds = null,
+        TimeProvider? timeProvider = null,
+        IDispatcherService? dispatcher = null)
     {
+        IStockAnalyzerSettings? settings = null;
+        if (refreshDebounceMilliseconds is { } debounce)
+        {
+            var settingsMock = new Mock<IStockAnalyzerSettings>();
+            settingsMock.SetupGet(s => s.RsRatingRefreshDebounceMilliseconds).Returns(debounce);
+            settings = settingsMock.Object;
+        }
+
         return new TickerListViewModel(
             marketDataProvider: marketDataProvider,
             pythonService: null!,
             messenger: WeakReferenceMessenger.Default,
-            dispatcherService: new SynchronousDispatcherService(),
+            dispatcherService: dispatcher ?? new SynchronousDispatcherService(),
             watchlistManager: watchlistManager,
             portfolioManager: null!,
             dialogService: dialogService!,
             tickerImportService: null!,
             chartSettingsManager: new MockChartSettingsManager(),
             logger: NullLogger<TickerListViewModel>.Instance,
-            rsRatingClosesProvider: rsProvider);
+            rsRatingClosesProvider: rsProvider,
+            settings: settings,
+            timeProvider: timeProvider);
+    }
+
+    private static readonly IReadOnlyDictionary<string, RsRatingCloses> InitialCloses = new Dictionary<string, RsRatingCloses>
+    {
+        ["AAPL"] = new(250m, 100m, 100m, 100m, 100m), // 99
+        ["MSFT"] = new(150m, 100m, 100m, 100m, 100m), // 50
+        ["NVDA"] = new(90m, 100m, 100m, 100m, 100m)   // 1
+    };
+
+    /// <summary>After a sync NVDA is the strongest symbol and AAPL the weakest.</summary>
+    private static readonly IReadOnlyDictionary<string, RsRatingCloses> ClosesAfterSync = new Dictionary<string, RsRatingCloses>
+    {
+        ["AAPL"] = new(80m, 100m, 100m, 100m, 100m),  // 1
+        ["MSFT"] = new(150m, 100m, 100m, 100m, 100m), // 50
+        ["NVDA"] = new(300m, 100m, 100m, 100m, 100m)  // 99
+    };
+
+    private static async Task<(TickerListViewModel Vm, StubRsRatingClosesProvider Provider, ManualTimeProvider Time)> CreateHydratedViewModelAsync(int refreshDebounceMilliseconds, IDispatcherService? dispatcher = null)
+    {
+        var mockMarket = new Mock<IMarketDataProvider>();
+        mockMarket.Setup(m => m.GetAvailableTickersAsync()).ReturnsAsync(new List<string> { "AAPL", "MSFT", "NVDA" });
+        mockMarket.Setup(m => m.GetMetadataAsync(It.IsAny<string>())).ReturnsAsync(TickerMetadata.Unknown);
+        mockMarket.Setup(m => m.GetTickersDataAsync(It.IsAny<string>(), TimeFrame.D1))
+            .ReturnsAsync(new List<CandleData> { new(new DateTime(2024, 1, 2), 100m, 101m, 99m, 100m, 1000L) });
+        mockMarket.Setup(m => m.GetTimeSeriesLastUpdatedAsync(It.IsAny<string>())).ReturnsAsync(DateTimeOffset.UtcNow);
+
+        var mockWatchlist = new Mock<IWatchlistManager>();
+        mockWatchlist.Setup(w => w.GetAllProfiles()).Returns(new List<WatchlistProfile>());
+
+        var rsProvider = new StubRsRatingClosesProvider(InitialCloses)
+        {
+            BatchCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)
+        };
+        // The pause of the refresh runs on a manual clock: only Advance fires it, so the tests do not depend on how fast the machine is.
+        var time = new ManualTimeProvider(new DateTimeOffset(2026, 11, 16, 9, 0, 0, TimeSpan.Zero));
+        var vm = CreateListViewModel(mockMarket.Object, mockWatchlist.Object, rsProvider: rsProvider, refreshDebounceMilliseconds: refreshDebounceMilliseconds, timeProvider: time, dispatcher: dispatcher);
+        await WaitForRsRatingHydrationAsync(vm, rsProvider.BatchCompleted.Task, "AAPL");
+        Assert.Equal(99, vm.DisplayItems.Single(i => i.Symbol == "AAPL").RsRating);
+        Assert.Equal(1, vm.DisplayItems.Single(i => i.Symbol == "NVDA").RsRating);
+        return (vm, rsProvider, time);
+    }
+
+    private static async Task<bool> WaitUntilAsync(Func<bool> condition)
+    {
+        for (int i = 0; i < 200; i++)
+        {
+            if (condition()) return true;
+            await Task.Delay(25);
+        }
+
+        return condition();
+    }
+
+    /// <summary>Waits until <paramref name="count"/> pauses have been armed on the manual clock (each message arms exactly one).</summary>
+    private static async Task WaitForArmedPausesAsync(ManualTimeProvider time, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            Assert.True(await time.TimerArmed.WaitAsync(TimeSpan.FromSeconds(10)));
+        }
+    }
+
+    [Fact]
+    public async Task DataRefreshedMessage_ForASymbolOfTheUniverse_RecomputesTheRatingsOfEveryRow()
+    {
+        var (vm, provider, time) = await CreateHydratedViewModelAsync(refreshDebounceMilliseconds: 500);
+        using (vm)
+        {
+            int callsBefore = provider.CallCount;
+            provider.SetCloses(ClosesAfterSync);
+
+            vm.Receive(new TickerDataRefreshedMessage("NVDA"));
+            await WaitForArmedPausesAsync(time, 1);
+            time.Advance(TimeSpan.FromMilliseconds(500));
+
+            Assert.True(await WaitUntilAsync(() => vm.DisplayItems.Single(i => i.Symbol == "NVDA").RsRating == 99));
+            // One symbol changed, but the ranks of the others moved with it.
+            Assert.Equal(1, vm.DisplayItems.Single(i => i.Symbol == "AAPL").RsRating);
+            Assert.Equal(50, vm.DisplayItems.Single(i => i.Symbol == "MSFT").RsRating);
+            Assert.Equal(callsBefore + 1, provider.CallCount);
+        }
+    }
+
+    [Fact]
+    public async Task DataRefreshedMessage_ForASymbolOutsideTheUniverse_DoesNotRecompute()
+    {
+        var (vm, provider, time) = await CreateHydratedViewModelAsync(refreshDebounceMilliseconds: 500);
+        using (vm)
+        {
+            int callsBefore = provider.CallCount;
+            provider.SetCloses(ClosesAfterSync);
+
+            vm.Receive(new TickerDataRefreshedMessage("ZZZZ"));
+
+            // No pause was armed, so nothing can recompute later: the assertion does not wait for anything.
+            Assert.Equal(0, time.TimerArmed.CurrentCount);
+            time.Advance(TimeSpan.FromHours(1));
+            Assert.Equal(callsBefore, provider.CallCount);
+            Assert.Equal(99, vm.DisplayItems.Single(i => i.Symbol == "AAPL").RsRating);
+        }
+    }
+
+    [Fact]
+    public async Task DataRefreshedMessages_InABurst_RecomputeOnceAndKeepTheOldValuesUntilThen()
+    {
+        const int DebounceMilliseconds = 400;
+        string[] burst = { "AAPL", "MSFT", "NVDA", "AAPL", "MSFT", "NVDA", "AAPL", "MSFT", "NVDA", "AAPL" };
+        var (vm, provider, time) = await CreateHydratedViewModelAsync(DebounceMilliseconds);
+        using (vm)
+        {
+            int callsBefore = provider.CallCount;
+            provider.SetCloses(ClosesAfterSync);
+
+            foreach (string symbol in burst)
+            {
+                vm.Receive(new TickerDataRefreshedMessage(symbol));
+            }
+            await WaitForArmedPausesAsync(time, burst.Length);
+
+            // Inside the pause (the clock has not moved) nothing is recomputed and the old ratings stay on screen (no blanking).
+            Assert.Equal(callsBefore, provider.CallCount);
+            Assert.Equal(99, vm.DisplayItems.Single(i => i.Symbol == "AAPL").RsRating);
+
+            time.Advance(TimeSpan.FromMilliseconds(DebounceMilliseconds));
+            Assert.True(await WaitUntilAsync(() => vm.DisplayItems.Single(i => i.Symbol == "NVDA").RsRating == 99));
+
+            // Every earlier pause was cancelled by the next message, so one recomputation ran in total.
+            Assert.Equal(callsBefore + 1, provider.CallCount);
+        }
+    }
+
+    [Fact]
+    public async Task DataRefreshedMessage_AfterTheViewModelIsDisposed_DoesNotRecompute()
+    {
+        var (vm, provider, time) = await CreateHydratedViewModelAsync(refreshDebounceMilliseconds: 500);
+        int callsBefore = provider.CallCount;
+
+        vm.Receive(new TickerDataRefreshedMessage("NVDA"));
+        await WaitForArmedPausesAsync(time, 1);
+        vm.Dispose();
+        time.Advance(TimeSpan.FromSeconds(1));
+        await Task.Delay(100);
+
+        Assert.Equal(callsBefore, provider.CallCount);
+    }
+
+    [Fact]
+    public async Task DataRefreshedMessage_AfterARefreshHasEnded_StartsANewOneWithoutTouchingTheDisposedSource()
+    {
+        var (vm, provider, time) = await CreateHydratedViewModelAsync(refreshDebounceMilliseconds: 500);
+        using (vm)
+        {
+            int callsBefore = provider.CallCount;
+
+            vm.Receive(new TickerDataRefreshedMessage("NVDA"));
+            await WaitForArmedPausesAsync(time, 1);
+            time.Advance(TimeSpan.FromMilliseconds(500));
+            Assert.True(await WaitUntilAsync(() => provider.CallCount == callsBefore + 1));
+            // Give the first run time to end (it disposes its source in its finally block); the next message must not trip over it.
+            await Task.Delay(100);
+
+            vm.Receive(new TickerDataRefreshedMessage("MSFT"));
+            await WaitForArmedPausesAsync(time, 1);
+            time.Advance(TimeSpan.FromMilliseconds(500));
+
+            Assert.True(await WaitUntilAsync(() => provider.CallCount == callsBefore + 2));
+        }
+    }
+
+    [Fact]
+    public async Task DataRefreshedMessage_SymbolInAnotherCase_StillBelongsToTheUniverse()
+    {
+        var (vm, provider, time) = await CreateHydratedViewModelAsync(refreshDebounceMilliseconds: 500);
+        using (vm)
+        {
+            int callsBefore = provider.CallCount;
+            provider.SetCloses(ClosesAfterSync);
+
+            vm.Receive(new TickerDataRefreshedMessage("nvda"));
+            await WaitForArmedPausesAsync(time, 1);
+            time.Advance(TimeSpan.FromMilliseconds(500));
+
+            Assert.True(await WaitUntilAsync(() => vm.DisplayItems.Single(i => i.Symbol == "NVDA").RsRating == 99));
+            Assert.Equal(callsBefore + 1, provider.CallCount);
+        }
+    }
+
+    [Fact]
+    public async Task ARefreshResultThatReachesTheUiThreadAfterANewerMessage_IsDropped()
+    {
+        var dispatcher = new DeferringDispatcherService();
+        var (vm, provider, time) = await CreateHydratedViewModelAsync(refreshDebounceMilliseconds: 500, dispatcher);
+        using (vm)
+        {
+            int callsBefore = provider.CallCount;
+            provider.SetCloses(ClosesAfterSync);
+
+            // The first run computes, finishes, and leaves its result queued for the UI thread.
+            dispatcher.DeferPosts = true;
+            vm.Receive(new TickerDataRefreshedMessage("NVDA"));
+            await WaitForArmedPausesAsync(time, 1);
+            time.Advance(TimeSpan.FromMilliseconds(500));
+            Assert.True(await WaitUntilAsync(() => provider.CallCount == callsBefore + 1 && dispatcher.DeferredCount == 1));
+            await Task.Delay(100); // the run ends and gives up its source
+
+            // A newer message arrives before the queued result runs; nothing is left to cancel, so only the request counter can tell the result is outdated.
+            vm.Receive(new TickerDataRefreshedMessage("MSFT"));
+            await WaitForArmedPausesAsync(time, 1);
+            dispatcher.RunDeferred();
+
+            Assert.Equal(1, vm.DisplayItems.Single(i => i.Symbol == "NVDA").RsRating);
+
+            // The newer run then applies its own result.
+            dispatcher.DeferPosts = false;
+            time.Advance(TimeSpan.FromMilliseconds(500));
+            Assert.True(await WaitUntilAsync(() => vm.DisplayItems.Single(i => i.Symbol == "NVDA").RsRating == 99));
+            Assert.Equal(callsBefore + 2, provider.CallCount);
+        }
+    }
+
+    [Fact]
+    public async Task DataRefreshedMessages_FromManyThreads_RecomputeOnceAndFaultNothing()
+    {
+        const int MessageCount = 200;
+        var (vm, provider, time) = await CreateHydratedViewModelAsync(refreshDebounceMilliseconds: 500);
+        using (vm)
+        {
+            int callsBefore = provider.CallCount;
+            provider.SetCloses(ClosesAfterSync);
+            string[] symbols = { "AAPL", "MSFT", "NVDA" };
+
+            // Every message swaps the source of the previous run out, cancels and disposes it, while that run may be ending at the same moment.
+            await Task.WhenAll(Enumerable.Range(0, MessageCount)
+                .Select(i => Task.Run(() => vm.Receive(new TickerDataRefreshedMessage(symbols[i % symbols.Length])))));
+            // A run that another message cancelled before it reached its pause never arms one, so only the newest run (never cancelled) is certain to have armed.
+            await WaitForArmedPausesAsync(time, 1);
+
+            time.Advance(TimeSpan.FromMilliseconds(500));
+            Assert.True(await WaitUntilAsync(() => vm.DisplayItems.Single(i => i.Symbol == "NVDA").RsRating == 99));
+            await Task.Delay(100);
+
+            Assert.Equal(callsBefore + 1, provider.CallCount);
+        }
     }
 
     [Fact]

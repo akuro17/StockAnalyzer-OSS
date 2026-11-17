@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using Avalonia.Media;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Tests.Common;
 using Xunit;

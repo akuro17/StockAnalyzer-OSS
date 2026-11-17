@@ -21,7 +21,8 @@ public static class AiChartImageRenderer
 
         IReadOnlyList<AiChartOscillator> oscillators = request.Oscillators ?? Array.Empty<AiChartOscillator>();
         IReadOnlyList<AiChartMarker> markers = request.Markers ?? Array.Empty<AiChartMarker>();
-        ValidateRequest(request, candles.Count, oscillators, markers);
+        IReadOnlyList<AiChartDrawing> drawings = request.Drawings ?? Array.Empty<AiChartDrawing>();
+        ValidateRequest(request, candles.Count, oscillators, markers, drawings);
 
         var layout = AiChartLayout.Create(request.WidthPx, request.HeightPx, request.IncludeVolume, oscillators.Count);
         AiChartPanelRect pricePanel = layout.PricePanel;
@@ -42,7 +43,12 @@ public static class AiChartImageRenderer
         {
             AiChartPanelRect rect = layout.Panels[firstOscillatorPanel + i];
             IReadOnlyList<AiChartStyledLine> lines = AiChartLineAssigner.AssignOscillator(oscillators[i]);
-            (decimal min, decimal max) = AiChartPriceRange.ComputeOscillator(lines.Select(l => l.Values), oscillators[i].FixedMin, oscillators[i].FixedMax, oscillators[i].IncludeZeroBaseline);
+            (decimal min, decimal max) = AiChartPriceRange.ComputeOscillator(
+                lines.Select(l => l.Values),
+                oscillators[i].FixedMin,
+                oscillators[i].FixedMax,
+                oscillators[i].IncludeZeroBaseline,
+                oscillators[i].HistogramValues);
             var transform = new AiChartPlotTransform(layout.PlotLeftPx, rect.TopPx, layout.PlotWidthPx, rect.HeightPx, min, max, candles.Count);
             oscillatorPanels.Add(new OscillatorPanel(oscillators[i], rect, transform, lines, min, max));
         }
@@ -79,21 +85,32 @@ public static class AiChartImageRenderer
             DrawVolume(canvas, fill, candles, volumeTransform, volume, bars, bodyWidth);
         }
 
+        foreach (AiChartCloud cloud in (request.Overlays ?? Array.Empty<AiChartOverlay>()).Select(o => o.Cloud).OfType<AiChartCloud>())
+        {
+            DrawCloud(canvas, pricePanel, priceTransform, cloud, bars);
+        }
+
         DrawCandles(canvas, fill, candles, bars, bodyWidth);
         cancellationToken.ThrowIfCancellationRequested();
 
         DrawLines(canvas, pricePanel, priceTransform, overlayLines, bars);
+        IReadOnlyList<AiChartDrawingPlacement> placements = AiChartSavedDrawingRenderer.Draw(canvas, pricePanel, priceTransform, drawings, cancellationToken);
         DrawMarkers(canvas, pricePanel, candles, bars, markers);
         foreach (OscillatorPanel panel in oscillatorPanels)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (panel.Oscillator.HistogramValues is { } histogram)
+            {
+                DrawHistogram(canvas, panel, histogram, bars, bodyWidth);
+            }
+
             DrawLines(canvas, panel.Rect, panel.Transform, panel.Lines, bars);
         }
 
         var legend = new List<AiChartLegendEntry>();
         foreach (AiChartStyledLine line in overlayLines.Concat(oscillatorPanels.SelectMany(p => p.Lines)))
         {
-            legend.Add(new AiChartLegendEntry(line.Label, line.ColorHex, line.LineStyle, line.WidthPx));
+            legend.Add(new AiChartLegendEntry(line.Label, line.ColorHex, line.LineStyle, line.WidthPx, line.Shape));
         }
 
         int legendDrawn = DrawLegend(canvas, font, textPaint, layout, legend);
@@ -126,7 +143,7 @@ public static class AiChartImageRenderer
             pricePanel.BottomPx,
             AiChartPlotTransform.Snap(priceTransform.BarSpacingPx),
             bars[0].XPx);
-        return new AiChartImageResult(png, request.WidthPx, request.HeightPx, axes, panels, bars, legend, legendDrawn);
+        return new AiChartImageResult(png, request.WidthPx, request.HeightPx, axes, panels, bars, legend, legendDrawn, drawings.Count > 0 ? placements : null);
     }
 
     private sealed record OscillatorPanel(
@@ -137,7 +154,12 @@ public static class AiChartImageRenderer
         decimal Min,
         decimal Max);
 
-    private static void ValidateRequest(AiChartImageRequest request, int barCount, IReadOnlyList<AiChartOscillator> oscillators, IReadOnlyList<AiChartMarker> markers)
+    private static void ValidateRequest(
+        AiChartImageRequest request,
+        int barCount,
+        IReadOnlyList<AiChartOscillator> oscillators,
+        IReadOnlyList<AiChartMarker> markers,
+        IReadOnlyList<AiChartDrawing> drawings)
     {
         AiChartSizeCheck check = AiChartLayout.CheckSize(request.WidthPx, request.HeightPx, barCount, request.IncludeVolume, oscillators.Count);
         if (!check.IsValid)
@@ -151,6 +173,11 @@ public static class AiChartImageRenderer
             {
                 RequireWindowLength(series, barCount, overlay.Id);
             }
+
+            if (overlay.Cloud is { } cloud && (cloud.SpanA.Count != barCount || cloud.SpanB.Count != barCount))
+            {
+                throw new ArgumentException($"The cloud of '{overlay.Id}' needs {barCount} values per boundary, one per drawn bar.");
+            }
         }
 
         foreach (AiChartOscillator oscillator in oscillators)
@@ -159,6 +186,11 @@ public static class AiChartImageRenderer
             {
                 RequireWindowLength(series, barCount, oscillator.Id);
             }
+
+            if (oscillator.HistogramValues is { } histogram && histogram.Count != barCount)
+            {
+                throw new ArgumentException($"The histogram of '{oscillator.Id}' has {histogram.Count} values for {barCount} drawn bars.");
+            }
         }
 
         foreach (AiChartMarker marker in markers)
@@ -166,6 +198,21 @@ public static class AiChartImageRenderer
             if (marker.BarIndex < 0 || marker.BarIndex >= barCount)
             {
                 throw new ArgumentException($"A marker names bar {marker.BarIndex}, outside the {barCount} drawn bars.", nameof(request));
+            }
+        }
+
+        foreach (AiChartDrawing drawing in drawings)
+        {
+            int needed = drawing.Kind switch
+            {
+                AiChartDrawingKind.HorizontalLine or AiChartDrawingKind.VerticalLine => 1,
+                AiChartDrawingKind.TrendLine or AiChartDrawingKind.Ray => 2,
+                AiChartDrawingKind.ParallelChannel => 3,
+                _ => throw new ArgumentException($"Unknown drawing kind {drawing.Kind}.", nameof(request)),
+            };
+            if (drawing.Points.Count != needed)
+            {
+                throw new ArgumentException($"A {drawing.Kind} needs {needed} point(s), not {drawing.Points.Count}.", nameof(request));
             }
         }
     }
@@ -351,6 +398,12 @@ public static class AiChartImageRenderer
         canvas.ClipRect(new SKRect(transform.PlotLeftPx, panel.TopPx, transform.PlotLeftPx + transform.PlotWidthPx, panel.BottomPx));
         foreach (AiChartStyledLine line in lines)
         {
+            if (line.Shape == AiChartLineShape.Dots)
+            {
+                DrawDots(canvas, transform, line, bars);
+                continue;
+            }
+
             using var paint = new SKPaint
             {
                 Style = SKPaintStyle.Stroke,
@@ -400,6 +453,117 @@ public static class AiChartImageRenderer
         }
 
         canvas.Restore();
+    }
+
+    /// <summary>One filled circle of the style dot radius at the value of every bar that has one, in the centre of the pixel column and row of the bar and the value (inside the clip of the panel).</summary>
+    private static void DrawDots(SKCanvas canvas, AiChartPlotTransform transform, AiChartStyledLine line, IReadOnlyList<AiChartBarPosition> bars)
+    {
+        using var dot = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true, Color = AiChartImageStyle.Color(line.ColorHex) };
+        for (int i = 0; i < line.Values.Count; i++)
+        {
+            if (line.Values[i] is not { } value)
+            {
+                continue;
+            }
+
+            canvas.DrawCircle(
+                AiChartPlotTransform.PixelOf(bars[i].XPx) + AiChartImageStyle.PixelCentreOffsetPx,
+                Row(transform, value),
+                AiChartImageStyle.DotRadiusPx,
+                dot);
+        }
+    }
+
+    /// <summary>
+    /// The cloud between two boundaries: between two neighbouring bars that both have both values it is the quadrilateral of the four points, in the up colour where the first boundary is at
+    /// or above the second and in the down colour where it is below (a crossing between the bars splits the quadrilateral at the crossing). Every colour is one path, so the seams between
+    /// the quadrilaterals take no extra paint; the fill is the transparent colour of the style, clipped to the price panel. A bar without a value breaks the cloud.
+    /// </summary>
+    private static void DrawCloud(SKCanvas canvas, AiChartPanelRect panel, AiChartPlotTransform transform, AiChartCloud cloud, IReadOnlyList<AiChartBarPosition> bars)
+    {
+        using var bullish = new SKPath();
+        using var bearish = new SKPath();
+        for (int i = 0; i + 1 < bars.Count; i++)
+        {
+            if (cloud.SpanA[i] is not { } a0 || cloud.SpanB[i] is not { } b0 || cloud.SpanA[i + 1] is not { } a1 || cloud.SpanB[i + 1] is not { } b1)
+            {
+                continue;
+            }
+
+            float x0 = AiChartPlotTransform.PixelOf(bars[i].XPx) + AiChartImageStyle.PixelCentreOffsetPx;
+            float x1 = AiChartPlotTransform.PixelOf(bars[i + 1].XPx) + AiChartImageStyle.PixelCentreOffsetPx;
+            float ya0 = Row(transform, a0);
+            float yb0 = Row(transform, b0);
+            float ya1 = Row(transform, a1);
+            float yb1 = Row(transform, b1);
+            decimal d0 = a0 - b0;
+            decimal d1 = a1 - b1;
+            if ((d0 > 0m && d1 < 0m) || (d0 < 0m && d1 > 0m))
+            {
+                // The boundaries cross between the bars at the share t of the way (in value, so the crossing does not depend on the pixel scale).
+                float t = (float)(d0 / (d0 - d1));
+                float xc = x0 + ((x1 - x0) * t);
+                float yc = ya0 + ((ya1 - ya0) * t);
+                AddPolygon(d0 > 0m ? bullish : bearish, (x0, ya0), (xc, yc), (x0, yb0));
+                AddPolygon(d1 > 0m ? bullish : bearish, (xc, yc), (x1, ya1), (x1, yb1));
+            }
+            else
+            {
+                AddPolygon(d0 + d1 >= 0m ? bullish : bearish, (x0, ya0), (x1, ya1), (x1, yb1), (x0, yb0));
+            }
+        }
+
+        canvas.Save();
+        canvas.ClipRect(new SKRect(transform.PlotLeftPx, panel.TopPx, transform.PlotLeftPx + transform.PlotWidthPx, panel.BottomPx));
+        using var paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
+        paint.Color = AiChartImageStyle.Color(AiChartImageStyle.CloudBullishHex).WithAlpha(AiChartImageStyle.CloudAlpha);
+        canvas.DrawPath(bullish, paint);
+        paint.Color = AiChartImageStyle.Color(AiChartImageStyle.CloudBearishHex).WithAlpha(AiChartImageStyle.CloudAlpha);
+        canvas.DrawPath(bearish, paint);
+        canvas.Restore();
+    }
+
+    /// <summary>The centre of the pixel row that holds a value, as the lines are drawn.</summary>
+    private static float Row(AiChartPlotTransform transform, decimal value)
+        => AiChartPlotTransform.PixelOf(AiChartPlotTransform.Snap(transform.YPx(value))) + AiChartImageStyle.PixelCentreOffsetPx;
+
+    private static void AddPolygon(SKPath path, params (float X, float Y)[] points)
+    {
+        path.MoveTo(points[0].X, points[0].Y);
+        for (int i = 1; i < points.Length; i++)
+        {
+            path.LineTo(points[i].X, points[i].Y);
+        }
+
+        path.Close();
+    }
+
+    /// <summary>
+    /// The bars of an oscillator histogram, from the zero row to the value row: the width of a candle body, half transparent, in the up colour for a value of zero or more and in the down
+    /// colour below zero, inside the borders of the panel; a bar is at least one pixel tall. They are drawn behind the lines of the panel.
+    /// </summary>
+    private static void DrawHistogram(SKCanvas canvas, OscillatorPanel panel, IReadOnlyList<decimal?> values, IReadOnlyList<AiChartBarPosition> bars, int bodyWidth)
+    {
+        int half = (bodyWidth - 1) / 2;
+        int inner = AiChartImageStyle.BorderWidthPx;
+        int minRow = panel.Rect.TopPx + inner;
+        int maxRow = panel.Rect.BottomPx - inner;
+        int zeroRow = Math.Clamp(AiChartPlotTransform.PixelOf(AiChartPlotTransform.Snap(panel.Transform.YPx(0m))), minRow, maxRow - 1);
+        SKColor nonNegative = AiChartImageStyle.Color(AiChartImageStyle.HistogramNonNegativeHex).WithAlpha(AiChartImageStyle.HistogramAlpha);
+        SKColor negative = AiChartImageStyle.Color(AiChartImageStyle.HistogramNegativeHex).WithAlpha(AiChartImageStyle.HistogramAlpha);
+        using var fill = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = false };
+        for (int i = 0; i < values.Count; i++)
+        {
+            if (values[i] is not { } value)
+            {
+                continue;
+            }
+
+            int valueRow = Math.Clamp(AiChartPlotTransform.PixelOf(AiChartPlotTransform.Snap(panel.Transform.YPx(value))), minRow, maxRow - 1);
+            int top = Math.Min(valueRow, zeroRow);
+            int height = Math.Max(1, Math.Abs(valueRow - zeroRow));
+            FillRect(canvas, fill, AiChartPlotTransform.PixelOf(bars[i].XPx) - half, top, bodyWidth, height, value >= 0m ? nonNegative : negative);
+        }
     }
 
     /// <summary>
@@ -481,11 +645,30 @@ public static class AiChartImageRenderer
             };
             using SKPathEffect? effect = DashEffect(legend[i].LineStyle);
             linePaint.PathEffect = effect;
-            canvas.DrawLine(boxLeft + pad, y, boxLeft + pad + AiChartImageStyle.LegendSwatchWidthPx, y, linePaint);
+            if (legend[i].Shape == AiChartLineShape.Dots)
+            {
+                DrawLegendDots(canvas, boxLeft + pad, y, linePaint.Color);
+            }
+            else
+            {
+                canvas.DrawLine(boxLeft + pad, y, boxLeft + pad + AiChartImageStyle.LegendSwatchWidthPx, y, linePaint);
+            }
+
             canvas.DrawText(labels[i], boxLeft + pad + AiChartImageStyle.LegendSwatchWidthPx + pad, y + (AiChartImageStyle.FontSizePx * AiChartImageStyle.TextCentreRatio), font, textPaint);
         }
 
         return count;
+    }
+
+    /// <summary>The swatch of a dotted series: a row of dots of the style radius, centred in the swatch.</summary>
+    private static void DrawLegendDots(SKCanvas canvas, float swatchLeft, float y, SKColor color)
+    {
+        using var dot = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true, Color = color };
+        float first = swatchLeft + ((AiChartImageStyle.LegendSwatchWidthPx - ((AiChartImageStyle.LegendDotCount - 1) * AiChartImageStyle.LegendDotGapPx)) / 2f);
+        for (int i = 0; i < AiChartImageStyle.LegendDotCount; i++)
+        {
+            canvas.DrawCircle(first + (i * AiChartImageStyle.LegendDotGapPx), y, AiChartImageStyle.DotRadiusPx, dot);
+        }
     }
 
     /// <summary>The dash pattern of a line style, to be disposed by the caller; null for a solid line.</summary>

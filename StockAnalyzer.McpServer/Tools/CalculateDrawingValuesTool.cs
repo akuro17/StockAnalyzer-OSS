@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
@@ -30,17 +31,28 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
     private const string EvaluationDatesArgument = "evaluationDates";
     private const string ShowExtensionsArgument = "showExtensions";
     private const string PitchforkKindArgument = "pitchforkKind";
+    private const string PivotLeftArgument = "pivotLeftStrength";
+    private const string PivotRightArgument = "pivotRightStrength";
+    private const string PivotPreferenceArgument = "pivotPreference";
 
     private const string ExplicitMode = "Explicit";
     private const string RangeExtremesMode = "RangeExtremes";
     private const string RangeEndpointsMode = "RangeEndpoints";
+    private const string AutoPivotsMode = "AutoPivots";
+    private const string LatestPivot = "Latest";
+    private const string HighPivot = "High";
+    private const string LowPivot = "Low";
+    private const string LongPositionTool = DrawingValueCatalog.LongPositionName;
+    private const string ShortPositionTool = DrawingValueCatalog.ShortPositionName;
+    private const int DefaultPivotStrength = 5;
     private const string ExplicitSource = "Explicit";
     private const string FibonacciRetracementTool = "FibonacciRetracement";
     private const string PitchforkTool = "Pitchfork";
     private const int TwoPointToolPointCount = 2;
     private const int MinRangeExtremesBars = 2;
 
-    private static readonly string[] AnchorModes = { ExplicitMode, RangeExtremesMode, RangeEndpointsMode };
+    private static readonly string[] AnchorModes = { ExplicitMode, RangeExtremesMode, RangeEndpointsMode, AutoPivotsMode };
+    private static readonly string[] PivotPreferences = { LatestPivot, HighPivot, LowPivot };
     private static readonly string[] PriceFields = { nameof(CandleData.Open), nameof(CandleData.High), nameof(CandleData.Low), nameof(CandleData.Close) };
     private static readonly string[] PitchforkKindNames = Enum.GetNames<PitchforkKind>();
 
@@ -64,8 +76,14 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
         "from virtual control points, without drawing anything or saving anything. Read-only. The values are produced by the same code as the " +
         "chart's drawing objects. Control points are chosen by anchorMode: RangeExtremes (two-point tools: the lowest low and the highest high " +
         "inside the last anchorBars bars, the earlier bar is the first point), RangeEndpoints (the first and the last bar of that window, price taken " +
-        "from priceField; one- and two-point tools), or Explicit (points: one {date, price or priceField} per control point; the only mode for " +
-        "three-point tools). anchorBars counts bars of the chosen timeFrame, not calendar days; left out, it is every loaded bar. Values are evaluated at evaluationDates " +
+        "from priceField; one- and two-point tools), AutoPivots (confirmed swing highs and lows of the last anchorBars bars: a two- or three-point tool takes " +
+        "the latest alternating pivots in time order, a one-point tool the latest pivot or, with pivotPreference High or Low, the latest pivot of that kind; " +
+        "pivotLeftStrength and pivotRightStrength are the bars each side a swing must dominate; not for LongPosition and ShortPosition), or Explicit (points: one " +
+        "{date, price or priceField} per control point; the only mode for LongPosition, ShortPosition and the other three-point tools). " +
+        "LongPosition points are Entry, Stop, Target with Stop < Entry < Target; ShortPosition points are Entry, Stop, Target with Target < Entry < Stop. " +
+        "RegressionTrend, AnchoredVWAP and ClassicPivotPoints are calculated from the loaded bars with the default options of the chart tool " +
+        "(RegressionTrend: 2 standard deviations, not extended; AnchoredVWAP: no bands, typical price; ClassicPivotPoints: daily, no extension); RegressionTrend ignores the prices of its two points (only their dates matter) " +
+        "and AnchoredVWAP and ClassicPivotPoints use only the date of their point. anchorBars counts bars of the chosen timeFrame, not calendar days; left out, it is every loaded bar. Values are evaluated at evaluationDates " +
         "(default: the last loaded bar); a date without a stored bar is allowed and only extends the geometry (hasBar false, no current price). " +
         "Time math is calendar time (price change per 24 hours), not bar count. Causal as of endDate (bars after it are never read). " +
         "FibonacciRetracement: level 0 is the second point and level 1 the first point. " +
@@ -88,9 +106,12 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, bars up to this date are loaded.")
         .Integer(LookbackArgument, $"Stored bars loaded up to endDate, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .String(ToolArgument, $"Drawing tool: {string.Join(", ", DrawingValueCatalog.All.Select(d => $"{d.Name} ({d.PointCount} point{(d.PointCount == 1 ? string.Empty : "s")})"))}.", required: true, allowedValues: DrawingValueCatalog.All.Select(d => d.Name))
-        .String(AnchorModeArgument, "How the control points are chosen: RangeExtremes (two-point tools), RangeEndpoints (one- and two-point tools) or Explicit (every tool, required for three-point tools).", required: true, allowedValues: AnchorModes)
-        .Integer(AnchorBarsArgument, $"RangeExtremes and RangeEndpoints only (refused with Explicit): size of the anchor window in bars, counted back from the last loaded bar. Default uses all loaded bars (at most {_limits.MaxCandlesPerRequest}). RangeExtremes needs at least {MinRangeExtremesBars}; 1..{_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
-        .String(PriceFieldArgument, "Bar price used by RangeEndpoints and by an Explicit point that has no price. Default Close. Refused with RangeExtremes.", allowedValues: PriceFields)
+        .String(AnchorModeArgument, $"How the control points are chosen: RangeExtremes (two-point tools), RangeEndpoints (one- and two-point tools), {AutoPivotsMode} (confirmed swing pivots; not {LongPositionTool} and {ShortPositionTool}) or Explicit (every tool, required for three-point tools that are not chosen by {AutoPivotsMode}).", required: true, allowedValues: AnchorModes)
+        .Integer(AnchorBarsArgument, $"RangeExtremes, RangeEndpoints and AutoPivots only (refused with Explicit): size of the anchor window in bars, counted back from the last loaded bar. Default uses all loaded bars (at most {_limits.MaxCandlesPerRequest}). RangeExtremes needs at least {MinRangeExtremesBars}; AutoPivots needs at least pivotLeftStrength + pivotRightStrength + 1; 1..{_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
+        .Integer(PivotLeftArgument, $"{AutoPivotsMode} only: bars to the left of a swing that must be strictly lower (high) or higher (low). Default {DefaultPivotStrength}; 1..{_limits.MaxPivotStrength}.", defaultValue: DefaultPivotStrength, minimum: 1, maximum: _limits.MaxPivotStrength)
+        .Integer(PivotRightArgument, $"{AutoPivotsMode} only: bars to the right of a swing that must be strictly lower (high) or higher (low); the newest bars cannot hold a confirmed pivot. Default {DefaultPivotStrength}; 1..{_limits.MaxPivotStrength}.", defaultValue: DefaultPivotStrength, minimum: 1, maximum: _limits.MaxPivotStrength)
+        .String(PivotPreferenceArgument, $"{AutoPivotsMode} with a one-point tool only: {LatestPivot} (default) the latest pivot of either kind, {HighPivot} the latest swing high, {LowPivot} the latest swing low. {HighPivot} and {LowPivot} are refused for tools with two or three points (they take the latest alternating pivots).", allowedValues: PivotPreferences)
+        .String(PriceFieldArgument, "Bar price used by RangeEndpoints and by an Explicit point that has no price. Default Close. Refused with RangeExtremes and AutoPivots.", allowedValues: PriceFields)
         .ObjectArray(PointsArgument, "Explicit only (required there, refused otherwise): exactly one item per control point of the tool, in order. Give price, or priceField, or neither (then the top-level priceField, default Close, of the bar on that date is used).",
             ToolSchema.Object()
                 .String(PointDateKey, $"Date of the point ({ToolJson.DateFormat}); the latest stored bar on or before it is used (a warning names the bar date).", required: true)
@@ -128,6 +149,17 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
         bool hasPriceField = arguments.TryGetProperty(PriceFieldArgument, out _);
         string? topPriceField = ReadPriceField(arguments, PriceFieldArgument);
 
+        bool hasPivotArguments = arguments.TryGetProperty(PivotLeftArgument, out _)
+            || arguments.TryGetProperty(PivotRightArgument, out _)
+            || arguments.TryGetProperty(PivotPreferenceArgument, out _);
+        if (hasPivotArguments && anchorMode != AutoPivotsMode)
+        {
+            throw new ToolException(ToolErrorCodes.InvalidArgument, $"{PivotLeftArgument}, {PivotRightArgument} and {PivotPreferenceArgument} are only used with {AutoPivotsMode}.", AnchorModeArgument);
+        }
+
+        int pivotLeft = DefaultPivotStrength;
+        int pivotRight = DefaultPivotStrength;
+        string pivotPreference = LatestPivot;
         int? anchorBarsArgument = null;
         int minAnchorBars = 0;
         List<ExplicitItem> explicitItems = new();
@@ -155,6 +187,35 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
                 }
 
                 minAnchorBars = MinRangeExtremesBars;
+                anchorBarsArgument = ReadAnchorBars(arguments, hasAnchorBars, minAnchorBars);
+                break;
+
+            case AutoPivotsMode:
+                if (descriptor.Name is LongPositionTool or ShortPositionTool)
+                {
+                    throw new ToolException(ToolErrorCodes.InvalidArgument, $"{AutoPivotsMode} cannot place {descriptor.Name} (Entry, Stop and Target are decisions, not swings).", AnchorModeArgument, $"Use {ExplicitMode}.");
+                }
+
+                RejectPoints(hasPoints);
+                if (hasPriceField)
+                {
+                    throw new ToolException(ToolErrorCodes.InvalidArgument, $"{PriceFieldArgument} is not used with {AutoPivotsMode} (a pivot is the high or the low of its bar).", PriceFieldArgument);
+                }
+
+                pivotLeft = ToolArgs.PositiveWithin(arguments, PivotLeftArgument, DefaultPivotStrength, _limits.MaxPivotStrength);
+                pivotRight = ToolArgs.PositiveWithin(arguments, PivotRightArgument, DefaultPivotStrength, _limits.MaxPivotStrength);
+                pivotPreference = ToolArgs.String(arguments, PivotPreferenceArgument) ?? LatestPivot;
+                if (!PivotPreferences.Contains(pivotPreference, StringComparer.Ordinal))
+                {
+                    throw new ToolException(ToolErrorCodes.InvalidArgument, $"{PivotPreferenceArgument} must be one of: {string.Join(", ", PivotPreferences)}.", PivotPreferenceArgument);
+                }
+
+                if (pivotPreference != LatestPivot && descriptor.PointCount > 1)
+                {
+                    throw new ToolException(ToolErrorCodes.InvalidArgument, $"{PivotPreferenceArgument} {pivotPreference} is only used with a one-point tool; {descriptor.Name} has {descriptor.PointCount} points and takes the latest alternating pivots.", PivotPreferenceArgument, $"Leave {PivotPreferenceArgument} out or use {LatestPivot}.");
+                }
+
+                minAnchorBars = pivotLeft + pivotRight + 1;
                 anchorBarsArgument = ReadAnchorBars(arguments, hasAnchorBars, minAnchorBars);
                 break;
 
@@ -263,9 +324,14 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
         {
             ExplicitMode => BuildExplicitPoints(explicitItems, bars, topPriceField, warnings),
             RangeExtremesMode => BuildRangeExtremes(bars, anchorBars),
+            AutoPivotsMode => BuildAutoPivots(bars, anchorBars, descriptor, pivotLeft, pivotRight, pivotPreference),
             _ => BuildRangeEndpoints(bars, anchorBars, descriptor.PointCount, topPriceField ?? nameof(CandleData.Close)),
         };
         DrawingAnchor[] anchors = controlPoints.Select(p => new DrawingAnchor(p.Time, p.Price)).ToArray();
+        RequireOrderedPosition(descriptor.Name, anchors);
+        IReadOnlyList<CoreCandleData>? candles = descriptor.RequiresCandles
+            ? bars.Select(b => new CoreCandleData(b.Timestamp, b.Open, b.High, b.Low, b.Close, b.Volume)).ToList()
+            : null;
 
         // ---- Evaluation ----
         List<DateOnly> dates = requestedDates ?? new List<DateOnly> { DateOnly.FromDateTime(bars[^1].Timestamp) };
@@ -302,7 +368,7 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
                 ? evaluationBar.Timestamp
                 : new DateTime(date.Year, date.Month, date.Day, 0, 0, 0, bars[^1].Timestamp.Kind);
             decimal? currentPrice = hasBar ? evaluationBar.Close : null;
-            var request = new DrawingValueRequest(anchors, timestamp, currentPrice, IndicatorColor.Gray, new DrawingValueOptions(showExtensions, pitchforkKind));
+            var request = new DrawingValueRequest(anchors, timestamp, currentPrice, IndicatorColor.Gray, new DrawingValueOptions(showExtensions, pitchforkKind), candles);
 
             IReadOnlyList<DrawingCalculatedValue> values = CalculateOrReportOverflow(descriptor, request, i);
             if (values.Count == 0)
@@ -341,6 +407,13 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
             if (anchorMode != ExplicitMode)
             {
                 writer.WriteNumber("anchorBars", anchorBars);
+            }
+
+            if (anchorMode == AutoPivotsMode)
+            {
+                writer.WriteNumber(PivotLeftArgument, pivotLeft);
+                writer.WriteNumber(PivotRightArgument, pivotRight);
+                writer.WriteString(PivotPreferenceArgument, pivotPreference);
             }
 
             writer.WriteStartArray("controlPoints");
@@ -571,6 +644,86 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
         }
 
         return points;
+    }
+
+    /// <summary>
+    /// Confirmed swing pivots of the anchor window (PivotDetectionEngine), consecutive pivots of one kind folded to the more extreme one so they alternate.
+    /// A one-point tool takes the latest pivot (of the preferred kind); a two- or three-point tool takes the latest alternating pivots in time order.
+    /// </summary>
+    private static List<ControlPoint> BuildAutoPivots(List<CandleData> bars, int anchorBars, DrawingValueDescriptor descriptor, int left, int right, string preference)
+    {
+        int start = RequireAnchorWindow(bars, anchorBars);
+        var raw = new List<FractalPivot>();
+        PivotDetectionEngine.ExtractPivots(bars.GetRange(start, bars.Count - start), left, right, raw);
+
+        var folded = new List<FractalPivot>(raw.Count);
+        foreach (FractalPivot pivot in raw)
+        {
+            if (folded.Count > 0 && folded[^1].Type == pivot.Type)
+            {
+                bool moreExtreme = pivot.Type == FractalPivotType.High ? pivot.Price > folded[^1].Price : pivot.Price < folded[^1].Price;
+                if (moreExtreme)
+                {
+                    folded[^1] = pivot;
+                }
+            }
+            else
+            {
+                folded.Add(pivot);
+            }
+        }
+
+        List<FractalPivot> chosen;
+        if (descriptor.PointCount == 1)
+        {
+            FractalPivotType? wanted = preference switch
+            {
+                HighPivot => FractalPivotType.High,
+                LowPivot => FractalPivotType.Low,
+                _ => null,
+            };
+            int index = folded.FindLastIndex(p => wanted is null || p.Type == wanted);
+            chosen = index < 0 ? new List<FractalPivot>() : new List<FractalPivot> { folded[index] };
+        }
+        else
+        {
+            chosen = folded.Count >= descriptor.PointCount ? folded.GetRange(folded.Count - descriptor.PointCount, descriptor.PointCount) : new List<FractalPivot>();
+        }
+
+        if (chosen.Count < descriptor.PointCount)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InsufficientMarketData,
+                $"The anchor window of {anchorBars} bar(s) holds {folded.Count} confirmed swing pivot(s) with {PivotLeftArgument} {left} and {PivotRightArgument} {right}; {descriptor.Name} needs {descriptor.PointCount}{(descriptor.PointCount == 1 && preference != LatestPivot ? $" of kind {preference}" : string.Empty)}.",
+                AnchorBarsArgument,
+                $"Use a larger {AnchorBarsArgument}, smaller {PivotLeftArgument} and {PivotRightArgument}, or {ExplicitMode}.");
+        }
+
+        return chosen
+            .Select(p => new ControlPoint(p.Timestamp, p.Price, p.Type == FractalPivotType.High ? "PivotHigh" : "PivotLow"))
+            .ToList();
+    }
+
+    /// <summary>
+    /// LongPosition: Stop &lt; Entry &lt; Target; ShortPosition: Target &lt; Entry &lt; Stop (the control points are Entry, Stop, Target). The calculator itself never refuses an order
+    /// (the chart and sa_get_chart_drawings must not fail on a drag or a saved drawing); this tool does, as owner decision U-11 says.
+    /// </summary>
+    private static void RequireOrderedPosition(string toolName, DrawingAnchor[] anchors)
+    {
+        bool isLong = toolName == LongPositionTool;
+        if (!isLong && toolName != ShortPositionTool)
+        {
+            return;
+        }
+
+        if (!LongShortPositionValues.IsOrdered(anchors[0].Price, anchors[1].Price, anchors[2].Price, isLong))
+        {
+            string rule = isLong ? "Stop < Entry < Target" : "Target < Entry < Stop";
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"{toolName} needs {rule} (points are Entry, Stop, Target); got Entry {anchors[0].Price.ToString(CultureInfo.InvariantCulture)}, Stop {anchors[1].Price.ToString(CultureInfo.InvariantCulture)}, Target {anchors[2].Price.ToString(CultureInfo.InvariantCulture)}.",
+                PointsArgument);
+        }
     }
 
     private static int RequireAnchorWindow(List<CandleData> bars, int anchorBars)

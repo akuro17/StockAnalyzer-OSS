@@ -242,4 +242,98 @@ public class CoreHurstExponentIndicatorTests
     {
         Assert.IsType<CoreHurstExponentIndicator>(IndicatorFactory.CreateStatic(IndicatorType.HurstExponent));
     }
+
+    [Fact]
+    public void ModifiedHurst_IsBoundedAndHandlesConstantAndInvalidInputs()
+    {
+        Assert.True(double.IsNaN(HurstMath.ModifiedRescaledRangeExponent(new double[] { 0.01, -0.01, 0.01 })));
+        Assert.True(double.IsNaN(HurstMath.ModifiedRescaledRangeExponent(new double[] { 0.01, double.NaN, 0.02, -0.01, 0.01, 0.02, -0.01, 0.01 })));
+        Assert.Equal(0.5, HurstMath.ModifiedRescaledRangeExponent(Enumerable.Repeat(0.01, 16).ToArray()), Tolerance);
+
+        // Short-range positive AR(1) returns inflate classical R/S, whereas Lo's Modified R/S attenuates via Newey-West.
+        var random = new Random(99);
+        var ar1 = new double[200];
+        ar1[0] = 0.01;
+        for (int i = 1; i < ar1.Length; i++)
+        {
+            double u1 = 1.0 - random.NextDouble();
+            double u2 = random.NextDouble();
+            double eps = 0.01 * Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
+            ar1[i] = 0.6 * ar1[i - 1] + eps;
+        }
+
+        double classical = HurstMath.Exponent(ar1);
+        double loModified = HurstMath.ModifiedRescaledRangeExponent(ar1);
+        Assert.InRange(loModified, 0.0, 1.0);
+        Assert.True(loModified < classical, $"Expected Lo modified Hurst ({loModified}) < classical R/S ({classical}) on short-range AR(1).");
+    }
+
+    [Fact]
+    public void VarianceRatio_MatchesHandBoundsAndRandomWalkNearOne()
+    {
+        Assert.True(double.IsNaN(HurstMath.VarianceRatio(NormalReturns(10, 0.01), 5, out double zInvalid)));
+        Assert.True(double.IsNaN(zInvalid));
+        Assert.True(double.IsNaN(HurstMath.VarianceRatio(Enumerable.Repeat(0.01, 20).ToArray(), 3, out _)));
+
+        // Random walk i.i.d. returns give VR(5) near 1.0
+        double vrIid = HurstMath.VarianceRatio(NormalReturns(500, 0.01), 5, out double zIid);
+        Assert.InRange(vrIid, 0.7, 1.3);
+        Assert.True(double.IsFinite(zIid));
+
+        // Mean-reverting alternating series gives VR(2) < 1 and negative Z*
+        var alternating = Enumerable.Range(0, 40).Select(i => i % 2 == 0 ? 0.02 : -0.02).ToArray();
+        double vrAlt = HurstMath.VarianceRatio(alternating, 2, out double zAlt);
+        Assert.InRange(vrAlt, 0.0, 0.25);
+        Assert.True(zAlt < -2.0);
+    }
+
+    [Fact]
+    public void DetrendedFluctuationExponent_DistinguishesPersistenceAndHandlesBoundaries()
+    {
+        Assert.True(double.IsNaN(HurstMath.DetrendedFluctuationExponent(new double[15])));
+        Assert.Equal(0.5, HurstMath.DetrendedFluctuationExponent(Enumerable.Repeat(0.01, 32).ToArray()), Tolerance);
+
+        // Long persistent blocks have higher DFA alpha than alternating mean-reverting series.
+        var persistent = Enumerable.Range(0, 128).Select(i => (i / 32) % 2 == 0 ? 0.01 : -0.01).ToArray();
+        var antiPersistent = Enumerable.Range(0, 128).Select(i => i % 2 == 0 ? 0.01 : -0.01).ToArray();
+
+        double dfaPersistent = HurstMath.DetrendedFluctuationExponent(persistent);
+        double dfaAnti = HurstMath.DetrendedFluctuationExponent(antiPersistent);
+
+        Assert.InRange(dfaPersistent, 0.0, 2.0);
+        Assert.InRange(dfaAnti, 0.0, 2.0);
+        Assert.True(dfaPersistent > dfaAnti, $"Expected persistent DFA ({dfaPersistent}) > anti-persistent ({dfaAnti}).");
+    }
+
+    [Fact]
+    public void Indicator_EmitsAllFiveSeriesWithMatchingLengthsAndBitIdenticalMain()
+    {
+        var candles = FromReturns(NormalReturns(200, 0.01));
+        var defaultIndicator = new CoreHurstExponentIndicator { Period = 64 };
+        var result = defaultIndicator.Calculate(candles);
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal(candles.Count, result.MainValues.Count);
+        Assert.Equal(candles.Count, result.GetSeries(CoreHurstExponentIndicator.ModifiedHurstSeriesName).Count);
+        Assert.Equal(candles.Count, result.GetSeries(CoreHurstExponentIndicator.VarianceRatioSeriesName).Count);
+        Assert.Equal(candles.Count, result.GetSeries(CoreHurstExponentIndicator.VarianceRatioZScoreSeriesName).Count);
+        Assert.Equal(candles.Count, result.GetSeries(CoreHurstExponentIndicator.DfaAlphaSeriesName).Count);
+
+        Assert.All(result.MainValues.Skip(64), v => Assert.NotNull(v));
+        Assert.All(result.GetSeries(CoreHurstExponentIndicator.ModifiedHurstSeriesName).Skip(64), v =>
+        {
+            Assert.NotNull(v);
+            Assert.InRange((double)v!.Value, 0.0, 1.0);
+        });
+        Assert.All(result.GetSeries(CoreHurstExponentIndicator.DfaAlphaSeriesName).Skip(64), v =>
+        {
+            Assert.NotNull(v);
+            Assert.InRange((double)v!.Value, 0.0, 2.0);
+        });
+
+        var p = new CoreHurstExponentParameter();
+        Assert.Equal("HurstExponent (100)", p.GetDisplayName("HurstExponent"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CoreHurstExponentParameter { NeweyWestLag = 101 }.Validate());
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CoreHurstExponentParameter { VarianceRatioLag = 1 }.Validate());
+    }
 }

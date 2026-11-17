@@ -27,6 +27,9 @@ public sealed class NoteDatabaseConnectionManager
     /// <summary>Name of the notes database in <see cref="DataStorageReadOnlyException.Operation"/>.</summary>
     public const string DatabaseOperation = "NoteDatabase";
 
+    /// <summary>The file name of the notes database: the one definition shared with the read-only MCP source.</summary>
+    public const string DatabaseFileName = "notes.db";
+
     private readonly IDataStorageState? _dataStorageState;
 
     /// <summary>False when the data folder is read-only: the notes database cannot be opened and the notes feature is off for this run.</summary>
@@ -46,13 +49,13 @@ public sealed class NoteDatabaseConnectionManager
         _logger = logger ?? NullLogger<NoteDatabaseConnectionManager>.Instance;
         _dataStorageState = dataStorageState;
 
-        var notesDirectory = notesDirectoryOverride ?? PathDiscovery.ResolveDataPath(null, "Data/Notes");
+        var notesDirectory = notesDirectoryOverride ?? PathDiscovery.ResolveDataPath(null, PathDiscovery.NotesDataPath);
         if (IsAvailable)
         {
             Directory.CreateDirectory(notesDirectory);
         }
 
-        DatabasePath = Path.Combine(notesDirectory, "notes.db");
+        DatabasePath = Path.Combine(notesDirectory, DatabaseFileName);
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = DatabasePath,

@@ -104,7 +104,7 @@ public class CoreSSACycleIndicator : CoreIndicatorBase
             DominantPeriod.Add(null);
         }
 
-        int l = Math.Clamp(EmbeddingDimension, 2, Math.Max(2, window / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
 
         double[]? pooledProcessed = null;

@@ -31,6 +31,12 @@ public class McpLimitsTests
         Assert.Equal(60, limits.ToolTimeoutSeconds);
         Assert.Equal(180, limits.HeavyToolTimeoutSeconds);
         Assert.Equal(60, limits.QueueWaitSeconds);
+        Assert.Equal(2, limits.MaxConcurrentReadOnlyCalls);
+        Assert.Equal(50, limits.MaxBatchIndicatorSymbols);
+        Assert.Equal(100, limits.MaxReturnedNotes);
+        Assert.Equal(365, limits.MaxCatalystHorizonDays);
+        Assert.Equal(50, limits.MaxPivotStrength);
+        Assert.Equal(5, limits.MaxBatchIndicatorTailBars);
         Assert.Equal(500, limits.MaxScreenerSymbols);
         Assert.Equal(200, limits.MaxReturnedMatches);
         Assert.Equal(4, limits.MaxSecondarySymbolsPerCall);
@@ -61,6 +67,8 @@ public class McpLimitsTests
         Assert.Equal(200, limits.DefaultChartImageBars);
         Assert.Equal(5, limits.MaxImageOverlays);
         Assert.Equal(50, limits.MaxImageMarkers);
+        Assert.Equal(50, limits.MaxImageSavedDrawings);
+        Assert.Equal(1024 * 1024, limits.MaxDrawingFileBytes);
         Assert.Equal(200, limits.MaxImageBarsListed);
         Assert.Equal(WatchlistConstants.MaxRelativePerformanceTargets, limits.MaxComparisonTargets);
         Assert.Equal(1, McpLimitsContract.MaxConcurrentToolCalls);
@@ -89,6 +97,18 @@ public class McpLimitsTests
         { nameof(McpLimits.HeavyToolTimeoutSeconds), 1801 },
         { nameof(McpLimits.QueueWaitSeconds), -1 },
         { nameof(McpLimits.QueueWaitSeconds), 601 },
+        { nameof(McpLimits.MaxReturnedNotes), 0 },
+        { nameof(McpLimits.MaxReturnedNotes), 501 },
+        { nameof(McpLimits.MaxCatalystHorizonDays), 0 },
+        { nameof(McpLimits.MaxCatalystHorizonDays), 3651 },
+        { nameof(McpLimits.MaxPivotStrength), 0 },
+        { nameof(McpLimits.MaxPivotStrength), 501 },
+        { nameof(McpLimits.MaxBatchIndicatorSymbols), 0 },
+        { nameof(McpLimits.MaxBatchIndicatorSymbols), 201 },
+        { nameof(McpLimits.MaxBatchIndicatorTailBars), 0 },
+        { nameof(McpLimits.MaxBatchIndicatorTailBars), 51 },
+        { nameof(McpLimits.MaxConcurrentReadOnlyCalls), 0 },
+        { nameof(McpLimits.MaxConcurrentReadOnlyCalls), 17 },
         { nameof(McpLimits.MaxResponseBytes), 65535 },
         { nameof(McpLimits.MaxResponseBytes), 8 * 1024 * 1024 + 1 },
         { nameof(McpLimits.MaxRequestBytes), 4095 },
@@ -153,6 +173,10 @@ public class McpLimitsTests
         { nameof(McpLimits.MaxImageOverlays), 17 },
         { nameof(McpLimits.MaxImageMarkers), -1 },
         { nameof(McpLimits.MaxImageMarkers), 501 },
+        { nameof(McpLimits.MaxImageSavedDrawings), 0 },
+        { nameof(McpLimits.MaxImageSavedDrawings), 501 },
+        { nameof(McpLimits.MaxDrawingFileBytes), 64 * 1024 - 1 },
+        { nameof(McpLimits.MaxDrawingFileBytes), 64 * 1024 * 1024 + 1 },
         { nameof(McpLimits.MaxImageBarsListed), -1 },
         { nameof(McpLimits.MaxImageBarsListed), 5001 },
     };
@@ -227,6 +251,14 @@ public class McpLimitsTests
         var smallResponse = new McpLimits { MaxResponseBytes = 64 * 1024 };
         McpLimitsContract.Validate(smallResponse);
         Assert.Equal(409, McpLimitsContract.EffectiveMaxEquityCurvePoints(smallResponse));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(16)]
+    public void TheEdgesOfTheConcurrentReadOnlyCallsBandAreAccepted(int value)
+    {
+        McpLimitsContract.Validate(new McpLimits { MaxConcurrentReadOnlyCalls = value });
     }
 
     [Fact]

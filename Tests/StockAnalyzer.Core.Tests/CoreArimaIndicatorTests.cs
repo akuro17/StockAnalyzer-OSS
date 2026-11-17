@@ -221,4 +221,55 @@ public class CoreArimaIndicatorTests
             Assert.Equal(candles[i].Close, result.MainValues[i]!.Value);
         }
     }
+
+    [Fact]
+    public void AutoOrderSelectionDisabled_PreservesSingleSeriesAndDisplayName()
+    {
+        var p = new CoreArimaParameter();
+        Assert.False(p.AutoOrderSelection);
+        Assert.Equal("ARIMA(30,1,1,1)", p.GetDisplayName("ARIMA"));
+
+        var indicator = new CoreArimaIndicator { Period = 30 };
+        var result = indicator.Calculate(GenerateCandles(45));
+
+        Assert.True(result.IsSuccessful);
+        Assert.False(result.HasSeries(CoreArimaIndicator.SelectedPSeriesName));
+        Assert.Empty(indicator.SelectedP);
+    }
+
+    [Fact]
+    public void AutoOrderSelectionEnabled_EmitsOrderSeriesSuppressedFromChart()
+    {
+        var p = new CoreArimaParameter
+        {
+            Period = 30,
+            AutoOrderSelection = true,
+            MaxAutoP = 2,
+            MaxAutoQ = 2,
+            OrderRefitInterval = 5
+        };
+        Assert.Equal("Auto-ARIMA(30, max:2,2)", p.GetDisplayName("ARIMA"));
+        Assert.True(IndicatorChartSuppression.IsSuppressed(IndicatorType.ARIMA, CoreArimaIndicator.SelectedPSeriesName));
+        Assert.True(IndicatorChartSuppression.IsSuppressed(IndicatorType.ARIMA, CoreArimaIndicator.SelectedDSeriesName));
+        Assert.True(IndicatorChartSuppression.IsSuppressed(IndicatorType.ARIMA, CoreArimaIndicator.SelectedQSeriesName));
+        Assert.False(IndicatorChartSuppression.IsSuppressed(IndicatorType.ARIMA, IndicatorResult.MainSeriesName));
+
+        var indicator = new CoreArimaIndicator();
+        indicator.Configure(p);
+        var candles = GenerateCandles(50, seed: 123);
+        var result = indicator.Calculate(candles);
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal("Auto-ARIMA(30, max:2,2)", indicator.Name);
+        Assert.True(result.HasSeries(CoreArimaIndicator.SelectedPSeriesName));
+        Assert.True(result.HasSeries(CoreArimaIndicator.SelectedDSeriesName));
+        Assert.True(result.HasSeries(CoreArimaIndicator.SelectedQSeriesName));
+
+        var selectedP = result.GetSeries(CoreArimaIndicator.SelectedPSeriesName);
+        Assert.Equal(50, selectedP.Count);
+        Assert.Null(selectedP[28]);
+        Assert.NotNull(selectedP[29]);
+        Assert.InRange(selectedP[29]!.Value, 0m, 2m);
+        Assert.NotNull(result.MainValues[29]);
+    }
 }

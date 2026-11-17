@@ -165,6 +165,43 @@ public static class TimeFrameAggregator
     }
 
     /// <summary>
+    /// <see cref="Models.CoreCandleData"/> form of <see cref="AggregateToPeriodStart(IReadOnlyList{Models.CandleData}, Models.TimeFrame)"/>: a thin adapter that converts to
+    /// <see cref="Models.CandleData"/>, aggregates with <see cref="AggregateWithMetadata"/> (the one aggregation rule) and converts back, so both forms produce bit-identical bars.
+    /// Returns <paramref name="dailyCandles"/> itself when <paramref name="targetTimeFrame"/> is not a period frame. Plain arrays and loops (no LINQ): it runs once per frame per pipeline call.
+    /// </summary>
+    public static IReadOnlyList<Models.CoreCandleData> AggregateToPeriodStart(
+        IReadOnlyList<Models.CoreCandleData> dailyCandles,
+        Models.TimeFrame targetTimeFrame)
+    {
+        if (dailyCandles == null || dailyCandles.Count == 0)
+        {
+            return Array.Empty<Models.CoreCandleData>();
+        }
+
+        if (!IsPeriodFrame(targetTimeFrame))
+        {
+            return dailyCandles;
+        }
+
+        var source = new Models.CandleData[dailyCandles.Count];
+        for (int i = 0; i < source.Length; i++)
+        {
+            var c = dailyCandles[i];
+            source[i] = new Models.CandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume);
+        }
+
+        var barsWithMeta = AggregateWithMetadata(source, targetTimeFrame);
+        var result = new Models.CoreCandleData[barsWithMeta.Count];
+        for (int i = 0; i < result.Length; i++)
+        {
+            var c = barsWithMeta[i].Candle;
+            result[i] = new Models.CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume);
+        }
+
+        return result;
+    }
+
+    /// <summary>
     /// Aggregates daily candle data into the specified target timeframe, returning both the
     /// PeriodStart-stamped candle and trading-day metadata (FirstTradingDay, LastTradingDay, ConstituentDailyBarCount).
     /// </summary>

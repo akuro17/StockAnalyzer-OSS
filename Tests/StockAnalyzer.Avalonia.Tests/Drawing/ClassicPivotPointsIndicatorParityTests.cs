@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators.Chart;
 using StockAnalyzer.Core.Models.Parameters;

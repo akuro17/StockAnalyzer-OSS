@@ -117,6 +117,23 @@ internal sealed class ToolSchema
             writer.WriteEndObject();
         });
 
+    /// <summary>An array of rows, each row an array whose items are strings or numbers (a compact table; the tool checks the row length).</summary>
+    public ToolSchema RowArray(string name, string description, bool required = false)
+        => Add(name, required, writer =>
+        {
+            writer.WriteString("type", "array");
+            writer.WriteString("description", description);
+            writer.WriteStartObject("items");
+            writer.WriteString("type", "array");
+            writer.WriteStartObject("items");
+            writer.WriteStartArray("type");
+            writer.WriteStringValue("string");
+            writer.WriteStringValue("number");
+            writer.WriteEndArray();
+            writer.WriteEndObject();
+            writer.WriteEndObject();
+        });
+
     /// <summary>An array of objects, each checked against <paramref name="item"/> (nested names are reported as <c>name[i].key</c>).</summary>
     public ToolSchema ObjectArray(string name, string description, ToolSchema item, bool required = false, int minItems = 0)
         => Add(name, required, writer =>

@@ -51,6 +51,61 @@ public static class AiChartSeriesSelector
     }
 
     /// <summary>
+    /// The series with exactly these names, in this order, cut to the drawn window; the cap of <see cref="AiChartImageStyle.MaxSeriesPerIndicator"/> and the left-out rules do not apply.
+    /// For an indicator whose series the image draws as a set (the four causal lines of Ichimoku). A name the result does not have, and a series without any value in the window, are left out.
+    /// A failed result gives no series.
+    /// </summary>
+    public static IReadOnlyList<AiChartSelectedSeries> SelectNamed(IIndicatorResult result, IReadOnlyList<string> names, int windowStart, int windowCount)
+    {
+        var selected = new List<AiChartSelectedSeries>();
+        if (!result.IsSuccessful || windowCount <= 0)
+        {
+            return selected;
+        }
+
+        foreach (string name in names)
+        {
+            if (!result.SeriesNames.Contains(name, StringComparer.Ordinal))
+            {
+                continue;
+            }
+
+            IReadOnlyList<decimal?> window = Window(result.GetSeries(name), windowStart, windowCount);
+            if (window.Any(v => v is not null))
+            {
+                selected.Add(new AiChartSelectedSeries(name, window));
+            }
+        }
+
+        return selected;
+    }
+
+    /// <summary>
+    /// The values of the histogram of an oscillator for the drawn window: the first series of the result whose name contains "Histogram" that the chart does not suppress
+    /// (<see cref="IndicatorChartSuppression"/>), or null when there is none or it has no value in the window. These are the series <see cref="Select"/> leaves out of the lines.
+    /// </summary>
+    public static IReadOnlyList<decimal?>? SelectHistogram(IndicatorType type, IIndicatorResult result, int windowStart, int windowCount, CoreIndicatorParameterBase? parameters = null)
+    {
+        if (!result.IsSuccessful || windowCount <= 0)
+        {
+            return null;
+        }
+
+        foreach (string name in result.SeriesNames)
+        {
+            if (!name.Contains("Histogram", StringComparison.OrdinalIgnoreCase) || IndicatorChartSuppression.IsSuppressed(type, name, parameters))
+            {
+                continue;
+            }
+
+            IReadOnlyList<decimal?> window = Window(result.GetSeries(name), windowStart, windowCount);
+            return window.Any(v => v is not null) ? window : null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// True for a series name that the image never draws as a line. <paramref name="parameters"/> is the parameter object of the indicator, for the series that a parameter hides
     /// (KST Signal while ShowSignal is off): the image follows the chart, and a left-out series also stays out of the image's value range, which is computed from the chosen series only.
     /// </summary>

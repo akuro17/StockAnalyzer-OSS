@@ -73,6 +73,9 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
     [NotifyPropertyChangedFor(nameof(ShowPriceTypeAndSourceIndicator))]
     [NotifyPropertyChangedFor(nameof(IsPriceTypeEnabled))]
     [NotifyPropertyChangedFor(nameof(PriceTypeToolTip))]
+    [NotifyPropertyChangedFor(nameof(ShowTimeframe))]
+    [NotifyPropertyChangedFor(nameof(IsTimeframeEnabled))]
+    [NotifyPropertyChangedFor(nameof(TimeframeToolTip))]
     [NotifyPropertyChangedFor(nameof(SelectedOverlayPanelOption))]
     [NotifyPropertyChangedFor(nameof(SelectedSourceIndicatorOption))]
     [NotifyPropertyChangedFor(nameof(SelectedDynamicPeriodDriverOption))]
@@ -177,6 +180,7 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
             if (SelectedIndicator != null)
             {
                 SelectedIndicator.SourceIndicatorId = value?.Id;
+                IndicatorTimeframeUiRules.ResetIfChained(SelectedIndicator);
 
                 if (value != null && !string.IsNullOrEmpty(value.Id))
                 {
@@ -213,6 +217,7 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
                 OnPropertyChanged(nameof(ShowPanelSelector));
                 OnPropertyChanged(nameof(IsPriceTypeEnabled));
                 OnPropertyChanged(nameof(PriceTypeToolTip));
+                NotifyTimeframeRowChanged();
                 OnPropertyChanged(nameof(HasSubWindowIndicators));
             }
         }
@@ -233,9 +238,11 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
             if (SelectedIndicator != null)
             {
                 SelectedIndicator.DynamicPeriodIndicatorId = value?.Id;
+                IndicatorTimeframeUiRules.ResetIfChained(SelectedIndicator);
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(HasDynamicPeriodDriver));
                 OnPropertyChanged(nameof(HiddenParameterTags));
+                NotifyTimeframeRowChanged();
             }
         }
     }
@@ -256,12 +263,14 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
             bool changed = DynamicPeriodDriverHelper.TrySetHasDynamicPeriodDriver(
                 SelectedIndicator, AvailableDynamicPeriodDrivers, value);
 
+            IndicatorTimeframeUiRules.ResetIfChained(SelectedIndicator);
             OnPropertyChanged();
             if (changed)
             {
                 OnPropertyChanged(nameof(SelectedDynamicPeriodDriverOption));
                 OnPropertyChanged(nameof(HiddenParameterTags));
             }
+            NotifyTimeframeRowChanged();
         }
     }
 
@@ -319,6 +328,26 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
         OnPropertyChanged(nameof(ShowPriceTypeAndSourceIndicator));
         OnPropertyChanged(nameof(IsPriceTypeEnabled));
         OnPropertyChanged(nameof(PriceTypeToolTip));
+        NotifyTimeframeRowChanged();
+    }
+
+    /// <summary>The Timeframe choices in scale order (Same as Chart, Weekly, Monthly).</summary>
+    public IReadOnlyList<IndicatorTimeframe> TimeframeOptions => IndicatorTimeframeUiRules.Options;
+
+    /// <summary>Whether the Timeframe row is shown: the setting applies to the selected indicator (see <see cref="IndicatorTimeframePolicy"/>).</summary>
+    public bool ShowTimeframe => IndicatorTimeframeUiRules.IsShown(SelectedIndicator);
+
+    /// <summary>Whether the Timeframe row can be edited: not while the indicator reads, or is read by, another indicator.</summary>
+    public bool IsTimeframeEnabled => IndicatorTimeframeUiRules.IsEnabled(SelectedIndicator, Indicators);
+
+    /// <summary>Why the row is disabled; null while it is enabled or hidden.</summary>
+    public string? TimeframeToolTip => IndicatorTimeframeUiRules.ToolTip(SelectedIndicator, Indicators);
+
+    private void NotifyTimeframeRowChanged()
+    {
+        OnPropertyChanged(nameof(ShowTimeframe));
+        OnPropertyChanged(nameof(IsTimeframeEnabled));
+        OnPropertyChanged(nameof(TimeframeToolTip));
     }
 
     /// <summary>

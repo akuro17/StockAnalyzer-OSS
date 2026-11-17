@@ -77,7 +77,47 @@ public readonly record struct HoughChannel(
     decimal Width,
     double Slope,
     double RelativePosition
-);
+)
+{
+    /// <summary>Neutral price position (percent) reported when the channel has no measurable width.</summary>
+    public const decimal NeutralPositionPercent = 50m;
+
+    /// <summary>Widths at or below this value (price units) are treated as degenerate.</summary>
+    public const decimal MinMeasurableWidth = 1e-9m;
+
+    /// <summary>Bound (percent, applied symmetrically) that keeps a far-away price from producing absurd positions.</summary>
+    public const decimal MaxPositionPercentMagnitude = 999.9m;
+
+    private const decimal PercentFactor = 100m;
+
+    /// <summary>
+    /// Channel width (upper line minus lower line, never negative) at the given bar index.
+    /// </summary>
+    public decimal GetWidthAt(int barIndex)
+    {
+        decimal width = UpperLine.GetPriceAt(barIndex) - LowerLine.GetPriceAt(barIndex);
+        return width > 0m ? width : 0m;
+    }
+
+    /// <summary>
+    /// Position of <paramref name="price"/> inside the channel at the given bar index in percent:
+    /// 0 = lower line, 100 = upper line, outside values are allowed (clamped to +-<see cref="MaxPositionPercentMagnitude"/>).
+    /// Note: <see cref="RelativePosition"/> is NOT this value; the engine stores the channel quality score there.
+    /// </summary>
+    public decimal GetPricePositionPercent(int barIndex, decimal price)
+    {
+        decimal lower = LowerLine.GetPriceAt(barIndex);
+        decimal upper = UpperLine.GetPriceAt(barIndex);
+        decimal width = upper - lower;
+        if (width <= MinMeasurableWidth)
+        {
+            return NeutralPositionPercent;
+        }
+
+        decimal percent = (price - lower) / width * PercentFactor;
+        return Math.Clamp(percent, -MaxPositionPercentMagnitude, MaxPositionPercentMagnitude);
+    }
+}
 
 /// <summary>
 /// The result container returned by HoughTransformEngine.

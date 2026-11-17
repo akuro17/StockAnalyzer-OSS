@@ -336,7 +336,17 @@ public enum IndicatorType
     [Description("Mansfield RS")] MansfieldRS,
 
     // WebAiExpansion plan 10: universe market breadth indicator (append-only).
-    [Description("Market Breadth")] MarketBreadth
+    [Description("Market Breadth")] MarketBreadth,
+
+    // Time-series volatility expansion: Heterogeneous Autoregressive Realized Volatility (append-only).
+    [Description("HAR-RV")] HarRv,
+
+    // Time-series regime change detection: Bayesian Online Changepoint Detection & Recursive CUSUM (append-only).
+    [Description("BOCPD Regime")] Bocpd,
+
+    // Cross-asset econometrics: bivariate Granger causality + Engle DCC(1,1) and Johansen VECM cointegration (append-only).
+    [Description("Granger Causality")] GrangerCausality,
+    [Description("Johansen Cointegration")] JohansenCointegration
 }
 
 public static class IndicatorTypeExtensions

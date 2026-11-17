@@ -29,7 +29,8 @@ public sealed class DrawingValueCultureTests
             new DateTime(2026, 1, 6, 12, 0, 0),
             123.456m,
             IndicatorColor.Gray,
-            new DrawingValueOptions(showExtensions));
+            new DrawingValueOptions(showExtensions),
+            DrawingValueTestCandles.Daily());
         return descriptor.Calculate(request);
     }
 

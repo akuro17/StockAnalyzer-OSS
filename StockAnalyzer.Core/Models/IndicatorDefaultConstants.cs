@@ -186,8 +186,11 @@ public static class IndicatorDefaultConstants
 
     // === VWAP (reset period, volume-weighted standard deviation bands) ===
     public const decimal VwapStdDevMultiplier = 2.0m;
-    public const double VwapMinStdDevMultiplier = 0.1;
-    public const double VwapMaxStdDevMultiplier = 10.0;
+    public const decimal VwapMinStdDevMultiplierDecimal = 0.1m;
+    public const decimal VwapMaxStdDevMultiplierDecimal = 10.0m;
+    // The double forms exist for attribute arguments ([Range], [CoreParameterRange]); they are derived from the decimal definition, so the band has one source.
+    public const double VwapMinStdDevMultiplier = (double)VwapMinStdDevMultiplierDecimal;
+    public const double VwapMaxStdDevMultiplier = (double)VwapMaxStdDevMultiplierDecimal;
 
     // === Anchored VWAP (date anchor) ===
     public const string AnchoredVwapDateFormat = "yyyy-MM-dd";
@@ -256,6 +259,14 @@ public static class IndicatorDefaultConstants
     public const int Garch11DefaultMaxIterations = EgarchDefaultMaxIterations;
     public const int Garch11MinMaxIterations = EgarchMinMaxIterations;
     public const int Garch11MaxMaxIterations = EgarchMaxMaxIterations;
+    public const double GjrGarchInitialAlpha = 0.05;
+    public const double GjrGarchInitialBeta = 0.85;
+    public const double GjrGarchInitialGamma = 0.10;
+    public const double GjrGarchMinAlpha = 1e-6;
+    public const double GjrGarchMinBeta = 1e-6;
+    public const double GjrGarchMinGamma = 0.0;
+    public const double GjrGarchMaxPersistence = 0.9999;
+    public const double GjrGarchMinOmega = 1e-12;
 
     // === Fixed 0..1 axis shared by the bounded ratio indicators (Hurst, Entropy, SSAEntropy) ===
     public const decimal UnitIntervalMinValue = 0.0m;
@@ -268,8 +279,15 @@ public static class IndicatorDefaultConstants
     public const int HurstDefaultPeriod = 100;           // log returns in the window
     public const int HurstMinPeriod = 32;                // 32 gives the sub-interval lengths 32, 16, 8: at least three points for the regression
     public const int HurstMaxPeriod = 2000;
+    public const int HurstDefaultNeweyWestLag = 0;       // 0 = automatic Newey-West bandwidth selection
+    public const int HurstMinNeweyWestLag = 0;
+    public const int HurstMaxNeweyWestLag = 100;
+    public const int HurstDefaultVarianceRatioLag = 5;
+    public const int HurstMinVarianceRatioLag = 2;
+    public const int HurstMaxVarianceRatioLag = 50;
     public const decimal HurstMinValue = UnitIntervalMinValue;
     public const decimal HurstMaxValue = UnitIntervalMaxValue;
+    public static readonly IndicatorColor HurstModifiedColor = new(255, 0, 114, 178); // Okabe-Ito Blue #0072B2
 
     // === Shannon entropy of the log returns (equal-width bins, normalised by ln(BinCount); unit: dimensionless in [0, 1]) ===
     public const int EntropyDefaultPeriod = 30;
@@ -278,8 +296,18 @@ public static class IndicatorDefaultConstants
     public const int EntropyDefaultBinCount = 10;
     public const int EntropyMinBinCount = 2;
     public const int EntropyMaxBinCount = 100;
+    public const int EntropyDefaultEmbeddingDimension = 3;
+    public const int EntropyMinEmbeddingDimension = 3;
+    public const int EntropyMaxEmbeddingDimension = 5;
+    public const int EntropyDefaultSampleDimension = 2;
+    public const int EntropyMinSampleDimension = 1;
+    public const int EntropyMaxSampleDimension = 3;
+    public const double EntropyDefaultToleranceMultiplier = 0.2;
+    public const double EntropyMinToleranceMultiplier = 0.05;
+    public const double EntropyMaxToleranceMultiplier = 1.0;
     public const decimal EntropyMinValue = UnitIntervalMinValue;
     public const decimal EntropyMaxValue = UnitIntervalMaxValue;
+    public static readonly IndicatorColor EntropyPermutationColor = new(255, 0, 158, 115); // Okabe-Ito Bluish Green #009E73
 
     // === Fourier Transform ===
     public const int FourierTransformDefaultTargetPeriod = 20;
@@ -471,6 +499,14 @@ public static class IndicatorDefaultConstants
     public const int ArimaDefaultD = 1;
     public const int ArimaDefaultQ = 1;
     public const int ArimaDefaultPeriod = 30;
+    public const bool ArimaDefaultAutoOrderSelection = false;
+    public const int ArimaDefaultMaxAutoP = 3;
+    public const int ArimaDefaultMaxAutoQ = 3;
+    public const int ArimaMinMaxAutoOrder = 1;
+    public const int ArimaMaxMaxAutoOrder = 5;
+    public const int ArimaDefaultOrderRefitInterval = 20;
+    public const int ArimaMinOrderRefitInterval = 1;
+    public const int ArimaMaxOrderRefitInterval = 100;
     public static readonly IndicatorColor ArimaColor = new(255, 30, 144, 255); // DodgerBlue #1E90FF
 
     // === ER (Kaufman Efficiency Ratio) ===
@@ -670,5 +706,90 @@ public static class IndicatorDefaultConstants
     public const int MarketBreadthAdRatioDefaultBars = StockAnalyzer.Core.Analysis.MarketBreadthCalculator.DefaultAdRatioBars;
     public const int MarketBreadthMaDefaultBars = StockAnalyzer.Core.Analysis.MarketBreadthCalculator.DefaultMaBars;
     public const int MarketBreadthHighLowDefaultBars = StockAnalyzer.Core.Analysis.MarketBreadthCalculator.DefaultHighLowBars;
+
+    // === HAR-RV (Corsi 2009 Heterogeneous Autoregressive Realized Volatility; unit: percentage volatility, annual percentage when Annualize is on) ===
+    public const int HarRvDefaultEstimationWindow = 60;
+    public const int HarRvMinEstimationWindow = 20;
+    public const int HarRvMaxEstimationWindow = 500;
+    public const int HarRvDefaultShortPeriod = 1;
+    public const int HarRvMinShortPeriod = 1;
+    public const int HarRvMaxShortPeriod = 20;
+    public const int HarRvDefaultMediumPeriod = 5;
+    public const int HarRvMinMediumPeriod = 2;
+    public const int HarRvMaxMediumPeriod = 60;
+    public const int HarRvDefaultLongPeriod = 22;
+    public const int HarRvMinLongPeriod = 5;
+    public const int HarRvMaxLongPeriod = 252;
+    public const int HarRvYangZhangInnerPeriod = 5;
+    public const double HarRvYangZhangAlphaFactor = 0.34;
+    public const double HarRvYangZhangBetaFactor = 1.34;
+    public const double HarRvRidgeLambda = 1e-8;
+    public const double HarRvSingularPivotThreshold = 1e-14;
+    public static readonly IndicatorColor HarRvShortColor = Cyan;
+    public static readonly IndicatorColor HarRvMediumColor = Orange;
+    public static readonly IndicatorColor HarRvLongColor = Purple;
+
+    // === BOCPD & Recursive CUSUM (Adams-MacKay 2007 NIG conjugate prior + Page CUSUM; unit: probability in [0, 1]) ===
+    public const double BocpdDefaultHazardLambda = 100.0;
+    public const double BocpdMinHazardLambda = 10.0;
+    public const double BocpdMaxHazardLambda = 500.0;
+    public const int BocpdDefaultMaxRunLength = 150;
+    public const int BocpdMinMaxRunLength = 20;
+    public const int BocpdMaxMaxRunLength = 250;
+    public const int BocpdDefaultWarmupPeriod = 50;
+    public const int BocpdMinWarmupPeriod = 20;
+    public const int BocpdMaxWarmupPeriod = 250;
+    public const double BocpdDefaultCusumDrift = 0.5;
+    public const double BocpdMinCusumDrift = 0.1;
+    public const double BocpdMaxCusumDrift = 2.0;
+    public const double BocpdDefaultCusumThreshold = 4.0;
+    public const double BocpdMinCusumThreshold = 1.0;
+    public const double BocpdMaxCusumThreshold = 20.0;
+    public const int BocpdShortRunCutoff = 5;
+    public const double BocpdMinStdDev = 1e-12;
+    public const double BocpdProbabilityFloor = 1e-300;
+    public const double BocpdPriorMu0 = 0.0;
+    public const double BocpdPriorKappa0 = 1.0;
+    public const double BocpdPriorAlpha0 = 1.0;
+    public const double BocpdPriorBeta0 = 1.0;
+
+    // === Granger Causality & Engle DCC(1,1) (unit: F-statistic >= 0 and DCC correlation in [-1, 1]) ===
+    public const int GrangerCausalityDefaultPeriod = 60;
+    public const int GrangerCausalityMinPeriod = 30;
+    public const int GrangerCausalityMaxPeriod = 500;
+    public const int GrangerCausalityDefaultLagOrder = 2;
+    public const int GrangerCausalityMinLagOrder = 1;
+    public const int GrangerCausalityMaxLagOrder = 5;
+    public const double GrangerCausalityRidgeLambda = 1e-9;
+    public const int GrangerCausalityMinDf2 = 5;
+    public const double GrangerCausalityRssFloor = 1e-24;
+    public const double GrangerCausalityDccEwmaLambda = 0.94;
+    public const double GrangerCausalityDccAlpha = 0.05;
+    public const double GrangerCausalityDccBeta = 0.90;
+    public const double GrangerCausalityVarianceFloor = 1e-24;
+    public const int GrangerCausalityEwmaSeedBars = 10;
+
+    // === Johansen Bivariate Cointegration (Trace / MaxEigen test statistics >= 0; Osterwald-Lenum 1992 CV95 = 15.4947) ===
+    public const int JohansenDefaultPeriod = 100;
+    public const int JohansenMinPeriod = 30;
+    public const int JohansenMaxPeriod = 500;
+    public const double JohansenMomentRidge = 1e-10;
+    public const double JohansenDeterminantFloor = 1e-24;
+    public const double JohansenMaxEigenvalueClamp = 0.999999;
+    public const double JohansenEigenvectorPivotFloor = 1e-12;
+    public const decimal JohansenCriticalValue95m = 15.4947m;
+
+    // === Causal Matrix Profile & Petitjean DBA Ensemble ===
+    public const int MatrixProfileMinQueryLength = 10;
+    public const int MatrixProfileMaxQueryLength = 200;
+    public const int MatrixProfileExclusionDivisor = 4;
+    public const int DbaDefaultTopK = 5;
+    public const int DbaMinTopK = 1;
+    public const int DbaMaxTopK = 10;
+    public const int DbaDefaultIterations = 5;
+    public const int DbaSakoeChibaDivisor = 5;
+    public const double DbaDistanceEpsilon = 1e-6;
+    public const double DbaLowerQuantile = 0.15;
+    public const double DbaUpperQuantile = 0.85;
 }
 

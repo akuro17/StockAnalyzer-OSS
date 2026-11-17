@@ -124,7 +124,7 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
         IndicatorType[] expected =
         {
             IndicatorType.Correlation, IndicatorType.CrossCorrelation, IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared,
-            IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw,
+            IndicatorType.CointegrationSpread, IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw,
             IndicatorType.RankCorrelation, IndicatorType.MansfieldRS
         };
         Assert.Equal(expected.Select(type => type.ToString()).OrderBy(n => n, StringComparer.Ordinal), names.OrderBy(n => n, StringComparer.Ordinal));
@@ -176,6 +176,31 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
         Assert.All(mcp.Series, pair => Assert.Equal(Tail, pair.Value.Count));
         Assert.Contains(mcp.Series.Values, values => values.Any(v => v is not null));
         AssertSame(mcp, chart, typeName);
+    }
+
+    /// <summary>
+    /// U-11: an indicator with its own Weekly / Monthly frame gives the tool (<c>timeFrame</c> W1 / MN1 on the indicator) and the chart path (the Timeframe of the settings, calculated by
+    /// the pipeline on the aggregated daily bars) the same values, tolerance 0. Only indicators without a recursive state are compared: a recursive one (EMA, RSI, MACD ...) depends on where the
+    /// calculation starts, and the two sides load different amounts of history, so for those the sides converge but do not match exactly (stated in the specification).
+    /// </summary>
+    [Theory]
+    [InlineData(nameof(IndicatorType.SMA), IndicatorTimeframe.Weekly, "W1")]
+    [InlineData(nameof(IndicatorType.SMA), IndicatorTimeframe.Monthly, "MN1")]
+    [InlineData(nameof(IndicatorType.WMA), IndicatorTimeframe.Weekly, "W1")]
+    [InlineData(nameof(IndicatorType.BB), IndicatorTimeframe.Weekly, "W1")]
+    [InlineData(nameof(IndicatorType.BB), IndicatorTimeframe.Monthly, "MN1")]
+    [InlineData(nameof(IndicatorType.Momentum), IndicatorTimeframe.Weekly, "W1")]
+    [InlineData(nameof(IndicatorType.ROC), IndicatorTimeframe.Monthly, "MN1")]
+    public async Task ANonRecursiveIndicatorOnAHigherFrame_GivesTheToolAndTheChartPathTheSameValues(string typeName, IndicatorTimeframe timeframe, string toolFrame)
+    {
+        var type = Enum.Parse<IndicatorType>(typeName);
+
+        Outcome mcp = await _host.McpAsync(type, parameters: null, ownTimeFrame: toolFrame);
+        Outcome chart = await _host.ChartAsync(type, secondarySymbol: null, timeframe: timeframe);
+
+        Assert.True(mcp.Successful && chart.Successful, $"{typeName} {toolFrame}: both sides must calculate (tool {mcp.Successful}, chart {chart.Successful})");
+        Assert.Contains(mcp.Series.Values, values => values.Any(v => v is not null));
+        AssertSame(mcp, chart, $"{typeName}@{toolFrame}");
     }
 
     // ---- comparison ----------------------------------------------------------------------------------------------------------------
@@ -262,9 +287,10 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
         }
 
         /// <summary>The tool's side: one indicator with default (or the given) parameters, the last <see cref="Tail"/> bars.</summary>
-        public async Task<Outcome> McpAsync(IndicatorType type, string? parameters)
+        public async Task<Outcome> McpAsync(IndicatorType type, string? parameters, string? ownTimeFrame = null)
         {
-            string indicator = $"{{\"id\":\"{Id}\",\"type\":\"{type}\"" + (parameters is null ? string.Empty : $",\"parameters\":{parameters}") + "}";
+            string indicator = $"{{\"id\":\"{Id}\",\"type\":\"{type}\"" + (parameters is null ? string.Empty : $",\"parameters\":{parameters}")
+                + (ownTimeFrame is null ? string.Empty : $",\"timeFrame\":\"{ownTimeFrame}\"") + "}";
             using JsonDocument response = (await McpTestSupport.CallAsync(
                 _runtime.Dispatcher,
                 "sa_calculate_indicators",
@@ -290,7 +316,7 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
         }
 
         /// <summary>The chart's side: the bars the tool calculated over, the default settings, the pipeline, the comparison symbol aligned as the chart aligns it.</summary>
-        public async Task<Outcome> ChartAsync(IndicatorType type, string? secondarySymbol, string? universeGroupId = null)
+        public async Task<Outcome> ChartAsync(IndicatorType type, string? secondarySymbol, string? universeGroupId = null, IndicatorTimeframe timeframe = IndicatorTimeframe.SameAsChart)
         {
             int barCount = await CalculatedBarCountAsync();
             IIndicatorFactory factory = _services.GetRequiredService<IIndicatorFactory>();
@@ -302,6 +328,7 @@ public sealed class IndicatorGuiMcpEquivalenceTests : IClassFixture<IndicatorGui
 
             CoreIndicatorSettings settings = new ScreenerCatalogProvider().GetDefaultSettings(type, factory)!;
             settings.IsEnabled = true; // what adding an indicator to the chart does
+            settings.Timeframe = timeframe;
             if (universeGroupId is not null)
             {
                 ((IUniverseBreadthParameter)settings.ParameterObject!).UniverseGroupId = universeGroupId;

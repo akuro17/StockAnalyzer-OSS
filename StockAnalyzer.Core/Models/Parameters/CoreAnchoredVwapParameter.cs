@@ -59,7 +59,7 @@ public class CoreAnchoredVwapParameter : CoreIndicatorParameterBase
         if (AnchorIndex < 0) throw new ArgumentOutOfRangeException(nameof(AnchorIndex));
         if (!string.IsNullOrEmpty(AnchorDate) && !TryParseAnchorDate(AnchorDate, out _))
             throw new ArgumentOutOfRangeException(nameof(AnchorDate));
-        if (StdDevMultiplier < (decimal)IndicatorDefaultConstants.VwapMinStdDevMultiplier || StdDevMultiplier > (decimal)IndicatorDefaultConstants.VwapMaxStdDevMultiplier)
+        if (StdDevMultiplier < IndicatorDefaultConstants.VwapMinStdDevMultiplierDecimal || StdDevMultiplier > IndicatorDefaultConstants.VwapMaxStdDevMultiplierDecimal)
             throw new ArgumentOutOfRangeException(nameof(StdDevMultiplier));
     }
 

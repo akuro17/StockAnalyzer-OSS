@@ -55,22 +55,22 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
             {
                 basePath = Path.GetDirectoryName(customPath) ?? AppDomain.CurrentDomain.BaseDirectory;
             }
-            portfolioDir = Path.Combine(basePath, "Portfolios");
+            portfolioDir = Path.Combine(basePath, Common.PathDiscovery.PortfoliosFolderName);
             if (!Directory.Exists(portfolioDir))
             {
                 Directory.CreateDirectory(portfolioDir);
             }
-            _positionsPath = Path.Combine(portfolioDir, "positions.parquet");
-            _transactionsPath = Path.Combine(portfolioDir, "transactions.parquet");
-            _cashPath = Path.Combine(portfolioDir, "cash.parquet");
-            _cashBalancesPath = Path.Combine(portfolioDir, "cash_balances.parquet");
+            _positionsPath = Path.Combine(portfolioDir, PositionsFileName);
+            _transactionsPath = Path.Combine(portfolioDir, TransactionsFileName);
+            _cashPath = Path.Combine(portfolioDir, CashFileName);
+            _cashBalancesPath = Path.Combine(portfolioDir, CashBalancesFileName);
         }
         else
         {
-            _positionsPath = Common.PathDiscovery.ResolvePortfolioPath("positions.parquet");
-            _transactionsPath = Common.PathDiscovery.ResolvePortfolioPath("transactions.parquet");
-            _cashPath = Common.PathDiscovery.ResolvePortfolioPath("cash.parquet");
-            _cashBalancesPath = Common.PathDiscovery.ResolvePortfolioPath("cash_balances.parquet");
+            _positionsPath = Common.PathDiscovery.ResolvePortfolioPath(PositionsFileName);
+            _transactionsPath = Common.PathDiscovery.ResolvePortfolioPath(TransactionsFileName);
+            _cashPath = Common.PathDiscovery.ResolvePortfolioPath(CashFileName);
+            _cashBalancesPath = Common.PathDiscovery.ResolvePortfolioPath(CashBalancesFileName);
         }
     }
 
@@ -152,7 +152,13 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
         }
     }
 
-    private const string SwapMarkerFileName = "portfolio.swap";
+    internal const string SwapMarkerFileName = "portfolio.swap";
+
+    /// <summary>The names of the stored portfolio files: the one definition shared with the read-only MCP source.</summary>
+    internal const string PositionsFileName = "positions.parquet";
+    internal const string TransactionsFileName = "transactions.parquet";
+    internal const string CashFileName = "cash.parquet";
+    internal const string CashBalancesFileName = "cash_balances.parquet";
     private const string BackupSuffix = ".bak";
 
     // Every stored amount, quantity, price and rate is DECIMAL(precision, scale); the SQL type text is built from these two numbers only.
@@ -584,27 +590,35 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
         return names;
     }
 
-    private async Task<Portfolio?> LoadPortfolioFromParquetAsync(CancellationToken ct)
+    private Task<Portfolio?> LoadPortfolioFromParquetAsync(CancellationToken ct)
+        => LoadFromParquetFilesAsync(_dbManager, _positionsPath, _transactionsPath, _cashPath, _cashBalancesPath, ct);
+
+    /// <summary>
+    /// The one reader of the stored portfolio files (the application and the read-only MCP source both use it): reads the files as they are, creates and writes nothing.
+    /// The returned portfolio holds positions, history and cash only; closed positions and realized profit are rebuilt from the history by <c>PortfolioManager.RebuildPortfolio</c>.
+    /// </summary>
+    internal static async Task<Portfolio?> LoadFromParquetFilesAsync(
+        DuckDBConnectionManager dbManager, string positionsPath, string transactionsPath, string cashPath, string cashBalancesPath, CancellationToken ct)
     {
         decimal cashBalance = 0m;
         var cashBalances = new Dictionary<CurrencyCode, decimal>();
         var positions = new Dictionary<string, Position>();
         var history = new List<Transaction>();
 
-        using (await _dbManager.AcquireLockAsync("LoadPortfolio", ct).ConfigureAwait(false))
+        using (await dbManager.AcquireLockAsync("LoadPortfolio", ct).ConfigureAwait(false))
         {
-            var connection = _dbManager.GetConnection();
+            var connection = dbManager.GetConnection();
             if (connection is not DbConnection dbConnection)
             {
                 throw new InvalidOperationException("Connection must be a DbConnection to support async operations.");
             }
 
             // 1. Read Cash
-            if (File.Exists(_cashBalancesPath))
+            if (File.Exists(cashBalancesPath))
             {
                 using (var command = dbConnection.CreateCommand())
                 {
-                    command.CommandText = $"SELECT Currency, Balance FROM read_parquet('{FormatDuckDbPath(_cashBalancesPath)}')";
+                    command.CommandText = $"SELECT Currency, Balance FROM read_parquet('{FormatDuckDbPath(cashBalancesPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -619,7 +633,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
             {
                 using (var command = dbConnection.CreateCommand())
                 {
-                    command.CommandText = $"SELECT CashBalance FROM read_parquet('{FormatDuckDbPath(_cashPath)}')";
+                    command.CommandText = $"SELECT CashBalance FROM read_parquet('{FormatDuckDbPath(cashPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     if (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -631,12 +645,12 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
 
             // 2. Read Positions. The layout is decided from the column names, so a row that fails to convert fails the read instead of silently
             // switching to the older layout and dropping its newer columns.
-            var positionColumns = await ReadColumnNamesAsync(dbConnection, _positionsPath, ct).ConfigureAwait(false);
+            var positionColumns = await ReadColumnNamesAsync(dbConnection, positionsPath, ct).ConfigureAwait(false);
             using (var command = dbConnection.CreateCommand())
             {
                 if (positionColumns.IsSupersetOf(PositionMultiCurrencyColumns))
                 {
-                    command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort, AverageCostAmount, AverageCostCurrency FROM read_parquet('{FormatDuckDbPath(_positionsPath)}')";
+                    command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort, AverageCostAmount, AverageCostCurrency FROM read_parquet('{FormatDuckDbPath(positionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -653,7 +667,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                 else
                 {
                     // Layout written before the cost currency existed: only the first four columns.
-                    command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort FROM read_parquet('{FormatDuckDbPath(_positionsPath)}')";
+                    command.CommandText = $"SELECT Ticker, Quantity, AverageCostPerUnit, IsShort FROM read_parquet('{FormatDuckDbPath(positionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -668,7 +682,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
             }
 
             // 3. Read Transactions
-            var transactionColumns = await ReadColumnNamesAsync(dbConnection, _transactionsPath, ct).ConfigureAwait(false);
+            var transactionColumns = await ReadColumnNamesAsync(dbConnection, transactionsPath, ct).ConfigureAwait(false);
             using (var command = dbConnection.CreateCommand())
             {
                 if (transactionColumns.IsSupersetOf(TransactionMultiCurrencyColumns))
@@ -676,7 +690,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                     command.CommandText = $@"SELECT 
                         ExecutedAt, Type, Ticker, Quantity, PricePerUnit, CashAmount, Fee, Notes, TargetPrice, StopLoss, Id, RelatedTransactionId,
                         PriceAmount, PriceCurrency, CommissionAmount, CommissionCurrency, AppliedRateRate, AppliedRateBase, AppliedRateQuote
-                        FROM read_parquet('{FormatDuckDbPath(_transactionsPath)}')";
+                        FROM read_parquet('{FormatDuckDbPath(transactionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
@@ -722,7 +736,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                     // Layout written before the multi-currency columns existed: only the first twelve columns.
                     command.CommandText = $@"SELECT
                         ExecutedAt, Type, Ticker, Quantity, PricePerUnit, CashAmount, Fee, Notes, TargetPrice, StopLoss, Id, RelatedTransactionId
-                        FROM read_parquet('{FormatDuckDbPath(_transactionsPath)}')";
+                        FROM read_parquet('{FormatDuckDbPath(transactionsPath)}')";
                     using var reader = await command.ExecuteReaderAsync(ct).ConfigureAwait(false);
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {

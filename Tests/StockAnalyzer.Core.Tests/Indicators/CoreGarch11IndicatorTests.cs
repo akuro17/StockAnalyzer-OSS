@@ -306,4 +306,75 @@ public class CoreGarch11IndicatorTests
         Assert.False(settings.IsOverlay);
         Assert.IsType<CoreGarch11Parameter>(settings.ParameterObject);
     }
+
+    // ----- GJR-GARCH(1,1) asymmetric leverage extension -----
+
+    [Fact]
+    public void GjrLeverageDisabled_PreservesDisplayNameAndSingleMainSeries()
+    {
+        var p = new CoreGarch11Parameter();
+        Assert.False(p.EnableGjrLeverage);
+        Assert.Equal("Garch11 (250)", p.GetDisplayName("Garch11"));
+
+        var indicator = new CoreGarch11Indicator { Period = 60 };
+        var result = indicator.Calculate(CandlesFromReturns(SimulateReturns(90)));
+
+        Assert.True(result.IsSuccessful);
+        Assert.False(result.HasSeries(CoreGarch11Indicator.GjrGammaSeriesName));
+        Assert.Empty(indicator.GjrGamma);
+    }
+
+    [Fact]
+    public void GjrLeverageEnabled_ExposesGjrGammaSeriesSuppressedOnChart_AndCapturesAsymmetry()
+    {
+        var p = new CoreGarch11Parameter { Period = 60, EnableGjrLeverage = true };
+        Assert.Equal("Garch11 (60, GJR)", p.GetDisplayName("Garch11"));
+        Assert.True(IndicatorChartSuppression.IsSuppressed(IndicatorType.Garch11, CoreGarch11Indicator.GjrGammaSeriesName));
+        Assert.False(IndicatorChartSuppression.IsSuppressed(IndicatorType.Garch11, IndicatorResult.MainSeriesName));
+
+        // Simulate GJR-GARCH returns where negative shocks strongly raise subsequent variance.
+        var rng = new Random(2026);
+        int n = 220;
+        var returns = new double[n];
+        double variance = 1.0;
+        for (int i = 0; i < n; i++)
+        {
+            double u1 = 1.0 - rng.NextDouble();
+            double u2 = rng.NextDouble();
+            double z = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Cos(2.0 * Math.PI * u2);
+            double r = Math.Sqrt(variance) * z;
+            returns[i] = r;
+            variance = 0.08 + (0.04 + (r < 0.0 ? 0.24 : 0.0)) * r * r + 0.72 * variance;
+        }
+
+        var indicator = new CoreGarch11Indicator { Period = 80, RefitInterval = 20, MaxIterations = 500, EnableGjrLeverage = true };
+        var result = indicator.Calculate(CandlesFromReturns(returns));
+
+        Assert.True(result.IsSuccessful);
+        Assert.Equal("GJR-GARCH(1,1)", indicator.Name);
+        Assert.True(result.HasSeries(CoreGarch11Indicator.GjrGammaSeriesName));
+        var gammaSeries = result.GetSeries(CoreGarch11Indicator.GjrGammaSeriesName);
+        Assert.Equal(result.MainValues.Count, gammaSeries.Count);
+        Assert.Null(gammaSeries[79]);
+        Assert.NotNull(gammaSeries[80]);
+        Assert.True(gammaSeries[80]!.Value > 0m);
+
+        // NextVarianceStepGjr must weigh identical magnitude negative shock higher than positive shock for gamma > 0.
+        double negStep = Garch11Math.NextVarianceStepGjr(0.1, 0.05, 0.85, 0.15, -2.0, 1.0);
+        double posStep = Garch11Math.NextVarianceStepGjr(0.1, 0.05, 0.85, 0.15, +2.0, 1.0);
+        Assert.True(negStep > posStep);
+        Assert.Equal(posStep + 0.15 * 4.0, negStep, 12);
+    }
+
+    [Fact]
+    public void GjrTryFit_LowIterationCap_FallsBackToInitialParameters()
+    {
+        double[] returns = SimulateReturns(100);
+        bool ok = Garch11Math.TryFitGjr(returns, 0, returns.Length, maxIterations: 1, out GjrGarchFit fit);
+
+        Assert.True(ok);
+        Assert.Equal(IndicatorDefaultConstants.GjrGarchInitialAlpha, fit.Alpha, 12);
+        Assert.Equal(IndicatorDefaultConstants.GjrGarchInitialBeta, fit.Beta, 12);
+        Assert.Equal(IndicatorDefaultConstants.GjrGarchInitialGamma, fit.Gamma, 12);
+    }
 }

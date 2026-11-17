@@ -33,7 +33,10 @@ public class DefaultCoreIndicatorSettingsTests
         // + 1 HurstExponent + 1 Entropy (disabled by default, added 2026-11-14, plan 04 T4/T5).
         // + 1 MansfieldRS (disabled by default, added 2026-11-15, plan 09 T1).
         // + 1 McClellanOscillator + 1 MarketBreadth (disabled by default, added 2026-11-15, plan 10 T2/T3).
-        Assert.Equal(111, defaults.Count);
+        // + 1 HarRv (disabled by default, added 2026-11-16, Plan 02 Task 2B).
+        // + 1 Bocpd (disabled by default, added 2026-11-16, Plan 04 Task 4B).
+        // + 2 GrangerCausality + JohansenCointegration (disabled by default, added 2026-11-16, Plan 05 Task 5A).
+        Assert.Equal(115, defaults.Count);
     }
 
     [Fact]
@@ -1018,5 +1021,42 @@ public class DefaultCoreIndicatorSettingsTests
 
         Assert.Single(legacySetting.SeriesColors);
         Assert.Equal(IndicatorResult.MainSeriesName, legacySetting.SeriesColors[0].Name);
+    }
+
+    [Fact]
+    public void GrangerAndJohansenDefaultSettings_ExcludeSuppressedSeries_AndAutoHealRemovesOrphans()
+    {
+        var defaults = DefaultCoreIndicatorSettings.GetDefault();
+        var grangerDefaults = defaults.Single(s => s.TypeEnum == IndicatorType.GrangerCausality);
+        var johansenDefaults = defaults.Single(s => s.TypeEnum == IndicatorType.JohansenCointegration);
+
+        Assert.DoesNotContain(grangerDefaults.SeriesColors, sc => sc.Name == CoreGrangerCausalityIndicator.DccCorrelationSeriesName);
+        Assert.DoesNotContain(johansenDefaults.SeriesColors, sc => sc.Name == CoreJohansenCointegrationIndicator.CointegrationSpreadZScoreSeriesName);
+
+        var legacyGranger = new CoreIndicatorSettings
+        {
+            TypeEnum = IndicatorType.GrangerCausality,
+            ParameterObject = new CoreGrangerCausalityParameter(),
+            SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+            {
+                new() { Name = "Values", DisplayName = "Granger F (Y -> X)", Color = IndicatorDefaultConstants.CointegrationSpreadColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                new() { Name = CoreGrangerCausalityIndicator.DccCorrelationSeriesName, DisplayName = "DCC(1,1) Corr", Color = IndicatorDefaultConstants.CointegrationSpreadAdfColor, TargetSeries = new List<string> { CoreGrangerCausalityIndicator.DccCorrelationSeriesName } }
+            }
+        };
+        DefaultCoreIndicatorSettings.AutoHeal(legacyGranger);
+        Assert.DoesNotContain(legacyGranger.SeriesColors, sc => sc.Name == CoreGrangerCausalityIndicator.DccCorrelationSeriesName);
+
+        var legacyJohansen = new CoreIndicatorSettings
+        {
+            TypeEnum = IndicatorType.JohansenCointegration,
+            ParameterObject = new CoreJohansenCointegrationParameter(),
+            SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+            {
+                new() { Name = "Values", DisplayName = "Trace Stat (r=0)", Color = IndicatorDefaultConstants.CointegrationSpreadColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                new() { Name = CoreJohansenCointegrationIndicator.CointegrationSpreadZScoreSeriesName, DisplayName = "Coint Spread Z-Score", Color = IndicatorDefaultConstants.CointegrationSpreadAdfColor, TargetSeries = new List<string> { CoreJohansenCointegrationIndicator.CointegrationSpreadZScoreSeriesName } }
+            }
+        };
+        DefaultCoreIndicatorSettings.AutoHeal(legacyJohansen);
+        Assert.DoesNotContain(legacyJohansen.SeriesColors, sc => sc.Name == CoreJohansenCointegrationIndicator.CointegrationSpreadZScoreSeriesName);
     }
 }

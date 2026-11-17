@@ -29,7 +29,7 @@ public static class FeatureChannelNormalizationDefaults
         // ratios and percentages
         IndicatorType.ROC, IndicatorType.PPO, IndicatorType.PriceOscillator, IndicatorType.TRIX, IndicatorType.BollingerBandsRatio,
         IndicatorType.BandWidth, IndicatorType.NATR, IndicatorType.MaDeviationRate, IndicatorType.VolumeROC, IndicatorType.ZScore,
-        IndicatorType.HurstExponent, IndicatorType.Entropy, IndicatorType.MansfieldRS,
+        IndicatorType.HurstExponent, IndicatorType.Entropy, IndicatorType.MansfieldRS, IndicatorType.Bocpd,
     };
 
     /// <summary>Values in price units (the channel moves with the price level).</summary>
@@ -42,7 +42,7 @@ public static class FeatureChannelNormalizationDefaults
         IndicatorType.BB, IndicatorType.Keltner, IndicatorType.Donchian, IndicatorType.Envelope, IndicatorType.Ichimoku,
         IndicatorType.VWAP, IndicatorType.AnchoredVWAP, IndicatorType.RollingVWAP, IndicatorType.ParabolicSAR, IndicatorType.SuperTrend,
         IndicatorType.Highest, IndicatorType.Lowest, IndicatorType.TrueHigh, IndicatorType.TrueLow, IndicatorType.LinearRegression,
-        IndicatorType.KalmanFilter, IndicatorType.HilbertTrendline,
+        IndicatorType.KalmanFilter, IndicatorType.ARIMA, IndicatorType.HilbertTrendline,
         IndicatorType.ChandelierExit, IndicatorType.T3, IndicatorType.McGinleyDynamic,
         IndicatorType.VolumeProfileLevels,
     };

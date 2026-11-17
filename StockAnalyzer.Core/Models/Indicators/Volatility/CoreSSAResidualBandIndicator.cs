@@ -98,7 +98,7 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
             BandWidth.Add(null);
         }
 
-        int l = Math.Clamp(EmbeddingDimension, 2, Math.Max(2, window / 2));
+        int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
         int r = Math.Clamp(NumComponents, 1, Math.Min(l, k));
 

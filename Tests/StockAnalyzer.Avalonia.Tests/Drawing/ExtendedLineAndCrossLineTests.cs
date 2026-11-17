@@ -114,7 +114,7 @@ public sealed class ExtendedLineAndCrossLineTests
     }
 
     [Fact]
-    public void GetExtendedSegment_RightAndLeft_ExtendOnlyTheirOwnEndInClickOrder()
+    public void GetExtendedSegment_RightAndLeft_ExtendScreenRightAndLeftRegardlessOfClickOrder()
     {
         var s1 = new Point(100, 150);
         var s2 = new Point(300, 250);
@@ -127,10 +127,14 @@ public sealed class ExtendedLineAndCrossLineTests
         AssertPoint(0, 100, left.Start);
         Assert.Equal(s2, left.End);
 
-        // Reversed click order: "Right" now means beyond the point that was clicked second (the left one on screen).
+        // Reversed click order (P1 on the right, P2 on the left): "Right" still extends toward the right edge, and "Left" toward the left edge.
         var reversedRight = TrendLineObject.GetExtendedSegment(s2, s1, Clip, LineExtendMode.Right);
-        Assert.Equal(s2, reversedRight.Start);
-        AssertPoint(0, 100, reversedRight.End);
+        Assert.Equal(s1, reversedRight.Start);
+        AssertPoint(800, 500, reversedRight.End);
+
+        var reversedLeft = TrendLineObject.GetExtendedSegment(s2, s1, Clip, LineExtendMode.Left);
+        AssertPoint(0, 100, reversedLeft.Start);
+        Assert.Equal(s2, reversedLeft.End);
     }
 
     [Fact]

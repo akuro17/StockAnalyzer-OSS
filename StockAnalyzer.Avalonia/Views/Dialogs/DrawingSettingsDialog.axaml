@@ -278,19 +278,28 @@
                     </Border>
                 </StackPanel>
 
-                <!-- ARIMA Projection Settings (P, D, Q, Price Type) -->
+                <!-- ARIMA Projection Settings (Auto-Order, P, D, Q, Price Type) -->
                 <StackPanel x:Name="ArimaProjectionPanel" Spacing="8" IsVisible="False">
                     <Border Classes="SettingsCard">
                         <StackPanel Spacing="10">
-<Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                    <CheckBox x:Name="ArimaAutoOrderCheck" IsChecked="False" Content="{l:Localize Setting_Arima_AutoOrderSelection}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32" IsVisible="{Binding #ArimaAutoOrderCheck.IsChecked}">
+                        <TextBlock Text="{l:Localize Setting_Arima_MaxAutoP}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                        <NumericUpDown x:Name="ArimaMaxAutoPSpin" Minimum="1" Maximum="5" Increment="1" Value="3" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32" IsVisible="{Binding #ArimaAutoOrderCheck.IsChecked}">
+                        <TextBlock Text="{l:Localize Setting_Arima_MaxAutoQ}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                        <NumericUpDown x:Name="ArimaMaxAutoQSpin" Minimum="1" Maximum="5" Increment="1" Value="3" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32" IsEnabled="{Binding !#ArimaAutoOrderCheck.IsChecked}">
                         <TextBlock Text="{l:Localize Setting_Arima_P}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <NumericUpDown x:Name="ArimaPSpin" Minimum="0" Maximum="5" Increment="1" Value="1" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
-                    <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32" IsEnabled="{Binding !#ArimaAutoOrderCheck.IsChecked}">
                         <TextBlock Text="{l:Localize Setting_Arima_D}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <NumericUpDown x:Name="ArimaDSpin" Minimum="0" Maximum="2" Increment="1" Value="1" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
-                    <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32" IsEnabled="{Binding !#ArimaAutoOrderCheck.IsChecked}">
                         <TextBlock Text="{l:Localize Setting_Arima_Q}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <NumericUpDown x:Name="ArimaQSpin" Minimum="0" Maximum="5" Increment="1" Value="1" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
@@ -475,6 +484,15 @@
                         <TextBlock Text="{l:Localize Setting_Ssa_NumComponents}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <NumericUpDown x:Name="SsaNumComponentsSpin" Minimum="1" Maximum="10" Increment="1" Value="2" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
+                    <CheckBox x:Name="SsaProjectionAutoRankCheck" Content="{l:Localize Setting_Ssa_AutoRank}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32" IsVisible="{Binding #SsaProjectionAutoRankCheck.IsChecked}">
+                        <TextBlock Text="{l:Localize Setting_Ssa_RankMethod}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="SsaProjectionRankMethodCombo" SelectedIndex="2" Width="150" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <ComboBoxItem Content="{l:Localize Setting_Ssa_Rank_Kaiser}"/>
+                            <ComboBoxItem Content="{l:Localize Setting_Ssa_Rank_Scree}"/>
+                            <ComboBoxItem Content="{l:Localize Setting_Ssa_Rank_Energy}"/>
+                        </ComboBox>
+                    </Grid>
                     <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                         <TextBlock Text="{l:Localize Label_PriceType}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <ComboBox x:Name="SsaProjectionPriceFieldCombo" SelectedIndex="4" Width="150" HorizontalAlignment="Right" VerticalAlignment="Center">
@@ -572,6 +590,15 @@
                     <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                         <TextBlock Text="{l:Localize Setting_Ssa_NumComponents}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <NumericUpDown x:Name="SsaMultiNumComponentsSpin" Minimum="1" Maximum="50" Increment="1" Value="2" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <CheckBox x:Name="SsaMultiAutoRankCheck" Content="{l:Localize Setting_Ssa_AutoRank}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32" IsVisible="{Binding #SsaMultiAutoRankCheck.IsChecked}">
+                        <TextBlock Text="{l:Localize Setting_Ssa_RankMethod}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="SsaMultiRankMethodCombo" SelectedIndex="2" Width="150" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <ComboBoxItem Content="{l:Localize Setting_Ssa_Rank_Kaiser}"/>
+                            <ComboBoxItem Content="{l:Localize Setting_Ssa_Rank_Scree}"/>
+                            <ComboBoxItem Content="{l:Localize Setting_Ssa_Rank_Energy}"/>
+                        </ComboBox>
                     </Grid>
                     <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                         <TextBlock Text="{l:Localize Label_PriceType}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
@@ -1072,13 +1099,7 @@
                         <StackPanel Spacing="10">
 <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                         <TextBlock Text="{l:Localize Setting_FibRetracement_ExtendMode}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
-                        <ComboBox x:Name="FibRetracementExtendModeCombo" SelectedIndex="0" Width="150" HorizontalAlignment="Right" VerticalAlignment="Center">
-                            <ComboBoxItem Content="{l:Localize Setting_FibRetracement_ExtendMode_Default}"/>
-                            <ComboBoxItem Content="{l:Localize Setting_FibRetracement_ExtendMode_CyclicLines}"/>
-                            <ComboBoxItem Content="{l:Localize Setting_FibRetracement_ExtendMode_FibTimeZone}"/>
-                            <ComboBoxItem Content="{l:Localize Setting_FibRetracement_ExtendMode_ExtendRight}"/>
-                            <ComboBoxItem Content="{l:Localize Setting_FibRetracement_ExtendMode_ExtendBoth}"/>
-                        </ComboBox>
+                        <ComboBox x:Name="FibRetracementExtendModeCombo" Width="150" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
                     <CheckBox x:Name="FibRetracementShowExtensionsCheck" Content="{l:Localize Setting_FibRetracement_ShowExtensions}" Foreground="{DynamicResource Brush.Text.Primary}"/>
                         </StackPanel>
@@ -1129,7 +1150,7 @@
                     </Border>
                 </StackPanel>
 
-                <!-- DTW Projection extra settings: Fill Color, Fill Opacity, Projection Length -->
+                <!-- DTW Projection extra settings: Fill Color, Fill Opacity, Projection Length, DBA Ensemble -->
                 <StackPanel x:Name="DtwExtraSettingsPanel" Spacing="8" IsVisible="False">
                     <Border Classes="SettingsCard">
                         <StackPanel Spacing="10">
@@ -1144,6 +1165,11 @@
                     <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                         <TextBlock Text="{l:Localize Label_ProjectionSteps}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <NumericUpDown x:Name="DtwFutureStepsSpin" Minimum="1" Maximum="100" Value="20" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <CheckBox x:Name="DtwUseDbaEnsembleCheck" IsChecked="False" Content="{l:Localize Setting_Dtw_UseDbaEnsemble}" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32" IsEnabled="{Binding #DtwUseDbaEnsembleCheck.IsChecked}">
+                        <TextBlock Text="{l:Localize Setting_Dtw_TopKMatches}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                        <NumericUpDown x:Name="DtwTopKMatchesSpin" Minimum="1" Maximum="10" Increment="1" Value="5" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
                         </StackPanel>
                     </Border>
@@ -1430,6 +1456,7 @@
                     <CheckBox x:Name="HoughAutoLinesShowChannelsCheck" Content="{l:Localize Setting_Hough_ShowChannels}" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}"/>
                     <CheckBox x:Name="HoughAutoLinesShowLabelsCheck" Content="{l:Localize Setting_Hough_ShowLabels}" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}"/>
                     <CheckBox x:Name="HoughAutoLinesExtendRightCheck" Content="{l:Localize Setting_Hough_ExtendLinesToRight}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                    <CheckBox x:Name="HoughAutoLinesUseVolumeWeightCheck" Content="{l:Localize Setting_Hough_UseVolumeWeight}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
 
                     <!-- Trend Line Visibility & Color -->
                     <CheckBox x:Name="HoughAutoLinesShowTrendCheck" Content="{l:Localize Setting_Hough_TrendLine}" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}"/>

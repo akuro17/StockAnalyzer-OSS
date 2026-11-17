@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using StockAnalyzer.Core.MathUtils;
+using StockAnalyzer.Core.Models.Indicators;
 
 namespace StockAnalyzer.Core.Analysis;
 
@@ -13,6 +14,13 @@ namespace StockAnalyzer.Core.Analysis;
 public static class HilbertDecompositionEngine
 {
     private const decimal Epsilon = 1e-10m;
+
+    // Ehlers 2-pole high-pass detrender (HilbertDetrendMode.HighPass).
+    private const double HighPassDampingFactor = 0.707;
+    private const int HighPassMinCutoffPeriod = 4;
+    private const double HighPassDegenerateCosine = 1e-9;
+    // Unreachable defensive guard (cutoff >= 4 keeps cos(theta) near 0.44 or more): alpha 0.07 is about a 61-bar cutoff, not a design value.
+    private const decimal HighPassFallbackAlpha = 0.07m;
 
     /// <summary>
     /// Decomposes the input price series into full Hilbert analytic signal metrics.
@@ -73,6 +81,13 @@ public static class HilbertDecompositionEngine
             const decimal a = 0.0962m;
             const decimal b = 0.5769m;
 
+            HilbertDetrendMode detrendMode = parameters.DetrendMode;
+            decimal hpC0 = 0m, hpC1 = 0m, hpC2 = 0m;
+            if (detrendMode == HilbertDetrendMode.HighPass)
+            {
+                (hpC0, hpC1, hpC2) = GetHighPassCoefficients(parameters.DefaultPeriod);
+            }
+
             decimal i2Prev = 0m;
             decimal q2Prev = 0m;
             decimal smoothRe = 0m;
@@ -94,10 +109,23 @@ public static class HilbertDecompositionEngine
                 // Adaptive amplitude correction factor
                 decimal ampCorr = 0.075m * prevPeriod + 0.54m;
 
-                // Step 2: 7-tap FIR Detrender
-                detrender[t] = t >= 6
-                    ? (a * smooth[t] + b * smooth[t - 2] - b * smooth[t - 4] - a * smooth[t - 6]) * ampCorr
-                    : 0m;
+                // Step 2: Detrender (selected by parameters.DetrendMode; FirDetrender is the canonical default)
+                switch (detrendMode)
+                {
+                    case HilbertDetrendMode.Wma4:
+                        detrender[t] = t >= 3 ? prices[t] - smooth[t] : 0m;
+                        break;
+                    case HilbertDetrendMode.HighPass:
+                        detrender[t] = t >= 2
+                            ? hpC0 * (prices[t] - 2m * prices[t - 1] + prices[t - 2]) + hpC1 * detrender[t - 1] - hpC2 * detrender[t - 2]
+                            : 0m;
+                        break;
+                    default:
+                        detrender[t] = t >= 6
+                            ? (a * smooth[t] + b * smooth[t - 2] - b * smooth[t - 4] - a * smooth[t - 6]) * ampCorr
+                            : 0m;
+                        break;
+                }
 
                 // Step 3: Quadrature Q1 and In-Phase I1
                 q1[t] = t >= 6
@@ -246,5 +274,26 @@ public static class HilbertDecompositionEngine
         {
             ArrayPool<decimal>.Shared.Return(pool, clearArray: false);
         }
+    }
+
+    /// <summary>
+    /// Coefficients of the Ehlers 2-pole high-pass filter with cutoff period max(4, <paramref name="defaultPeriod"/>):
+    /// HP[t] = c0 * (x[t] - 2x[t-1] + x[t-2]) + c1 * HP[t-1] - c2 * HP[t-2].
+    /// alpha comes from trigonometric functions of a dimensionless parameter (computed once in <c>double</c>, narrowed through
+    /// <see cref="IndicatorCalculationHelper.ToDecimalOrNull"/>); a null or degenerate alpha uses <see cref="HighPassFallbackAlpha"/>.
+    /// The coefficients themselves are evaluated in <c>decimal</c> from that alpha.
+    /// </summary>
+    private static (decimal C0, decimal C1, decimal C2) GetHighPassCoefficients(int defaultPeriod)
+    {
+        double cutoff = Math.Max(HighPassMinCutoffPeriod, defaultPeriod);
+        double theta = HighPassDampingFactor * MathConstants.TwoPi / cutoff;
+        double cosTheta = Math.Cos(theta);
+        decimal alpha = Math.Abs(cosTheta) < HighPassDegenerateCosine
+            ? HighPassFallbackAlpha
+            : IndicatorCalculationHelper.ToDecimalOrNull((cosTheta + Math.Sin(theta) - 1.0) / cosTheta) ?? HighPassFallbackAlpha;
+
+        decimal halfTerm = 1m - alpha / 2m;
+        decimal oneMinus = 1m - alpha;
+        return (halfTerm * halfTerm, 2m * oneMinus, oneMinus * oneMinus);
     }
 }

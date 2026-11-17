@@ -37,7 +37,8 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
         IOptions<StockAnalyzer.Core.Models.Settings.DrawingInteractionSettings>? drawingInteractionOptions = null,
         IOptions<StockAnalyzer.Core.Models.Settings.PythonIpcSettings>? pythonIpcOptions = null,
         IOptions<ScatterMetricSettings>? scatterMetricOptions = null,
-        IOptions<StockAnalyzer.Core.Models.Settings.PythonPackageCheckSettings>? pythonPackageCheckOptions = null)
+        IOptions<StockAnalyzer.Core.Models.Settings.PythonPackageCheckSettings>? pythonPackageCheckOptions = null,
+        IOptions<MarketDataSettings>? marketDataOptions = null)
     {
         _logger = logger ?? NullLogger<StockAnalyzerSettings>.Instance;
         _configuration = configuration;
@@ -69,6 +70,13 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
                      _scatterMetricSettings.MaxOffset,
                      _scatterMetricSettings.MaxParallelism,
                      _scatterMetricSettings.InputDebounceMilliseconds))
+        {
+            _logger.LogWarning("{SettingWarning}", warning);
+        }
+
+        // Only the numeric RS Rating band is checked here; MarketDataSettings.Validate() (paths) runs where the data provider is built.
+        _marketDataSettings = marketDataOptions?.Value ?? new MarketDataSettings();
+        foreach (var warning in StockAnalyzer.Core.Models.Settings.RsRatingSettingsValidator.Validate(_marketDataSettings.RsRatingMaxStaleCalendarDays, _marketDataSettings.RsRatingRefreshDebounceMilliseconds))
         {
             _logger.LogWarning("{SettingWarning}", warning);
         }
@@ -106,6 +114,7 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
 
     private readonly ScreenerSettings _screenerSettings;
     private readonly ScatterMetricSettings _scatterMetricSettings;
+    private readonly MarketDataSettings _marketDataSettings;
     private readonly SmartScreenerSettings _smartScreenerSettings;
     private readonly InfrastructureSettings _infrastructureSettings;
     private readonly MarketStructureSettings _marketStructureSettings;
@@ -200,6 +209,8 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
     public int ScatterMaxMetricOffset => _scatterMetricSettings.MaxOffset;
     public int ScatterMaxParallelism => _scatterMetricSettings.MaxParallelism;
     public int ScatterInputDebounceMilliseconds => _scatterMetricSettings.InputDebounceMilliseconds;
+
+    public int RsRatingRefreshDebounceMilliseconds => _marketDataSettings.RsRatingRefreshDebounceMilliseconds;
 
     public int PatternRecognitionMinWindow => _patternRecognitionSettings.MinWindow;
     public int PatternRecognitionMaxWindow => _patternRecognitionSettings.MaxWindow;
