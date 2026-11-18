@@ -54,7 +54,7 @@ public class GranvilleLawCondition : IScreeningCondition
 
         // 1. Instantiate the indicator
         var indicator = new CoreGranvilleLawIndicator();
-        
+
         // 2. Configure with parameters
         indicator.Configure(_parameters);
 
@@ -70,18 +70,18 @@ public class GranvilleLawCondition : IScreeningCondition
         {
             GranvilleLawConditionType.AnyBuy => latestSignal.HasValue && latestSignal.Value > 0,
             GranvilleLawConditionType.AnySell => latestSignal.HasValue && latestSignal.Value < 0,
-            
+
             // For specific buy signals
-            GranvilleLawConditionType.Buy1_NewBuy or 
-            GranvilleLawConditionType.Buy2_PullbackBuy or 
-            GranvilleLawConditionType.Buy3_BounceBuy or 
+            GranvilleLawConditionType.Buy1_NewBuy or
+            GranvilleLawConditionType.Buy2_PullbackBuy or
+            GranvilleLawConditionType.Buy3_BounceBuy or
             GranvilleLawConditionType.Buy4_ReversalBuy =>
                 latestSignal.HasValue && (int)latestSignal.Value == (int)_targetType,
 
             // For specific sell signals
-            GranvilleLawConditionType.Sell1_NewSell or 
-            GranvilleLawConditionType.Sell2_ReturnSell or 
-            GranvilleLawConditionType.Sell3_RejectionSell or 
+            GranvilleLawConditionType.Sell1_NewSell or
+            GranvilleLawConditionType.Sell2_ReturnSell or
+            GranvilleLawConditionType.Sell3_RejectionSell or
             GranvilleLawConditionType.Sell4_ReversalSell =>
                 latestSignal.HasValue && (int)latestSignal.Value == (int)_targetType,
 

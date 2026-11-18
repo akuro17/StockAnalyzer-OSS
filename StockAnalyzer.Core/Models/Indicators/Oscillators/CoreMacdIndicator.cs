@@ -131,9 +131,9 @@ public class CoreMacdIndicator : CoreIndicatorBase
                 else
                 {
                     // Warmup initialization
-                     decimal sum = 0;
-                     for (int j = 0; j < FastPeriod; j++) sum += candles[i - j].Close;
-                     fastEma = sum / FastPeriod;
+                    decimal sum = 0;
+                    for (int j = 0; j < FastPeriod; j++) sum += candles[i - j].Close;
+                    fastEma = sum / FastPeriod;
                 }
             }
 
@@ -147,15 +147,15 @@ public class CoreMacdIndicator : CoreIndicatorBase
             }
             else
             {
-                 if (slowEma.HasValue)
+                if (slowEma.HasValue)
                     slowEma = (close - slowEma.Value) * slowMultiplier + slowEma.Value;
-                 else
-                 {
-                     // Warmup initialization
-                     decimal sum = 0;
-                     for (int j = 0; j < SlowPeriod; j++) sum += candles[i - j].Close;
-                     slowEma = sum / SlowPeriod;
-                 }
+                else
+                {
+                    // Warmup initialization
+                    decimal sum = 0;
+                    for (int j = 0; j < SlowPeriod; j++) sum += candles[i - j].Close;
+                    slowEma = sum / SlowPeriod;
+                }
             }
 
             // --- MACD Line ---
@@ -189,7 +189,7 @@ public class CoreMacdIndicator : CoreIndicatorBase
                             signal = macdBuffer.Average();
                         else
                             signal = macd; // Fallback
-                            
+
                         macdBuffer.Clear(); // No longer needed
                     }
                     else

@@ -48,7 +48,7 @@ public partial class HeikinAshiSettingsViewModel : BaseChartSettingsViewModel
         };
     }
 
-    public override bool IsModified => 
+    public override bool IsModified =>
         HeikinBullishColor != _initialHeikinBullishColor ||
         HeikinBearishColor != _initialHeikinBearishColor;
 }

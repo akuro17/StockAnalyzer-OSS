@@ -774,8 +774,10 @@ public class PredictionService : IPredictionService, IDisposable
                     {
                         destination[row * width + group * baseWidth + ch] = ch switch
                         {
-                            0 => (double)candle.Open, 1 => (double)candle.High,
-                            2 => (double)candle.Low, 3 => (double)candle.Close,
+                            0 => (double)candle.Open,
+                            1 => (double)candle.High,
+                            2 => (double)candle.Low,
+                            3 => (double)candle.Close,
                             _ => (double)candle.Volume,
                         };
                     }
@@ -803,48 +805,48 @@ public class PredictionService : IPredictionService, IDisposable
                 break;
 
             case ChannelNormalization.WindowMinMax:
-            {
-                double min = double.MaxValue, max = double.MinValue;
-                for (int i = 0; i < n; i++)
                 {
-                    if (raw[i] < min) min = raw[i];
-                    if (raw[i] > max) max = raw[i];
-                }
+                    double min = double.MaxValue, max = double.MinValue;
+                    for (int i = 0; i < n; i++)
+                    {
+                        if (raw[i] < min) min = raw[i];
+                        if (raw[i] > max) max = raw[i];
+                    }
 
-                double range = max - min;
-                for (int i = 0; i < n; i++)
-                {
-                    destination[(i * channelCount) + channelIndex] = range <= IMLDataProcessor.Epsilon
-                        ? 0.5f
-                        : (float)Math.Clamp((raw[i] - min) / range, 0.0, 1.0);
-                }
+                    double range = max - min;
+                    for (int i = 0; i < n; i++)
+                    {
+                        destination[(i * channelCount) + channelIndex] = range <= IMLDataProcessor.Epsilon
+                            ? 0.5f
+                            : (float)Math.Clamp((raw[i] - min) / range, 0.0, 1.0);
+                    }
 
-                break;
-            }
+                    break;
+                }
 
             case ChannelNormalization.WindowZScore:
-            {
-                double sum = 0.0;
-                for (int i = 0; i < n; i++) sum += raw[i];
-                double mu = sum / n;
-
-                double sumSq = 0.0;
-                for (int i = 0; i < n; i++)
                 {
-                    double diff = raw[i] - mu;
-                    sumSq += diff * diff;
-                }
+                    double sum = 0.0;
+                    for (int i = 0; i < n; i++) sum += raw[i];
+                    double mu = sum / n;
 
-                double sigma = Math.Sqrt(sumSq / n);
-                for (int i = 0; i < n; i++)
-                {
-                    destination[(i * channelCount) + channelIndex] = sigma <= IMLDataProcessor.Epsilon
-                        ? 0.0f
-                        : (float)((raw[i] - mu) / sigma);
-                }
+                    double sumSq = 0.0;
+                    for (int i = 0; i < n; i++)
+                    {
+                        double diff = raw[i] - mu;
+                        sumSq += diff * diff;
+                    }
 
-                break;
-            }
+                    double sigma = Math.Sqrt(sumSq / n);
+                    for (int i = 0; i < n; i++)
+                    {
+                        destination[(i * channelCount) + channelIndex] = sigma <= IMLDataProcessor.Epsilon
+                            ? 0.0f
+                            : (float)((raw[i] - mu) / sigma);
+                    }
+
+                    break;
+                }
 
             default:
                 throw new InvalidOperationException($"Unsupported channel normalization '{normalization}'.");
@@ -879,36 +881,36 @@ public class PredictionService : IPredictionService, IDisposable
             scaler.Transform(raw, destination.Slice(0, featureCount));
         }
         else switch (mode)
-        {
-            case PredictionFeatureMode.LogReturn:
-                dataProcessor.ComputeLogReturns(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
-                break;
-            case PredictionFeatureMode.LogReturnOhlc:
-                dataProcessor.ComputeLogReturnsOhlc(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
-                break;
-            case PredictionFeatureMode.ZScoreStandardized:
-                dataProcessor.NormalizeZScoreOhlcv(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
-                break;
-            case PredictionFeatureMode.ZScoreOhlcvJoint:
-                dataProcessor.ComputeJointZScoreOhlcv(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
-                break;
-            case PredictionFeatureMode.ComposedFeatures:
-                if (featureSpec is null)
-                {
-                    throw new InvalidOperationException("A FeatureSpec is required for ComposedFeatures mode.");
-                }
+            {
+                case PredictionFeatureMode.LogReturn:
+                    dataProcessor.ComputeLogReturns(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                    break;
+                case PredictionFeatureMode.LogReturnOhlc:
+                    dataProcessor.ComputeLogReturnsOhlc(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                    break;
+                case PredictionFeatureMode.ZScoreStandardized:
+                    dataProcessor.NormalizeZScoreOhlcv(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                    break;
+                case PredictionFeatureMode.ZScoreOhlcvJoint:
+                    dataProcessor.ComputeJointZScoreOhlcv(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                    break;
+                case PredictionFeatureMode.ComposedFeatures:
+                    if (featureSpec is null)
+                    {
+                        throw new InvalidOperationException("A FeatureSpec is required for ComposedFeatures mode.");
+                    }
 
-                if (indicatorFactory is null && featureSpec.Channels.Any(c => c.Kind == FeatureChannelKind.Indicator))
-                {
-                    throw new InvalidOperationException("An indicator factory is required to compute indicator channels.");
-                }
+                    if (indicatorFactory is null && featureSpec.Channels.Any(c => c.Kind == FeatureChannelKind.Indicator))
+                    {
+                        throw new InvalidOperationException("An indicator factory is required to compute indicator channels.");
+                    }
 
-                BuildComposedTensor(candleList, startIndex, runtimeWindow, featureSpec, indicatorFactory!, destination.Slice(0, featureCount));
-                break;
-            default:
-                dataProcessor.NormalizeCandles(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
-                break;
-        }
+                    BuildComposedTensor(candleList, startIndex, runtimeWindow, featureSpec, indicatorFactory!, destination.Slice(0, featureCount));
+                    break;
+                default:
+                    dataProcessor.NormalizeCandles(candleList, startIndex, runtimeWindow, destination.Slice(0, featureCount));
+                    break;
+            }
     }
 
     public async Task<PredictionResult> PredictAsync(IEnumerable<CandleData> candles)

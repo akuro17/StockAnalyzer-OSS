@@ -17,16 +17,18 @@ public sealed partial class RlGenerationAndQValueTests
 {
     private RlArtifactSettings ArtifactSettings => new(Path.Combine(_root, "config", RlArtifactSettings.FileName));
     private static readonly RlArtifactPolicy CompleteArtifactPolicy = new(NonactiveRetentionDays: 0, NonactiveKeepCount: 0);
-    private ModelGenerationRegistry ArtifactRegistry(Func<DateTimeOffset>? clock = null, Func<string,long>? free = null, Action<string>? delete = null)
+    private ModelGenerationRegistry ArtifactRegistry(Func<DateTimeOffset>? clock = null, Func<string, long>? free = null, Action<string>? delete = null)
     {
-        var registry = new ModelGenerationRegistry(RegistryRoot) {
+        var registry = new ModelGenerationRegistry(RegistryRoot)
+        {
             ArtifactClock = clock ?? (() => DateTimeOffset.UtcNow),
             ArtifactFreeSpace = free ?? (_ => long.MaxValue),
             DeleteDirectory = delete ?? (path => Directory.Delete(path, true)),
         };
         registry.ConfigureRlArtifacts(_root, ArtifactSettings); return registry;
     }
-    [Fact] public async Task R08_DefaultsSavedSnapshotSchemaAndRequiredRetention()
+    [Fact]
+    public async Task R08_DefaultsSavedSnapshotSchemaAndRequiredRetention()
     {
         var settings = ArtifactSettings;
         Assert.Equal(10m, settings.Snapshot.QuotaGiB); Assert.Equal(5m, settings.Snapshot.MinimumFreeGiB);
@@ -35,14 +37,15 @@ public sealed partial class RlGenerationAndQValueTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => registry.BeginRlArtifactRunAsync(Guid.NewGuid(), _root));
         Assert.False(Directory.Exists(Path.Combine(_root, RlFiles.TrainingFolder, RlFiles.RlFolder)));
         var policy = CompleteArtifactPolicy with { QuotaGiB = 2m, MinimumFreeGiB = 1m, FailedRetentionDays = 9 };
-        await registry.SaveRlArtifactPolicyAsync(policy); Assert.Equal(policy, new RlArtifactSettings(Path.Combine(_root,"config",RlArtifactSettings.FileName)).Snapshot);
+        await registry.SaveRlArtifactPolicyAsync(policy); Assert.Equal(policy, new RlArtifactSettings(Path.Combine(_root, "config", RlArtifactSettings.FileName)).Snapshot);
         Assert.Throws<ArgumentException>(() => (policy with { NonactiveKeepCount = -1 }).Validate());
         Assert.Throws<ArgumentException>(() => (policy with { QuotaGiB = 0 }).Validate());
         Assert.Throws<OverflowException>(() => (policy with { QuotaGiB = decimal.MaxValue }).Validate());
-        File.WriteAllText(Path.Combine(_root,"config",RlArtifactSettings.FileName), "{\"schemaVersion\":999,\"policy\":{}}");
+        File.WriteAllText(Path.Combine(_root, "config", RlArtifactSettings.FileName), "{\"schemaVersion\":999,\"policy\":{}}");
         Assert.Throws<InvalidDataException>(() => settings.Snapshot);
     }
-    [Fact] public async Task R08_AdmissionChecksQuotaAndFreeSpaceBoundariesAndFreezesPolicy()
+    [Fact]
+    public async Task R08_AdmissionChecksQuotaAndFreeSpaceBoundariesAndFreezesPolicy()
     {
         long free = 5 * RlArtifactSettings.BytesPerGiB;
         using var registry = ArtifactRegistry(free: _ => free);
@@ -60,7 +63,8 @@ public sealed partial class RlGenerationAndQValueTests
         await registry.SaveRlArtifactPolicyAsync(CompleteArtifactPolicy with { QuotaGiB = (used + 1m) / RlArtifactSettings.BytesPerGiB });
         using var next = await registry.BeginRlArtifactRunAsync(Guid.NewGuid(), _root); Assert.NotNull(next);
     }
-    [Fact] public async Task R08_RunningFailedAndUnknownRunsRemainProtectedUntilEligible()
+    [Fact]
+    public async Task R08_RunningFailedAndUnknownRunsRemainProtectedUntilEligible()
     {
         var now = DateTimeOffset.UtcNow;
         using var registry = ArtifactRegistry(() => now);
@@ -74,14 +78,15 @@ public sealed partial class RlGenerationAndQValueTests
         var review = registry.PreviewRlArtifacts()!; Assert.True(review.Entries.Single().Candidate);
         var result = await registry.CleanupRlArtifactsAsync(review); Assert.Single(result.Deleted); Assert.False(Directory.Exists(run.Directory));
         string unknown = Path.Combine(_root, RlFiles.TrainingFolder, RlFiles.RlFolder, Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(unknown); File.WriteAllText(Path.Combine(unknown,"job.json"), "{}");
+        Directory.CreateDirectory(unknown); File.WriteAllText(Path.Combine(unknown, "job.json"), "{}");
         Assert.Contains("UnknownOwner", registry.PreviewRlArtifacts()!.Entries.Single().Reasons);
         using var interrupted = await registry.BeginRlArtifactRunAsync(Guid.NewGuid(), _root); string directory = interrupted!.Directory;
         interrupted.Dispose(); now += TimeSpan.FromDays(30);
         var expired = registry.PreviewRlArtifacts()!.Entries.Single(e => e.Path == directory);
         Assert.True(expired.Candidate); Assert.Equal(new[] { "ExpiredFailure" }, expired.Reasons.ToArray()); // owner decision A3-3: no longer protected forever
     }
-    [Fact] public async Task R08_ARunThatEndedWithoutATerminalStateExpiresLikeAFailedRunUnlessOwnedOrResumable()
+    [Fact]
+    public async Task R08_ARunThatEndedWithoutATerminalStateExpiresLikeAFailedRunUnlessOwnedOrResumable()
     {
         var now = DateTimeOffset.UtcNow;
         using var registry = ArtifactRegistry(() => now);
@@ -102,7 +107,8 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.Single(result.Deleted); Assert.False(Directory.Exists(goneDirectory)); Assert.True(Directory.Exists(liveDirectory));
         live.Dispose();
     }
-    [Fact] public async Task R08_ExpiryAndLatestCountAreBothRequiredAndActivationNeverAutomaticallyPrunes()
+    [Fact]
+    public async Task R08_ExpiryAndLatestCountAreBothRequiredAndActivationNeverAutomaticallyPrunes()
     {
         var now = DateTimeOffset.UtcNow;
         using var registry = ArtifactRegistry(() => now);
@@ -120,7 +126,8 @@ public sealed partial class RlGenerationAndQValueTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => registry.CleanupRlArtifactsAsync(review));
         Assert.Contains("Active", registry.PreviewRlArtifacts()!.Entries.Single(e => e.Id == third.ModelId).Reasons);
     }
-    [Fact] public async Task R08_ChangedLeasePolicyAndCandidateRejectStaleReview()
+    [Fact]
+    public async Task R08_ChangedLeasePolicyAndCandidateRejectStaleReview()
     {
         var now = DateTimeOffset.UtcNow.AddDays(2);
         using var registry = ArtifactRegistry(() => now);
@@ -133,11 +140,12 @@ public sealed partial class RlGenerationAndQValueTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => registry.CleanupRlArtifactsAsync(review));
         await registry.SaveRlArtifactPolicyAsync(CompleteArtifactPolicy);
         review = registry.PreviewRlArtifacts()!;
-        File.AppendAllText(Path.Combine(RegistryRoot,RlFiles.RlFolder,generation.ModelId,RlFiles.Model), "changed");
+        File.AppendAllText(Path.Combine(RegistryRoot, RlFiles.RlFolder, generation.ModelId, RlFiles.Model), "changed");
         await Assert.ThrowsAsync<InvalidOperationException>(() => registry.CleanupRlArtifactsAsync(review));
         Assert.True(Directory.Exists(review.Entries.Single().Path));
     }
-    [Fact] public async Task R08_BackupRollbackAndCorruptPointerProtectionOverrideExpiry()
+    [Fact]
+    public async Task R08_BackupRollbackAndCorruptPointerProtectionOverrideExpiry()
     {
         var now = DateTimeOffset.UtcNow.AddDays(10);
         using var registry = ArtifactRegistry(() => now);
@@ -146,104 +154,111 @@ public sealed partial class RlGenerationAndQValueTests
         var second = await registry.RegisterRlAsync(Candidate(.02m).Directory); await registry.ActivateRlAsync(second.ModelId);
         var preview = registry.PreviewRlArtifacts()!;
         var prior = preview.Entries.Single(e => e.Id == first.ModelId);
-        Assert.Contains("Rollback",prior.Reasons); Assert.Contains("Backup",prior.Reasons); Assert.False(prior.Candidate);
-        File.WriteAllText(Path.Combine(RegistryRoot,RlFiles.RlFolder,RlFiles.Active), "{");
+        Assert.Contains("Rollback", prior.Reasons); Assert.Contains("Backup", prior.Reasons); Assert.False(prior.Candidate);
+        File.WriteAllText(Path.Combine(RegistryRoot, RlFiles.RlFolder, RlFiles.Active), "{");
         Assert.DoesNotContain(registry.PreviewRlArtifacts()!.Entries, e => e.Candidate);
     }
-    [Fact] public async Task R08_PartialDeletionRetiresCatalogCountsRemainingBytesAndRetries()
+    [Fact]
+    public async Task R08_PartialDeletionRetiresCatalogCountsRemainingBytesAndRetries()
     {
         var now = DateTimeOffset.UtcNow.AddDays(2); bool fail = true;
-        using var registry = ArtifactRegistry(() => now, delete: path => {
+        using var registry = ArtifactRegistry(() => now, delete: path =>
+        {
             if (fail) { fail = false; File.Delete(Directory.EnumerateFiles(path).First()); throw new IOException("owned partial deletion failure"); }
-            Directory.Delete(path,true);
+            Directory.Delete(path, true);
         });
         await registry.SaveRlArtifactPolicyAsync(CompleteArtifactPolicy);
         var generation = await registry.RegisterRlAsync(Candidate(.01m).Directory);
         long before = registry.PreviewRlArtifacts()!.UsedBytes;
         var failed = await registry.CleanupRlArtifactsAsync(registry.PreviewRlArtifacts()!);
         Assert.Single(failed.Failures); Assert.Empty(failed.Deleted); Assert.Null(registry.GetRlGeneration(generation.ModelId));
-        var pending = registry.PreviewRlArtifacts()!; Assert.Equal(failed.RemainingBytes,pending.UsedBytes);
-        Assert.Contains(pending.Entries,e=>e.Kind==RlArtifactKind.PendingDeletion.ToString() && e.Candidate);
+        var pending = registry.PreviewRlArtifacts()!; Assert.Equal(failed.RemainingBytes, pending.UsedBytes);
+        Assert.Contains(pending.Entries, e => e.Kind == RlArtifactKind.PendingDeletion.ToString() && e.Candidate);
         using var reopened = ArtifactRegistry(() => now);
         var result = await reopened.CleanupRlArtifactsAsync(reopened.PreviewRlArtifacts()!);
         Assert.Single(result.Deleted); Assert.Empty(result.Failures); Assert.True(result.RemainingBytes < before);
     }
-    [Fact] public async Task R08_ExplicitRootsAndCancellationCannotBroadenDeletion()
+    [Fact]
+    public async Task R08_ExplicitRootsAndCancellationCannotBroadenDeletion()
     {
         using var registry = ArtifactRegistry();
         await registry.SaveRlArtifactPolicyAsync(CompleteArtifactPolicy);
-        await Assert.ThrowsAsync<InvalidDataException>(() => registry.BeginRlArtifactRunAsync(Guid.NewGuid(), Path.Combine(_root,"other")));
+        await Assert.ThrowsAsync<InvalidDataException>(() => registry.BeginRlArtifactRunAsync(Guid.NewGuid(), Path.Combine(_root, "other")));
         var generation = await registry.RegisterRlAsync(Candidate(.01m).Directory);
         var review = registry.PreviewRlArtifacts()!;
         using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => registry.CleanupRlArtifactsAsync(review,cancellation.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => registry.CleanupRlArtifactsAsync(review, cancellation.Token));
         Assert.NotNull(registry.GetRlGeneration(generation.ModelId));
-        Assert.Throws<InvalidDataException>(() => {
+        Assert.Throws<InvalidDataException>(() =>
+        {
             using var overlapping = new ModelGenerationRegistry(RegistryRoot);
-            overlapping.ConfigureRlArtifacts(Path.Combine(RegistryRoot,"inside"),ArtifactSettings);
+            overlapping.ConfigureRlArtifacts(Path.Combine(RegistryRoot, "inside"), ArtifactSettings);
         });
     }
-    [Fact] public async Task R08_CrossProcessRunAndGenerationLeasesProtectManualCleanup()
+    [Fact]
+    public async Task R08_CrossProcessRunAndGenerationLeasesProtectManualCleanup()
     {
         var now = DateTimeOffset.UtcNow;
         using var registry = ArtifactRegistry(() => now);
         await registry.SaveRlArtifactPolicyAsync(CompleteArtifactPolicy with { FailedRetentionDays = 0 });
-        string ready=Path.Combine(_root,"ready"), trigger=Path.Combine(_root,"trigger"); Guid runId=Guid.NewGuid();
-        var worker=StartWorker("artifact-run",runId.ToString("N"),ready,trigger);
+        string ready = Path.Combine(_root, "ready"), trigger = Path.Combine(_root, "trigger"); Guid runId = Guid.NewGuid();
+        var worker = StartWorker("artifact-run", runId.ToString("N"), ready, trigger);
         try
         {
             await WaitFile(ready);
-            Assert.Contains("Lease",registry.PreviewRlArtifacts()!.Entries.Single().Reasons);
-            File.WriteAllText(trigger,"finish"); await EndWorker(worker);
+            Assert.Contains("Lease", registry.PreviewRlArtifacts()!.Entries.Single().Reasons);
+            File.WriteAllText(trigger, "finish"); await EndWorker(worker);
         }
         catch { StopWorker(worker); throw; }
-        now=DateTimeOffset.UtcNow.AddDays(2);
+        now = DateTimeOffset.UtcNow.AddDays(2);
         Assert.True(registry.PreviewRlArtifacts()!.Entries.Single().Candidate);
-        var generation=await registry.RegisterRlAsync(Candidate(.01m).Directory);
-        var reviewed=registry.PreviewRlArtifacts()!;
-        File.Delete(ready); File.Delete(trigger); worker=StartWorker("lease",generation.ModelId,ready,trigger);
+        var generation = await registry.RegisterRlAsync(Candidate(.01m).Directory);
+        var reviewed = registry.PreviewRlArtifacts()!;
+        File.Delete(ready); File.Delete(trigger); worker = StartWorker("lease", generation.ModelId, ready, trigger);
         try
         {
             await WaitFile(ready);
-            await Assert.ThrowsAsync<InvalidOperationException>(()=>registry.CleanupRlArtifactsAsync(reviewed));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => registry.CleanupRlArtifactsAsync(reviewed));
             Assert.NotNull(registry.GetRlGeneration(generation.ModelId));
-            File.WriteAllText(trigger,"release"); await EndWorker(worker);
+            File.WriteAllText(trigger, "release"); await EndWorker(worker);
         }
         catch { StopWorker(worker); throw; }
-        var result=await registry.CleanupRlArtifactsAsync(registry.PreviewRlArtifacts()!);
-        Assert.Equal(2,result.Deleted.Length);
+        var result = await registry.CleanupRlArtifactsAsync(registry.PreviewRlArtifacts()!);
+        Assert.Equal(2, result.Deleted.Length);
     }
-    [Fact] public void R08_OtherVolumeIsRejectedBeforeCreatingArtifacts()
+    [Fact]
+    public void R08_OtherVolumeIsRejectedBeforeCreatingArtifacts()
     {
-        string? volume=DriveInfo.GetDrives().Where(d=>d.IsReady && !string.Equals(d.Name,Path.GetPathRoot(_root),StringComparison.OrdinalIgnoreCase)).Select(d=>d.Name).FirstOrDefault();
+        string? volume = DriveInfo.GetDrives().Where(d => d.IsReady && !string.Equals(d.Name, Path.GetPathRoot(_root), StringComparison.OrdinalIgnoreCase)).Select(d => d.Name).FirstOrDefault();
         if (volume is null) return;
-        using var registry=new ModelGenerationRegistry(RegistryRoot);
-        Assert.Throws<InvalidDataException>(()=>registry.ConfigureRlArtifacts(Path.Combine(volume,"sa_owned_volume_probe_"+Guid.NewGuid().ToString("N")),ArtifactSettings));
+        using var registry = new ModelGenerationRegistry(RegistryRoot);
+        Assert.Throws<InvalidDataException>(() => registry.ConfigureRlArtifacts(Path.Combine(volume, "sa_owned_volume_probe_" + Guid.NewGuid().ToString("N")), ArtifactSettings));
     }
-    [Fact] public async Task R08_LinkIntroducedAfterReviewCannotExposeOutsideFilesToCleanup()
+    [Fact]
+    public async Task R08_LinkIntroducedAfterReviewCannotExposeOutsideFilesToCleanup()
     {
-        var now=DateTimeOffset.UtcNow;
-        using var registry=ArtifactRegistry(()=>now);
+        var now = DateTimeOffset.UtcNow;
+        using var registry = ArtifactRegistry(() => now);
         await registry.SaveRlArtifactPolicyAsync(CompleteArtifactPolicy);
-        var run=await registry.BeginRlArtifactRunAsync(Guid.NewGuid(),_root);
-        await run!.FinishAsync(RlArtifactRunState.Failed); run.Dispose(); now+=TimeSpan.FromDays(8);
-        var review=registry.PreviewRlArtifacts()!;
-        string outside=Path.Combine(_root,"outside"), link=Path.Combine(run.Directory,"link");
-        Directory.CreateDirectory(outside); string sentinel=Path.Combine(outside,"sentinel"); File.WriteAllText(sentinel,"preserve");
-        if(OperatingSystem.IsWindows())
+        var run = await registry.BeginRlArtifactRunAsync(Guid.NewGuid(), _root);
+        await run!.FinishAsync(RlArtifactRunState.Failed); run.Dispose(); now += TimeSpan.FromDays(8);
+        var review = registry.PreviewRlArtifacts()!;
+        string outside = Path.Combine(_root, "outside"), link = Path.Combine(run.Directory, "link");
+        Directory.CreateDirectory(outside); string sentinel = Path.Combine(outside, "sentinel"); File.WriteAllText(sentinel, "preserve");
+        if (OperatingSystem.IsWindows())
         {
-            var start=new System.Diagnostics.ProcessStartInfo("powershell.exe") { UseShellExecute=false,CreateNoWindow=true,RedirectStandardOutput=true,RedirectStandardError=true };
+            var start = new System.Diagnostics.ProcessStartInfo("powershell.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
             start.ArgumentList.Add("-NoProfile"); start.ArgumentList.Add("-NonInteractive"); start.ArgumentList.Add("-Command");
-            start.ArgumentList.Add("$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path '"+link.Replace("'","''")+"' -Target '"+outside.Replace("'","''")+"' | Out-Null");
-            using var process=System.Diagnostics.Process.Start(start)!;
-            var stdout=process.StandardOutput.ReadToEndAsync(); var stderr=process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync(); Assert.True(process.ExitCode==0,await stdout+await stderr);
+            start.ArgumentList.Add("$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path '" + link.Replace("'", "''") + "' -Target '" + outside.Replace("'", "''") + "' | Out-Null");
+            using var process = System.Diagnostics.Process.Start(start)!;
+            var stdout = process.StandardOutput.ReadToEndAsync(); var stderr = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync(); Assert.True(process.ExitCode == 0, await stdout + await stderr);
         }
-        else Directory.CreateSymbolicLink(link,outside);
+        else Directory.CreateSymbolicLink(link, outside);
         try
         {
-            await Assert.ThrowsAsync<InvalidDataException>(()=>registry.CleanupRlArtifactsAsync(review));
-            Assert.Equal("preserve",File.ReadAllText(sentinel)); Assert.True(Directory.Exists(run.Directory));
+            await Assert.ThrowsAsync<InvalidDataException>(() => registry.CleanupRlArtifactsAsync(review));
+            Assert.Equal("preserve", File.ReadAllText(sentinel)); Assert.True(Directory.Exists(run.Directory));
         }
         finally { Directory.Delete(link); }
     }
@@ -261,7 +276,8 @@ public sealed partial class RlGenerationAndQValueTests
     }
     private static readonly RlArtifactPolicy KeepEverythingPolicy = new(NonactiveRetentionDays: 365, NonactiveKeepCount: 50);
 
-    [Fact] public async Task R10_OnlyAGenerationWhoseWorkFolderIsGoneIsReportedAsWithoutWorkFolder()
+    [Fact]
+    public async Task R10_OnlyAGenerationWhoseWorkFolderIsGoneIsReportedAsWithoutWorkFolder()
     {
         using var registry = ArtifactRegistry();
         await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
@@ -275,7 +291,8 @@ public sealed partial class RlGenerationAndQValueTests
         using var unconfigured = new ModelGenerationRegistry(RegistryRoot);
         Assert.Empty(unconfigured.RlModelIdsWithoutWorkFolder());
     }
-    [Fact] public async Task R10_RemovingAGenerationWithoutWorkFolderDeletesItEvenInsideTheRetentionPeriod()
+    [Fact]
+    public async Task R10_RemovingAGenerationWithoutWorkFolderDeletesItEvenInsideTheRetentionPeriod()
     {
         using var registry = ArtifactRegistry();
         await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
@@ -294,7 +311,8 @@ public sealed partial class RlGenerationAndQValueTests
     }
     private ModelGenerationRegistry ArtifactRegistryOnTheSameStore() => new(RegistryRoot);
 
-    [Fact] public async Task R10_RemovalIsRefusedWhileTheWorkFolderExists_AndNothingIsDeleted()
+    [Fact]
+    public async Task R10_RemovalIsRefusedWhileTheWorkFolderExists_AndNothingIsDeleted()
     {
         using var registry = ArtifactRegistry();
         await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
@@ -310,7 +328,8 @@ public sealed partial class RlGenerationAndQValueTests
         var missing = await registry.RemoveRlGenerationAsync(new string('a', 64));
         Assert.False(missing.Removed); Assert.Contains("UnknownOwner", missing.Reasons);
     }
-    [Fact] public async Task R10_RemovalIsRefusedForAnInUseGeneration()
+    [Fact]
+    public async Task R10_RemovalIsRefusedForAnInUseGeneration()
     {
         using var registry = ArtifactRegistry();
         await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
@@ -324,7 +343,8 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.NotNull(registry.GetRlGeneration(inUse.ModelId));
         Assert.True((await registry.RemoveRlGenerationAsync(inUse.ModelId)).Removed);
     }
-    [Fact] public async Task R10_TheOwnerCanRemoveTheActiveAndAPreviousGeneration_AndNoPointerKeepsNamingIt()
+    [Fact]
+    public async Task R10_TheOwnerCanRemoveTheActiveAndAPreviousGeneration_AndNoPointerKeepsNamingIt()
     {
         using var registry = ArtifactRegistry();
         await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
@@ -346,7 +366,8 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.Empty(reopened.ListRl()); Assert.Null(reopened.RlActiveId);
         Assert.False(reopened.PreviewRlRecovery(RlFiles.Target).Unavailable);
     }
-    [Fact] public async Task R10_AFailedRemovalLeavesTheActiveAndPreviousPointersAsTheyWere()
+    [Fact]
+    public async Task R10_AFailedRemovalLeavesTheActiveAndPreviousPointersAsTheyWere()
     {
         using var registry = ArtifactRegistry();
         await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);
@@ -368,7 +389,8 @@ public sealed partial class RlGenerationAndQValueTests
         using var reopened = ArtifactRegistryOnTheSameStore();
         Assert.Equal(active.ModelId, reopened.RlActiveId);
     }
-    [Fact] public async Task R10_RemovingTheActiveGenerationKeepsTheStoreVerifiedForTheNextCleanupAndActivation()
+    [Fact]
+    public async Task R10_RemovingTheActiveGenerationKeepsTheStoreVerifiedForTheNextCleanupAndActivation()
     {
         using var registry = ArtifactRegistry();
         await registry.SaveRlArtifactPolicyAsync(KeepEverythingPolicy);

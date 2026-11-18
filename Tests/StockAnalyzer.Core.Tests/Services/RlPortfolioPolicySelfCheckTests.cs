@@ -42,8 +42,10 @@ public sealed class RlPortfolioPolicySelfCheckTests
             string config = Path.Combine(work, "config.json");
             await File.WriteAllTextAsync(config, JsonSerializer.Serialize(new Dictionary<string, object?>
             {
-                ["defaults"] = RlContract.ToWireDefaults(), ["ppo_defaults"] = RlContinuousContract.ToWireDefaults(),
-                ["portfolio_defaults"] = RlPortfolioContract.ToWireDefaults(), ["transfer_defaults"] = RlPortfolioTransferContract.ToWireDefaults(),
+                ["defaults"] = RlContract.ToWireDefaults(),
+                ["ppo_defaults"] = RlContinuousContract.ToWireDefaults(),
+                ["portfolio_defaults"] = RlPortfolioContract.ToWireDefaults(),
+                ["transfer_defaults"] = RlPortfolioTransferContract.ToWireDefaults(),
             }, RlFiles.Json), new UTF8Encoding(false));
 
             var (exitCode, output, errors) = await RlPortfolioPythonScript.RunInDirectoryAsync(work, SelfCheckScript,

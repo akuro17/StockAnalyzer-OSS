@@ -60,10 +60,10 @@ public static class PortfolioFactory
     private static bool IsTestEnvironment()
     {
         return AppDomain.CurrentDomain.GetAssemblies()
-            .Any(a => a.FullName != null && 
-                     (a.FullName.StartsWith("xunit", StringComparison.OrdinalIgnoreCase) || 
-                      a.FullName.StartsWith("StockAnalyzer.Tests", StringComparison.OrdinalIgnoreCase) || 
-                      a.FullName.StartsWith("StockAnalyzer.Core.Tests", StringComparison.OrdinalIgnoreCase) || 
+            .Any(a => a.FullName != null &&
+                     (a.FullName.StartsWith("xunit", StringComparison.OrdinalIgnoreCase) ||
+                      a.FullName.StartsWith("StockAnalyzer.Tests", StringComparison.OrdinalIgnoreCase) ||
+                      a.FullName.StartsWith("StockAnalyzer.Core.Tests", StringComparison.OrdinalIgnoreCase) ||
                       a.FullName.StartsWith("StockAnalyzer.Avalonia.Tests", StringComparison.OrdinalIgnoreCase)));
     }
 

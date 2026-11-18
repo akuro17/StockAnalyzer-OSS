@@ -158,7 +158,7 @@ namespace StockAnalyzer.Core.Services
 
             try
             {
-                if (_isInitialized) 
+                if (_isInitialized)
                 {
                     LogSyncActivity("Already initialized by another thread.");
                     return;
@@ -252,7 +252,7 @@ namespace StockAnalyzer.Core.Services
                     await EnsurePipSecureAsync(ct);
 
                     var packages = _settings.PythonEssentialPackages;
-                    
+
                     for (int i = 0; i < packages.Count; i++)
                     {
                         var pkg = packages[i];
@@ -265,7 +265,7 @@ namespace StockAnalyzer.Core.Services
                 {
                     SetupProgressFinished?.Invoke();
                 }
-                
+
                 // Initialize the Python engine (In-Process)
                 if (!PythonEngine.IsInitialized)
                 {
@@ -294,17 +294,17 @@ namespace StockAnalyzer.Core.Services
 
         public async Task InitializeExternalProcessAsync()
         {
-             if (!_isInitialized) await InitializeAsync();
+            if (!_isInitialized) await InitializeAsync();
 
-             // StartAsync() itself is a cheap no-op when the existing connection is still
-             // healthy (it checks _isConnected && !IsProcessDead() before doing any work), so
-             // it must be called every time rather than only once when _processManager is
-             // null. Otherwise, once a prior Python call tears the pipe down on failure
-             // (PythonProcessManager.CleanupConnection), _processManager stays non-null
-             // forever and this method becomes a permanent no-op, leaving every subsequent
-             // Python-backed indicator to dereference the now-null pipe fields.
-             _processManager ??= new PythonProcessManager(_settings);
-             await _processManager.StartAsync();
+            // StartAsync() itself is a cheap no-op when the existing connection is still
+            // healthy (it checks _isConnected && !IsProcessDead() before doing any work), so
+            // it must be called every time rather than only once when _processManager is
+            // null. Otherwise, once a prior Python call tears the pipe down on failure
+            // (PythonProcessManager.CleanupConnection), _processManager stays non-null
+            // forever and this method becomes a permanent no-op, leaving every subsequent
+            // Python-backed indicator to dereference the now-null pipe fields.
+            _processManager ??= new PythonProcessManager(_settings);
+            await _processManager.StartAsync();
         }
 
         public async Task<string> PingExternalProcessAsync()
@@ -325,9 +325,9 @@ namespace StockAnalyzer.Core.Services
             // 1. Convert to Arrow IPC bytes using shared buffer
             _sharedIpcStream.Position = 0;
             _sharedIpcStream.SetLength(0); // clear
-            
+
             await ArrowConverter.WriteToArrowStreamAsync(candles, _sharedIpcStream);
-            
+
             if (!_sharedIpcStream.TryGetBuffer(out ArraySegment<byte> buffer))
             {
                 // Fallback just in case, though default MemoryStream allows TryGetBuffer
@@ -347,7 +347,7 @@ namespace StockAnalyzer.Core.Services
                     throw new InvalidOperationException($"Python data transfer preparation rejected: {errorMsg}");
                 }
             }
-            
+
             // 3. Send raw bytes
             await _processManager.SendBinaryDataAsync(arrowBytes);
 
@@ -365,14 +365,14 @@ namespace StockAnalyzer.Core.Services
         public async Task<string> CalculateBacktestStatsAsync(System.Collections.Generic.IEnumerable<StockAnalyzer.Core.Models.Backtest.Trade> trades)
         {
             if (_processManager == null) throw new InvalidOperationException("External process not initialized.");
-            
+
             return await _processManager.SendCommandAsync("calculate_backtest_stats", new { trades = trades });
         }
 
         public async Task<string> SearchSimilarPatternsAsync(int lookback = 0, int topK = 5, int futureSteps = 20, double threshold = 0.3, int queryLength = 30, int queryStartIndex = -1, bool useStructural = false, int warpingRadius = ChartConstants.DtwDefaultWarpingRadius, System.Collections.Generic.IReadOnlyList<double>? volatility = null)
         {
             if (_processManager == null) throw new InvalidOperationException("External process not initialized.");
-            
+
             return await _processManager.SendCommandAsync("search_similar_patterns", new
             {
                 lookback = lookback,
@@ -425,7 +425,7 @@ namespace StockAnalyzer.Core.Services
                 try
                 {
                     LogSyncActivity("Pipeline task started in background...");
-                    
+
                     // 1. Initialize
                     LogSyncActivity("Invoking InitializeAsync...");
                     await InitializeAsync(ct: linkedToken);
@@ -465,13 +465,13 @@ namespace StockAnalyzer.Core.Services
                     }
 
                     LogSyncActivity($"Starting process: {pythonExe} {string.Join(" ", startInfo.ArgumentList)}");
-                    
+
                     var combinedOutput = new RollingLogBuffer(500);
 
-                    await _resiliencePipeline.ExecuteAsync(async innerCt => 
+                    await _resiliencePipeline.ExecuteAsync(async innerCt =>
                     {
                         using var process = new System.Diagnostics.Process { StartInfo = startInfo };
-                        
+
                         process.OutputDataReceived += (s, e) =>
                         {
                             if (string.IsNullOrEmpty(e.Data)) return;
@@ -483,14 +483,14 @@ namespace StockAnalyzer.Core.Services
                         };
                         process.ErrorDataReceived += (s, e) =>
                         {
-                            if (!string.IsNullOrEmpty(e.Data)) 
+                            if (!string.IsNullOrEmpty(e.Data))
                             {
                                 combinedOutput.AppendLine("[STDERR] " + e.Data);
                                 LogSyncActivity($"[Python ERR] {e.Data}", LogLevel.Debug);
                             }
                         };
 
-                        using var reg = innerCt.Register(() => 
+                        using var reg = innerCt.Register(() =>
                         {
                             try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
                         });
@@ -539,7 +539,7 @@ namespace StockAnalyzer.Core.Services
             var timeoutTask = Task.Delay(TimeSpan.FromMinutes(timeoutMinutes), linkedToken);
 
             var completedTask = await Task.WhenAny(executionTask, timeoutTask);
-            
+
             if (completedTask == timeoutTask)
             {
                 LogSyncActivity($"RunUpdatePipelineAsync TIMEOUT triggered ({timeoutMinutes} minutes)", LogLevel.Error);
@@ -633,7 +633,7 @@ namespace StockAnalyzer.Core.Services
                 try
                 {
                     LogSyncActivity("Pipeline task (Config) started in background...");
-                    
+
                     // 1. Initialize
                     LogSyncActivity("Invoking InitializeAsync...");
                     await InitializeAsync(ct: linkedToken);
@@ -679,12 +679,12 @@ namespace StockAnalyzer.Core.Services
                             startInfo.ArgumentList.Add("--impute-missing");
                         }
                     }
-                    
+
                     // Delay is fully managed on the C# Ticker-Loop side. We force Python process delay to 0
                     // to prevent processes from hanging/sleeping, saving resources.
                     startInfo.ArgumentList.Add("--delay");
                     startInfo.ArgumentList.Add("0");
-                    
+
                     if (config.IsFullHistoryEnabled)
                     {
                         startInfo.ArgumentList.Add("--full-history");
@@ -701,13 +701,13 @@ namespace StockAnalyzer.Core.Services
                     }
 
                     LogSyncActivity($"Starting process (Config): {pythonExe} {string.Join(" ", startInfo.ArgumentList)}");
-                    
+
                     var combinedOutput = new RollingLogBuffer(500);
 
-                    await _resiliencePipeline.ExecuteAsync(async innerCt => 
+                    await _resiliencePipeline.ExecuteAsync(async innerCt =>
                     {
                         using var process = new System.Diagnostics.Process { StartInfo = startInfo };
-                        
+
                         process.OutputDataReceived += (s, e) =>
                         {
                             if (string.IsNullOrEmpty(e.Data)) return;
@@ -719,7 +719,7 @@ namespace StockAnalyzer.Core.Services
                         };
                         process.ErrorDataReceived += (s, e) =>
                         {
-                            if (!string.IsNullOrEmpty(e.Data)) 
+                            if (!string.IsNullOrEmpty(e.Data))
                             {
                                 combinedOutput.AppendLine("[STDERR] " + e.Data);
                                 LogSyncActivity($"[Python ERR] {e.Data}", LogLevel.Debug);
@@ -790,7 +790,7 @@ namespace StockAnalyzer.Core.Services
             var timeoutTask = Task.Delay(TimeSpan.FromMinutes(timeoutMinutes), linkedToken);
 
             var completedTask = await Task.WhenAny(executionTask, timeoutTask);
-            
+
             if (completedTask == timeoutTask)
             {
                 LogSyncActivity($"RunUpdatePipelineAsync TIMEOUT triggered ({timeoutMinutes} minutes)", LogLevel.Error);
@@ -891,7 +891,7 @@ namespace StockAnalyzer.Core.Services
         private async Task InstallPackage(string packageName, bool forceUpgrade, CancellationToken ct)
         {
             LogSyncActivity($"InstallPackage START: {packageName} (forceUpgrade={forceUpgrade})");
-            
+
             // Map pip package names to import names for those that differ
             string importName = packageName switch
             {
@@ -1106,7 +1106,7 @@ namespace StockAnalyzer.Core.Services
 
             using var reg = ct.Register(() => { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { } });
 
-            await _resiliencePipeline.ExecuteAsync(async innerCt => 
+            await _resiliencePipeline.ExecuteAsync(async innerCt =>
             {
                 process.Start();
                 // One Job Object per launch attempt (a retry starts the process again): if this app is killed abruptly, Windows closes the
@@ -1152,7 +1152,7 @@ namespace StockAnalyzer.Core.Services
 
             using var reg = ct.Register(() => { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { } });
 
-            await _resiliencePipeline.ExecuteAsync(async innerCt => 
+            await _resiliencePipeline.ExecuteAsync(async innerCt =>
             {
                 process.Start();
                 // One Job Object per launch attempt (a retry starts the process again): if this app is killed abruptly, Windows closes the
@@ -1217,7 +1217,7 @@ namespace StockAnalyzer.Core.Services
         public async Task RunAsync(Action<PyModule> action, System.Threading.CancellationToken cancellationToken = default)
         {
             EnsureInitialized();
-            await Task.Run(() => 
+            await Task.Run(() =>
             {
                 using (Py.GIL())
                 {

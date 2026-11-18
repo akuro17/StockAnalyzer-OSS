@@ -117,12 +117,12 @@ public partial class RelativePerformanceSettingsViewModel : BaseChartSettingsVie
     {
         SymbolList = new ObservableCollection<string>(settings.ComparisonTargets?.ToList() ?? new List<string>());
         SavedPresets = new ObservableCollection<RelativePerformancePreset>(settings.RelativePerformancePresets?.ToList() ?? new List<RelativePerformancePreset>());
-        
+
         ShowFloatingTooltip = settings.ShowFloatingTooltip;
         ComparisonMode = settings.RelativePerformanceMode;
         ComparisonZScorePeriod = settings.ComparisonZScorePeriod;
         ShowTickerInsteadOfValue = settings.ShowTickerInsteadOfValue;
-        
+
         // Ensure we listen to collection changes for IsModified
         SymbolList.CollectionChanged += (s, e) => OnPropertyChanged(nameof(IsModified));
         SavedPresets.CollectionChanged += (s, e) => OnPropertyChanged(nameof(IsModified));

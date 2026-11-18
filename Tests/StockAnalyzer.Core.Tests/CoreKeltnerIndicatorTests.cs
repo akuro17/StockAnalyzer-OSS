@@ -23,13 +23,13 @@ public class CoreKeltnerIndicatorTests
     public void Calculate_WithValidData_ReturnsTupleOfLists()
     {
         var candles = GenerateCandleData(30, i =>
-            new CoreCandleData(DateTime.Today.AddDays(i), 100+i, 102+i, 98+i, 101+i, 100));
-        
+            new CoreCandleData(DateTime.Today.AddDays(i), 100 + i, 102 + i, 98 + i, 101 + i, 100));
+
         var indicator = new CoreKeltnerChannelIndicator { EmaPeriod = 20, AtrPeriod = 10, Multiplier = 2 };
         var result = indicator.Calculate(candles);
 
         Assert.True(result.IsSuccessful);
-        
+
         var middle = result.MainValues;
         var upper = indicator.UpperBand;
         var lower = indicator.LowerBand;
@@ -50,10 +50,10 @@ public class CoreKeltnerIndicatorTests
     {
         var candles = GenerateCandleData(30, i =>
             new CoreCandleData(DateTime.Today.AddDays(i), 100, 101, 99, 100, 100)); // ATR = 2
-        
+
         var indicator = new CoreKeltnerChannelIndicator { EmaPeriod = 20, AtrPeriod = 10, Multiplier = 2 };
         var result = indicator.Calculate(candles);
-        
+
         var middle = result.MainValues;
         var upper = indicator.UpperBand;
         var lower = indicator.LowerBand;
@@ -63,8 +63,8 @@ public class CoreKeltnerIndicatorTests
         Assert.NotNull(lower[25]);
 
         Assert.Equal(100, middle[25].Value, 4);
-        Assert.Equal(100 + 2 * 2, upper[25].Value, 4); 
-        Assert.Equal(100 - 2 * 2, lower[25].Value, 4); 
+        Assert.Equal(100 + 2 * 2, upper[25].Value, 4);
+        Assert.Equal(100 - 2 * 2, lower[25].Value, 4);
     }
 
     [Fact]
@@ -73,7 +73,7 @@ public class CoreKeltnerIndicatorTests
         var candles = new List<CoreCandleData>();
         var indicator = new CoreKeltnerChannelIndicator();
         var result = indicator.Calculate(candles);
-        
+
         if (result.IsSuccessful) Assert.Empty(result.MainValues);
         Assert.Empty(indicator.UpperBand);
         Assert.Empty(indicator.LowerBand);
@@ -90,7 +90,7 @@ public class CoreKeltnerIndicatorTests
     [Fact]
     public void Calculate_WithInsufficientData_ReturnsNullLists()
     {
-        var candles = GenerateCandleData(19, i => new CoreCandleData(DateTime.Today,100,100,100,100,100));
+        var candles = GenerateCandleData(19, i => new CoreCandleData(DateTime.Today, 100, 100, 100, 100, 100));
         var indicator = new CoreKeltnerChannelIndicator { EmaPeriod = 20, AtrPeriod = 10, Multiplier = 2 };
         var result = indicator.Calculate(candles);
 

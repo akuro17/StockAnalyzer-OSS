@@ -17,7 +17,7 @@ public class SpikeItem
 public partial class SpikeGridSourceViewModel : ObservableObject
 {
     private readonly List<SpikeItem> _allItems;
-    
+
     [ObservableProperty]
     private ObservableCollection<SpikeItem> _items = new();
 
@@ -36,7 +36,7 @@ public partial class SpikeGridSourceViewModel : ObservableObject
     public void Sort(string sortKey, bool ascending)
     {
         List<SpikeItem> sorted;
-        
+
         switch (sortKey)
         {
             case nameof(SpikeItem.Id):
@@ -64,7 +64,7 @@ public partial class SpikeGridSourceViewModel : ObservableObject
         var filtered = _allItems.Where(x => x.Category == category).ToList();
         UpdateItems(filtered);
     }
-    
+
     private void UpdateItems(List<SpikeItem> newItems)
     {
         Items.Clear();

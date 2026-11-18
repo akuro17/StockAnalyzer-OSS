@@ -45,7 +45,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         [NotifyPropertyChangedFor(nameof(AutoButtonText))]
         private bool _isOnnxInstalled;
 
-        public string AutoButtonText => LocalizationManager.Instance[IsOnnxInstalled ? "Settings_AIPredictions_Btn_AutoUpdate" : "Settings_AIPredictions_Btn_AutoInstall"] 
+        public string AutoButtonText => LocalizationManager.Instance[IsOnnxInstalled ? "Settings_AIPredictions_Btn_AutoUpdate" : "Settings_AIPredictions_Btn_AutoInstall"]
             ?? (IsOnnxInstalled ? "Automatic Update" : "Automatic Setup");
 
         [ObservableProperty]
@@ -194,8 +194,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             var cmd = isUpgrade ? OnnxPipManualUpgradeCommand : OnnxPipManualInstallCommand;
             await _clipboardService.SetTextAsync(cmd);
             var msgKey = isUpgrade ? "Settings_AIPredictions_PipCopied_Upgrade" : "Settings_AIPredictions_PipCopied_Install";
-            var msg = LocalizationManager.Instance[msgKey] 
-                ?? LocalizationManager.Instance["Settings_AIPredictions_PipCopied"] 
+            var msg = LocalizationManager.Instance[msgKey]
+                ?? LocalizationManager.Instance["Settings_AIPredictions_PipCopied"]
                 ?? (isUpgrade ? "Pip upgrade command copied to clipboard." : "Pip install command copied to clipboard.");
             StatusMessage = msg;
             _toastNotificationService.ShowNotification(msg);

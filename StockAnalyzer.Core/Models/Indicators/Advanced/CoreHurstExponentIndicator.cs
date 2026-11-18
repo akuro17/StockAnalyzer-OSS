@@ -79,7 +79,7 @@ public class CoreHurstExponentIndicator : CoreIndicatorBase
             return IndicatorResult.Failure(ex.Message);
         }
 
-        var returns = new LogReturnWindow(PriceDataHelper.ExtractPriceSeries(candles, PriceSource));
+        var returns = ReturnSeriesWindow.FromPrices(PriceDataHelper.ExtractPriceSeries(candles, PriceSource), useLogReturn: true);
         for (int i = 0; i < returns.Count; i++)
         {
             if (i < Period || !returns.IsValid(i - Period + 1, i))

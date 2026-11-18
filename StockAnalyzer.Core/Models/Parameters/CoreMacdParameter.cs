@@ -14,10 +14,10 @@ public class CoreMacdParameter : CoreIndicatorParameterBase
     [DisplayName("Short Period")]
     [Description("Short-term EMA period.")]
     [Category("Periods")]
-    public int ShortPeriod 
-    { 
-        get => _shortPeriod; 
-        set => SetProperty(ref _shortPeriod, value); 
+    public int ShortPeriod
+    {
+        get => _shortPeriod;
+        set => SetProperty(ref _shortPeriod, value);
     }
 
     [CoreParameterRange(1, 10000)]
@@ -25,10 +25,10 @@ public class CoreMacdParameter : CoreIndicatorParameterBase
     [DisplayName("Long Period")]
     [Description("Long-term EMA period.")]
     [Category("Periods")]
-    public int LongPeriod 
-    { 
-        get => _longPeriod; 
-        set => SetProperty(ref _longPeriod, value); 
+    public int LongPeriod
+    {
+        get => _longPeriod;
+        set => SetProperty(ref _longPeriod, value);
     }
 
     [CoreParameterRange(1, 10000)]
@@ -36,10 +36,10 @@ public class CoreMacdParameter : CoreIndicatorParameterBase
     [DisplayName("Signal Period")]
     [Description("Signal line EMA period.")]
     [Category("Periods")]
-    public int SignalPeriod 
-    { 
-        get => _signalPeriod; 
-        set => SetProperty(ref _signalPeriod, value); 
+    public int SignalPeriod
+    {
+        get => _signalPeriod;
+        set => SetProperty(ref _signalPeriod, value);
     }
 
     /// <summary>

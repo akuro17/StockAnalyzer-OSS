@@ -38,10 +38,18 @@ public sealed class EnsembleCompatibilityTests : IDisposable
         var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(model))).ToLowerInvariant();
         var report = new
         {
-            evaluation_status = "independent_outer", evaluation_revision = Revision, scored_model_sha256 = hash,
-            target_type = metadata[PredictionModelMetadata.TargetTypeKey], timeframe = "daily",
-            horizon = int.Parse(metadata[PredictionModelMetadata.HorizonKey]), class_order = metadata[PredictionModelMetadata.ClassOrderKey],
-            fold_macro_f1 = 0.4, fold_is_holdout = 1.0, fold = 2.0, fold_n = 20.0, n_splits = 3.0,
+            evaluation_status = "independent_outer",
+            evaluation_revision = Revision,
+            scored_model_sha256 = hash,
+            target_type = metadata[PredictionModelMetadata.TargetTypeKey],
+            timeframe = "daily",
+            horizon = int.Parse(metadata[PredictionModelMetadata.HorizonKey]),
+            class_order = metadata[PredictionModelMetadata.ClassOrderKey],
+            fold_macro_f1 = 0.4,
+            fold_is_holdout = 1.0,
+            fold = 2.0,
+            fold_n = 20.0,
+            n_splits = 3.0,
             outer_folds = new[]
             {
                 new { fold = 0.0, evaluation_revision = Revision, scored_model_sha256 = hash, fold_macro_f1 = 0.2 },

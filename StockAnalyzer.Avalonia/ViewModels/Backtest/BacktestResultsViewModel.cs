@@ -377,36 +377,36 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
             if (loaded != null)
             {
                 if (loaded.TradeVisibleColumns is { Count: > 0 } tradeCols)
-            {
-                var knownSet = new HashSet<string>(Dialogs.BacktestTradeHistoryColumnChooserViewModel.KnownColumns.Select(c => c.Id), StringComparer.OrdinalIgnoreCase);
-                var validTradeCols = tradeCols.Where(knownSet.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                if (validTradeCols.Count > 0)
                 {
-                    _activeTradeColumns = validTradeCols;
-                    var set = new HashSet<string>(_activeTradeColumns, StringComparer.OrdinalIgnoreCase);
-                    _isTradeIdVisible = set.Contains("TradeId");
-                    _isSideVisible = set.Contains("Side");
-                    _isEntryTimeVisible = set.Contains("EntryTime");
-                    _isEntryPriceVisible = set.Contains("EntryPrice");
-                    _isExitTimeVisible = set.Contains("ExitTime");
-                    _isExitPriceVisible = set.Contains("ExitPrice");
-                    _isQuantityVisible = set.Contains("Quantity");
-                    _isClosedNetVisible = set.Contains("ClosedNet");
-                    _isForcedLiquidationVisible = set.Contains("ForcedLiquidation");
+                    var knownSet = new HashSet<string>(Dialogs.BacktestTradeHistoryColumnChooserViewModel.KnownColumns.Select(c => c.Id), StringComparer.OrdinalIgnoreCase);
+                    var validTradeCols = tradeCols.Where(knownSet.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    if (validTradeCols.Count > 0)
+                    {
+                        _activeTradeColumns = validTradeCols;
+                        var set = new HashSet<string>(_activeTradeColumns, StringComparer.OrdinalIgnoreCase);
+                        _isTradeIdVisible = set.Contains("TradeId");
+                        _isSideVisible = set.Contains("Side");
+                        _isEntryTimeVisible = set.Contains("EntryTime");
+                        _isEntryPriceVisible = set.Contains("EntryPrice");
+                        _isExitTimeVisible = set.Contains("ExitTime");
+                        _isExitPriceVisible = set.Contains("ExitPrice");
+                        _isQuantityVisible = set.Contains("Quantity");
+                        _isClosedNetVisible = set.Contains("ClosedNet");
+                        _isForcedLiquidationVisible = set.Contains("ForcedLiquidation");
+                    }
                 }
-            }
 
-            if (loaded.MetricVisibleNames is { Count: > 0 } metricNames)
-            {
-                var catalogSet = new HashSet<string>(BacktestMetricCatalog.Definitions.Select(d => d.Name), StringComparer.OrdinalIgnoreCase);
-                var validMetrics = metricNames.Where(catalogSet.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                if (validMetrics.Count > 0)
+                if (loaded.MetricVisibleNames is { Count: > 0 } metricNames)
                 {
-                    _activeMetricNames = validMetrics;
+                    var catalogSet = new HashSet<string>(BacktestMetricCatalog.Definitions.Select(d => d.Name), StringComparer.OrdinalIgnoreCase);
+                    var validMetrics = metricNames.Where(catalogSet.Contains).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    if (validMetrics.Count > 0)
+                    {
+                        _activeMetricNames = validMetrics;
+                    }
                 }
             }
         }
-    }
 
         ImmutableArray<BacktestMetricGroupPresentation> fullPlaceholders = BacktestMetricGroupBuilder.BuildPlaceholder(_localizationService);
         _placeholderGroups = BacktestMetricGroupBuilder.FilterGroups(fullPlaceholders, _activeMetricNames);

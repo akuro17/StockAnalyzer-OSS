@@ -63,7 +63,7 @@ namespace StockAnalyzer.Core.Utilities
 
             decimal trSum = 0m;
             int count = 0;
-            
+
             for (int i = candles.Length - 1; i >= 1 && count < period; i--)
             {
                 var current = candles[i];
@@ -88,7 +88,7 @@ namespace StockAnalyzer.Core.Utilities
 
             decimal trSum = 0m;
             int count = 0;
-            
+
             for (int i = candles.Length - 1; i >= 1 && count < period; i--)
             {
                 var current = candles[i];

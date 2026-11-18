@@ -20,10 +20,14 @@ public static class RlErrorText
         }
         return text.GetString(error switch
         {
-            ArgumentException or OverflowException => "Rl.Ui.Status.InvalidInput", FileNotFoundException => "Rl.Ui.Status.DataUnavailable",
-            UnauthorizedAccessException => "Rl.Ui.Status.AccessDenied", InvalidDataException when RlSourceContract.IsInsufficientData(error) => "Rl.Ui.Status.InsufficientData",
+            ArgumentException or OverflowException => "Rl.Ui.Status.InvalidInput",
+            FileNotFoundException => "Rl.Ui.Status.DataUnavailable",
+            UnauthorizedAccessException => "Rl.Ui.Status.AccessDenied",
+            InvalidDataException when RlSourceContract.IsInsufficientData(error) => "Rl.Ui.Status.InsufficientData",
             InvalidDataException or JsonException => "Rl.Ui.Status.InvalidData",
-            IOException => "Rl.Ui.Status.IOFailure", TimeoutException => "Rl.Ui.Status.Timeout", _ => "Rl.Ui.Status.OperationFailed"
+            IOException => "Rl.Ui.Status.IOFailure",
+            TimeoutException => "Rl.Ui.Status.Timeout",
+            _ => "Rl.Ui.Status.OperationFailed"
         });
     }
 }

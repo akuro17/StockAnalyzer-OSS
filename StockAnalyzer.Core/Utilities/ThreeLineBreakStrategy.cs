@@ -27,7 +27,7 @@ public class StandardThreeLineBreakStrategy : IThreeLineBreakStrategy
 
         decimal firstPrice = candles[0].Close;
         decimal tolerance = 0.0001m;
-        
+
         for (int i = 1; i < candles.Count; i++)
         {
             decimal diff = candles[i].Close - firstPrice;
@@ -54,7 +54,7 @@ public class StandardThreeLineBreakStrategy : IThreeLineBreakStrategy
     {
         int count = blocks.Count;
         int lookBack = System.Math.Min(count, lineCount);
-        
+
         threshold = 0;
         if (count == 0) return false;
 

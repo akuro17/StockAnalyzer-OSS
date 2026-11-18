@@ -92,7 +92,7 @@ public class DetectedFormation
 
     public override string ToString()
         => $"{Type} [{StartIndex}-{EndIndex}] Confidence={ConfidenceScore:F2} Pole={HasPole}";
-        
+
     public void Translate(double priceDelta)
     {
         UpperIntercept += priceDelta;

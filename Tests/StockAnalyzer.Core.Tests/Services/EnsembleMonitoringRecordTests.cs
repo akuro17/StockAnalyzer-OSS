@@ -60,11 +60,19 @@ public sealed class EnsembleMonitoringRecordTests : IDisposable
         var revision = new string('a', 64);
         var report = new
         {
-            evaluation_status = "independent_outer", evaluation_revision = revision,
-            scored_model_sha256 = hash, target_type = "classification", timeframe = "daily",
+            evaluation_status = "independent_outer",
+            evaluation_revision = revision,
+            scored_model_sha256 = hash,
+            target_type = "classification",
+            timeframe = "daily",
             horizon = int.Parse(metadata[PredictionModelMetadata.HorizonKey]),
-            class_order = metadata[PredictionModelMetadata.ClassOrderKey], fold_macro_f1 = accuracy,
-            fold_accuracy = accuracy, fold_is_holdout = 1.0, fold = 2.0, fold_n = 20.0, n_splits = 3.0,
+            class_order = metadata[PredictionModelMetadata.ClassOrderKey],
+            fold_macro_f1 = accuracy,
+            fold_accuracy = accuracy,
+            fold_is_holdout = 1.0,
+            fold = 2.0,
+            fold_n = 20.0,
+            n_splits = 3.0,
             outer_folds = new[]
             {
                 new { fold = 0.0, evaluation_revision = revision, scored_model_sha256 = hash, fold_macro_f1 = .2, fold_accuracy = .2 },
@@ -101,9 +109,16 @@ public sealed class EnsembleMonitoringRecordTests : IDisposable
 
         return new Context
         {
-            Registry = registry, A = a, B = b, Spec = SpecOf(a, b, .25, .75), Metadata = metadata, Threshold = threshold,
-            Merged = EnsemblePredictionService.MergeOutputContract(new[] { contract, contract }), Canonical = canonical,
-            Log = log, Health = (ICurrentPredictionHealthService)log,
+            Registry = registry,
+            A = a,
+            B = b,
+            Spec = SpecOf(a, b, .25, .75),
+            Metadata = metadata,
+            Threshold = threshold,
+            Merged = EnsemblePredictionService.MergeOutputContract(new[] { contract, contract }),
+            Canonical = canonical,
+            Log = log,
+            Health = (ICurrentPredictionHealthService)log,
         };
     }
 
@@ -318,7 +333,8 @@ public sealed class EnsembleMonitoringRecordTests : IDisposable
         using var session = new InferenceSession(Path.Combine("Assets", "analysis_fixture.onnx"));
         var result = new PredictionResult("Up", 1, [new("Up", 1)])
         {
-            ModelId = model.ModelId, OutputContract = PredictionModelMetadata.ReadOutputContract(session.ModelMetadata.CustomMetadataMap),
+            ModelId = model.ModelId,
+            OutputContract = PredictionModelMetadata.ReadOutputContract(session.ModelMetadata.CustomMetadataMap),
         };
         var inputs = SqliteMonitoringTestKit.BarsEnding(SqliteMonitoringTestKit.Sept28).Take(195).ToArray();
 

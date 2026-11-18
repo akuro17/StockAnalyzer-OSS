@@ -79,7 +79,7 @@ public class CoreEntropyIndicator : CoreIndicatorBase
             return IndicatorResult.Failure(ex.Message);
         }
 
-        var returns = new LogReturnWindow(PriceDataHelper.ExtractPriceSeries(candles, PriceSource));
+        var returns = ReturnSeriesWindow.FromPrices(PriceDataHelper.ExtractPriceSeries(candles, PriceSource), useLogReturn: true);
         double[] values = returns.Returns;
         double logBinCount = Math.Log(BinCount);
 

@@ -15,15 +15,15 @@ public interface IChartRenderSettings
     bool ShowAreaMarkers { get; }
     IReadOnlyList<string> ComparisonTargets { get; }
     SeriesColorIndex SeriesColorIndex { get; }
-    
+
     /// <summary>Gets the display mode for relative performance (Performance, Ratio, Z-Score).</summary>
     ComparisonMode ComparisonMode { get; }
-    
+
     /// <summary>Gets the lookback period for Z-Score calculation (Default: 20).</summary>
     int ComparisonZScorePeriod { get; }
-    
+
     bool ShowTickerInsteadOfValue { get; }
-    
+
     // Visibility Control (Step 68-1-4)
     bool IsSubWindowVisible { get; }
     bool InvertOscillator { get; }
@@ -113,14 +113,14 @@ public interface IChartRenderSettings
     int RenkoReversal { get; }
     decimal EffectivePnfBoxSize { get; }
     int PnfReversal { get; }
-    
+
     // P&F Breakout Pattern Toggles
     bool PnfShowDoubleBreakout { get; }
     bool PnfShowTripleBreakout { get; }
     bool PnfShowTrendlineBreakout { get; }
     bool PnfShowTriangleBreakout { get; }
     bool PnfShowCatapultBreakout { get; }
-    
+
     decimal EffectiveKagiReversalAmount { get; }
     ChartSizingMode KagiReversalMode { get; }
     decimal KagiReversalPercent { get; }
@@ -130,7 +130,7 @@ public interface IChartRenderSettings
     bool ShowThreeLineBreakReversalLine { get; }
     bool ShowThreeLineBreakReversalPrice { get; }
     HsvData ThreeLineBreakReversalLineColor { get; }
-    
+
     float ReverseWatchLineThickness { get; }
 
     // Ghost Projection Settings

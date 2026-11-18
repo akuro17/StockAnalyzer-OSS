@@ -7,7 +7,7 @@ public class CoreDmiIndicator : CoreIndicatorBase
 {
     public int Period { get; set; } = 14;
     public override string Name => $"DMI ({Period})";
-    
+
     public List<decimal?> PlusDI { get; } = new();
     public List<decimal?> MinusDI { get; } = new();
 

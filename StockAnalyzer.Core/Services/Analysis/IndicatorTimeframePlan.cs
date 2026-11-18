@@ -98,19 +98,19 @@ public readonly record struct IndicatorTimeframePlan(IndicatorTimeframeMode Mode
         switch (IndicatorTimeframePolicy.Resolve(type, setting.ParameterObject))
         {
             case IndicatorTimeframeSupport.SelfHandled:
-            {
-                // Only the refusal belongs to the pipeline; at or above the chart's frame the indicator's own logic handles its source period.
-                if (setting.ParameterObject is ISelfTimeframeParameter self)
                 {
-                    var selfFrame = self.SelfTimeframe.ToTimeFrame(chartFrame);
-                    if (selfFrame < chartFrame)
+                    // Only the refusal belongs to the pipeline; at or above the chart's frame the indicator's own logic handles its source period.
+                    if (setting.ParameterObject is ISelfTimeframeParameter self)
                     {
-                        return new IndicatorTimeframePlan(IndicatorTimeframeMode.SelfHandledFiner, selfFrame);
+                        var selfFrame = self.SelfTimeframe.ToTimeFrame(chartFrame);
+                        if (selfFrame < chartFrame)
+                        {
+                            return new IndicatorTimeframePlan(IndicatorTimeframeMode.SelfHandledFiner, selfFrame);
+                        }
                     }
-                }
 
-                return new IndicatorTimeframePlan(IndicatorTimeframeMode.None, chartFrame);
-            }
+                    return new IndicatorTimeframePlan(IndicatorTimeframeMode.None, chartFrame);
+                }
 
             case IndicatorTimeframeSupport.NotApplicable:
                 return new IndicatorTimeframePlan(IndicatorTimeframeMode.NotApplicable, chartFrame);

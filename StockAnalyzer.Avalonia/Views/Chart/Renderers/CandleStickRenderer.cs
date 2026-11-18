@@ -34,7 +34,7 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
         if (config?.Transform is not ICoordinateTransform transform) return;
 
         var theme = config.ThemeManager.CurrentTheme;
-        
+
         if (config.ChartType == StockAnalyzer.Core.Models.ChartType.HeikinAshi)
         {
             var haConfig = (IHeikinAshiRenderConfig)config;
@@ -47,11 +47,11 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
             _bullishPaint.Color = candleConfig.BullishColor.ToSkColor();
             _bearishPaint.Color = candleConfig.BearishColor.ToSkColor();
             _neutralPaint.Color = candleConfig.NeutralColor.ToSkColor();
-            
+
             // For standard candles, wick color follows axis text or border from theme to avoid hardcoding
             _wickPaint.Color = theme.AxisText.ToSkColor();
         }
-        
+
         _wickPaint.StrokeWidth = 1.0f;
 
         // Calculate Interval for Time-Based Width
@@ -69,23 +69,23 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
         double x1;
         if (isIndexMode)
         {
-             x0 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex), 0)).X;
-             x1 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex + 1), 0)).X;
+            x0 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex), 0)).X;
+            x1 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex + 1), 0)).X;
         }
         else
         {
-             if (snapshot.Candles.Count > 1)
-             {
-                  x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
-                  x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[1].Timestamp, 0)).X;
-             }
-             else
-             {
-                  x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
-                  x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp + interval, 0)).X;
-             }
+            if (snapshot.Candles.Count > 1)
+            {
+                x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
+                x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[1].Timestamp, 0)).X;
+            }
+            else
+            {
+                x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
+                x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp + interval, 0)).X;
+            }
         }
-        
+
         float candleWidth = (float)(x1 - x0);
         float bodyWidth = Math.Max(1f, candleWidth * 0.8f);
 
@@ -102,7 +102,7 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
         {
             var candle = snapshot.Candles[i];
             float x;
-            
+
             if (isIndexMode)
             {
                 int absoluteIndex = snapshot.StartIndex + i;
@@ -112,7 +112,7 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
             {
                 x = (float)transform.ChartToScreen(new ChartPoint(candle.Timestamp, 0)).X + (float)chartArea.Left;
             }
-            
+
             // Center Alignment and Pixel Snap (Math.Floor ensures grouping by physical pixel)
             float snappedCenterX = (float)Math.Floor(x) + 0.5f;
 
@@ -134,7 +134,7 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
                     {
                         // Full Candlestick (Level 0)
                         float wickBottom = Math.Max(yHigh + 1f, yLow);
-                        
+
                         // Heikin Ashi wicks should match body color for continuity
                         if (config.ChartType == StockAnalyzer.Core.Models.ChartType.HeikinAshi)
                         {
@@ -142,16 +142,16 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
                         }
 
                         canvas.DrawLine(currentPixelX, yHigh, currentPixelX, wickBottom, _wickPaint);
-                        
+
                         float top = Math.Min(yOpen, yClose);
                         float bottom = Math.Max(yOpen, yClose);
                         float h = Math.Max(1f, bottom - top);
-                        
+
                         float bw = (float)maxBw;
                         float offset = bw / 2f;
-                        
+
                         var bodyPaintClone = aggIsBullish ? _bullishPaint : _bearishPaint;
-                        
+
                         // Handle unconfirmed candle transparency (70%)
                         bool isLastBatch = (i == snapshot.Candles.Count); // Loop finished or snapping changed
                         // Approximate the index for the actual data
@@ -165,7 +165,7 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
 
                         canvas.DrawRect(currentPixelX - offset, top, bw, h, bodyPaintClone);
                         canvas.DrawRect(currentPixelX - offset, top, bw, h, _wickPaint);
-                        
+
                         if (isActuallyUnconfirmed)
                         {
                             bodyPaintClone.Color = bodyPaintClone.Color.WithAlpha(originalAlpha);
@@ -174,30 +174,30 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
                     else
                     {
                         // Simple Vertical Line (High-Low) (Level 1) - LOD Omission (no ticks when candleWidth < 2f)
-                    float lineBottom = Math.Max(yHigh + 1f, yLow);
-                    
-                    if (config.ChartType == StockAnalyzer.Core.Models.ChartType.HeikinAshi)
-                    {
-                        // 1. Draw Wick part with lower opacity
-                        byte originalAlpha = bodyPaint.Color.Alpha;
-                        bodyPaint.Color = bodyPaint.Color.WithAlpha(100); // ~40% opacity
-                        canvas.DrawLine(currentPixelX, yHigh, currentPixelX, lineBottom, bodyPaint);
+                        float lineBottom = Math.Max(yHigh + 1f, yLow);
 
-                        // 2. Draw Body part with full opacity (or 70% if unconfirmed)
-                        float top = Math.Min(yOpen, yClose);
-                        float bottom = Math.Max(yOpen, yClose);
-                        float h = Math.Max(1f, bottom - top);
-                        
-                        bool isLastCandle = (i == snapshot.Candles.Count - 1);
-                        bodyPaint.Color = bodyPaint.Color.WithAlpha(isLastCandle ? (byte)178 : (byte)255); // 70% vs 100%
-                        canvas.DrawLine(currentPixelX, top, currentPixelX, top + h, bodyPaint);
-                        
-                        bodyPaint.Color = bodyPaint.Color.WithAlpha(originalAlpha); // Restore
-                    }
-                    else
-                    {
-                        canvas.DrawLine(currentPixelX, yHigh, currentPixelX, lineBottom, bodyPaint);
-                    }
+                        if (config.ChartType == StockAnalyzer.Core.Models.ChartType.HeikinAshi)
+                        {
+                            // 1. Draw Wick part with lower opacity
+                            byte originalAlpha = bodyPaint.Color.Alpha;
+                            bodyPaint.Color = bodyPaint.Color.WithAlpha(100); // ~40% opacity
+                            canvas.DrawLine(currentPixelX, yHigh, currentPixelX, lineBottom, bodyPaint);
+
+                            // 2. Draw Body part with full opacity (or 70% if unconfirmed)
+                            float top = Math.Min(yOpen, yClose);
+                            float bottom = Math.Max(yOpen, yClose);
+                            float h = Math.Max(1f, bottom - top);
+
+                            bool isLastCandle = (i == snapshot.Candles.Count - 1);
+                            bodyPaint.Color = bodyPaint.Color.WithAlpha(isLastCandle ? (byte)178 : (byte)255); // 70% vs 100%
+                            canvas.DrawLine(currentPixelX, top, currentPixelX, top + h, bodyPaint);
+
+                            bodyPaint.Color = bodyPaint.Color.WithAlpha(originalAlpha); // Restore
+                        }
+                        else
+                        {
+                            canvas.DrawLine(currentPixelX, yHigh, currentPixelX, lineBottom, bodyPaint);
+                        }
                     }
                 }
 
@@ -218,7 +218,7 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
                 aggCount++;
             }
         }
-        
+
         // Flush the final batch
         if (aggCount > 0)
         {
@@ -235,7 +235,7 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
             if (maxBw >= 1)
             {
                 float wickBottom = Math.Max(yHigh + 1f, yLow);
-                
+
                 // Heikin Ashi wicks should match body color for continuity
                 if (config.ChartType == StockAnalyzer.Core.Models.ChartType.HeikinAshi)
                 {
@@ -246,23 +246,23 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
                 float top = Math.Min(yOpen, yClose);
                 float bottom = Math.Max(yOpen, yClose);
                 float h = Math.Max(1f, bottom - top);
-                
+
                 float bw = (float)maxBw;
                 float offset = bw / 2f;
-                
+
                 // Latest candle (final batch) 70% transparency
                 byte originalAlpha = bodyPaint.Color.Alpha;
                 bodyPaint.Color = bodyPaint.Color.WithAlpha(178);
-                
+
                 canvas.DrawRect(currentPixelX - offset, top, bw, h, bodyPaint);
                 canvas.DrawRect(currentPixelX - offset, top, bw, h, _wickPaint);
-                
+
                 bodyPaint.Color = bodyPaint.Color.WithAlpha(originalAlpha);
             }
             else
             {
                 float lineBottom = Math.Max(yHigh + 1f, yLow);
-                
+
                 if (config.ChartType == StockAnalyzer.Core.Models.ChartType.HeikinAshi)
                 {
                     // LOD Opacity for Line Mode
@@ -273,7 +273,7 @@ public sealed class CandleStickRenderer : IChartRenderer, IDisposable
                     float top = Math.Min(yOpen, yClose);
                     float bottom = Math.Max(yOpen, yClose);
                     float h = Math.Max(1f, bottom - top);
-                    
+
                     // The final batch always contains the last candle
                     bodyPaint.Color = bodyPaint.Color.WithAlpha(178); // 70% for latest
                     canvas.DrawLine(currentPixelX, top, currentPixelX, top + h, bodyPaint);

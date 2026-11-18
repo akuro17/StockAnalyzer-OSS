@@ -30,7 +30,7 @@ public interface ITearOffService
     /// </summary>
     /// <param name="item">The item to redock.</param>
     void Redock(WorkspaceViewItem item);
-    
+
     /// <summary>
     /// Materializes a detached window for a group of items that belong to the same container.
     /// </summary>

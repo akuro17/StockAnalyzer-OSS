@@ -19,7 +19,7 @@ public class GannGridObject : IChartObject
     public bool IsMoveAxisModeExplicit { get; set; } = false;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.GannGrid;
-    
+
     public List<ChartPoint> Points { get; private set; }
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
@@ -59,7 +59,7 @@ public class GannGridObject : IChartObject
             IsAntialias = true,
             Style = SKPaintStyle.Stroke
         };
-        
+
         using var dimPaint = new SKPaint
         {
             Color = SkiaColor.WithAlpha(100),
@@ -73,15 +73,15 @@ public class GannGridObject : IChartObject
         // Draw Reference Line (P1 to P2 diagonal)
         // Actually, Gann Grid usually means a full grid covering the screen based on this cell.
         // We will draw lines parallel to the diagonal and the anti-diagonal.
-        
+
         // Slope m = dy / dx (in screen coords, Y is down, but let's just use abs offset)
         // Logic:
         // Parallel Ups: y = m(x - x0) + y0 + k*dy
         // Parallel Downs: y = -m(x - x0) + y0 + k*dy
-        
+
         // We need to cover the clip bounds.
         // Let's iterate enough to cover the screen.
-        
+
         // Horizontal and Vertical Grid lines aligned to P1
         // Horizontal: y = p1.y + k * dy
         // Vertical: x = p1.x + k * dx
@@ -100,63 +100,63 @@ public class GannGridObject : IChartObject
         // Horizontal lines
         int kMinY = (int)((clip.Top - p1.Y) / dy) - 1;
         int kMaxY = (int)((clip.Bottom - p1.Y) / dy) + 1;
-        
+
         for (int k = kMinY; k <= kMaxY; k++)
         {
             float y = (float)(p1.Y + k * dy);
             canvas.DrawLine(clip.Left, y, clip.Right, y, dimPaint);
         }
-        
+
         // Diagonal Lines logic could be added here if "Gann Grid" implies the diagonal mesh.
         // Standard Gann Grid is often just the squared grid or diagonal grid.
         // Let's stick to the 45-degree diagonals (based on the rect aspect ratio) crossing the intersections.
-        
+
         // Diagonals: y = (dy/dx)*x + C
         // We iterate K to shift intercepts.
-        
+
         float slope = dy / dx; // Screen slope magnitude
-        
+
         // Up-Right diagonals (screen Y decreases as X increases) -> real slope is negative in screen coords if we assume standard cartesian, but here
         // Let's just draw lines passing through grid intersections.
         // y - y0 = -slope * (x - x0)  => y = -slope*x + (y0 + slope*x0)
         // With offset K*dy:
-        
+
         // We can simplify: Draw line from (x, y) to (x+dx, y-dy) for every grid node? Too expensive.
         // Better: Draw full lines across screen.
-        
+
         // Line type 1: Top-Left to Bottom-Right (Screen coords, Y increases)
         // y = slope * x + C
         // Intercept C varies by K * dy (or projected K * dx).
         // C = y - slope * x
-        
+
         // We iterate offsets relative to P1.
         // k range needs to cover screen.
         int diagKMin = kMinY - kMaxX; // Rough estimate range
         int diagKMax = kMaxY - kMinX;
-        
+
         for (int k = diagKMin * 2; k <= diagKMax * 2; k++)
         {
-             // Line passing through (p1.X, p1.Y + k * dy) with slope
-             // y = slope * (x - p1.X) + p1.Y + k * dy
-             
-             // Find intersection with clip bounds
-             // Left: x = clip.Left -> y = slope * (clip.Left - p1.X) + p1.Y + k * dy
-             // Right: x = clip.Right
-             
-             float yAtLeft = slope * (clip.Left - (float)p1.X) + (float)p1.Y + k * dy;
-             float yAtRight = slope * (clip.Right - (float)p1.X) + (float)p1.Y + k * dy;
-             
-             canvas.DrawLine(clip.Left, yAtLeft, clip.Right, yAtRight, dimPaint);
+            // Line passing through (p1.X, p1.Y + k * dy) with slope
+            // y = slope * (x - p1.X) + p1.Y + k * dy
+
+            // Find intersection with clip bounds
+            // Left: x = clip.Left -> y = slope * (clip.Left - p1.X) + p1.Y + k * dy
+            // Right: x = clip.Right
+
+            float yAtLeft = slope * (clip.Left - (float)p1.X) + (float)p1.Y + k * dy;
+            float yAtRight = slope * (clip.Right - (float)p1.X) + (float)p1.Y + k * dy;
+
+            canvas.DrawLine(clip.Left, yAtLeft, clip.Right, yAtRight, dimPaint);
         }
-        
+
         // Line type 2: Bottom-Left to Top-Right
         // y = -slope * x + C
         for (int k = diagKMin * 2; k <= diagKMax * 2; k++)
         {
-             float yAtLeft = -slope * (clip.Left - (float)p1.X) + (float)p1.Y + k * dy;
-             float yAtRight = -slope * (clip.Right - (float)p1.X) + (float)p1.Y + k * dy;
-             
-             canvas.DrawLine(clip.Left, yAtLeft, clip.Right, yAtRight, dimPaint);
+            float yAtLeft = -slope * (clip.Left - (float)p1.X) + (float)p1.Y + k * dy;
+            float yAtRight = -slope * (clip.Right - (float)p1.X) + (float)p1.Y + k * dy;
+
+            canvas.DrawLine(clip.Left, yAtLeft, clip.Right, yAtRight, dimPaint);
         }
 
         if (IsSelected)

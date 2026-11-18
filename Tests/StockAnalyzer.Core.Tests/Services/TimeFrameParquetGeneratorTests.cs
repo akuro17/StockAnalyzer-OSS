@@ -91,8 +91,8 @@ public sealed class TimeFrameParquetGeneratorTests : IDisposable
         Assert.True(File.Exists(weeklyFile), "Weekly Parquet file must exist.");
         Assert.True(File.Exists(monthlyFile), "Monthly Parquet file must exist.");
 
-        var expectedWeekly = TimeFrameAggregator.AggregateDailyToWeekly(dailyBars);
-        var expectedMonthly = TimeFrameAggregator.AggregateDailyToMonthly(dailyBars);
+        var expectedWeekly = TimeFrameAggregator.AggregateToPeriodStart(dailyBars, TimeFrame.W1);
+        var expectedMonthly = TimeFrameAggregator.AggregateToPeriodStart(dailyBars, TimeFrame.MN1);
 
         // Verify weekly contents
         using (await _dbManager.AcquireLockAsync("TestVerify"))

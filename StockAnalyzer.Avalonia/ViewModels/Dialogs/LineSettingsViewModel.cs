@@ -48,7 +48,7 @@ public partial class LineSettingsViewModel : BaseChartSettingsViewModel
         };
     }
 
-    public override bool IsModified => 
+    public override bool IsModified =>
         ShowLineMarkers != _initialShowLineMarkers ||
         LineColor != _initialLineColor;
 }

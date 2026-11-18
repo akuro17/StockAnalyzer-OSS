@@ -9,7 +9,7 @@ public static class WatchlistConstants
 {
     // Persistence & Identity
     public static readonly Guid AllTickersProfileId = new Guid("A1111111-1111-1111-1111-111111111111");
-    
+
     // Performance
     public const int HydrationBatchSize = 20;
 

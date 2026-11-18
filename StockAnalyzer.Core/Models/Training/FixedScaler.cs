@@ -86,18 +86,18 @@ public sealed record FixedScaler(
         if (raw.Length != count || output.Length != count)
             throw new InvalidDataException("Scaler tensor dimensions are inconsistent.");
         for (int row = 0; row < WindowSize; row++)
-        for (int ch = 0; ch < Statistics.Length; ch++)
-        {
-            int index = row * Statistics.Length + ch;
-            var stat = Statistics[ch];
-            if (!double.IsFinite(raw[index])) throw new InvalidDataException("Raw feature is nonfinite.");
-            double z = stat.Std <= IMLDataProcessor.Epsilon ? 0.0 : (raw[index] - stat.Mean) / stat.Std;
-            if (ClipSigma is { } clip) z = Math.Min(clip, Math.Max(-clip, z));
-            if (!double.IsFinite(z)) throw new InvalidDataException("Scaled feature is nonfinite.");
-            var narrowed = (float)z;
-            if (!float.IsFinite(narrowed)) throw new InvalidDataException("Float32 scaled feature is nonfinite.");
-            output[index] = narrowed;
-        }
+            for (int ch = 0; ch < Statistics.Length; ch++)
+            {
+                int index = row * Statistics.Length + ch;
+                var stat = Statistics[ch];
+                if (!double.IsFinite(raw[index])) throw new InvalidDataException("Raw feature is nonfinite.");
+                double z = stat.Std <= IMLDataProcessor.Epsilon ? 0.0 : (raw[index] - stat.Mean) / stat.Std;
+                if (ClipSigma is { } clip) z = Math.Min(clip, Math.Max(-clip, z));
+                if (!double.IsFinite(z)) throw new InvalidDataException("Scaled feature is nonfinite.");
+                var narrowed = (float)z;
+                if (!float.IsFinite(narrowed)) throw new InvalidDataException("Float32 scaled feature is nonfinite.");
+                output[index] = narrowed;
+            }
     }
 
     public static string ComputeContractHash(IReadOnlyDictionary<string, string> metadata)

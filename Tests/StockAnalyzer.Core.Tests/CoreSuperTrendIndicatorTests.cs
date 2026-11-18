@@ -14,7 +14,7 @@ namespace StockAnalyzer.Core.Tests
             var startDate = DateTime.Today;
             return highs.Select((high, i) => new CoreCandleData(
                 startDate.AddDays(i),
-                i == 0 ? closes[i] : closes[i-1], // Open
+                i == 0 ? closes[i] : closes[i - 1], // Open
                 high,
                 lows[i],
                 closes[i],
@@ -41,7 +41,7 @@ namespace StockAnalyzer.Core.Tests
             Assert.Equal(expectedValues.Length, indicator.Values.Count);
             Assert.Equal(expectedTrends.Length, indicator.IsUpTrend.Count);
 
-            for(int i = 0; i < expectedValues.Length; i++)
+            for (int i = 0; i < expectedValues.Length; i++)
             {
                 if (expectedValues[i] == null)
                     Assert.Null(indicator.Values[i]);

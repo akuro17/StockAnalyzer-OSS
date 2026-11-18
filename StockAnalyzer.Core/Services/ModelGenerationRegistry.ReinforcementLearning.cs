@@ -382,7 +382,7 @@ public sealed partial class ModelGenerationRegistry
         // Version/resource rejection precedes independent financial qualification work.
         RlAllBlockEvaluation.Validate(directory, job, report, model.Metadata, source, costs);
         RlShortHistoryEvaluation.Validate(job, report, model.Metadata, source);
-        if (temporal !=model.Metadata.ContainsKey("temporal_specification_id")
+        if (temporal != model.Metadata.ContainsKey("temporal_specification_id")
             || (temporal && (model.Metadata["temporal_specification_id"] != RlTemporalContract.SpecificationId
                 || model.Metadata["temporal_snapshot_sha256"] != RlTemporalValidator.JobIdentity(job))))
             throw new RlTemporalException(RlTemporalRejection.IdentityMismatch, "ONNX temporal version/snapshot differs from the captured source, costs and job.");
@@ -496,9 +496,12 @@ public sealed partial class ModelGenerationRegistry
         var files = RequiredRlFiles(continuous, temporal).ToDictionary(name => name, name => ContentHash.OfFile(Path.Combine(directory, name)), StringComparer.Ordinal);
         return new RlGeneration(ComputeRlId(directory, files, continuous), source.Manifest.Symbol, source.Revision,
             contractHash, revision, validation, oos, files, DateTimeOffset.UtcNow)
-            { Target = continuous ? RlContinuousContract.Target : RlFiles.Target, FrozenDirectionModelId = direction?.ModelId,
-                TemporalSpecificationId = temporal ? RlTemporalContract.SpecificationId : null,
-                TemporalStatus = temporalEvidence?.Status ?? RlTemporalBoundStatus.Unverified };
+        {
+            Target = continuous ? RlContinuousContract.Target : RlFiles.Target,
+            FrozenDirectionModelId = direction?.ModelId,
+            TemporalSpecificationId = temporal ? RlTemporalContract.SpecificationId : null,
+            TemporalStatus = temporalEvidence?.Status ?? RlTemporalBoundStatus.Unverified
+        };
     }
 
     private static decimal ValidateRlEpisodes(JsonElement rows, IReadOnlyList<RlEpisodeBlock> blocks, string partition, bool continuous = false)

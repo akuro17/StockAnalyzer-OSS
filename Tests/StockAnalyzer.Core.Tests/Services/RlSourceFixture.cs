@@ -60,15 +60,22 @@ internal static class RlSourceFixture
             bars.Length, RlSourceContract.Adjustment, RlSourceContract.LocalProvenance, RlSourceContract.Unverified, stored.StorageDtype,
             RlSourceContract.FinalityPolicy, captured, start, end, parameters)
         {
-            InstrumentType = quoteType, MappedSymbol = symbol, SourcePathIdentity = "Daily/" + symbol + ".parquet",
-            SourceFileSha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.RawParquet)), CurrentHistoryRevision = false,
+            InstrumentType = quoteType,
+            MappedSymbol = symbol,
+            SourcePathIdentity = "Daily/" + symbol + ".parquet",
+            SourceFileSha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.RawParquet)),
+            CurrentHistoryRevision = false,
             MetadataPathIdentity = "Metadata/" + symbol + ".meta.parquet",
             MetadataFileSha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.MetadataParquet)),
-            SourceRows = stored.SourceRows, EvidencePolicy = RlSourceContract.EvidencePolicy,
-            OriginalAcquisitionStatus = RlSourceContract.Unverified, CorporateActionCoverageStatus = RlSourceContract.Unverified,
+            SourceRows = stored.SourceRows,
+            EvidencePolicy = RlSourceContract.EvidencePolicy,
+            OriginalAcquisitionStatus = RlSourceContract.Unverified,
+            CorporateActionCoverageStatus = RlSourceContract.Unverified,
             DateLabelSemantics = RlSourceContract.DateLabelSemantics,
-            FirstDate = DateOnly.FromDateTime(bars[0].Timestamp), LastDate = DateOnly.FromDateTime(bars[^1].Timestamp),
-            ActionsPeriodStart = null, ActionsPeriodEnd = null,
+            FirstDate = DateOnly.FromDateTime(bars[0].Timestamp),
+            LastDate = DateOnly.FromDateTime(bars[^1].Timestamp),
+            ActionsPeriodStart = null,
+            ActionsPeriodEnd = null,
         };
         WriteJson(Path.Combine(directory, RlFiles.SourceManifest), manifest);
         return directory;

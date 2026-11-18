@@ -196,7 +196,8 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         PopulateFacts(); OnPropertyChanged(nameof(FixedContract));
         NotifyModeBadges();
     }
-    [RelayCommand(CanExecute = nameof(CanInspectRecovery))] private async Task InspectRecoveryAsync()
+    [RelayCommand(CanExecute = nameof(CanInspectRecovery))]
+    private async Task InspectRecoveryAsync()
     {
         if (!CanInspectRecovery) return;
         long revision = NextRevision(ref _recoveryRevision);
@@ -220,7 +221,8 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         catch (Exception e) { if (!_disposed && revision == _recoveryRevision) { RecoveryState = RlDialogLoadState.Failed; RecoveryDisplay = DescribeError(e); } }
         finally { EndOperation(); }
     }
-    [RelayCommand(CanExecute = nameof(CanRecover))] private async Task RecoverPointerAsync()
+    [RelayCommand(CanExecute = nameof(CanRecover))]
+    private async Task RecoverPointerAsync()
     {
         if (!CanRecover) return;
         var reviewed = RecoveryPreview!; NextRevision(ref _recoveryRevision); RecoveryPreview = null; InvalidateArtifactReview();
@@ -266,15 +268,26 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         catch (OperationCanceledException) { }
         catch (Exception e)
         {
-            await PublishAsync(() => { if (_disposed || revision != _registryRevision) return; ModelsState = RlDialogLoadState.Failed;
-                SelectedGeneration = null; SelectedDirectionGeneration = null; SetErrorMessage(e); });
+            await PublishAsync(() =>
+            {
+                if (_disposed || revision != _registryRevision) return; ModelsState = RlDialogLoadState.Failed;
+                SelectedGeneration = null; SelectedDirectionGeneration = null; SetErrorMessage(e);
+            });
         }
         finally { if (ReferenceEquals(_refreshCts, cancel)) _refreshCts = null; }
     }
     private BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
-    { SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter, InitialCapital = InitialCapital,
-      CommissionFlat = CommissionFlat, CommissionPerUnit = CommissionPerUnit, SlippageRatio = SlippageRatio, LiquidationPenaltyRatio = LiquidationPenaltyRatio });
-    [RelayCommand(CanExecute = nameof(CanTrain))] private async Task TrainAsync()
+    {
+        SizingModel = BacktestDefaults.SizingModel,
+        SizingParameter = BacktestDefaults.SizingParameter,
+        InitialCapital = InitialCapital,
+        CommissionFlat = CommissionFlat,
+        CommissionPerUnit = CommissionPerUnit,
+        SlippageRatio = SlippageRatio,
+        LiquidationPenaltyRatio = LiquidationPenaltyRatio
+    });
+    [RelayCommand(CanExecute = nameof(CanTrain))]
+    private async Task TrainAsync()
     {
         if (!CanTrain) return;
         var storageMode = SelectedStorageMode;
@@ -286,10 +299,12 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
         var start = DateOnly.ParseExact(StartDate, "yyyy-MM-dd", CultureInfo.InvariantCulture);
         var end = DateOnly.ParseExact(EndDateExclusive, "yyyy-MM-dd", CultureInfo.InvariantCulture);
         var job = RlTrainingValidation.Freeze(new RlTrainingJob(Symbol, start, end, Costs(), SmokeOnly: SmokeOnly)
-        { FrozenDirectionModelId = UseContinuousPolicy ? SelectedDirectionGeneration!.ModelId : null,
-          EvaluationSpecificationId = UseContinuousPolicy && UseAllCompleteBlocks ? RlAllBlockEvaluationContract.SpecificationId : null,
-          ShortHistorySpecificationId = !UseContinuousPolicy && UseShortHistory ? RlShortHistoryEvaluationContract.SpecificationId : null,
-          StorageMode = storageMode });
+        {
+            FrozenDirectionModelId = UseContinuousPolicy ? SelectedDirectionGeneration!.ModelId : null,
+            EvaluationSpecificationId = UseContinuousPolicy && UseAllCompleteBlocks ? RlAllBlockEvaluationContract.SpecificationId : null,
+            ShortHistorySpecificationId = !UseContinuousPolicy && UseShortHistory ? RlShortHistoryEvaluationContract.SpecificationId : null,
+            StorageMode = storageMode
+        });
         using var cancel = new CancellationTokenSource(); using var pause = new CancellationTokenSource();
         _jobCts = cancel; _pauseCts = pause; BeginOperation(RlDialogOperation.Training, cancel); Status = "Preparing"; CompletedSteps = null;
         TotalStepsTarget = job.SmokeOnly
@@ -350,9 +365,11 @@ public sealed partial class RlTrainingDialogViewModel : ObservableObject, IDispo
             NotifyUi();
         });
     }
-    [RelayCommand(CanExecute = nameof(CanCancel))] private void Cancel()
+    [RelayCommand(CanExecute = nameof(CanCancel))]
+    private void Cancel()
     { if (!CanCancel) return; Status = "Cancelling"; _operationCts!.Cancel(); NotifyUi(); }
-    [RelayCommand(CanExecute = nameof(CanActivate))] private async Task ActivateAsync()
+    [RelayCommand(CanExecute = nameof(CanActivate))]
+    private async Task ActivateAsync()
     {
         if (!CanActivate) return;
         string modelId = SelectedGeneration!.ModelId; InvalidateArtifactReview(); BeginOperation(RlDialogOperation.Activating);

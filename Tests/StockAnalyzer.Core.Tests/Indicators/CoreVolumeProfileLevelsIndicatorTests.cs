@@ -17,6 +17,7 @@ using Xunit.Abstractions;
 namespace StockAnalyzer.Core.Tests.Indicators;
 
 /// <summary>WebAiExpansion plan 03 T7 (D-04=A): causal POC / VAH / VAL series, one profile of the last Period bars per bar.</summary>
+[Collection("LongRunningMeasurement")]
 public class CoreVolumeProfileLevelsIndicatorTests
 {
     private readonly ITestOutputHelper _output;
@@ -162,7 +163,7 @@ public class CoreVolumeProfileLevelsIndicatorTests
     public void ALargeRowCount_UsesTheRentedArrayAndGivesTheSameLevels()
     {
         var candles = VolumeAnalysisSpanTests.RandomCandles(80);
-        var indicator = Make(40, 5) ;
+        var indicator = Make(40, 5);
         indicator.RowCount = IndicatorDefaultConstants.VolumeProfileLevelsMaxStackRows + 44;
 
         var result = indicator.Calculate(candles);

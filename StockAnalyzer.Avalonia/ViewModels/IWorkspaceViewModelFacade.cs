@@ -6,6 +6,6 @@ public interface IWorkspaceViewModelFacade
     TickerListViewModel TickerList { get; }
     DrawingToolSidebarViewModel Sidebar { get; }
     DrawingObjectsViewModel DrawingObjects { get; }
-    
+
     void BindChart(ChartViewModel chartViewModel);
 }

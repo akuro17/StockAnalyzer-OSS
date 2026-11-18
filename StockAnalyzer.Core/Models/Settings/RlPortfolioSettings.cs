@@ -42,8 +42,13 @@ public sealed class RlPortfolioSettings
     public RlPortfolioSettings WithRunOverrides(int? holdoutPercent, int? maxWeightPercent)
         => holdoutPercent is null && maxWeightPercent is null ? this : new RlPortfolioSettings
         {
-            MaxSymbols = MaxSymbols, HoldoutPercent = holdoutPercent ?? HoldoutPercent, MaxWeightPercent = maxWeightPercent ?? MaxWeightPercent,
-            PartitionMode = PartitionMode, MinimumTrainBars = MinimumTrainBars, MinimumValidationBars = MinimumValidationBars, MinimumTestBars = MinimumTestBars,
+            MaxSymbols = MaxSymbols,
+            HoldoutPercent = holdoutPercent ?? HoldoutPercent,
+            MaxWeightPercent = maxWeightPercent ?? MaxWeightPercent,
+            PartitionMode = PartitionMode,
+            MinimumTrainBars = MinimumTrainBars,
+            MinimumValidationBars = MinimumValidationBars,
+            MinimumTestBars = MinimumTestBars,
         };
 }
 

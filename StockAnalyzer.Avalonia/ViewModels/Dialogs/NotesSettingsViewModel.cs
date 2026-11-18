@@ -39,36 +39,36 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public string TitleKey => "Settings_Notes";
         public string IconKey => "SettingsNotesIcon";
 
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedThumbnailSizePixels = NotesSettingsConstants.DefaultThumbnailSizePixels;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private NoteImageDisplayMode _selectedImageDisplayMode = NotesSettingsConstants.DefaultImageDisplayMode;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedMaxRenderedThumbnails = NotesSettingsConstants.DefaultMaxRenderedThumbnails;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedThumbnailSizePixels = NotesSettingsConstants.DefaultThumbnailSizePixels;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private NoteImageDisplayMode _selectedImageDisplayMode = NotesSettingsConstants.DefaultImageDisplayMode;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedMaxRenderedThumbnails = NotesSettingsConstants.DefaultMaxRenderedThumbnails;
 
         /// <summary>ItemsSource for the "Images" section's display-mode ComboBox (same
         /// Enum.GetValues-backed pattern as KagiSettingsViewModel.FallbackModeOptions).</summary>
         public static IReadOnlyList<NoteImageDisplayMode> ImageDisplayModeOptions { get; } = Enum.GetValues<NoteImageDisplayMode>();
 
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedReadMoreMaxCharacters = NotesSettingsConstants.DefaultReadMoreMaxCharacters;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedReadMoreMaxLines = NotesSettingsConstants.DefaultReadMoreMaxLines;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedReadMoreMaxCharacters = NotesSettingsConstants.DefaultReadMoreMaxCharacters;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedReadMoreMaxLines = NotesSettingsConstants.DefaultReadMoreMaxLines;
 
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedThreadCollapseThreshold = NotesSettingsConstants.DefaultThreadCollapseThreshold;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedTailVisibleCount = NotesSettingsConstants.DefaultTailVisibleCount;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedConnectorLineLength = NotesSettingsConstants.DefaultConnectorLineLength;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedDashLength = NotesSettingsConstants.DefaultDashLength;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedTimelinePageSize = NotesSettingsConstants.DefaultTimelinePageSize;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedUpcomingCatalystsLimit = NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedUpcomingCatalystsPastDaysRetention = NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedThreadCollapseThreshold = NotesSettingsConstants.DefaultThreadCollapseThreshold;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedTailVisibleCount = NotesSettingsConstants.DefaultTailVisibleCount;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedConnectorLineLength = NotesSettingsConstants.DefaultConnectorLineLength;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedDashLength = NotesSettingsConstants.DefaultDashLength;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedTimelinePageSize = NotesSettingsConstants.DefaultTimelinePageSize;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedUpcomingCatalystsLimit = NotesSettingsConstants.DefaultUpcomingCatalystsLimit;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedUpcomingCatalystsPastDaysRetention = NotesSettingsConstants.DefaultUpcomingCatalystsPastDaysRetention;
 
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedBodyFontSize = NotesSettingsConstants.DefaultBodyFontSize;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedBodyTextColor = NotesSettingsConstants.FallbackBodyTextColor;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedBodyBackgroundColor = NotesSettingsConstants.FallbackBodyBackgroundColor;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedBodyFontSize = NotesSettingsConstants.DefaultBodyFontSize;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedBodyTextColor = NotesSettingsConstants.FallbackBodyTextColor;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedBodyBackgroundColor = NotesSettingsConstants.FallbackBodyBackgroundColor;
 
         // No on/off toggle (fix request: "チェックボックスのON/OFFが不要...トグル設定は不要") - the
         // ColorPicker is always active, defaulting to the same value as the body text color.
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedUrlColor = NotesSettingsConstants.FallbackBodyTextColor;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedHashtagColor = NotesSettingsConstants.FallbackBodyTextColor;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedUrlColor = NotesSettingsConstants.FallbackBodyTextColor;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedHashtagColor = NotesSettingsConstants.FallbackBodyTextColor;
 
         // Background of text highlighted (mouse-selected) in a Note body; the default follows the Light/Dark theme (light blue / dark blue).
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedHighlightColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _selectedHighlightColor = IndicatorColor.FromUInt(NotesSettingsConstants.DefaultHighlightColorArgb);
 
         public NotesSettingsViewModel(INotesSettingsManager notesSettingsManager)
         {

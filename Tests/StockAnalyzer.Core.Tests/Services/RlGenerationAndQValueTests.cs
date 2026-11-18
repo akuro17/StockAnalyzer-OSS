@@ -51,21 +51,31 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
             $"SELECT DATE '2000-01-01'+CAST(range AS INTEGER) AS date,100::FLOAT AS open,110::FLOAT AS high,90::FLOAT AS low,100::FLOAT AS close,1000::BIGINT AS volume FROM range({bars.Length})");
         CreateParquet(Path.Combine(directory, RlFiles.MetadataParquet),
             "SELECT 'USD' AS currency,'EQUITY' AS quote_type,'UTC' AS exchange_timezone_name");
-        var stored = RlLocalParquetReader.Read(Path.Combine(directory, RlFiles.RawParquet), new(2000,1,1), new(2026,1,1), Limits, CancellationToken.None);
+        var stored = RlLocalParquetReader.Read(Path.Combine(directory, RlFiles.RawParquet), new(2000, 1, 1), new(2026, 1, 1), Limits, CancellationToken.None);
         var parameters = RlSourceContract.Acquisition.ToDictionary(p => p.Key, p => JsonSerializer.SerializeToElement(p.Value));
         var manifest = new RlSourceManifest(RlSourceContract.SchemaVersion, RlFiles.LocalProvider, RlFiles.LocalProviderVersion, Symbol, "USD", "UTC",
             new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero), new DateTimeOffset(2026, 1, 1, 0, 1, 0, TimeSpan.Zero),
             ContentHash.OfFile(Path.Combine(directory, RlFiles.Bars)), ContentHash.OfFile(Path.Combine(directory, RlFiles.Actions)),
             bars.Length, RlSourceContract.Adjustment, RlSourceContract.LocalProvenance, RlSourceContract.Unverified, stored.StorageDtype,
             RlSourceContract.FinalityPolicy, new DateOnly(2026, 1, 1), new DateOnly(2000, 1, 1), new DateOnly(2026, 1, 1), parameters)
-            { InstrumentType = "EQUITY", MappedSymbol = Symbol, SourcePathIdentity = "Daily/" + Symbol + ".parquet",
-                SourceFileSha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.RawParquet)), CurrentHistoryRevision = false,
-                MetadataPathIdentity = "Metadata/" + Symbol + ".meta.parquet", MetadataFileSha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.MetadataParquet)),
-                SourceRows = stored.SourceRows, EvidencePolicy = RlSourceContract.EvidencePolicy,
-                OriginalAcquisitionStatus = RlSourceContract.Unverified, CorporateActionCoverageStatus = RlSourceContract.Unverified,
-                DateLabelSemantics = RlSourceContract.DateLabelSemantics,
-                FirstDate = DateOnly.FromDateTime(bars[0].Timestamp), LastDate = DateOnly.FromDateTime(bars[^1].Timestamp),
-                ActionsPeriodStart = null, ActionsPeriodEnd = null };
+        {
+            InstrumentType = "EQUITY",
+            MappedSymbol = Symbol,
+            SourcePathIdentity = "Daily/" + Symbol + ".parquet",
+            SourceFileSha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.RawParquet)),
+            CurrentHistoryRevision = false,
+            MetadataPathIdentity = "Metadata/" + Symbol + ".meta.parquet",
+            MetadataFileSha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.MetadataParquet)),
+            SourceRows = stored.SourceRows,
+            EvidencePolicy = RlSourceContract.EvidencePolicy,
+            OriginalAcquisitionStatus = RlSourceContract.Unverified,
+            CorporateActionCoverageStatus = RlSourceContract.Unverified,
+            DateLabelSemantics = RlSourceContract.DateLabelSemantics,
+            FirstDate = DateOnly.FromDateTime(bars[0].Timestamp),
+            LastDate = DateOnly.FromDateTime(bars[^1].Timestamp),
+            ActionsPeriodStart = null,
+            ActionsPeriodEnd = null
+        };
         Write(Path.Combine(directory, RlFiles.SourceManifest), manifest);
         // The saved job selects the evaluation specification; the complete job document replaces this stub below.
         if (shortHistory) Write(Path.Combine(directory, RlFiles.Job), new Dictionary<string, object> { [RlShortHistoryEvaluationContract.MetadataKey] = RlShortHistoryEvaluationContract.SpecificationId });
@@ -76,7 +86,7 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
         Write(Path.Combine(directory, RlFiles.BaselineActions), actions);
         var metadata = RlObservationBuilder.CreateMetadata(Symbol, source.Revision, Revision);
         if (shortHistory) metadata[RlShortHistoryEvaluationContract.MetadataKey] = RlShortHistoryEvaluationContract.SpecificationId;
-        byte[] model =File.ReadAllBytes(Path.Combine("Assets", "rl_numeric_q_fixture.onnx"));
+        byte[] model = File.ReadAllBytes(Path.Combine("Assets", "rl_numeric_q_fixture.onnx"));
         if (tieFixture)
         {
             byte[] bias = new byte[3 * sizeof(float)];
@@ -101,18 +111,33 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
             FixedScaler.ComputeContractHash(metadata));
         Write(Path.Combine(directory, RlFiles.Model + RlFiles.ScalerSuffix), scaler);
         File.WriteAllText(Path.Combine(directory, RlFiles.Native), "numerical_fixture_native_placeholder_not_training_evidence");
-        Write(Path.Combine(directory, RlFiles.Dependencies), new { numeric_fixture = true,
+        Write(Path.Combine(directory, RlFiles.Dependencies), new
+        {
+            numeric_fixture = true,
             packages = new Dictionary<string, string> { ["stable-baselines3"] = RlContract.StableBaselinesVersion, ["gymnasium"] = RlContract.GymnasiumVersion },
-            torch_device = "cpu", deterministic_algorithms = true, source_script_sha256 = Revision });
+            torch_device = "cpu",
+            deterministic_algorithms = true,
+            source_script_sha256 = Revision
+        });
         var costs = RlContract.CreateConfiguration(new BacktestConfiguration
         { InitialCapital = 1_000m, SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m });
-        var jobDocument = new Dictionary<string, object> { ["source_directory"] = directory, ["costs"] = costs, ["defaults"] = RlContract.ToWireDefaults(),
-            ["resource_limits"] = Limits, ["smoke_only"] = false };
+        var jobDocument = new Dictionary<string, object>
+        {
+            ["source_directory"] = directory,
+            ["costs"] = costs,
+            ["defaults"] = RlContract.ToWireDefaults(),
+            ["resource_limits"] = Limits,
+            ["smoke_only"] = false
+        };
         if (shortHistory)
         {
             jobDocument[RlShortHistoryEvaluationContract.MetadataKey] = RlShortHistoryEvaluationContract.SpecificationId;
-            jobDocument[RlShortHistoryEvaluationContract.ContractKey] = new { specification_id = RlShortHistoryEvaluationContract.SpecificationId,
-                schema_version = RlShortHistoryEvaluationContract.SchemaVersion, contract_hash = RlShortHistoryEvaluationContract.ContractHash };
+            jobDocument[RlShortHistoryEvaluationContract.ContractKey] = new
+            {
+                specification_id = RlShortHistoryEvaluationContract.SpecificationId,
+                schema_version = RlShortHistoryEvaluationContract.SchemaVersion,
+                contract_hash = RlShortHistoryEvaluationContract.ContractHash
+            };
             jobDocument["evaluation_resource_estimate"] = RlConstraintEvaluation.ToWire(RlShortHistoryEvaluation.Estimate(source, false));
         }
         Write(Path.Combine(directory, RlFiles.Job), jobDocument);
@@ -121,10 +146,16 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
         Write(Path.Combine(directory, RlFiles.Parity), new { observations = new[] { observation }, q_values = new[] { tieFixture ? new[] { 1f, 1f, -1f } : new[] { 0f, 1f, -1f } } });
         Dictionary<string, object> Episode(RlEpisodeBlock block) => new()
         {
-            ["block_id"] = block.Id, ["partition"] = block.Partition, ["terminal_return"] = Text(score),
-            ["maximum_drawdown"] = "0.01", ["completed_decisions"] = RlContract.EpisodeHorizon,
-            ["terminal_reason"] = nameof(RlTerminalReason.Horizon), ["residual_quantity"] = "0", ["realized_pnl"] = "-10",
-            ["unrealized_pnl"] = "0", ["costs"] = "0",
+            ["block_id"] = block.Id,
+            ["partition"] = block.Partition,
+            ["terminal_return"] = Text(score),
+            ["maximum_drawdown"] = "0.01",
+            ["completed_decisions"] = RlContract.EpisodeHorizon,
+            ["terminal_reason"] = nameof(RlTerminalReason.Horizon),
+            ["residual_quantity"] = "0",
+            ["realized_pnl"] = "-10",
+            ["unrealized_pnl"] = "0",
+            ["costs"] = "0",
         };
         object[] Episodes(IEnumerable<RlEpisodeBlock> blocks) => blocks.Select(b => (object)Episode(b)).ToArray();
         Dictionary<string, object> Baselines(ImmutableArray<RlEpisodeBlock> blocks)
@@ -134,22 +165,33 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
                 report[policy] = new { episodes = Episodes(blocks), mean_return = Text(score), mean_maximum_drawdown = "0.01", worst_maximum_drawdown = "0.01" };
             report[RlContract.RandomBaselineId] = new
             {
-                mean_return = Text(score), min_seed_return = Text(score), max_seed_return = Text(score),
+                mean_return = Text(score),
+                min_seed_return = Text(score),
+                max_seed_return = Text(score),
                 seeds = RlContract.CandidateSeeds.Select(seed => new { seed = seed + RlContract.RandomBaselineSeedOffset, episodes = Episodes(blocks), mean_return = Text(score) }).ToArray(),
             };
             return report;
         }
         var report = new Dictionary<string, object>
         {
-            ["schema_version"] = RlContract.SchemaVersion, ["smoke_only"] = false, ["contract_hash"] = RlContract.ContractHash,
-            ["source_revision"] = source.Revision, ["evaluation_revision"] = Revision, ["symbol"] = Symbol,
-            ["model_sha256"] = ContentHash.OfFile(Path.Combine(directory, RlFiles.Model)), ["parity_verified"] = true,
-            ["validation_mean_return"] = Text(score), ["oos_mean_return"] = Text(score),
-            ["validation_episodes"] = Episodes(source.Catalog.Validation), ["oos_episodes"] = Episodes(source.Catalog.Oos),
-            ["candidate_seed"] = RlContract.CandidateSeeds[0], ["checkpoint_step"] = RlContract.ValidationCheckpointInterval,
+            ["schema_version"] = RlContract.SchemaVersion,
+            ["smoke_only"] = false,
+            ["contract_hash"] = RlContract.ContractHash,
+            ["source_revision"] = source.Revision,
+            ["evaluation_revision"] = Revision,
+            ["symbol"] = Symbol,
+            ["model_sha256"] = ContentHash.OfFile(Path.Combine(directory, RlFiles.Model)),
+            ["parity_verified"] = true,
+            ["validation_mean_return"] = Text(score),
+            ["oos_mean_return"] = Text(score),
+            ["validation_episodes"] = Episodes(source.Catalog.Validation),
+            ["oos_episodes"] = Episodes(source.Catalog.Oos),
+            ["candidate_seed"] = RlContract.CandidateSeeds[0],
+            ["checkpoint_step"] = RlContract.ValidationCheckpointInterval,
             ["candidate_evaluations"] = RlContract.CandidateSeeds.SelectMany(seed => new[] { RlContract.ValidationCheckpointInterval, RlContract.TrainingTransitionsPerSeed }
                 .Select(checkpoint => new { seed, checkpoint_step = checkpoint, summary = new { episodes = Episodes(source.Catalog.Validation), mean_return = Text(score) } })).ToArray(),
-            ["configuration"] = costs, ["resources"] = new { processed_transitions = RlContract.TrainingTransitionsPerSeed * RlContract.CandidateSeeds.Length, episode_starts = 300 },
+            ["configuration"] = costs,
+            ["resources"] = new { processed_transitions = RlContract.TrainingTransitionsPerSeed * RlContract.CandidateSeeds.Length, episode_starts = 300 },
             ["baselines"] = new { validation = Baselines(source.Catalog.Validation), oos = Baselines(source.Catalog.Oos) },
         };
         if (shortHistory)
@@ -241,12 +283,18 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false, "output_name")] [InlineData(true, "output_name")]
-    [InlineData(false, "input_name")] [InlineData(true, "input_name")]
-    [InlineData(false, "output_dtype")] [InlineData(true, "output_dtype")]
-    [InlineData(false, "input_dtype")] [InlineData(true, "input_dtype")]
-    [InlineData(false, "output_shape")] [InlineData(true, "output_shape")]
-    [InlineData(false, "input_shape")] [InlineData(true, "input_shape")]
+    [InlineData(false, "output_name")]
+    [InlineData(true, "output_name")]
+    [InlineData(false, "input_name")]
+    [InlineData(true, "input_name")]
+    [InlineData(false, "output_dtype")]
+    [InlineData(true, "output_dtype")]
+    [InlineData(false, "input_dtype")]
+    [InlineData(true, "input_dtype")]
+    [InlineData(false, "output_shape")]
+    [InlineData(true, "output_shape")]
+    [InlineData(false, "input_shape")]
+    [InlineData(true, "input_shape")]
     public void R05MetadataDiagnosticsIdentifyTheActualOutputContract(bool continuous, string mutation)
     {
         string path = DiagnosticModel(continuous, mutation);
@@ -257,10 +305,14 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false, "empty")] [InlineData(true, "empty")]
-    [InlineData(false, "unpaired")] [InlineData(true, "unpaired")]
-    [InlineData(false, "shape")] [InlineData(true, "shape")]
-    [InlineData(false, "values")] [InlineData(true, "values")]
+    [InlineData(false, "empty")]
+    [InlineData(true, "empty")]
+    [InlineData(false, "unpaired")]
+    [InlineData(true, "unpaired")]
+    [InlineData(false, "shape")]
+    [InlineData(true, "shape")]
+    [InlineData(false, "values")]
+    [InlineData(true, "values")]
     public void R05ParityDiagnosticsDistinguishActorComponentsFromQActions(bool continuous, string mutation)
     {
         string modelPath = DiagnosticModel(continuous);
@@ -284,7 +336,9 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
         }
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void R05InferShapeDiagnosticsIdentifyTheActualOutputContract(bool continuous)
     {
         using var model = new RlQModel(DiagnosticModel(continuous, "runtime_shape"), continuous);
@@ -293,7 +347,9 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
         Assert.Contains("shape", error.Message);
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void R05ValidActorAndQInferenceAndParityKeepTheirOriginalValues(bool continuous)
     {
         string path = DiagnosticModel(continuous);
@@ -302,8 +358,11 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
         float[] expected = continuous ? new[] { .25f, -.5f } : new[] { 0f, 1f, -1f };
         Assert.Equal(expected, model.Infer(observation));
         string parityPath = Path.Combine(Path.GetDirectoryName(path)!, RlFiles.Parity);
-        Write(parityPath, new Dictionary<string, object> { ["observations"] = new[] { observation },
-            [continuous ? RlContinuousContract.ParityField : RlContract.OnnxOutputName] = new[] { expected } });
+        Write(parityPath, new Dictionary<string, object>
+        {
+            ["observations"] = new[] { observation },
+            [continuous ? RlContinuousContract.ParityField : RlContract.OnnxOutputName] = new[] { expected }
+        });
         model.ValidateParity(parityPath);
         if (!continuous) Assert.Equal(RlAction.Buy, RlContract.SelectAction(expected));
     }
@@ -500,19 +559,36 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
         var metadata = RlObservationBuilder.CreateMetadata(Symbol, candidate.Source.Revision, Revision);
         using var host = new RlIpcHost(runId, candidate.Source, costs, candidate.Directory, metadata, null);
         JsonElement Frame(long sequence, string method, object payload, string session = "") => JsonSerializer.SerializeToElement(new
-        { protocol_version = RlContract.SchemaVersion, run_id = runId.ToString("N"), contract_hash = RlContract.ContractHash,
-            sequence, method, session_id = session, payload }, RlFiles.Json);
+        {
+            protocol_version = RlContract.SchemaVersion,
+            run_id = runId.ToString("N"),
+            contract_hash = RlContract.ContractHash,
+            sequence,
+            method,
+            session_id = session,
+            payload
+        }, RlFiles.Json);
         host.Handle(Frame(1, "Ready", new { }), CancellationToken.None);
-        host.Handle(Frame(2, "Reset", new { role = "train", block_id = candidate.Source.Catalog.Train[0].Id,
-            seed = RlContract.CandidateSeeds[0], checkpoint = 0 }, id), CancellationToken.None);
+        host.Handle(Frame(2, "Reset", new
+        {
+            role = "train",
+            block_id = candidate.Source.Catalog.Train[0].Id,
+            seed = RlContract.CandidateSeeds[0],
+            checkpoint = 0
+        }, id), CancellationToken.None);
         host.Handle(Frame(3, "Step", new { action = (int)RlAction.Buy }, id), CancellationToken.None);
         Assert.Throws<InvalidDataException>(() => host.Handle(Frame(3, "Step", new { action = (int)RlAction.Sell }, id), CancellationToken.None));
         var response = JsonSerializer.SerializeToElement(host.Handle(Frame(4, "Step", new { action = (int)RlAction.Hold }, id), CancellationToken.None), RlFiles.Json);
         Assert.Equal("1", response.GetProperty("result").GetProperty("info").GetProperty("account").GetProperty("quantity").GetString());
         Assert.Equal(2, host.Transitions);
         host.Handle(Frame(5, "Dispose", new { }, id), CancellationToken.None);
-        Assert.Throws<InvalidDataException>(() => host.Handle(Frame(6, "Reset", new { role = "train", block_id = candidate.Source.Catalog.Train[0].Id,
-            seed = RlContract.CandidateSeeds[0], checkpoint = 0 }, id), CancellationToken.None));
+        Assert.Throws<InvalidDataException>(() => host.Handle(Frame(6, "Reset", new
+        {
+            role = "train",
+            block_id = candidate.Source.Catalog.Train[0].Id,
+            seed = RlContract.CandidateSeeds[0],
+            checkpoint = 0
+        }, id), CancellationToken.None));
     }
 
     private static string Text(decimal value) => value.ToString(CultureInfo.InvariantCulture);
@@ -520,7 +596,7 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
     {
         using var db = new DuckDBConnection("DataSource=:memory:"); db.Open(); using var command = db.CreateCommand();
         command.CommandText = "SET threads=" + RlContract.CpuThreads.ToString(CultureInfo.InvariantCulture); command.ExecuteNonQuery();
-        command.CommandText = $"COPY ({query}) TO '{ParquetMarketDataProvider.EscapeDuckDbPath(path.Replace('\\','/'))}' (FORMAT PARQUET)";
+        command.CommandText = $"COPY ({query}) TO '{ParquetMarketDataProvider.EscapeDuckDbPath(path.Replace('\\', '/'))}' (FORMAT PARQUET)";
         command.ExecuteNonQuery();
     }
     private static void Write<T>(string path, T value) => File.WriteAllText(path, JsonSerializer.Serialize(value, RlFiles.Json));

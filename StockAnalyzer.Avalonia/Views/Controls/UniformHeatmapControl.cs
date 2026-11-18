@@ -417,17 +417,17 @@ public sealed class UniformHeatmapControl : Control, IDisposable
             case HeatmapColorKind.Neutral:
                 return new SKColor(palette.Neutral.R, palette.Neutral.G, palette.Neutral.B, palette.Neutral.A);
             case HeatmapColorKind.Up:
-            {
-                var luts = _paletteLutCache.GetValue(palette, static p => new PaletteLuts(p));
-                int idx = Math.Clamp((int)Math.Round(sample.Factor * 512.0), 0, 512);
-                return luts.Up[idx];
-            }
+                {
+                    var luts = _paletteLutCache.GetValue(palette, static p => new PaletteLuts(p));
+                    int idx = Math.Clamp((int)Math.Round(sample.Factor * 512.0), 0, 512);
+                    return luts.Up[idx];
+                }
             case HeatmapColorKind.Down:
-            {
-                var luts = _paletteLutCache.GetValue(palette, static p => new PaletteLuts(p));
-                int idx = Math.Clamp((int)Math.Round(sample.Factor * 512.0), 0, 512);
-                return luts.Down[idx];
-            }
+                {
+                    var luts = _paletteLutCache.GetValue(palette, static p => new PaletteLuts(p));
+                    int idx = Math.Clamp((int)Math.Round(sample.Factor * 512.0), 0, 512);
+                    return luts.Down[idx];
+                }
             default:
                 return NoDataColor;
         }

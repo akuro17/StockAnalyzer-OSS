@@ -4,6 +4,7 @@ using StockAnalyzer.Core.Models.Indicators.Advanced;
 using StockAnalyzer.Core.Models.Indicators.MovingAverages;
 using StockAnalyzer.Core.Models.Indicators.Oscillators;
 using StockAnalyzer.Core.Models.Indicators.Statistics;
+using StockAnalyzer.Core.Models.Indicators.Trend;
 using StockAnalyzer.Core.Models.Indicators.Volatility;
 using StockAnalyzer.Core.Models.Parameters;
 
@@ -135,6 +136,54 @@ public static class IndicatorChartSuppression
             [IndicatorType.JohansenCointegration] = new HashSet<string>(StringComparer.Ordinal)
             {
                 CoreJohansenCointegrationIndicator.CointegrationSpreadZScoreSeriesName,
+            },
+            // Fixed [0, 1] panel axis of the p-value: the unbounded test statistic is kept out of the chart and the sub-panel range (still in the result, DataWindow, screener and MCP).
+            [IndicatorType.JarqueBera] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreJarqueBeraIndicator.JBStatisticSeriesName,
+            },
+            [IndicatorType.LjungBoxQ] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreLjungBoxQIndicator.QStatisticSeriesName,
+            },
+            // Per-bar return ratios drawn together: the dimensionless Sortino ratio, the [-1, 1] asymmetry and the [0, 1] jump ratio differ in scale and would dominate the panel.
+            [IndicatorType.DownsideDeviation] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreDownsideDeviationIndicator.RollingSortinoSeriesName,
+                CoreDownsideDeviationIndicator.SemivarianceAsymmetrySeriesName,
+            },
+            [IndicatorType.BipowerVariation] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreBipowerVariationIndicator.JumpRatioSeriesName,
+            },
+            // The coefficient on the lagged level (about -1..0) and the half-life in bars differ in scale from the tau statistic and its critical value on the same sub-panel.
+            [IndicatorType.ADFStationarity] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreAdfStationarityIndicator.HalfLifeSeriesName,
+                CoreAdfStationarityIndicator.RhoSeriesName,
+            },
+            // The Z* statistic is unbounded and its p-value lies in [0, 1]: both differ in scale from the variance ratio around 1.
+            [IndicatorType.VarianceRatio] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreVarianceRatioIndicator.ZStarStatisticSeriesName,
+                CoreVarianceRatioIndicator.PValueSeriesName,
+            },
+            // Price-unit spreads of the window (not price levels of the bar): they would stretch the price axis of the overlay.
+            [IndicatorType.QuantileBands] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreQuantileBandsIndicator.IqrSeriesName,
+                CoreQuantileBandsIndicator.MadSeriesName,
+            },
+            // Slope (price per bar) and the window-relative intercept are not price levels of the bar.
+            [IndicatorType.TheilSenRegression] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreTheilSenRegressionIndicator.SlopeSeriesName,
+                CoreTheilSenRegressionIndicator.InterceptSeriesName,
+            },
+            // The [0, 1] probability differs in scale from the per-bar return quantiles on the same sub-panel.
+            [IndicatorType.CornishFisherVaR] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreCornishFisherVarIndicator.ProbabilisticSharpeRatioSeriesName,
             },
         };
 

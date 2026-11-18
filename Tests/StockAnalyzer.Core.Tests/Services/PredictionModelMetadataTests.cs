@@ -152,7 +152,8 @@ public class PredictionModelMetadataTests
     {
         var metadata = new Dictionary<string, string>
         {
-            ["feature_mode"] = "ohlcv_minmax", ["window_size"] = "10",
+            ["feature_mode"] = "ohlcv_minmax",
+            ["window_size"] = "10",
             ["normalization"] = normalization,
         };
         if (reference is not null) metadata["scaler_ref"] = reference;

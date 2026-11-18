@@ -51,7 +51,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
                 if (slowEma == null) { slowEma = priceSeries.Take(SlowPeriod).Average(v => v ?? 0m); }
                 else { slowEma = ((priceSeries[i] ?? 0m) - slowEma!.Value) * slowMult + slowEma.Value; }
 
-                if(slowEma!.Value != 0)
+                if (slowEma!.Value != 0)
                 {
                     _values.Add(((fastEmas[i]!.Value - slowEma.Value) / slowEma.Value) * 100);
                 }

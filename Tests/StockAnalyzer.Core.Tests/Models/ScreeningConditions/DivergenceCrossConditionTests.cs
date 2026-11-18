@@ -22,7 +22,7 @@ public class DivergenceCrossConditionTests
     {
         var parameter = new CoreDivergenceCrossParameter();
         var condition = new DivergenceCrossCondition(IndicatorType.RSI, SignalType.GoldenCross, parameter);
-        
+
         Assert.False(condition.IsMet(null));
         Assert.False(condition.IsMet(new List<CandleData>()));
     }
@@ -32,9 +32,9 @@ public class DivergenceCrossConditionTests
     {
         var parameter = new CoreDivergenceCrossParameter { LongMaPeriod = 50 };
         var condition = new DivergenceCrossCondition(IndicatorType.RSI, SignalType.GoldenCross, parameter);
-        
+
         var candles = new List<CandleData>();
-        for (int i=0; i<49; i++) 
+        for (int i = 0; i < 49; i++)
             candles.Add(new CandleData(DateTime.Today.AddDays(i), 1, 1, 1, 1, 1));
 
         Assert.False(condition.IsMet(candles));
@@ -45,7 +45,7 @@ public class DivergenceCrossConditionTests
     {
         var parameter = new CoreDivergenceCrossParameter();
         var condition = new DivergenceCrossCondition(IndicatorType.RSI, SignalType.GoldenCross, parameter, 10);
-        
+
         var str = condition.ToString();
         Assert.Contains("RSI", str);
         Assert.Contains("GoldenCross", str);

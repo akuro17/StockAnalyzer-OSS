@@ -90,29 +90,29 @@ public static class ScatterAnalysisEngine
         if (double.IsNaN(p)) return double.NaN;
 
         const double a1 = -3.969683028665376e+01;
-        const double a2 =  2.209460984245205e+02;
+        const double a2 = 2.209460984245205e+02;
         const double a3 = -2.759285104469687e+02;
-        const double a4 =  1.383577518672690e+02;
+        const double a4 = 1.383577518672690e+02;
         const double a5 = -3.066479806614716e+01;
-        const double a6 =  2.506628277459239e+00;
+        const double a6 = 2.506628277459239e+00;
 
         const double b1 = -5.447609879822406e+01;
-        const double b2 =  1.615858368580409e+02;
+        const double b2 = 1.615858368580409e+02;
         const double b3 = -1.556989798598866e+02;
-        const double b4 =  6.680131188771972e+01;
+        const double b4 = 6.680131188771972e+01;
         const double b5 = -1.328068155288572e+01;
 
         const double c1 = -7.784894002430293e-03;
         const double c2 = -3.223964580411365e-01;
         const double c3 = -2.400758277161838e+00;
         const double c4 = -2.549732539343734e+00;
-        const double c5 =  4.374664141464968e+00;
-        const double c6 =  2.938163982698783e+00;
+        const double c5 = 4.374664141464968e+00;
+        const double c6 = 2.938163982698783e+00;
 
-        const double d1 =  7.784695709041462e-03;
-        const double d2 =  3.224671290700398e-01;
-        const double d3 =  2.445134137142996e+00;
-        const double d4 =  3.754408661907416e+00;
+        const double d1 = 7.784695709041462e-03;
+        const double d2 = 3.224671290700398e-01;
+        const double d3 = 2.445134137142996e+00;
+        const double d4 = 3.754408661907416e+00;
 
         const double pLow = 0.02425;
         const double pHigh = 1.0 - pLow;

@@ -25,7 +25,7 @@ public sealed class RlPortfolioIpcHostTests
     private static readonly FixedScaler Identity = RlPortfolioScaler.Create(Enumerable.Repeat(new FixedScalerStatistic(0d, 1d, -100d, 100d), 5).ToArray());
 
     private static BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
-        { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
+    { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
 
     private static RlPanelCatalog Catalog() => RlPanelCatalogBuilder.Build(1278,
         Enumerable.Range(0, 2).Select(_ => (ReadOnlyMemory<int>)Enumerable.Range(0, 1279).ToArray()).ToArray(),
@@ -42,8 +42,13 @@ public sealed class RlPortfolioIpcHostTests
     {
         var frame = new Dictionary<string, object>
         {
-            ["protocol_version"] = version, ["run_id"] = run ?? Run.ToString("N"), ["contract_hash"] = hash ?? RlPortfolioContract.ContractHash,
-            ["sequence"] = sequence ?? ++_sequence, ["session_id"] = session, ["method"] = method, ["payload"] = payload,
+            ["protocol_version"] = version,
+            ["run_id"] = run ?? Run.ToString("N"),
+            ["contract_hash"] = hash ?? RlPortfolioContract.ContractHash,
+            ["sequence"] = sequence ?? ++_sequence,
+            ["session_id"] = session,
+            ["method"] = method,
+            ["payload"] = payload,
         };
         return JsonDocument.Parse(JsonSerializer.Serialize(frame)).RootElement.Clone();
     }

@@ -52,7 +52,7 @@ public sealed class DuckDBConnectionManager : IDisposable
         var sw = System.Diagnostics.Stopwatch.StartNew();
         lock (_lock)
         {
-            if (sw.ElapsedMilliseconds > 100) 
+            if (sw.ElapsedMilliseconds > 100)
             {
                 _logger?.LogWarning("DuckDB internal lock took {ElapsedMs}ms", sw.ElapsedMilliseconds);
             }

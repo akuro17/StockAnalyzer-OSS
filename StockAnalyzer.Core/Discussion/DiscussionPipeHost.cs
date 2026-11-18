@@ -29,6 +29,10 @@ internal sealed class DiscussionPipeHost : IDisposable
     private Task _acceptLoop = Task.CompletedTask;
     private int _disposed;
 
+    // The one pipe instance that is not connected to a client (null when none), guarded by _sync. Dispose disposes it itself, so that "stop accepting"
+    // does not depend on the accept loop getting a thread-pool thread (spec 5.12: stop accepting, then close the connections).
+    private NamedPipeServerStream? _listening;
+
     private DiscussionPipeHost(string pipeName, NamedPipeServerStream first, FileStream? posixLockStream = null)
     {
         _pipeName = pipeName;
@@ -131,7 +135,28 @@ internal sealed class DiscussionPipeHost : IDisposable
         NamedPipeServerStream first = _first ?? throw new InvalidOperationException("The host has already been started.");
         _first = null;
         _gateway = gateway;
+        if (!RegisterListening(first))
+        {
+            first.Dispose(); // disposed before it started: nothing listens
+            return;
+        }
+
         _acceptLoop = Task.Run(() => AcceptLoopAsync(first));
+    }
+
+    /// <summary>Records <paramref name="instance"/> as the listening instance; false (nothing recorded) once the host is disposed.</summary>
+    private bool RegisterListening(NamedPipeServerStream instance)
+    {
+        lock (_sync)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return false;
+            }
+
+            _listening = instance;
+            return true;
+        }
     }
 
     private async Task AcceptLoopAsync(NamedPipeServerStream listening)
@@ -147,6 +172,12 @@ internal sealed class DiscussionPipeHost : IDisposable
                 try
                 {
                     await current.WaitForConnectionAsync(stop).ConfigureAwait(false);
+                }
+                catch (Exception) when (Volatile.Read(ref _disposed) != 0)
+                {
+                    // Dispose has taken the listening instance away (or cancelled the wait): whatever the exception, no replacement is opened and the loop ends.
+                    current.Dispose();
+                    break;
                 }
                 catch (IOException)
                 {
@@ -181,15 +212,29 @@ internal sealed class DiscussionPipeHost : IDisposable
         }
     }
 
+    /// <summary>
+    /// Opens the next listening instance and records it as <c>_listening</c> in the same critical section that reads <c>_disposed</c>: once Dispose has begun no
+    /// instance is created, and one created before it is the one Dispose takes. Null when the host is disposed or every instance is serving a connection.
+    /// </summary>
     private NamedPipeServerStream? TryNewInstance()
     {
-        try
+        lock (_sync)
         {
-            return NewInstance(_pipeName, first: false);
-        }
-        catch (IOException)
-        {
-            return null; // every instance is serving a connection
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                NamedPipeServerStream instance = NewInstance(_pipeName, first: false);
+                _listening = instance;
+                return instance;
+            }
+            catch (IOException)
+            {
+                return null; // every instance is serving a connection
+            }
         }
     }
 
@@ -209,6 +254,8 @@ internal sealed class DiscussionPipeHost : IDisposable
 
     private bool Track(NamedPipeServerStream stream)
     {
+        // The disposed flag is read inside the same lock that Dispose uses to flip it and to take the snapshot of _open: a connection that completes after
+        // the snapshot is never added (the caller disposes it), so Dispose cannot miss one.
         lock (_sync)
         {
             if (Volatile.Read(ref _disposed) != 0)
@@ -217,6 +264,11 @@ internal sealed class DiscussionPipeHost : IDisposable
             }
 
             _open.Add(stream);
+            if (ReferenceEquals(_listening, stream))
+            {
+                _listening = null; // connected: no longer the listening instance
+            }
+
             return true;
         }
     }
@@ -361,10 +413,11 @@ internal sealed class DiscussionPipeHost : IDisposable
         }
     }
 
-    /// <summary>Stops accepting, waits (bounded) for the accept loop to release its listening instance, then closes every open connection.</summary>
+    /// <summary>Stops accepting (disposes the listening instance itself, then cancels), waits (bounded) for the accept loop to end, then closes every open connection.</summary>
     public void Dispose()
     {
         NamedPipeServerStream[] open;
+        NamedPipeServerStream? listening;
         lock (_sync)
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0)
@@ -375,16 +428,22 @@ internal sealed class DiscussionPipeHost : IDisposable
             open = new NamedPipeServerStream[_open.Count];
             _open.CopyTo(open);
             _open.Clear();
+            listening = _listening;
+            _listening = null;
         }
 
         try
         {
-            _stop.Cancel();
+            // Spec 5.12 shutdown order: stop accepting FIRST, only then close the connections. A client whose connection breaks starts to elect
+            // again at once; while a listening instance still existed, its probe connected to the dying hub and the one repeat of the operation was
+            // lost (HUB_UNAVAILABLE instead of HUB_RESET). The listening instance is disposed here, on the calling thread, before anything is cancelled:
+            // the accept loop needs a thread-pool thread to do it, and cancelling _stop lets the open connections end on their own as well, so
+            // leaving it to the loop did not order the two. No new instance can appear afterwards (TryNewInstance reads _disposed under _sync).
+            listening?.Dispose();
             _first?.Dispose();
+            _stop.Cancel();
 
-            // Spec 5.12 shutdown order: stop accepting FIRST (the accept loop has disposed its listening instance), only then close the
-            // connections. A client whose connection breaks starts to elect again at once; while a listening instance still existed,
-            // its probe connected to the dying hub and the one repeat of the operation was lost (HUB_UNAVAILABLE instead of HUB_RESET).
+            // Only waits for the loop to end now (bounded); the order above no longer depends on it.
             try
             {
                 _acceptLoop.Wait(DiscussionLimits.HubShutdownWaitMs);

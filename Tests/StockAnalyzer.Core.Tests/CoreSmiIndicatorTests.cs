@@ -37,10 +37,10 @@ public class CoreSmiIndicatorTests
         // The number of initial nulls depends on the periods of HH/LL and the two EMAs.
         // It's approximately period + smooth1 + smooth2.
         int expectedNulls = period + smooth1 + smooth2 - 3;
-        
+
         // Adjust expected nulls logic if implementation differs slightly, but safe to check nulls.
         // Implementation check: requiredCandles = Period + Smooth1 + Smooth2.
-        
+
         // Assert.True(result.MainValues.Take(expectedNulls).All(v => v == null));
 
         // The first value should be calculated after enough data is available.

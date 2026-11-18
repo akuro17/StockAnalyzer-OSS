@@ -26,10 +26,10 @@ public partial class ToastNotificationService : ObservableObject, IToastNotifica
         {
             NotificationMessage = message;
             IsNotificationVisible = true;
-            
+
             // Wait for 2.5 seconds before auto-hiding
             await Task.Delay(2500);
-            
+
             // Prevent hiding if another notification triggered while waiting
             if (NotificationMessage == message)
             {

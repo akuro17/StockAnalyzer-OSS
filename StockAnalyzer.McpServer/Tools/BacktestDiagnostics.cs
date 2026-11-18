@@ -67,7 +67,7 @@ internal sealed class BacktestDiagnostics
     }
 
     /// <summary>
-    /// A weekly bar is dated by the first trading day of its week (SA_AI_INTEGRATION 0008) but closes on the last one, so its equity cannot be cut at a
+    /// A weekly bar is dated by the Monday of its week (the period start, SA_AI_INTEGRATION 0008) but closes on the last trading day of the week, so its equity cannot be cut at a
     /// month or year end: month and year returns and a month-resolution curve would carry the next month's moves. They are refused for W1 instead of
     /// returning an ambiguous number (owner decision, 2026-10-30). The Weekly and Bar curves and the drawdown episodes are exact on weekly bars.
     /// </summary>

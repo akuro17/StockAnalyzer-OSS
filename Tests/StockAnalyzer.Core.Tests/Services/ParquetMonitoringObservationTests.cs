@@ -99,7 +99,8 @@ internal sealed class MonitoringParquetFixture : IDisposable
     {
         _settings = new MarketDataSettings
         {
-            DailyDataPath = Path.Combine(_root, "Daily"), WeeklyDataPath = Path.Combine(_root, "Weekly"),
+            DailyDataPath = Path.Combine(_root, "Daily"),
+            WeeklyDataPath = Path.Combine(_root, "Weekly"),
             MonthlyDataPath = Path.Combine(_root, "Monthly")
         };
         Service = new ParquetDataService(_db, Options.Create(_settings), timeProvider: clock);
@@ -108,7 +109,8 @@ internal sealed class MonitoringParquetFixture : IDisposable
     {
         var folder = timeframe switch
         {
-            TimeFrame.W1 => _settings.WeeklyDataPath!, TimeFrame.MN1 => _settings.MonthlyDataPath!,
+            TimeFrame.W1 => _settings.WeeklyDataPath!,
+            TimeFrame.MN1 => _settings.MonthlyDataPath!,
             _ => _settings.DailyDataPath!
         };
         Directory.CreateDirectory(folder);

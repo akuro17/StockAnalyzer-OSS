@@ -25,11 +25,11 @@ public sealed class LocalizationManager
     /// Gets the singleton instance of the LocalizationManager.
     /// </summary>
     public static LocalizationManager Instance => _instance.Value;
-    
+
     // Replaced as a whole by ParseJson and never mutated after publication, so lock-free readers always see a consistent table.
     private volatile Dictionary<string, string> _strings = new();
     private string _currentLanguage = "en";
-    
+
     /// <summary>
     /// Gets the current language code (e.g., "en", "ja").
     /// </summary>
@@ -37,12 +37,12 @@ public sealed class LocalizationManager
 
     /// <summary>Raised after locale resources are reloaded, including a reload of the same language.</summary>
     public event EventHandler? LocaleChanged;
-    
+
     private LocalizationManager()
     {
         // Private constructor for singleton pattern
     }
-    
+
     /// <summary>
     /// Initializes the localization manager with the specified language.
     /// Loads strings from the corresponding JSON file in Resources/Locales/.
@@ -55,7 +55,7 @@ public sealed class LocalizationManager
         LoadStrings(languageCode, resourcePath);
         LocaleChanged?.Invoke(this, EventArgs.Empty);
     }
-    
+
     /// <summary>
     /// Gets a localized string by key. An unknown key returns the key wrapped in brackets
     /// (<c>"[" + key + "]"</c>) so a missing translation is visible in the UI; a null or empty key
@@ -67,7 +67,7 @@ public sealed class LocalizationManager
     {
         if (string.IsNullOrEmpty(key))
             return string.Empty;
-            
+
         return _strings.TryGetValue(key, out var value) ? value : $"[{key}]";
     }
 
@@ -95,12 +95,12 @@ public sealed class LocalizationManager
     {
         return !string.IsNullOrEmpty(key) && _strings.ContainsKey(key);
     }
-    
+
     /// <summary>
     /// Indexer for convenient access to localized strings.
     /// </summary>
     public string this[string key] => Get(key);
-    
+
     private void LoadStrings(string languageCode, string? resourcePath)
     {
         try
@@ -108,7 +108,7 @@ public sealed class LocalizationManager
             // Try to load from embedded resource first (Highest priority for built-in locales)
             var assembly = Assembly.GetExecutingAssembly();
             var resourceName = string.Format(LocaleResourceNameFormat, languageCode);
-            
+
             using var stream = assembly.GetManifestResourceStream(resourceName);
             if (stream != null)
             {
@@ -117,17 +117,17 @@ public sealed class LocalizationManager
                 ParseJson(json);
                 return;
             }
-            
+
             // Fallback: Try to load from file system
             var filePath = ResolveLocaleFilePath(languageCode, resourcePath, assembly);
-            
+
             if (filePath != null && File.Exists(filePath))
             {
                 var json = File.ReadAllText(filePath);
                 ParseJson(json);
                 return;
             }
-            
+
             System.Diagnostics.Debug.WriteLine($"[LocalizationManager] Could not find localization file for '{languageCode}'");
         }
         catch (Exception ex)
@@ -155,7 +155,7 @@ public sealed class LocalizationManager
 
         // 2. Try default fallback paths
         var defaultResourcePath = Path.Combine("Resources", "Locales");
-        
+
         var assemblyLocation = Path.GetDirectoryName(assembly.Location) ?? AppContext.BaseDirectory;
         var defaultPath1 = Path.Combine(assemblyLocation, defaultResourcePath, fileName);
         if (File.Exists(defaultPath1))
@@ -167,7 +167,7 @@ public sealed class LocalizationManager
 
         return null;
     }
-    
+
     private void ParseJson(string json)
     {
         // The table is built privately and published with one reference write: a reader on another thread (for example the chart's

@@ -399,40 +399,40 @@ public partial class ExportChartImageDialogViewModel : ViewModelBase, IDisposabl
         switch (SelectedSizeMode)
         {
             case ChartExportSizeMode.Preset1280x720:
-            {
-                double scale = Math.Min(1280.0 / baseWidth, 720.0 / totalBaseHeight);
-                int w = (int)Math.Max(1, Math.Round(baseWidth * scale));
-                int h = (int)Math.Max(1, Math.Round(totalBaseHeight * scale));
-                return (w, h, (float)scale);
-            }
+                {
+                    double scale = Math.Min(1280.0 / baseWidth, 720.0 / totalBaseHeight);
+                    int w = (int)Math.Max(1, Math.Round(baseWidth * scale));
+                    int h = (int)Math.Max(1, Math.Round(totalBaseHeight * scale));
+                    return (w, h, (float)scale);
+                }
             case ChartExportSizeMode.Preset1920x1080:
-            {
-                double scale = Math.Min(1920.0 / baseWidth, 1080.0 / totalBaseHeight);
-                int w = (int)Math.Max(1, Math.Round(baseWidth * scale));
-                int h = (int)Math.Max(1, Math.Round(totalBaseHeight * scale));
-                return (w, h, (float)scale);
-            }
+                {
+                    double scale = Math.Min(1920.0 / baseWidth, 1080.0 / totalBaseHeight);
+                    int w = (int)Math.Max(1, Math.Round(baseWidth * scale));
+                    int h = (int)Math.Max(1, Math.Round(totalBaseHeight * scale));
+                    return (w, h, (float)scale);
+                }
             case ChartExportSizeMode.Preset3840x2160:
-            {
-                double scale = Math.Min(3840.0 / baseWidth, 2160.0 / totalBaseHeight);
-                int w = (int)Math.Max(1, Math.Round(baseWidth * scale));
-                int h = (int)Math.Max(1, Math.Round(totalBaseHeight * scale));
-                return (w, h, (float)scale);
-            }
+                {
+                    double scale = Math.Min(3840.0 / baseWidth, 2160.0 / totalBaseHeight);
+                    int w = (int)Math.Max(1, Math.Round(baseWidth * scale));
+                    int h = (int)Math.Max(1, Math.Round(totalBaseHeight * scale));
+                    return (w, h, (float)scale);
+                }
             case ChartExportSizeMode.Custom:
-            {
-                int w = Math.Max(1, CustomWidth);
-                int h = Math.Max(1, CustomHeight);
-                double scale = Math.Min((double)w / baseWidth, (double)h / totalBaseHeight);
-                return (w, h, (float)scale);
-            }
+                {
+                    int w = Math.Max(1, CustomWidth);
+                    int h = Math.Max(1, CustomHeight);
+                    double scale = Math.Min((double)w / baseWidth, (double)h / totalBaseHeight);
+                    return (w, h, (float)scale);
+                }
             case ChartExportSizeMode.CurrentWindow:
             default:
-            {
-                int w = (int)Math.Max(1, Math.Round(baseWidth));
-                int h = (int)Math.Max(1, Math.Round(totalBaseHeight));
-                return (w, h, 1.0f);
-            }
+                {
+                    int w = (int)Math.Max(1, Math.Round(baseWidth));
+                    int h = (int)Math.Max(1, Math.Round(totalBaseHeight));
+                    return (w, h, 1.0f);
+                }
         }
     }
 

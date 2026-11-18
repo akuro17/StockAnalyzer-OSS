@@ -29,7 +29,7 @@ public static class ChartLayoutService
         IChartLayoutProvider provider = chartType.IsCompactType()
             ? new CompactChartLayoutProvider(ChartHelpers.SupportsIndicators(chartType))
             : new StandardChartLayoutProvider(chartType.SupportsVolume(), ChartHelpers.SupportsIndicators(chartType));
-            
+
         return provider.CreateLayout(bounds, indicators, showIndicators, isMainWindowVisible, customMarginTop, customMarginBottom, customMarginRight);
     }
 }

@@ -42,7 +42,7 @@ public static class ReadOnlyCoreServiceCollectionExtensions
                     sp.GetRequiredService<IOptions<MarketDataSettings>>(),
                     sp.GetService<ILogger<ParquetDataService>>())
                 : new EmptyDataService();
-            var aligner = new ComparisonDataAligner(inner, sp.GetService<ILogger<ComparisonDataAligner>>());
+            var aligner = ComparisonDataAligner.CreateStrict(inner, sp.GetService<ILogger<ComparisonDataAligner>>());
             return new SyntheticSymbolDataService(inner, aligner, sp.GetService<ILogger<SyntheticSymbolDataService>>());
         });
 

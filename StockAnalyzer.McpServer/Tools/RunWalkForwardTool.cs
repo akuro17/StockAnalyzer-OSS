@@ -79,7 +79,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
 
     public string InputSchemaJson => BacktestSweep.WithRangesAndObjective(ToolSchema.Object()
         .String(SymbolArgument, "The symbol to test (a ticker from sa_list_tickers).", required: true)
-        .FreeObject(ConditionsArgument,"The conditions of sa_run_backtest with {\"$param\": name} placeholders where numbers go.", required: true))
+        .FreeObject(ConditionsArgument, "The conditions of sa_run_backtest with {\"$param\": name} placeholders where numbers go.", required: true))
         .NestedObject(
             WindowsArgument,
             $"Exactly one of {GeneratorKey} and {ListKey}.",

@@ -25,7 +25,12 @@ public class EnumWireContractTests
     public void MetricStatus_WireValuesArePinned() => Assert.Equal(
         new Dictionary<string, int>
         {
-            ["Valid"] = 0, ["InsufficientData"] = 1, ["NotApplicable"] = 2, ["Undefined"] = 3, ["PositiveInfinity"] = 4, ["NumericFailure"] = 5,
+            ["Valid"] = 0,
+            ["InsufficientData"] = 1,
+            ["NotApplicable"] = 2,
+            ["Undefined"] = 3,
+            ["PositiveInfinity"] = 4,
+            ["NumericFailure"] = 5,
         },
         Table<MetricStatus>());
 
@@ -33,8 +38,15 @@ public class EnumWireContractTests
     public void MetricUnit_WireValuesArePinned() => Assert.Equal(
         new Dictionary<string, int>
         {
-            ["ReturnRatio"] = 0, ["DrawdownRatio"] = 1, ["WinRateRatio"] = 2, ["Dimensionless"] = 3, ["Currency"] = 4,
-            ["Bars"] = 5, ["PercentPoints"] = 6, ["Count"] = 7, ["ExposureRatio"] = 8,
+            ["ReturnRatio"] = 0,
+            ["DrawdownRatio"] = 1,
+            ["WinRateRatio"] = 2,
+            ["Dimensionless"] = 3,
+            ["Currency"] = 4,
+            ["Bars"] = 5,
+            ["PercentPoints"] = 6,
+            ["Count"] = 7,
+            ["ExposureRatio"] = 8,
         },
         Table<MetricUnit>());
 
@@ -42,11 +54,27 @@ public class EnumWireContractTests
     public void MetricReason_WireValuesArePinned() => Assert.Equal(
         new Dictionary<string, int>
         {
-            ["None"] = 0, ["EmptyInput"] = 1, ["SingleElement"] = 2, ["NoClosedTrades"] = 3, ["ZeroDivisor"] = 4,
-            ["NegativeEquityInPeriod"] = 5, ["ZeroPeriod"] = 6, ["NegativeFinalEquity"] = 7, ["RiskDataMissing"] = 8,
-            ["AllBreakeven"] = 9, ["DownsideZero"] = 10, ["SampleTooSmall"] = 11, ["ArithmeticOverflow"] = 12,
-            ["NonFiniteResult"] = 13, ["UnexpectedZeroDivisor"] = 14, ["SamplingUnverified"] = 15, ["SamplingRejected"] = 16,
-            ["EvaluationCoverageUnverified"] = 17, ["NoWinningTrades"] = 18, ["NoLosingTrades"] = 19, ["NotRequested"] = 20,
+            ["None"] = 0,
+            ["EmptyInput"] = 1,
+            ["SingleElement"] = 2,
+            ["NoClosedTrades"] = 3,
+            ["ZeroDivisor"] = 4,
+            ["NegativeEquityInPeriod"] = 5,
+            ["ZeroPeriod"] = 6,
+            ["NegativeFinalEquity"] = 7,
+            ["RiskDataMissing"] = 8,
+            ["AllBreakeven"] = 9,
+            ["DownsideZero"] = 10,
+            ["SampleTooSmall"] = 11,
+            ["ArithmeticOverflow"] = 12,
+            ["NonFiniteResult"] = 13,
+            ["UnexpectedZeroDivisor"] = 14,
+            ["SamplingUnverified"] = 15,
+            ["SamplingRejected"] = 16,
+            ["EvaluationCoverageUnverified"] = 17,
+            ["NoWinningTrades"] = 18,
+            ["NoLosingTrades"] = 19,
+            ["NotRequested"] = 20,
         },
         Table<MetricReason>());
 
@@ -59,7 +87,15 @@ public class EnumWireContractTests
     public void TimeFrame_WireValuesArePinned() => Assert.Equal(
         new Dictionary<string, int>
         {
-            ["M1"] = 0, ["M5"] = 1, ["M15"] = 2, ["M30"] = 3, ["H1"] = 4, ["H4"] = 5, ["D1"] = 6, ["W1"] = 7, ["MN1"] = 8,
+            ["M1"] = 0,
+            ["M5"] = 1,
+            ["M15"] = 2,
+            ["M30"] = 3,
+            ["H1"] = 4,
+            ["H4"] = 5,
+            ["D1"] = 6,
+            ["W1"] = 7,
+            ["MN1"] = 8,
         },
         Table<TimeFrame>());
 
@@ -71,7 +107,12 @@ public class EnumWireContractTests
         Assert.Equal(
             new Dictionary<string, int>
             {
-                ["None"] = 0, ["NoEvidence"] = 1, ["UntrustedEvidence"] = 2, ["IncompleteEvidence"] = 3, ["InvalidEvidence"] = 4, ["MissingOrUnexpectedBar"] = 5,
+                ["None"] = 0,
+                ["NoEvidence"] = 1,
+                ["UntrustedEvidence"] = 2,
+                ["IncompleteEvidence"] = 3,
+                ["InvalidEvidence"] = 4,
+                ["MissingOrUnexpectedBar"] = 5,
             },
             Table<SamplingReason>());
         Assert.Equal(new Dictionary<string, int> { ["PeriodStart"] = 0, ["PeriodEnd"] = 1 }, Table<TimestampConvention>());

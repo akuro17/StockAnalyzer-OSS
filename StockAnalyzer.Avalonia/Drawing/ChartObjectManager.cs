@@ -32,7 +32,7 @@ public enum ChartDrawingContextType
 public class ChartObjectManager
 {
     // Context Storage
-    private readonly Dictionary<ChartDrawingContextType, List<IChartObject>> _contextStore 
+    private readonly Dictionary<ChartDrawingContextType, List<IChartObject>> _contextStore
         = new Dictionary<ChartDrawingContextType, List<IChartObject>>();
 
     // Current Context State
@@ -213,7 +213,7 @@ public class ChartObjectManager
 
         _currentContext = newContext;
         _informationObject = null;
-        
+
         lock (_renderScopeLock)
         {
             if (!_contextStore.TryGetValue(newContext, out var objects))
@@ -558,7 +558,7 @@ public class ChartObjectManager
         NotifyChanged();
         return true;
     }
-    
+
     /// <summary>
     /// Selects multiple objects by their IDs.
     /// If clearExisting is true, previous selection is cleared before adding new objects.

@@ -52,7 +52,7 @@ public sealed class RlQPanel : Control
         if (ViewModel?.RlPresentation is { } p && TextBrush is ISolidColorBrush brush)
         {
             var c = brush.Color;
-            _scene = new(p, (float)BaseFontSize, (float)HelperFontSize, new(c.R,c.G,c.B,c.A),
+            _scene = new(p, (float)BaseFontSize, (float)HelperFontSize, new(c.R, c.G, c.B, c.A),
                 Utilities.ColorHelper.ParseColorSafe(ViewModel.NeutralColor), Utilities.ColorHelper.ParseColorSafe(ViewModel.BullishColor), Utilities.ColorHelper.ParseColorSafe(ViewModel.BearishColor));
         }
         InvalidateVisual();

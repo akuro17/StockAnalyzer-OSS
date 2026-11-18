@@ -17,7 +17,7 @@ public sealed class ChartSettingsManager : IChartSettingsManager
     private readonly string _settingsFilePath;
     private readonly ILogger<ChartSettingsManager> _logger;
     private readonly SemaphoreSlim _fileLock = new(1, 1);
-    
+
     // GS-8-2: Volatile immutable snapshot
     private volatile GlobalChartSettings _current = new();
 
@@ -44,12 +44,12 @@ public sealed class ChartSettingsManager : IChartSettingsManager
     public async Task UpdateAsync(GlobalChartSettings settings)
     {
         if (settings == null) throw new ArgumentNullException(nameof(settings));
-        
+
         var validated = settings.Validate();
         _current = validated;
 
         await SaveAsync(validated);
-        
+
         // GS-12-1: Notify listeners (e.g., renderers to invalidate visual)
         SettingsChanged?.Invoke();
     }
@@ -57,7 +57,7 @@ public sealed class ChartSettingsManager : IChartSettingsManager
     public void UpdatePreview(GlobalChartSettings settings)
     {
         if (settings == null) throw new ArgumentNullException(nameof(settings));
-        
+
         _current = settings.Validate();
         SettingsChanged?.Invoke();
     }
@@ -74,10 +74,10 @@ public sealed class ChartSettingsManager : IChartSettingsManager
             if (!Directory.Exists(directory)) Directory.CreateDirectory(directory);
 
             string tempPath = _settingsFilePath + ".tmp";
-            
+
             // GS-7-2: Standard serialization options
-            var options = new JsonSerializerOptions 
-            { 
+            var options = new JsonSerializerOptions
+            {
                 WriteIndented = true,
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
             };
@@ -146,7 +146,7 @@ public sealed class ChartSettingsManager : IChartSettingsManager
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "GS-6-3: Chart settings file corrupted or unreadable. Falling back to defaults.");
-            
+
             // GS-6-3: Create backup of corrupted file
             try
             {

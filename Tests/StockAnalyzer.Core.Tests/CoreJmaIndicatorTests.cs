@@ -31,7 +31,7 @@ public class CoreJmaIndicatorTests
 
         Assert.True(result.IsSuccessful);
         Assert.Equal(30, result.MainValues.Count);
-        
+
         // JMA implementation seems to initialize with 0s or copy close price for first few?
         // Let's check nulls.
         // Implementation: if (i >= Period) results[i] = jma; else results[i] = 0 (default decimals) or null?
@@ -39,7 +39,7 @@ public class CoreJmaIndicatorTests
         // But loop starts at i=1. logic updates jma. 
         // Logic: if (i >= Period) results[i] = (decimal)jma; 
         // So indices 0 to Period-1 will be null.
-        
+
         Assert.True(result.MainValues.Take(period).All(v => v == null));
 
         // JMA is a smoothing average, so it should lag the price in a trend.

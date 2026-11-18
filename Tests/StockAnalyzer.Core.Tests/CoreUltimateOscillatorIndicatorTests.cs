@@ -14,7 +14,7 @@ namespace StockAnalyzer.Core.Tests
             var startDate = DateTime.Today;
             return highs.Select((high, i) => new CoreCandleData(
                 startDate.AddDays(i),
-                i == 0 ? closes[i] : closes[i-1], // Open
+                i == 0 ? closes[i] : closes[i - 1], // Open
                 high,
                 lows[i],
                 closes[i],
@@ -43,7 +43,7 @@ namespace StockAnalyzer.Core.Tests
 
             Assert.Equal(expected.Length, indicator.Values.Count);
             // UO with Period3=7 starts outputting at bp index 5 (Values index 6)
-            for(int i = 0; i < 6; i++)
+            for (int i = 0; i < 6; i++)
             {
                 Assert.Null(indicator.Values[i]);
             }

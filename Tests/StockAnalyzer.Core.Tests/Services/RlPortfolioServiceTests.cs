@@ -92,8 +92,15 @@ public sealed class RlPortfolioServiceTests : IDisposable
         }
         string artifacts = Path.Combine(_root, "artifacts");
         var service = new RlPortfolioService(new RlPortfolioSettings(), dataRoot: artifacts);
-        var costs = new BacktestConfiguration { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 100_000m,
-            SlippageRatio = 0.001m, CommissionFlat = 1m, CommissionPerUnit = 0.005m };
+        var costs = new BacktestConfiguration
+        {
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 1m,
+            InitialCapital = 100_000m,
+            SlippageRatio = 0.001m,
+            CommissionFlat = 1m,
+            CommissionPerUnit = 0.005m
+        };
         var request = new RlPortfolioRunRequest(symbols.ToImmutableArray(), RlSourceFixture.FirstDay, RlSourceFixture.FirstDay.AddDays(days), true,
             RlPanelEvaluationMode.ShortHistory, costs, SmokeOnly: true);
         var preflight = await service.PreflightAsync(symbols, request.Start, request.EndExclusive, true, request.Mode, default);

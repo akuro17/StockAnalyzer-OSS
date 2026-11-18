@@ -29,7 +29,7 @@ public partial class DetachedWindow : Window
         var m = messenger ?? App.Current.Services?.GetService<IMessenger>();
         if (m != null)
         {
-            m.Register<DetachedWindow, CloseDetachedWindowMessage>(this, (r, msg) => 
+            m.Register<DetachedWindow, CloseDetachedWindowMessage>(this, (r, msg) =>
             {
                 if (r.DataContext is ViewModels.DetachedWindowViewModel vm && vm.ContainerId == msg.Value)
                 {
@@ -42,7 +42,7 @@ public partial class DetachedWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
-        
+
         // Ensure ViewModel cleanup is triggered
         if (DataContext is IDisposable d)
         {

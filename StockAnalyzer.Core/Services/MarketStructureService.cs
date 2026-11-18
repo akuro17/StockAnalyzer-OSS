@@ -235,7 +235,7 @@ public class MarketStructureService
 
         var resultObj = PatternOverlayResult.Success(queryLen, patterns);
         // Expose debugInfo through standard failure or inject? We can re-use ErrorMessage
-        if (!string.IsNullOrEmpty(debugInfo)) 
+        if (!string.IsNullOrEmpty(debugInfo))
         {
             // Just hijack ErrorMessage to carry debug info on success for now
             return new PatternOverlayResult(queryLen, patterns, true, debugInfo);

@@ -63,7 +63,7 @@ public class FibonacciFanObject : IChartObject, IDrawingCalculatedValuesProvider
         // Logic: Price range. 
         // 1.0 line connects P1 and P2.
         // 1/3 line connects P1 and point(x2, y_at_1/3_range).
-        
+
         using var paint = new SKPaint
         {
             Color = SkiaColor,
@@ -74,23 +74,23 @@ public class FibonacciFanObject : IChartObject, IDrawingCalculatedValuesProvider
 
         // Screen Y Difference
         double totalDy = p2.Y - p1.Y;
-        
+
         // Ray Casting: We want to draw BEYOND P2.
         // Bounds of drawing area? 
         // Let's extend to Screen Width/Height or just past P2 significantly.
         // For visual, drawing segment P1->P2 is minimum.
         float maxX = 10000; // Far right
-        
+
         foreach (var ratio in _ratios)
         {
             // Target Y at x2
             double targetY = p1.Y + (totalDy * ratio);
-            
+
             // Draw Line P1 -> (x2, targetY)
             // Extend?
             // Slope m = (targetY - p1.Y) / (p2.X - p1.X) = (totalDy * ratio) / dx
             // y = m(x - x1) + y1
-            
+
             if (Math.Abs(p2.X - p1.X) > 0.1)
             {
                 float slope = (float)((targetY - p1.Y) / (p2.X - p1.X));
@@ -99,8 +99,8 @@ public class FibonacciFanObject : IChartObject, IDrawingCalculatedValuesProvider
             }
             else
             {
-               // Vertical? Just draw line
-               canvas.DrawLine((float)p1.X, (float)p1.Y, (float)p2.X, (float)targetY, paint);
+                // Vertical? Just draw line
+                canvas.DrawLine((float)p1.X, (float)p1.Y, (float)p2.X, (float)targetY, paint);
             }
         }
 
@@ -113,7 +113,7 @@ public class FibonacciFanObject : IChartObject, IDrawingCalculatedValuesProvider
 
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
-         if (Points.Count < 2) return false;
+        if (Points.Count < 2) return false;
 
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
@@ -121,19 +121,19 @@ public class FibonacciFanObject : IChartObject, IDrawingCalculatedValuesProvider
 
         foreach (var ratio in _ratios)
         {
-             double targetY = p1.Y + (totalDy * ratio);
-             // Segment P1 -> (p2.x, targetY)
-             // Check DistanceToSegment
-             if (Math.Abs(p2.X - p1.X) < 1) continue; 
-             
-             // Simplest: Check line equation distance
-             // ...
-             // For minimal impl: Check midpoint or end point proximity not sufficient for line.
-             // Need full line distance logic.
-             // Implementing approximate hit test: Check if point is near the line segment.
-             
-             global::Avalonia.Point tp = new global::Avalonia.Point(p2.X, targetY);
-             if (DistancePointToSegment(screenPoint, p1, tp) <= tolerance) return true;
+            double targetY = p1.Y + (totalDy * ratio);
+            // Segment P1 -> (p2.x, targetY)
+            // Check DistanceToSegment
+            if (Math.Abs(p2.X - p1.X) < 1) continue;
+
+            // Simplest: Check line equation distance
+            // ...
+            // For minimal impl: Check midpoint or end point proximity not sufficient for line.
+            // Need full line distance logic.
+            // Implementing approximate hit test: Check if point is near the line segment.
+
+            global::Avalonia.Point tp = new global::Avalonia.Point(p2.X, targetY);
+            if (DistancePointToSegment(screenPoint, p1, tp) <= tolerance) return true;
         }
 
         return false;

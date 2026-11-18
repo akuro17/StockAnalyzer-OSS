@@ -22,7 +22,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
 
             // Calculate P&F Columns (ZeroAllocation path)
             var pnfColumns = PointAndFigureConverter.Convert(candles, BoxSize, ReversalAmount);
-            
+
             // Run Pattern Analysis
             var pnfAnalysis = PointAndFigurePatternEngine.Analyze(pnfColumns, BoxSize, _signalsBuffer, _activeLinesBuffer);
 
@@ -39,7 +39,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
                     currentColIdx++;
                     nextColTime = currentColIdx < pnfColumns.Count - 1 ? pnfColumns[currentColIdx + 1].Timestamp : null;
                 }
-                
+
                 _values.Add(pnfColumns[currentColIdx].Close);
             }
 

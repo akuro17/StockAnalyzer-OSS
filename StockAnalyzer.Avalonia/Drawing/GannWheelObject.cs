@@ -20,7 +20,7 @@ public class GannWheelObject : IChartObject
     public bool IsMoveAxisModeExplicit { get; set; } = false;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.GannWheel;
-    
+
     public List<ChartPoint> Points { get; private set; }
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
@@ -72,7 +72,7 @@ public class GannWheelObject : IChartObject
         // Draw Concentric Circles/Ellipses
         // Subdivisions: 0.382, 0.5, 0.618, 1.0, 1.618 (Fibonacci/Gann style)
         // Or specific Gann integers? Let's use simple geometric divisions for now: 1/3, 1/2, 2/3, 1.0
-        double[] ratios = { 0.333, 0.5, 0.666, 1.0 }; 
+        double[] ratios = { 0.333, 0.5, 0.666, 1.0 };
 
         foreach (var r in ratios)
         {
@@ -87,16 +87,16 @@ public class GannWheelObject : IChartObject
         // We need to draw from Center to the outer ellipse edge.
         // x = cx + rx * cos(theta)
         // y = cy + ry * sin(theta)
-        
+
         for (int angle = 0; angle < 360; angle += 30)
         {
             double rad = angle * MathConstants.DegToRad;
             float endX = (float)(center.X + rx * Math.Cos(rad));
             float endY = (float)(center.Y + ry * Math.Sin(rad));
-            
+
             canvas.DrawLine((float)center.X, (float)center.Y, endX, endY, radialPaint);
         }
-        
+
         // Emphasize Main Cross (0, 90, 180, 270)
         canvas.DrawLine((float)center.X - rx, (float)center.Y, (float)center.X + rx, (float)center.Y, paint);
         canvas.DrawLine((float)center.X, (float)center.Y - ry, (float)center.X, (float)center.Y + ry, paint);
@@ -112,7 +112,7 @@ public class GannWheelObject : IChartObject
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
         if (Points.Count < 2) return false;
-        
+
         var center = transform.ChartToScreen(Points[0]);
         var radiusP = transform.ChartToScreen(Points[1]);
 

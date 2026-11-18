@@ -191,7 +191,8 @@ public sealed class RlSourceSnapshot
     internal static RlEpisodeCatalog BuildShortHistoryCatalog(ImmutableArray<CandleData> bars,
         ImmutableArray<RlCorporateAction> actions, ImmutableArray<DateOnly> imputedDates, bool smoke)
         => BuildCatalog(bars, actions, imputedDates, smoke, RlAllBlockEvaluationContract.SpecificationId)
-            with { EvaluationSpecificationId = null, SchemaVersion = null, ShortHistorySpecificationId = RlShortHistoryEvaluationContract.SpecificationId };
+            with
+        { EvaluationSpecificationId = null, SchemaVersion = null, ShortHistorySpecificationId = RlShortHistoryEvaluationContract.SpecificationId };
 
     internal static RlEpisodeCatalog BuildCatalog(ImmutableArray<CandleData> bars,
         ImmutableArray<RlCorporateAction> actions, ImmutableArray<DateOnly> imputedDates, bool smoke, string? evaluationSpecification = null)
@@ -223,6 +224,6 @@ public sealed class RlSourceSnapshot
             throw new InvalidDataException(RlSourceContract.InsufficientData("complete independent RL episode support is unavailable."));
         return new RlEpisodeCatalog(train, expanded ? validation : validation.Take(needed).ToImmutableArray(),
             smoke ? ImmutableArray<RlEpisodeBlock>.Empty : expanded ? oos : oos.Take(needed).ToImmutableArray(), excluded.ToImmutable(), cut1, cut2)
-            { EvaluationSpecificationId = evaluationSpecification, SchemaVersion = expanded ? RlAllBlockEvaluationContract.SchemaVersion : null };
+        { EvaluationSpecificationId = evaluationSpecification, SchemaVersion = expanded ? RlAllBlockEvaluationContract.SchemaVersion : null };
     }
 }

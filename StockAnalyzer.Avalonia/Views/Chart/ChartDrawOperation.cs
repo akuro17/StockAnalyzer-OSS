@@ -21,7 +21,7 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
     private readonly ChartDataSnapshot _snapshot;
     private readonly Renderers.IChartRenderer _mainRenderer;
     private readonly Renderers.ChartRenderPipeline _pipeline;
-    
+
     private readonly Renderers.RulerRenderer _rulerRenderer;
     private readonly global::Avalonia.Point _mousePosition;
     private readonly bool _isCrosshairVisible;
@@ -39,13 +39,13 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
     private readonly SKColor _rlForeground;
 
     public ChartDrawOperation(
-        global::Avalonia.Rect bounds,  
+        global::Avalonia.Rect bounds,
         ChartDataSnapshot snapshot,
         ChartType chartType,
         Renderers.IChartRenderer mainRenderer,
         Renderers.ChartRenderPipeline pipeline,
-        global::Avalonia.Point mousePosition, 
-        bool isCrosshairVisible, 
+        global::Avalonia.Point mousePosition,
+        bool isCrosshairVisible,
         global::Avalonia.Rect controlBounds,
         Renderers.RulerRenderer rulerRenderer,
 
@@ -64,9 +64,9 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
         _mainRenderer = mainRenderer;
         _pipeline = pipeline;
         _layout = layout;
-        
-        _rulerRenderer = rulerRenderer; 
-        
+
+        _rulerRenderer = rulerRenderer;
+
         _objectManager = objectManager;
         _coordinateTransform = coordinateTransform;
         _snapPoint = snapPoint;
@@ -78,14 +78,14 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
         _layeredScene = layeredScene;
         _rlPresentation = rlPresentation; _rlFontSize = rlFontSize; _rlForeground = rlForeground;
     }
-    
+
     public global::Avalonia.Rect Bounds => _bounds;
 
     public void Dispose()
     {
         // No disposal needed here. 
     }
-    
+
     public bool Equals(ICustomDrawOperation? other)
         // Rendering depends on mutable pipeline, object-manager, transform, and layout state.
         // Reusing a previous custom operation can retain Skia pixels from an earlier pointer frame.

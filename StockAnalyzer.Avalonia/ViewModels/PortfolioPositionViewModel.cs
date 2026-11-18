@@ -17,8 +17,8 @@ public partial class PortfolioPositionViewModel : ViewModelBase
     [ObservableProperty] private decimal _marketValue;
     [ObservableProperty] private decimal _unrealizedPnL;
     [ObservableProperty] private decimal _pnLRate;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(Type))] [NotifyPropertyChangedFor(nameof(ShowSymbol))] [NotifyPropertyChangedFor(nameof(SymbolMargin))] [NotifyPropertyChangedFor(nameof(SymbolVerticalAlignment))] [NotifyPropertyChangedFor(nameof(ZIndex))] [NotifyPropertyChangedFor(nameof(SymbolBorderThickness))] private bool _isShort;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(ShowSymbol))] [NotifyPropertyChangedFor(nameof(SymbolMargin))] [NotifyPropertyChangedFor(nameof(SymbolVerticalAlignment))] [NotifyPropertyChangedFor(nameof(ZIndex))] [NotifyPropertyChangedFor(nameof(SymbolBorderThickness))] private bool _isHedged;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(Type))][NotifyPropertyChangedFor(nameof(ShowSymbol))][NotifyPropertyChangedFor(nameof(SymbolMargin))][NotifyPropertyChangedFor(nameof(SymbolVerticalAlignment))][NotifyPropertyChangedFor(nameof(ZIndex))][NotifyPropertyChangedFor(nameof(SymbolBorderThickness))] private bool _isShort;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(ShowSymbol))][NotifyPropertyChangedFor(nameof(SymbolMargin))][NotifyPropertyChangedFor(nameof(SymbolVerticalAlignment))][NotifyPropertyChangedFor(nameof(ZIndex))][NotifyPropertyChangedFor(nameof(SymbolBorderThickness))] private bool _isHedged;
 
     /// <summary>Text of the value and PnL cells while <see cref="IsConversionUnavailable"/> is true (an em dash, never 0).</summary>
     public const string UnavailableValueText = "—";
@@ -54,7 +54,7 @@ public partial class PortfolioPositionViewModel : ViewModelBase
         UnrealizedPnL = eval.UnrealizedPnL;
         PnLRate = eval.PnLRate;
         IsShort = eval.IsShort;
-        
+
         OnPropertyChanged(nameof(IsProfit));
         OnPropertyChanged(nameof(IsLoss));
         OnPropertyChanged(nameof(IsNeutral));

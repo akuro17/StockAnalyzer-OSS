@@ -16,11 +16,11 @@ public class DtwProjectionObject : IChartObject, IDrawingCalculatedValuesProvide
     public bool IsMoveAxisModeExplicit { get; set; } = false;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.DtwProjection;
-    
+
     // Points[0] = Start Point (Time/Price) of selection
     // Points[1] = End Point (Time/Price) of selection
     public List<ChartPoint> Points { get; } = new(2);
-    
+
     // Core properties
     private Color _color = DrawingThemeContext.DefaultColor;
     public Color Color { get => _color; set { _color = value; InvalidateCalculatedValues(); } }

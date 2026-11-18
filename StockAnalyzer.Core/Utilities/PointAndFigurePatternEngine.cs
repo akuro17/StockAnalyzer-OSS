@@ -42,8 +42,8 @@ namespace StockAnalyzer.Core.Utilities
     /// Represents a currently active (unbroken) trendline in a P&F chart.
     /// </summary>
     public readonly record struct PnfTrendline(
-        int AnchorIndex, 
-        decimal AnchorPrice, 
+        int AnchorIndex,
+        decimal AnchorPrice,
         bool IsBullish
     );
 
@@ -90,7 +90,7 @@ namespace StockAnalyzer.Core.Utilities
         /// <param name="activeLines">Buffer to populate with active trendlines.</param>
         /// <returns>An analysis result referencing the provided buffers.</returns>
         public static PnfAnalysisResult Analyze(
-            IReadOnlyList<CoreCandleData> columns, 
+            IReadOnlyList<CoreCandleData> columns,
             decimal boxSize,
             List<PnfSignal> signals,
             List<PnfTrendline> activeLines)
@@ -115,7 +115,7 @@ namespace StockAnalyzer.Core.Utilities
                 var col = columns[i];
                 var prev1 = columns[i - 1]; // Previous column (opposite direction)
                 var prev2 = columns[i - 2]; // Column before previous (same direction as col)
-                
+
                 bool isUp = col.Close >= col.Open;
                 bool isPrev2Up = prev2.Close >= prev2.Open;
 
@@ -148,7 +148,7 @@ namespace StockAnalyzer.Core.Utilities
                                     AnchorColOffset: 4
                                 ));
                             }
-                            
+
                             // Bullish Triangle Breakout (Higher Lows, Lower Highs culminating in a breakout)
                             // A triangle breakout implies converging trendlines. 
                             // For a Bullish Triangle (X breaks out):
@@ -226,7 +226,7 @@ namespace StockAnalyzer.Core.Utilities
                     {
                         // Filter: Only consider if prev2 is a significant peak or has sufficient height.
                         // A column is at least 3 boxes tall if High - Low >= 2 * boxSize
-                        bool isSignificant = (prev2.High - prev2.Low >= 2 * boxSize) || 
+                        bool isSignificant = (prev2.High - prev2.Low >= 2 * boxSize) ||
                                              (i >= 4 && prev2.High > columns[i - 4].High);
 
                         if (!isTripleTop && isSignificant && col.High > prev2.High)
@@ -270,7 +270,7 @@ namespace StockAnalyzer.Core.Utilities
                     else // Current is O column
                     {
                         // Filter: Only consider if prev2 is a significant trough or has sufficient depth.
-                        bool isSignificant = (prev2.High - prev2.Low >= 2 * boxSize) || 
+                        bool isSignificant = (prev2.High - prev2.Low >= 2 * boxSize) ||
                                              (i >= 4 && prev2.Low < columns[i - 4].Low);
 
                         if (!isTripleBottom && isSignificant && col.Low < prev2.Low)
@@ -351,7 +351,7 @@ namespace StockAnalyzer.Core.Utilities
                     bool isSignificantPeak = true;
                     if (i >= 2 && columns[i - 2].High > col.High) isSignificantPeak = false;
                     if (i >= 4 && columns[i - 4].High > col.High) isSignificantPeak = false;
-                    
+
                     if (isSignificantPeak)
                     {
                         activeBearishLines.Add(new Trendline(i, col.High));
@@ -388,7 +388,7 @@ namespace StockAnalyzer.Core.Utilities
                     bool isSignificantTrough = true;
                     if (i >= 2 && columns[i - 2].Low < col.Low) isSignificantTrough = false;
                     if (i >= 4 && columns[i - 4].Low < col.Low) isSignificantTrough = false;
-                    
+
                     if (isSignificantTrough)
                     {
                         activeBullishLines.Add(new Trendline(i, col.Low));
@@ -408,7 +408,7 @@ namespace StockAnalyzer.Core.Utilities
 
             // Sort signals by timestamp primarily to maintain temporal order
             signals.Sort((a, b) => a.TriggerTimestamp.CompareTo(b.TriggerTimestamp));
-            
+
             return new PnfAnalysisResult(signals, activeLines);
         }
     }

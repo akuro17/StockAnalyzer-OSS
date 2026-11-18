@@ -13,7 +13,7 @@ namespace StockAnalyzer.Core.Strategies
 
         public ChartStrategyResult Calculate(IEnumerable<CoreCandleData> candles, ChartStrategyParameters parameters)
         {
-             if (candles == null || !candles.Any())
+            if (candles == null || !candles.Any())
             {
                 return null!;
             }
@@ -46,7 +46,7 @@ namespace StockAnalyzer.Core.Strategies
 
                 var param = new PointAndFigureParameters(boxSize, parameters.PnfReversal, (ChartRoundingMode)parameters.RoundingMode);
                 var adapter = PointAndFigureCalculator.Calculate(zeroAllocCandles.AsMemory(0, candleList.Count), param);
-                
+
                 return new ChartStrategyResult(adapter, boxSize);
             }
             finally

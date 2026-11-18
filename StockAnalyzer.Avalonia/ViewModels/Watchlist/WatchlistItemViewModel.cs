@@ -83,90 +83,90 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
         private int _retryCount;
 
         // Fundamentals
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayReturnOnEquity))] private decimal? _returnOnEquity;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayReturnOnAssets))] private decimal? _returnOnAssets;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayGrossMargins))] private decimal? _grossMargins;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayOperatingMargins))] private decimal? _operatingMargins;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayProfitMargins))] private decimal? _profitMargins;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayCurrentRatio))] private decimal? _currentRatio;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayDebtToEquity))] private decimal? _debtToEquity;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayEbitda))] private decimal? _ebitda;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayFreeCashflow))] private decimal? _freeCashflow;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayOperatingCashflow))] private decimal? _operatingCashflow;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayTrailingPE))] private decimal? _trailingPE;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayForwardPE))] private decimal? _forwardPE;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayPriceToBook))] private decimal? _priceToBook;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayTrailingEps))] private decimal? _trailingEps;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayForwardEps))] private decimal? _forwardEps;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayBookValue))] private decimal? _bookValue;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplaySharesOutstanding))] private decimal? _sharesOutstanding;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayFloatShares))] private decimal? _floatShares;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayShortRatio))] private decimal? _shortRatio;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayShortPercentOfFloat))] private decimal? _shortPercentOfFloat;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayHeldPercentInsiders))] private decimal? _heldPercentInsiders;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayHeldPercentInstitutions))] private decimal? _heldPercentInstitutions;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayLongBusinessSummary))] private string? _longBusinessSummary;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayFullTimeEmployees))] private long? _fullTimeEmployees;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayFiftyTwoWeekHigh))] private decimal? _fiftyTwoWeekHigh;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayFiftyTwoWeekLow))] private decimal? _fiftyTwoWeekLow;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayRevenueGrowth))] private decimal? _revenueGrowth;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayEarningsGrowth))] private decimal? _earningsGrowth;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayEnterpriseValue))] private decimal? _enterpriseValue;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayEnterpriseToEbitda))] private decimal? _enterpriseToEbitda;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayBeta))] private decimal? _beta;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayPayoutRatio))] private decimal? _payoutRatio;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayDividendRate))] private decimal? _dividendRate;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayDividendYield))] private decimal? _dividendYield;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayTotalDebt))] private decimal? _totalDebt;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayTotalCash))] private decimal? _totalCash;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayTotalRevenue))] private decimal? _totalRevenue;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayMarketCap))] private decimal? _marketCap;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayReturnOnEquity))] private decimal? _returnOnEquity;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayReturnOnAssets))] private decimal? _returnOnAssets;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayGrossMargins))] private decimal? _grossMargins;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayOperatingMargins))] private decimal? _operatingMargins;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayProfitMargins))] private decimal? _profitMargins;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayCurrentRatio))] private decimal? _currentRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayDebtToEquity))] private decimal? _debtToEquity;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayEbitda))] private decimal? _ebitda;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayFreeCashflow))] private decimal? _freeCashflow;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayOperatingCashflow))] private decimal? _operatingCashflow;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayTrailingPE))] private decimal? _trailingPE;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayForwardPE))] private decimal? _forwardPE;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayPriceToBook))] private decimal? _priceToBook;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayTrailingEps))] private decimal? _trailingEps;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayForwardEps))] private decimal? _forwardEps;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayBookValue))] private decimal? _bookValue;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplaySharesOutstanding))] private decimal? _sharesOutstanding;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayFloatShares))] private decimal? _floatShares;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayShortRatio))] private decimal? _shortRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayShortPercentOfFloat))] private decimal? _shortPercentOfFloat;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayHeldPercentInsiders))] private decimal? _heldPercentInsiders;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayHeldPercentInstitutions))] private decimal? _heldPercentInstitutions;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayLongBusinessSummary))] private string? _longBusinessSummary;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayFullTimeEmployees))] private long? _fullTimeEmployees;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayFiftyTwoWeekHigh))] private decimal? _fiftyTwoWeekHigh;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayFiftyTwoWeekLow))] private decimal? _fiftyTwoWeekLow;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayRevenueGrowth))] private decimal? _revenueGrowth;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayEarningsGrowth))] private decimal? _earningsGrowth;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayEnterpriseValue))] private decimal? _enterpriseValue;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayEnterpriseToEbitda))] private decimal? _enterpriseToEbitda;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayBeta))] private decimal? _beta;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayPayoutRatio))] private decimal? _payoutRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayDividendRate))] private decimal? _dividendRate;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayDividendYield))] private decimal? _dividendYield;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayTotalDebt))] private decimal? _totalDebt;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayTotalCash))] private decimal? _totalCash;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayTotalRevenue))] private decimal? _totalRevenue;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayMarketCap))] private decimal? _marketCap;
 
         // Derived Metrics
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayPbrCalculated))] private decimal? _pbrCalculated;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayDividendYieldCalculated))] private decimal? _dividendYieldCalculated;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayEarningsYield))] private decimal? _earningsYield;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayFcfYield))] private decimal? _fcfYield;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayFcfMargin))] private decimal? _fcfMargin;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayNetDebt))] private decimal? _netDebt;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayNetDebtToEbitda))] private decimal? _netDebtToEbitda;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayDividendCoverage))] private decimal? _dividendCoverage;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayPctFromFiftyTwoWeekHigh))] private decimal? _pctFromFiftyTwoWeekHigh;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayFloatRatio))] private decimal? _floatRatio;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayMarketCapPerEmployee))] private decimal? _marketCapPerEmployee;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayPegRatio))] private decimal? _pegRatio;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayOperatingCashFlowYield))] private decimal? _operatingCashFlowYield;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayNetCashRatio))] private decimal? _netCashRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayPbrCalculated))] private decimal? _pbrCalculated;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayDividendYieldCalculated))] private decimal? _dividendYieldCalculated;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayEarningsYield))] private decimal? _earningsYield;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayFcfYield))] private decimal? _fcfYield;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayFcfMargin))] private decimal? _fcfMargin;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayNetDebt))] private decimal? _netDebt;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayNetDebtToEbitda))] private decimal? _netDebtToEbitda;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayDividendCoverage))] private decimal? _dividendCoverage;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayPctFromFiftyTwoWeekHigh))] private decimal? _pctFromFiftyTwoWeekHigh;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayFloatRatio))] private decimal? _floatRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayMarketCapPerEmployee))] private decimal? _marketCapPerEmployee;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayPegRatio))] private decimal? _pegRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayOperatingCashFlowYield))] private decimal? _operatingCashFlowYield;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayNetCashRatio))] private decimal? _netCashRatio;
 
         // Advanced metrics from webai.txt
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayPriceToSalesTrailing12Months))] private decimal? _priceToSalesTrailing12Months;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayEnterpriseToRevenue))] private decimal? _enterpriseToRevenue;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayEbitdaMargins))] private decimal? _ebitdaMargins;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayQuickRatio))] private decimal? _quickRatio;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayAverageVolume))] private decimal? _averageVolume;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayPriceToCashFlowRatio))] private decimal? _priceToCashFlowRatio;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayNetDebtEquityRatio))] private decimal? _netDebtEquityRatio;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayFiftyTwoWeekRangePosition))] private decimal? _fiftyTwoWeekRangePosition;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayDailyTurnoverRate))] private decimal? _dailyTurnoverRate;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayAverageTurnoverRate))] private decimal? _averageTurnoverRate;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayDailyFloatShareTurnoverRatio))] private decimal? _dailyFloatShareTurnoverRatio;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayAverageFloatTurnover))] private decimal? _averageFloatTurnover;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayPriceToSalesTrailing12Months))] private decimal? _priceToSalesTrailing12Months;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayEnterpriseToRevenue))] private decimal? _enterpriseToRevenue;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayEbitdaMargins))] private decimal? _ebitdaMargins;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayQuickRatio))] private decimal? _quickRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayAverageVolume))] private decimal? _averageVolume;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayPriceToCashFlowRatio))] private decimal? _priceToCashFlowRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayNetDebtEquityRatio))] private decimal? _netDebtEquityRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayFiftyTwoWeekRangePosition))] private decimal? _fiftyTwoWeekRangePosition;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayDailyTurnoverRate))] private decimal? _dailyTurnoverRate;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayAverageTurnoverRate))] private decimal? _averageTurnoverRate;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayDailyFloatShareTurnoverRatio))] private decimal? _dailyFloatShareTurnoverRatio;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayAverageFloatTurnover))] private decimal? _averageFloatTurnover;
 
         // New yfinance metadata fields
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayRegion))] private string? _region;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayQuoteType))] private string? _quoteType;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayExchangeTimezoneName))] private string? _exchangeTimezoneName;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayGmtOffSetMilliseconds))] private long? _gmtOffSetMilliseconds;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayExDividendDate))] private long? _exDividendDate;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayLastFiscalYearEnd))] private long? _lastFiscalYearEnd;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayMostRecentQuarter))] private long? _mostRecentQuarter;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayTargetHighPrice))] private decimal? _targetHighPrice;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayTargetLowPrice))] private decimal? _targetLowPrice;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayTargetMeanPrice))] private decimal? _targetMeanPrice;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayTargetMedianPrice))] private decimal? _targetMedianPrice;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayRecommendationKey))] private string? _recommendationKey;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayRecommendationMean))] private decimal? _recommendationMean;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayNumberOfAnalystOpinions))] private long? _numberOfAnalystOpinions;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayRegion))] private string? _region;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayQuoteType))] private string? _quoteType;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayExchangeTimezoneName))] private string? _exchangeTimezoneName;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayGmtOffSetMilliseconds))] private long? _gmtOffSetMilliseconds;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayExDividendDate))] private long? _exDividendDate;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayLastFiscalYearEnd))] private long? _lastFiscalYearEnd;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayMostRecentQuarter))] private long? _mostRecentQuarter;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayTargetHighPrice))] private decimal? _targetHighPrice;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayTargetLowPrice))] private decimal? _targetLowPrice;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayTargetMeanPrice))] private decimal? _targetMeanPrice;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayTargetMedianPrice))] private decimal? _targetMedianPrice;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayRecommendationKey))] private string? _recommendationKey;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayRecommendationMean))] private decimal? _recommendationMean;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayNumberOfAnalystOpinions))] private long? _numberOfAnalystOpinions;
 
         // Formatters for new fields
         public string DisplaySector => string.IsNullOrEmpty(Sector) || Sector == "N/A" ? "-" : Sector;
@@ -200,29 +200,29 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
         }
 
         // Timestamp
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayMetadataLastUpdated))] private DateTime? _metadataLastUpdated;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayMetadataLastUpdated))] private DateTime? _metadataLastUpdated;
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(DisplayTag))]
         private string? _tag;
 
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayNotes)), NotifyPropertyChangedFor(nameof(NotesPopupText)), NotifyPropertyChangedFor(nameof(HasNotesPopupText))] private string? _notes;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayReminder))] private string? _reminder;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayLong)), NotifyPropertyChangedFor(nameof(DisplayEntryPrice))] private decimal? _long;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayExitLong)), NotifyPropertyChangedFor(nameof(DisplayTargetPrice))] private decimal? _exitLong;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayStopLossLong)), NotifyPropertyChangedFor(nameof(DisplayStopLoss))] private decimal? _stopLossLong;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayShort))] private decimal? _short;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayExitShort))] private decimal? _exitShort;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayStopLossShort))] private decimal? _stopLossShort;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayNotes)), NotifyPropertyChangedFor(nameof(NotesPopupText)), NotifyPropertyChangedFor(nameof(HasNotesPopupText))] private string? _notes;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayReminder))] private string? _reminder;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayLong)), NotifyPropertyChangedFor(nameof(DisplayEntryPrice))] private decimal? _long;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayExitLong)), NotifyPropertyChangedFor(nameof(DisplayTargetPrice))] private decimal? _exitLong;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayStopLossLong)), NotifyPropertyChangedFor(nameof(DisplayStopLoss))] private decimal? _stopLossLong;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayShort))] private decimal? _short;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayExitShort))] private decimal? _exitShort;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayStopLossShort))] private decimal? _stopLossShort;
 
         // Signal Flags
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayIsLong)), NotifyPropertyChangedFor(nameof(ToolTipIsLong))] private bool? _isLong;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayIsTPLong)), NotifyPropertyChangedFor(nameof(ToolTipIsTPLong))] private bool? _isTPLong;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayIsSLLong)), NotifyPropertyChangedFor(nameof(ToolTipIsSLLong))] private bool? _isSLLong;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayIsShort)), NotifyPropertyChangedFor(nameof(ToolTipIsShort))] private bool? _isShort;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayIsTPShort)), NotifyPropertyChangedFor(nameof(ToolTipIsTPShort))] private bool? _isTPShort;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayIsSLShort)), NotifyPropertyChangedFor(nameof(ToolTipIsSLShort))] private bool? _isSLShort;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(DisplayRsRating))] private int? _rsRating;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayIsLong)), NotifyPropertyChangedFor(nameof(ToolTipIsLong))] private bool? _isLong;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayIsTPLong)), NotifyPropertyChangedFor(nameof(ToolTipIsTPLong))] private bool? _isTPLong;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayIsSLLong)), NotifyPropertyChangedFor(nameof(ToolTipIsSLLong))] private bool? _isSLLong;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayIsShort)), NotifyPropertyChangedFor(nameof(ToolTipIsShort))] private bool? _isShort;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayIsTPShort)), NotifyPropertyChangedFor(nameof(ToolTipIsTPShort))] private bool? _isTPShort;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayIsSLShort)), NotifyPropertyChangedFor(nameof(ToolTipIsSLShort))] private bool? _isSLShort;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(DisplayRsRating))] private int? _rsRating;
 
         public decimal? EntryPrice { get => Long; set => Long = value; }
         public decimal? TargetPrice { get => ExitLong; set => ExitLong = value; }
@@ -572,7 +572,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Watchlist
             Status = next;
             if (errorCode != null) ErrorCode = errorCode;
             if (errorMessage != null) ErrorMessage = errorMessage;
-            
+
             if (next is LoadStatus.Success or LoadStatus.Failed)
             {
                 if (LastUpdatedUtc == null)

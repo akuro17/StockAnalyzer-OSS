@@ -28,10 +28,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public string TitleKey => "Settings_Tickers";
         public string IconKey => "SettingsTickersIcon";
 
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private bool _selectedAutoPlayStopAtListEnd;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private bool _selectedAutoPlayStopOnListChange;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedAutoPlayIntervalSeconds;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private TickerColumnSelectionScope _selectedColumnSelectionScope;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private bool _selectedAutoPlayStopAtListEnd;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private bool _selectedAutoPlayStopOnListChange;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private int _selectedAutoPlayIntervalSeconds;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private TickerColumnSelectionScope _selectedColumnSelectionScope;
 
         /// <summary>Bounds of the interval input; data-bound in XAML (no numeric literal in the view).</summary>
         public int AutoPlayMinIntervalSeconds => _manager.AutoPlayMinIntervalSeconds;

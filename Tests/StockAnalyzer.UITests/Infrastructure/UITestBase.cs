@@ -254,7 +254,7 @@ namespace StockAnalyzer.UITests.Infrastructure
                         // This avoids hardcoding "Debug" or "Release" while ensuring we aren't picking up trash
                         var match = Directory.EnumerateFiles(currentPath, fileName)
                             .FirstOrDefault(IsValidBuildOutput);
-                        
+
                         if (match != null) return match;
                     }
 
@@ -264,7 +264,7 @@ namespace StockAnalyzer.UITests.Infrastructure
                         var name = Path.GetFileName(dir);
                         // Skip system/hidden/reparse points and node_modules/obj
                         if (name.StartsWith(".") || name.Equals("node_modules") || name.Equals("obj")) continue;
-                        
+
                         stack.Push((dir, depth + 1));
                     }
                 }
@@ -324,11 +324,11 @@ namespace StockAnalyzer.UITests.Infrastructure
             }
         }
 
-        public T WaitForElement<T>(Func<T?> getter, int timeoutMs = -1, string? errorMessage = null) 
+        public T WaitForElement<T>(Func<T?> getter, int timeoutMs = -1, string? errorMessage = null)
             where T : AutomationElement
         {
             timeoutMs = timeoutMs < 0 ? DefaultWaitTimeoutMs : timeoutMs;
-            
+
             var result = Retry.WhileNull(
                 getter,
                 TimeSpan.FromMilliseconds(timeoutMs),
@@ -391,9 +391,9 @@ namespace StockAnalyzer.UITests.Infrastructure
                     // 1. Close Window gracefully
                     if (MainWindow?.IsAvailable == true)
                     {
-                        try 
+                        try
                         {
-                            MainWindow.Close(); 
+                            MainWindow.Close();
                         }
                         catch { /* Ignore close errors, proceed to Kill */ }
                     }
@@ -404,8 +404,8 @@ namespace StockAnalyzer.UITests.Infrastructure
                         App.Close();
                         // Verify exit status
                         var exited = Retry.WhileTrue(
-                            () => !App.HasExited, 
-                            timeout: TimeSpan.FromSeconds(2), 
+                            () => !App.HasExited,
+                            timeout: TimeSpan.FromSeconds(2),
                             throwOnTimeout: false
                         );
 

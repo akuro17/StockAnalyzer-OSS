@@ -52,11 +52,11 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
         _watchlistManager = watchlistManager ?? throw new ArgumentNullException(nameof(watchlistManager));
         _dispatcherService = dispatcherService ?? throw new ArgumentNullException(nameof(dispatcherService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        
+
         var opt = options?.Value ?? throw new ArgumentNullException(nameof(options));
         if (string.IsNullOrWhiteSpace(opt.WorkspacePath))
             throw new ArgumentException("WorkspacePath must not be null or whitespace.", nameof(options));
-            
+
         _defaultWorkspacePath = opt.WorkspacePath;
     }
 
@@ -64,7 +64,7 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
     {
         if (_isBound)
             throw new InvalidOperationException("WorkspaceCoordinator has already been bound to a target. Re-binding is prohibited.");
-            
+
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _isBound = true;
     }
@@ -241,7 +241,7 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
         }
 
         _logger.LogInformation("Capturing active workspace settings. Target Path: {Path}", targetPath);
-        
+
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         WorkspaceSettings settings = new WorkspaceSettings();
         List<CoreIndicatorSettings> indicatorSnapshot = new();
@@ -298,9 +298,9 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
         {
             _serializationService.Save(settings, _defaultWorkspacePath);
         }
-        catch (Exception ex) when (ex is IOException || 
-                                   ex is UnauthorizedAccessException || 
-                                   ex is System.Text.Json.JsonException || 
+        catch (Exception ex) when (ex is IOException ||
+                                   ex is UnauthorizedAccessException ||
+                                   ex is System.Text.Json.JsonException ||
                                    ex is System.Security.SecurityException)
         {
             _logger.LogError(ex, "Failed to save workspace settings atomically on shutdown. DefaultPath={DefaultPath}", _defaultWorkspacePath);
@@ -494,7 +494,7 @@ public sealed class WorkspaceCoordinator : IWorkspaceCoordinator
             }
         }
 
-        if (!string.IsNullOrEmpty(settings.SelectedTimeframe) && 
+        if (!string.IsNullOrEmpty(settings.SelectedTimeframe) &&
             Enum.TryParse<TimeframeType>(settings.SelectedTimeframe, true, out var timeframe))
         {
             _viewModel.SetTimeframe(timeframe); // Directly call timeframe-typed overload to keep type safety

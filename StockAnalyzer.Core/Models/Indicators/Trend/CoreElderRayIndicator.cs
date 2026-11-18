@@ -23,7 +23,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
- BullPower.Clear(); BearPower.Clear();
+            BullPower.Clear(); BearPower.Clear();
             var candleDataList = candles.ToList();
 
             var ema = new CoreEmaIndicator { Period = Period, PriceSource = PriceSource };

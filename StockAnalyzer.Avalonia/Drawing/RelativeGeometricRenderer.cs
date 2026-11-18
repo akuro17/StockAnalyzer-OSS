@@ -177,15 +177,15 @@ public abstract class RelativeGeometricRenderer : IChartObject, IDisposable
     protected ChartPoint CalculateTrueAnglePoint(ChartPoint start, double angleDegrees, double distanceInBars, double pricePerBar, TimeSpan timeframeInterval)
     {
         double angleRad = angleDegrees * MathConstants.DegToRad;
-        
+
         // Logical dx and dy in a perfectly square 1:1 grid
         double logicalDx = distanceInBars * Math.Cos(angleRad);
         double logicalDy = distanceInBars * Math.Sin(angleRad);
-        
+
         // Map to chart scale
         long deltaTicks = (long)(logicalDx * timeframeInterval.Ticks);
         decimal deltaPrice = (decimal)(logicalDy * pricePerBar);
-        
+
         return new ChartPoint(start.Time.AddTicks(deltaTicks), start.Price + deltaPrice);
     }
 
@@ -194,9 +194,9 @@ public abstract class RelativeGeometricRenderer : IChartObject, IDisposable
     /// FR-39-5-02: 描画時にマスの「角」や「端�E�高値/安値�E�」を検�Eし、�E動スナップすめE
     /// </summary>
     protected ChartPoint SnapToLogicalPoint(
-        global::Avalonia.Point screenPoint, 
-        ICoordinateTransform transform, 
-        IReadOnlyList<CoreCandleData> candles, 
+        global::Avalonia.Point screenPoint,
+        ICoordinateTransform transform,
+        IReadOnlyList<CoreCandleData> candles,
         StockAnalyzer.Avalonia.Services.Drawing.IMagnetSnapService magnetSnapService)
     {
         // 1. Existing MagnetSnapService (OHLC wick/body snapping - preserves all past behavior)
@@ -235,16 +235,16 @@ public abstract class RelativeGeometricRenderer : IChartObject, IDisposable
             {
                 snappedTime = GenericCoordinateTransform.SafeIndexPoint(snappedIndex).Time;
             }
-            
+
             decimal snappedPrice = rawPoint.Price;
-            
+
             // Snap Y to the nearest logical box size if a 1:1 aspect ratio geometric constraint exists
             if (gct.FixedPricePerIndex.HasValue && gct.FixedPricePerIndex.Value > 0)
             {
                 decimal boxRatio = gct.FixedPricePerIndex.Value;
                 snappedPrice = Math.Round(rawPoint.Price / boxRatio) * boxRatio;
             }
-            
+
             return new ChartPoint(snappedTime, snappedPrice);
         }
 

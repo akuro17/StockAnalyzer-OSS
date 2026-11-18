@@ -24,3 +24,19 @@ public class PythonIpcCollection
 public class ChildProcessCollection
 {
 }
+
+// Test classes with a test that holds every thread-pool thread on purpose (to prove an order that must not depend on the pool) run in this collection, alone,
+// never beside another test: for the time of the hold every other test that needs a pool thread would otherwise stall (intermittent full-suite failures).
+[CollectionDefinition("ThreadPoolStarvation", DisableParallelization = true)]
+public class ThreadPoolStarvationCollection
+{
+}
+
+// Test classes with a test that computes for minutes on one thread (the geometric formation detectors: 100 s and 287 s alone) or that measures allocation and needs a
+// quiet process run in this collection, after all parallel tests: a class of the parallel phase that is still running keeps the whole phase open, so no serial
+// collection can start, and a measurement beside allocation-heavy tests retries for tens of seconds (FiveThousandBars: 7 s alone, 87 s in the full run).
+// Measured 2026-11-18 with the stall probe (owner decision: serial collection, not opt-in and not a shorter input).
+[CollectionDefinition("LongRunningMeasurement", DisableParallelization = true)]
+public class LongRunningMeasurementCollection
+{
+}

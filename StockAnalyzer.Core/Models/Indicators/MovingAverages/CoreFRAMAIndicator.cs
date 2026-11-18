@@ -8,7 +8,7 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
     public class CoreFRAMAIndicator : CoreIndicatorBase
     {
         public override bool IsOverlay => true;
-        
+
         public override string Name => "Fractal Adaptive Moving Average";
 
         public int Period { get; set; } = 16;

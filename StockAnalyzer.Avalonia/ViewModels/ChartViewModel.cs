@@ -82,7 +82,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private int _chartUpdateId = 0;
 
     private readonly Subject<ChartType> _displayModeSubject = new();
-    
+
     /// <summary>
     /// Observable that emits the chart type whenever it changes.
     /// Used by IndicatorMediator to trigger recalculations.
@@ -120,15 +120,15 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     {
         string symbol = string.IsNullOrEmpty(Symbol) ? "---" : Symbol;
         int maxLength = StockAnalyzer.Avalonia.Common.ChartConstants.TabHeaderMaxSymbolLength;
-        
+
         bool needsPrefix = !IsSyncEnabled;
         int prefixLength = needsPrefix ? 1 : 0;
-        
+
         int totalLogicalLength = prefixLength + symbol.Length;
         bool needsTruncation = totalLogicalLength > maxLength;
         int finalLength = needsTruncation ? maxLength : totalLogicalLength;
 
-        return string.Create(finalLength, (symbol, needsPrefix, needsTruncation, prefixLength, finalLength), 
+        return string.Create(finalLength, (symbol, needsPrefix, needsTruncation, prefixLength, finalLength),
             static (span, state) =>
         {
             int currentIndex = 0;
@@ -137,7 +137,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 span[currentIndex++] = '★';
             }
 
-            int charsToCopy = state.needsTruncation 
+            int charsToCopy = state.needsTruncation
                 ? state.finalLength - state.prefixLength - 1
                 : state.symbol.Length;
 
@@ -164,7 +164,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     {
         Interlocked.Or(ref _accumulatedRenderReason, (int)reason);
         unchecked { Interlocked.Increment(ref _renderTrigger); }
-        
+
         if (_dispatcherService.CheckAccess())
         {
             OnPropertyChanged(nameof(RenderTrigger));
@@ -349,7 +349,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     [ObservableProperty] private bool _showCrosshair = true;
     [ObservableProperty] private bool _showLegend = true;
     [ObservableProperty] private bool _showHeaderInfo = true;
-    
+
     // Step 68-1-4: Visibility Control (User preference, Default OFF as per policy)
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(EffectiveIsSubWindowVisible))]
@@ -505,14 +505,14 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     }
 
     // Zero-Allocation collections for ComboBoxes
-    public static IReadOnlyList<TimeframeType> TimeframeOptions { get; } = new[] 
-    { 
-        TimeframeType.Daily, 
-        TimeframeType.Weekly, 
-        TimeframeType.Monthly 
+    public static IReadOnlyList<TimeframeType> TimeframeOptions { get; } = new[]
+    {
+        TimeframeType.Daily,
+        TimeframeType.Weekly,
+        TimeframeType.Monthly
     };
     public static IReadOnlyList<ChartType> ChartTypeOptions { get; } = Enum.GetValues<ChartType>();
-    
+
     // Tickers will be populated from data provider
     [ObservableProperty]
     private ObservableCollection<string> _availableTickers = new();
@@ -704,11 +704,11 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         var existing = Indicators.FirstOrDefault(i => i != null && i.Id == changedIndicator.Id);
         if (existing != null)
         {
-            bool isMathChange = changedIndicator.MathematicalVersion > 0 
-                || changedIndicator.PriceSource != existing.PriceSource 
-                || changedIndicator.SourceIndicatorId != existing.SourceIndicatorId 
+            bool isMathChange = changedIndicator.MathematicalVersion > 0
+                || changedIndicator.PriceSource != existing.PriceSource
+                || changedIndicator.SourceIndicatorId != existing.SourceIndicatorId
                 || changedIndicator.DynamicPeriodIndicatorId != existing.DynamicPeriodIndicatorId;
-            
+
             if (isMathChange)
             {
                 int index = Indicators.IndexOf(existing);
@@ -769,7 +769,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         if (Indicators != null)
         {
             Indicators.CollectionChanged -= OnIndicatorsCollectionChanged;
-            
+
             // Critical Fix: Unsubscribe from individual indicator settings to prevent reference leaks
             foreach (var item in _subscribedIndicators)
             {
@@ -805,7 +805,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
         // Clear collections to release references
         Candles = Array.Empty<CoreCandleData>();
-        
+
         GC.SuppressFinalize(this);
     }
 
@@ -971,7 +971,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private void CalculateIndicatorsAsync()
     {
         var currentId = Interlocked.Increment(ref _indicatorCalcId);
-        
+
         // Debounce: Cancel previous pending task if any
         _indicatorCalcCts?.Cancel();
         _indicatorCalcCts = new CancellationTokenSource();
@@ -982,7 +982,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         string? effectiveDynamicGroupId = snapshotSettings.Any(s => s.IsEnabled && HasEmptyUniverseGroupId(s))
             ? _clickedUniverseGroupId
             : null;
-        
+
         var chartType = ChartType;
         var symbol = Symbol;
         var timeFrame = SelectedTimeFrame;
@@ -994,7 +994,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             ChartType.Kagi => EffectiveKagiReversalAmount,
             _ => 0m
         };
-        
+
         // Capture active adapter references and dispatcher before passing into Task
         var renkoAdapter = _renkoDataAdapter;
         var pnfAdapter = _pnfDataAdapter;
@@ -1007,10 +1007,10 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
         if (snapshotCandles.Count == 0 || snapshotSettings.Count == 0)
         {
-            dispatcher.Post<(ChartViewModel vm, int id)>(static (state) => 
+            dispatcher.Post<(ChartViewModel vm, int id)>(static (state) =>
             {
                 if (state.id != state.vm._indicatorCalcId || state.vm._isDisposed) return;
-                
+
                 state.vm.IndicatorResults = new Dictionary<string, IIndicatorResult>();
                 state.vm.RequestRender(RenderReason.DataChanged);
                 state.vm._messenger.Send(new StockAnalyzer.Avalonia.Common.IndicatorResultsUpdatedMessage());
@@ -1018,7 +1018,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             return;
         }
 
-        _ = Task.Run(async () => 
+        _ = Task.Run(async () =>
         {
             // Debounce delay to batch rapid property changes (e.g. slider drag)
             try { await Task.Delay(StockAnalyzer.Avalonia.Common.ChartConstants.IndicatorCalculationDebounceDelay, cts.Token); }
@@ -1042,22 +1042,22 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 {
                     var count = activeAdapter.Count;
                     pooledArray = System.Buffers.ArrayPool<CoreCandleData>.Shared.Rent(count);
-                    
+
                     var tsMem = activeAdapter.Timestamps;
                     var opensMem = activeAdapter.Opens;
                     var highsMem = activeAdapter.Highs;
                     var lowsMem = activeAdapter.Lows;
                     var closesMem = activeAdapter.Closes;
                     var volsMem = activeAdapter.Volumes;
-                    
+
                     for (int i = 0; i < count; i++)
                     {
                         pooledArray[i] = new CoreCandleData(
-                            tsMem.Span[i], 
-                            opensMem.Span[i], 
-                            highsMem.Span[i], 
-                            lowsMem.Span[i], 
-                            closesMem.Span[i], 
+                            tsMem.Span[i],
+                            opensMem.Span[i],
+                            highsMem.Span[i],
+                            lowsMem.Span[i],
+                            closesMem.Span[i],
                             volsMem.Span[i]);
                     }
                     targetCandles = new ArraySegment<CoreCandleData>(pooledArray, 0, count);
@@ -1189,7 +1189,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                     var timeframeSettings = ApplyChartTypeTimeframePolicy(snapshotSettings, chartType, out var ignoredTimeframeSettings);
                     ignoredTimeframeForUi = ignoredTimeframeSettings;
                     var pipelineSettings = ApplyDynamicUniverseGroupId(timeframeSettings, effectiveDynamicGroupId);
-                    results =_analysisPipelineService is Core.Services.Analysis.ITimeFrameAwareIndicatorCalculation tfPipeline
+                    results = _analysisPipelineService is Core.Services.Analysis.ITimeFrameAwareIndicatorCalculation tfPipeline
                         ? await tfPipeline.CalculateIndicatorsAsync(targetCandles, pipelineSettings, secondaryCandlesBySymbol, timeFrame.ToCoreTimeFrame(), cts.Token).ConfigureAwait(false)
                         : await _analysisPipelineService.CalculateIndicatorsAsync(targetCandles, pipelineSettings, secondaryCandlesBySymbol);
 
@@ -1227,7 +1227,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                     _lastDynamicUniverseGroupId = effectiveDynamicGroupId;
                 }
 
-                
+
                 // ID check moved to dispatcher callback to avoid 'this' capture in Task.Run closure
                 dispatcher.Post<(ChartViewModel vm, int id, IReadOnlyDictionary<string, IIndicatorResult> results, CancellationTokenSource cts, IReadOnlyList<CoreIndicatorSettings>? ignoredTimeframe)>(static (state) =>
                 {
@@ -1380,40 +1380,40 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private void CalculateComparisonDataAsync()
     {
         var currentId = Interlocked.Increment(ref _comparisonCalcId);
-        
+
         var primarySymbol = Symbol;
         var targets = ComparisonTargets?.ToArray() ?? Array.Empty<string>();
         var timeFrame = SelectedTimeFrame;
-        var candleCount = MaxCandleCount; 
+        var candleCount = MaxCandleCount;
 
         // Capture services to avoid 'this' capture in Task.Run closure
         var alignerService = _comparisonDataAligner;
         var dataService = _dataService;
         var dispatcher = _dispatcherService;
-        
+
         if (string.IsNullOrEmpty(primarySymbol) || ChartType != ChartType.RelativePerformance)
         {
-             dispatcher.Post<(ChartViewModel vm, int id)>(static (state) => 
-             {
-                 if (state.id != state.vm._comparisonCalcId) return;
-                 state.vm.ComparisonData = null;
-             }, (this, currentId));
-             return;
+            dispatcher.Post<(ChartViewModel vm, int id)>(static (state) =>
+            {
+                if (state.id != state.vm._comparisonCalcId) return;
+                state.vm.ComparisonData = null;
+            }, (this, currentId));
+            return;
         }
 
-        _ = Task.Run(async () => 
+        _ = Task.Run(async () =>
         {
             try
             {
                 var aligner = alignerService ?? new ComparisonDataAligner(dataService);
-                
+
                 // Map TimeframeType to TimeFrame (Using Extension Method)
                 TimeFrame coreTimeFrame = timeFrame.ToCoreTimeFrame();
 
                 var data = await aligner.AlignAsync(primarySymbol, targets, coreTimeFrame, candleCount);
-                
+
                 // ID check moved to dispatcher callback to avoid 'this' capture in Task.Run closure
-                dispatcher.Post<(ChartViewModel vm, int id, ComparisonAlignedData data)>(static (state) => 
+                dispatcher.Post<(ChartViewModel vm, int id, ComparisonAlignedData data)>(static (state) =>
                 {
                     if (state.id != state.vm._comparisonCalcId || state.vm._isDisposed) return;
                     state.vm.ComparisonData = state.data;
@@ -1426,7 +1426,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Comparison data alignment error: {ex}");
-                dispatcher.Post<(ChartViewModel vm, int id)>(static (state) => 
+                dispatcher.Post<(ChartViewModel vm, int id)>(static (state) =>
                 {
                     if (state.id != state.vm._comparisonCalcId) return;
                     state.vm.ComparisonData = null;
@@ -1451,8 +1451,8 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         {
             // For Replace action, if the instance is the same, avoid re-subscribing 
             // to prevent Add then Remove from the same instance which leaves it without a handler.
-            bool isSameInstanceReplace = e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace 
-                                       && e.NewItems != null && e.OldItems != null 
+            bool isSameInstanceReplace = e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace
+                                       && e.NewItems != null && e.OldItems != null
                                        && e.NewItems.Count > 0 && e.OldItems.Count > 0
                                        && ReferenceEquals(e.NewItems[0], e.OldItems[0]);
 
@@ -1476,7 +1476,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 }
             }
         }
-        
+
         OnPropertyChanged(nameof(HasActiveSubWindowIndicators));
         CalculateIndicatorsAsync();
         RequestRender(RenderReason.DataChanged); // Force immediate layout sync
@@ -1506,7 +1506,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
 
     // Chart Settings
-    
+
     [ObservableProperty]
     private float _chartMarginTop = StockAnalyzer.Core.ChartConstants.MarginTop;
 
@@ -1594,7 +1594,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
     [ObservableProperty]
     private decimal _effectiveKagiReversalAmount = StockAnalyzer.Core.ChartConstants.DefaultKagiReversalAmount;
-    
+
     [ObservableProperty]
     private ChartSizingMode _kagiReversalMode = ChartSizingMode.AutoAtr;
 
@@ -1612,14 +1612,14 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     [ObservableProperty] private int _renkoFallbackMode = 0;
     [ObservableProperty] private float _renkoGhostProjectionFontSize = 10.0f;
     [ObservableProperty] private bool _renkoShowGhostLabelsOnHoverOnly = false;
-    
+
     // Renko Breakout Pattern Toggles
     [ObservableProperty] private bool _renkoShowMultiWavePatterns = false;
     [ObservableProperty] private int _renkoMultiWaveMaxLines = 5;
     [ObservableProperty] private HsvData _renkoMultiWaveBullishColor = HsvData.FromHtmlSafe(ChartSettingsConstants.DefaultBreakoutBullishColor);
     [ObservableProperty] private HsvData _renkoMultiWaveBearishColor = HsvData.FromHtmlSafe(ChartSettingsConstants.DefaultBreakoutBearishColor);
     [ObservableProperty] private bool _renkoShowGhostProjections = false;
-    
+
     // P&F
     [ObservableProperty] private ChartSizingMode _pnfSizingMode = ChartSizingMode.AutoAtr;
     [ObservableProperty] private decimal _pnfBoxSize = StockAnalyzer.Core.ChartConstants.DefaultPnfBoxSize; // User setting
@@ -1631,19 +1631,19 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     [ObservableProperty] private decimal _pnfBoxPercent = 1.0m;
     [ObservableProperty] private float _pnfGhostProjectionFontSize = 10.0f;
     [ObservableProperty] private bool _pnfShowGhostLabelsOnHoverOnly = false;
-    
+
     // P&F Breakout Pattern Toggles
     [ObservableProperty] private bool _pnfShowDoubleBreakout = false;
     [ObservableProperty] private bool _pnfShowTripleBreakout = false;
     [ObservableProperty] private bool _pnfShowTrendlineBreakout = false;
     [ObservableProperty] private bool _pnfShowTriangleBreakout = false;
     [ObservableProperty] private bool _pnfShowCatapultBreakout = false;
-    
+
     // P&F Multi-Wave Toggles
     [ObservableProperty] private bool _pnfShowMultiWavePatterns = false;
     [ObservableProperty] private int _pnfMultiWaveMaxLines = 5;
     [ObservableProperty] private bool _pnfShowGhostProjections = false;
-    
+
     // Kagi
     [ObservableProperty] private decimal _kagiReversalAmount = StockAnalyzer.Core.ChartConstants.DefaultKagiReversalAmount; // User setting
     [ObservableProperty] private decimal _kagiAtrMultiplier = StockAnalyzer.Core.ChartConstants.DefaultAtrMultiplier;
@@ -1654,7 +1654,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     [ObservableProperty] private float _kagiLineThickness = 1.0f;
     [ObservableProperty] private float _kagiGhostProjectionFontSize = 10.0f;
     [ObservableProperty] private bool _kagiShowGhostLabelsOnHoverOnly = false;
-    
+
     // Kagi Multi-Wave Toggles
     [ObservableProperty] private bool _kagiShowMultiWavePatterns = false;
     [ObservableProperty] private int _kagiMultiWaveMaxLines = 5;
@@ -2061,7 +2061,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         _analysisPipelineService = analysisPipelineService;
         _comparisonDataAligner = comparisonDataAligner;
         _messenger = messenger ?? WeakReferenceMessenger.Default;
-        
+
         _chartSettingsManager.SettingsChanged += OnGlobalSettingsChanged;
 
         // Register for messages
@@ -2102,7 +2102,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                     var tickers = await _marketDataProvider.GetAvailableTickersAsync();
                     if (tickers == null) return;
 
-                    _dispatcherService.Post<(ChartViewModel vm, IReadOnlyList<string> tickers)>(static (state) => 
+                    _dispatcherService.Post<(ChartViewModel vm, IReadOnlyList<string> tickers)>(static (state) =>
                     {
                         if (state.vm._isDisposed) return;
                         state.vm.AvailableTickers.Clear();
@@ -2213,7 +2213,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         TlbShowGhostProjections = s.ThreeLineBreakShowGhostProjections;
         TlbGhostProjectionFontSize = s.ThreeLineBreakGhostProjectionFontSize;
         TlbShowGhostLabelsOnHoverOnly = s.ThreeLineBreakShowGhostLabelsOnHoverOnly;
-        
+
         // --- Relative Performance ---
         if (!Enumerable.SequenceEqual(ComparisonTargets, s.ComparisonTargets))
         {
@@ -2242,7 +2242,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private void UpdateColorsFromSettings()
     {
         var s = _chartSettingsManager.Current;
-        
+
         // --- Candlestick ---
         BullishColor = HsvData.FromHtmlSafe(s.CandlestickBullishColor);
         BearishColor = HsvData.FromHtmlSafe(s.CandlestickBearishColor);
@@ -2279,7 +2279,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         ThreeLineBreakBearishColor = HsvData.FromHtmlSafe(s.ThreeLineBreakBearishColor);
         TlbMultiWaveBullishColor = HsvData.FromHtmlSafe(s.ThreeLineBreakMultiWaveBullishColor, HsvData.FromHtmlSafe(ChartSettingsConstants.DefaultBreakoutBullishColor));
         TlbMultiWaveBearishColor = HsvData.FromHtmlSafe(s.ThreeLineBreakMultiWaveBearishColor, HsvData.FromHtmlSafe(ChartSettingsConstants.DefaultBreakoutBearishColor));
-        
+
         // --- Line / Area ---
         LineChartColor = HsvData.FromHtmlSafe(s.LineColor);
         AreaChartColor = HsvData.FromHtmlSafe(s.AreaBaseColor);
@@ -2321,12 +2321,12 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private void UpdateColorsFromTheme()
     {
         var theme = _themeManager.CurrentTheme;
-        
+
         // Use dispatcher to ensure properties are updated on UI thread if needed, 
         // but since these are observable properties, staying on current thread (usually UI) is best.
         BullishColor = HsvData.FromIndicatorColor(theme.Bullish);
         BearishColor = HsvData.FromIndicatorColor(theme.Bearish);
-        
+
         HeikinBullishColor = HsvData.FromIndicatorColor(theme.Bullish);
         HeikinBearishColor = HsvData.FromIndicatorColor(theme.Bearish);
 
@@ -2359,7 +2359,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
 
 
-    public ChartViewModel() 
+    public ChartViewModel()
     {
         _messenger = WeakReferenceMessenger.Default;
         _dataService = new StockAnalyzer.Avalonia.Services.MockDataService();
@@ -2374,7 +2374,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
 
         _settings = new Services.MockStockAnalyzerSettings();
         _symbol = _settings.DefaultSymbol;
-        
+
         Indicators.CollectionChanged += OnIndicatorsCollectionChanged;
         ComparisonTargets.CollectionChanged += OnComparisonTargetsChanged;
         _themeManager.PropertyChanged += OnThemeManagerPropertyChanged;
@@ -2440,7 +2440,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             _ = LoadDataInternalAsync(true);
         }
     }
-    
+
 
     [RelayCommand]
     private void SetCandleCount(string countStr)
@@ -2522,7 +2522,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             if (string.IsNullOrWhiteSpace(Symbol)) return;
 
             IsLoading = true;
-            
+
             // --- LIFECYCLE MANAGEMENT: PERSIST DRAWINGS PER SYMBOL+TIMEFRAME ON LOAD ---
             // When loading new data (symbol/timeframe change or refresh), the drawings belonging to
             // the previously-displayed symbol+timeframe are saved (Day/Week/Monthly are independent
@@ -2644,12 +2644,12 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 // even be selected -- let alone dragged or deleted -- until touched.
                 RecalculateRestoredDeferredComputationObjects(vm.ObjectManager, candles, vm.IndicatorResults, vm.Indicators, vm.Symbol);
                 vm.RequestRender(RenderReason.DataChanged);
-                
+
                 if (vm.Candles.Count > 0)
                 {
                     vm.CurrentPrice = vm.Candles[vm.Candles.Count - 1].Close;
                 }
-                
+
                 if (vm.IsKagiChart || vm.ChartType == ChartType.Renko || vm.ChartType == ChartType.PointAndFigure)
                 {
                     vm.UpdateChartData();
@@ -2667,7 +2667,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                 {
                     vm.CalculateComparisonDataAsync();
                 }
-             }, (this, renderedCandles, extendedCandlesForCalc, actualExtraLookback,
+            }, (this, renderedCandles, extendedCandlesForCalc, actualExtraLookback,
                  predictionSymbol, predictionTimeframe, token));
         }
         catch (OperationCanceledException)
@@ -2760,23 +2760,23 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         // and prevent overlap with Y-axis labels.
         // TLB Fixed: Add default right margin so the latest block isn't hidden by the right edge.
         int maxOffset = 0;
-        
+
         foreach (var indicator in Indicators)
         {
             // Indicators whose output extends past the last candle (e.g. the Ichimoku Kumo) declare how far; the margin follows the parameter.
             int projection = indicator.ParameterObject?.GetFutureProjectionBars() ?? 0;
             if (projection > 0)
             {
-                 maxOffset = System.Math.Max(maxOffset, projection + StockAnalyzer.Core.ChartConstants.FutureProjectionBuffer);
+                maxOffset = System.Math.Max(maxOffset, projection + StockAnalyzer.Core.ChartConstants.FutureProjectionBuffer);
             }
-            
+
             // Allow scrolling based on generic Offset property
             if (indicator.Offset > 0)
             {
-                 maxOffset = System.Math.Max(maxOffset, indicator.Offset + 1); 
+                maxOffset = System.Math.Max(maxOffset, indicator.Offset + 1);
             }
         }
-        RequiredFutureOffset = maxOffset; 
+        RequiredFutureOffset = maxOffset;
     }
 
     // ZeroAllocation Kagi Integration
@@ -2840,12 +2840,12 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         {
             CalculateComparisonDataAsync();
         }
-        
+
         if (value == ChartType.Renko || value == ChartType.Kagi || value == ChartType.PointAndFigure || value == ChartType.ThreeLineBreak)
         {
             UpdateChartData();
         }
-        
+
         if (value != ChartType.Renko && value != ChartType.Kagi && value != ChartType.PointAndFigure)
         {
             // Recalculate indicators on chart type change if not deferred by adapter updates.
@@ -2854,7 +2854,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             // switching Kagi->Candlestick leaves stale 30-point results, causing indicator lines to stop early.
             CalculateIndicatorsAsync();
         }
-        
+
         RequestRender(RenderReason.DataChanged);
     }
 
@@ -2955,12 +2955,12 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                         {
                             vm.VisibleStartIndex = System.Math.Max(0, count - vm.VisibleCandleCount);
                         }
-                        
+
                         var (max, min) = res.Adapter.GetPriceRange();
                         vm.MaxPrice = max;
                         vm.MinPrice = min;
                     }
-                    
+
                     vm.RequestRender(RenderReason.DataChanged);
                 }, (this, currentId, result));
             }
@@ -3027,7 +3027,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     partial void OnKagiLineThicknessChanged(float value) => RequestRender(RenderReason.VisualChanged);
     partial void OnKagiGhostProjectionFontSizeChanged(float value) => RequestRender(RenderReason.VisualChanged);
     partial void OnKagiShowGhostLabelsOnHoverOnlyChanged(bool value) => RequestRender(RenderReason.VisualChanged);
-    
+
     // Trigger update for Renko/P&F parameters
     partial void OnRenkoSizingModeChanged(ChartSizingMode value)
     {
@@ -3065,7 +3065,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     partial void OnPnfFallbackModeChanged(int value) => UpdateChartData();
     partial void OnPnfGhostProjectionFontSizeChanged(float value) => RequestRender(RenderReason.VisualChanged);
     partial void OnPnfShowGhostLabelsOnHoverOnlyChanged(bool value) => RequestRender(RenderReason.VisualChanged);
-    
+
     public void OnDrawingFinished(IChartObject obj)
     {
         if (_isDisposed) return;
@@ -3281,7 +3281,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             }
 
             var queryLength = endIndex - startIndex + 1;
-            
+
             // Note: We are currently passing the whole candle history and giving the length of the query.
             // SearchSimilarPatternsAsync currently takes the whole history and considers the *last* queryLength candles
             // as the query. If the framework expects arbitrary historical queries, the service logic might need adapting.
@@ -3428,7 +3428,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         var theme = ThemeManager.CurrentTheme;
         BullishColor = HsvData.FromIndicatorColor(theme.Bullish);
         BearishColor = HsvData.FromIndicatorColor(theme.Bearish);
-        
+
         HeikinBullishColor = HsvData.FromIndicatorColor(theme.Bullish);
         HeikinBearishColor = HsvData.FromIndicatorColor(theme.Bearish);
 
@@ -3474,7 +3474,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             ReverseWatchPhase7Color = HsvData.FromHtmlSafe(_settings.GetReverseWatchPhaseColor(8)); // UI 8
             ReverseWatchPhase8Color = HsvData.FromHtmlSafe(_settings.GetReverseWatchPhaseColor(1)); // UI 1
         }
-        
+
         RequestRender(RenderReason.ForceRedraw);
     }
 
@@ -3484,7 +3484,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     public async Task AddComparisonTargetAsync(string ticker)
     {
         if (string.IsNullOrEmpty(ticker)) return;
-        
+
         // Don't add if it's the primary symbol
         if (string.Equals(ticker, Symbol, StringComparison.OrdinalIgnoreCase)) return;
 
@@ -3525,17 +3525,17 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             ChartType.Candlestick => ChartDrawingContextType.Standard,
             ChartType.HeikinAshi => ChartDrawingContextType.Standard,
             ChartType.OHLCBar => ChartDrawingContextType.Standard, // Added OHLCBar to Standard group
-            
+
             ChartType.Line => ChartDrawingContextType.Linear,
             ChartType.Area => ChartDrawingContextType.Linear,
             ChartType.Dot => ChartDrawingContextType.Linear,
-            
+
             ChartType.Kagi => ChartDrawingContextType.Kagi,
             ChartType.Renko => ChartDrawingContextType.Renko,
             ChartType.PointAndFigure => ChartDrawingContextType.PointAndFigure,
             ChartType.ThreeLineBreak => ChartDrawingContextType.ThreeLineBreak,
             ChartType.ReverseWatch => ChartDrawingContextType.ReverseWatch,
-            
+
             _ => ChartDrawingContextType.Standard // Default fallback
         };
     }

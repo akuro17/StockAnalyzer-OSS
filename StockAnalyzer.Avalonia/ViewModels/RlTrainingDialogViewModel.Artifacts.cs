@@ -26,7 +26,7 @@ public sealed partial class RlTrainingDialogViewModel
     private bool _cleanupConfirmed;
     private RlArtifactPreview? _artifactPreview;
     private long _artifactRevision;
-    
+
     public bool CanCleanupArtifacts => Editable && IsStorageWritable && CleanupConfirmed && ArtifactsState == RlDialogLoadState.Loaded && _savedPolicy?.IsComplete == true && ValidRetentionEditors && DraftPolicy() == _artifactPreview?.Policy && _artifactPreview?.Entries.Any(e => e.Candidate) == true;
     private void InvalidateArtifactReview()
     {
@@ -54,7 +54,8 @@ public sealed partial class RlTrainingDialogViewModel
         }
         catch (Exception error) { if (!_disposed) { StorageDisplay = DescribeError(error); } }
     }
-    [RelayCommand(CanExecute = nameof(CanSaveRetention))] private async Task SaveArtifactSettingsAsync()
+    [RelayCommand(CanExecute = nameof(CanSaveRetention))]
+    private async Task SaveArtifactSettingsAsync()
     {
         if (!CanSaveRetention) return;
         var policy = new RlArtifactPolicy(StorageQuotaGiB, StorageMinimumFreeGiB, StorageFailedRetentionDays, StorageNonactiveDays, StorageKeepCount, StorageCheckpointKeepCount);
@@ -67,7 +68,8 @@ public sealed partial class RlTrainingDialogViewModel
         catch (Exception error) { if (!_disposed) StorageDisplay = DescribeError(error); }
         finally { EndOperation(); }
     }
-    [RelayCommand(CanExecute = nameof(CanInspectArtifacts))] private async Task InspectArtifactsAsync()
+    [RelayCommand(CanExecute = nameof(CanInspectArtifacts))]
+    private async Task InspectArtifactsAsync()
     {
         if (!CanInspectArtifacts) return;
         InvalidateArtifactReview(); long revision = _artifactRevision; using var cancel = new CancellationTokenSource(); BeginOperation(RlDialogOperation.InspectingArtifacts, cancel); ArtifactsState = RlDialogLoadState.Loading;
@@ -85,7 +87,8 @@ public sealed partial class RlTrainingDialogViewModel
         catch (Exception error) { if (!_disposed) { ArtifactsState = RlDialogLoadState.Failed; StorageDisplay = DescribeError(error); } }
         finally { EndOperation(); }
     }
-    [RelayCommand(CanExecute = nameof(CanCleanupArtifacts))] private async Task CleanupArtifactsAsync()
+    [RelayCommand(CanExecute = nameof(CanCleanupArtifacts))]
+    private async Task CleanupArtifactsAsync()
     {
         if (!CanCleanupArtifacts || _disposed) return;
         var reviewed = _artifactPreview!; InvalidateArtifactReview();

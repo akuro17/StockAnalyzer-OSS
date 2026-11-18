@@ -8,15 +8,29 @@ namespace StockAnalyzer.Core.Tests.Models;
 public sealed class FeatureChannelNormalizationDefaultsTests
 {
     [Theory]
-    [InlineData(IndicatorType.RSI)] [InlineData(IndicatorType.Stoch)] [InlineData(IndicatorType.WilliamsR)] [InlineData(IndicatorType.MFI)]
-    [InlineData(IndicatorType.ADX)] [InlineData(IndicatorType.CMF)] [InlineData(IndicatorType.ROC)] [InlineData(IndicatorType.PPO)]
-    [InlineData(IndicatorType.BandWidth)] [InlineData(IndicatorType.NATR)] [InlineData(IndicatorType.ZScore)] [InlineData(IndicatorType.CCI)]
+    [InlineData(IndicatorType.RSI)]
+    [InlineData(IndicatorType.Stoch)]
+    [InlineData(IndicatorType.WilliamsR)]
+    [InlineData(IndicatorType.MFI)]
+    [InlineData(IndicatorType.ADX)]
+    [InlineData(IndicatorType.CMF)]
+    [InlineData(IndicatorType.ROC)]
+    [InlineData(IndicatorType.PPO)]
+    [InlineData(IndicatorType.BandWidth)]
+    [InlineData(IndicatorType.NATR)]
+    [InlineData(IndicatorType.ZScore)]
+    [InlineData(IndicatorType.CCI)]
     public void BoundedOscillatorsRatiosAndPercentages_NeedNoNormalization(IndicatorType type) =>
         Assert.Equal(ChannelNormalization.None, FeatureChannelNormalizationDefaults.ForIndicator(type));
 
     [Theory]
-    [InlineData(IndicatorType.SMA)] [InlineData(IndicatorType.EMA)] [InlineData(IndicatorType.BB)] [InlineData(IndicatorType.VWAP)]
-    [InlineData(IndicatorType.ParabolicSAR)] [InlineData(IndicatorType.Ichimoku)] [InlineData(IndicatorType.Price)]
+    [InlineData(IndicatorType.SMA)]
+    [InlineData(IndicatorType.EMA)]
+    [InlineData(IndicatorType.BB)]
+    [InlineData(IndicatorType.VWAP)]
+    [InlineData(IndicatorType.ParabolicSAR)]
+    [InlineData(IndicatorType.Ichimoku)]
+    [InlineData(IndicatorType.Price)]
     [InlineData(IndicatorType.ARIMA)]
     public void PriceUnitSeries_AreMinMaxScaledLikeThePriceFields(IndicatorType type)
     {
@@ -25,19 +39,26 @@ public sealed class FeatureChannelNormalizationDefaultsTests
     }
 
     [Theory]
-    [InlineData(IndicatorType.Volume)] [InlineData(IndicatorType.OBV)] [InlineData(IndicatorType.ATR)] [InlineData(IndicatorType.MACD)]
-    [InlineData(IndicatorType.Momentum)] [InlineData(IndicatorType.ADL)]
+    [InlineData(IndicatorType.Volume)]
+    [InlineData(IndicatorType.OBV)]
+    [InlineData(IndicatorType.ATR)]
+    [InlineData(IndicatorType.MACD)]
+    [InlineData(IndicatorType.Momentum)]
+    [InlineData(IndicatorType.ADL)]
     public void EverythingElse_IsZScoredSoItIsNeverFedRaw(IndicatorType type) =>
         Assert.Equal(ChannelNormalization.WindowZScore, FeatureChannelNormalizationDefaults.ForIndicator(type));
 
     [Theory]
-    [InlineData(IndicatorType.ChandelierExit)] [InlineData(IndicatorType.T3)] [InlineData(IndicatorType.McGinleyDynamic)]
+    [InlineData(IndicatorType.ChandelierExit)]
+    [InlineData(IndicatorType.T3)]
+    [InlineData(IndicatorType.McGinleyDynamic)]
     [InlineData(IndicatorType.VolumeProfileLevels)]
     public void PlanThreePriceUnitIndicators_AreMinMaxScaled(IndicatorType type) =>
         Assert.Equal(ChannelNormalization.WindowMinMax, FeatureChannelNormalizationDefaults.ForIndicator(type));
 
     [Theory]
-    [InlineData(IndicatorType.TSI)] [InlineData(IndicatorType.StochRSI)]
+    [InlineData(IndicatorType.TSI)]
+    [InlineData(IndicatorType.StochRSI)]
     public void PlanThreeBoundedOscillators_NeedNoNormalization(IndicatorType type) =>
         Assert.Equal(ChannelNormalization.None, FeatureChannelNormalizationDefaults.ForIndicator(type));
 
@@ -48,12 +69,15 @@ public sealed class FeatureChannelNormalizationDefaultsTests
     // Plan 04, owner decision 2026-11-14 (Q1=B): the unbounded per-bar percentage volatility estimators are z-scored like EGARCH and HistoricalVolatility;
     // the two bounded dimensionless complexity measures (Hurst 0..1, normalised entropy 0..1) need no normalization.
     [Theory]
-    [InlineData(IndicatorType.ParkinsonVolatility)] [InlineData(IndicatorType.RogersSatchellVolatility)] [InlineData(IndicatorType.Garch11)]
+    [InlineData(IndicatorType.ParkinsonVolatility)]
+    [InlineData(IndicatorType.RogersSatchellVolatility)]
+    [InlineData(IndicatorType.Garch11)]
     public void PlanFourVolatilityEstimators_AreZScored(IndicatorType type) =>
         Assert.Equal(ChannelNormalization.WindowZScore, FeatureChannelNormalizationDefaults.ForIndicator(type));
 
     [Theory]
-    [InlineData(IndicatorType.HurstExponent)] [InlineData(IndicatorType.Entropy)]
+    [InlineData(IndicatorType.HurstExponent)]
+    [InlineData(IndicatorType.Entropy)]
     public void PlanFourBoundedComplexityMeasures_NeedNoNormalization(IndicatorType type) =>
         Assert.Equal(ChannelNormalization.None, FeatureChannelNormalizationDefaults.ForIndicator(type));
 

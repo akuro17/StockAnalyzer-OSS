@@ -13,13 +13,13 @@ public static class PivotDetectionEngine
     /// <param name="rightStrength">Number of candles to the right that must be strictly lower/higher.</param>
     /// <returns>A list of extracted fractal pivot points.</returns>
     public static void ExtractPivots(
-        IReadOnlyList<CandleData> candles, 
-        int leftStrength, 
+        IReadOnlyList<CandleData> candles,
+        int leftStrength,
         int rightStrength,
         List<FractalPivot> outputBuffer)
     {
         outputBuffer.Clear();
-        
+
         if (candles == null || candles.Count < leftStrength + rightStrength + 1)
         {
             return;
@@ -37,7 +37,7 @@ public static class PivotDetectionEngine
                 var leftCandle = candles[i - j];
                 if (leftCandle.High >= current.High) isSwingHigh = false;
                 if (leftCandle.Low <= current.Low) isSwingLow = false;
-                
+
                 if (!isSwingHigh && !isSwingLow) break;
             }
 
@@ -49,7 +49,7 @@ public static class PivotDetectionEngine
                     var rightCandle = candles[i + j];
                     if (rightCandle.High >= current.High) isSwingHigh = false;
                     if (rightCandle.Low <= current.Low) isSwingLow = false;
-                    
+
                     if (!isSwingHigh && !isSwingLow) break;
                 }
             }

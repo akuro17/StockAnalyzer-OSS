@@ -17,6 +17,7 @@ namespace StockAnalyzer.Core.Tests.Discussion;
 /// Task T7 with real named pipes: the election of the hub, the sharing of one board, the loss of the hub and the edges of the wire. Every test uses a private pipe name
 /// (a random suffix), so none of them can meet the board of a running server.
 /// </summary>
+[Collection("ThreadPoolStarvation")]
 public sealed class DiscussionHubElectionTests : IDisposable
 {
     private const int ConnectTimeoutMilliseconds = 2000;
@@ -36,6 +37,8 @@ public sealed class DiscussionHubElectionTests : IDisposable
     }
 
     private const int PoolHoldMilliseconds = 400;
+    private const int DeterministicPoolHoldMilliseconds = 1500;
+    private const int ObserveAfterMilliseconds = 300;
     private const int PoolHoldSettleMilliseconds = 100;
     private const int ProbeMilliseconds = 50;
     private const int PoolBlockersPerProcessor = 4;
@@ -827,6 +830,64 @@ public sealed class DiscussionHubElectionTests : IDisposable
         }
 
         Assert.False(someoneIsListening, "the hub still had a listening instance when it closed the open connection");
+    }
+
+    [Fact]
+    public void TheHubStopsListeningWithoutNeedingAThreadPoolThread()
+    {
+        // Spec 5.12 shutdown order: stop accepting, then close the connections. The accept loop can only dispose its listening instance when it gets a
+        // pool thread, and cancelling the stop token lets the open connections end on their own as well, so with the accept loop doing the disposal
+        // nothing orders the two. Dispose therefore disposes the listening instance itself, before it cancels anything. Observable without a race: every
+        // pool thread is held for DeterministicPoolHoldMilliseconds, so neither the accept loop nor anything else that needs the pool can run, and
+        // ObserveAfterMilliseconds after the dispose has started (still inside the hold) nobody may be listening any more.
+        (string name, DiscussionPipeHost host, ScriptedBoard board) = StartHost();
+        board.Handler = async (_, token) =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return DiscussionReply.Ok("{}");
+        };
+
+        using var held = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        held.Connect(ConnectTimeoutMilliseconds);
+        byte[] request = DiscussionWire.EncodeRequest(new DiscussionRequest("read", "x", "{}"));
+        held.Write(request, 0, request.Length);
+        held.Flush();
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref board.Calls) == 1, TimeSpan.FromSeconds(RequestReachSeconds)), "the request did not reach the board");
+
+        using var release = new ManualResetEventSlim();
+        for (int i = 0; i < Environment.ProcessorCount * PoolBlockersPerProcessor; i++)
+        {
+            _ = Task.Run(() => release.Wait());
+        }
+
+        Thread.Sleep(PoolHoldSettleMilliseconds);
+        var releaser = new Thread(() => { Thread.Sleep(DeterministicPoolHoldMilliseconds); release.Set(); });
+        var disposer = new Thread(host.Dispose);
+        bool someoneIsListening;
+        try
+        {
+            releaser.Start();
+            disposer.Start();
+            Thread.Sleep(ObserveAfterMilliseconds);
+            using var probe = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            try
+            {
+                probe.Connect(ProbeMilliseconds);
+                someoneIsListening = true;
+            }
+            catch (Exception error) when (error is TimeoutException or IOException)
+            {
+                someoneIsListening = false;
+            }
+        }
+        finally
+        {
+            release.Set();
+            disposer.Join();
+            releaser.Join();
+        }
+
+        Assert.False(someoneIsListening, "the hub was still listening while no thread-pool thread could run: its accept loop, not Dispose, ended the listening");
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)

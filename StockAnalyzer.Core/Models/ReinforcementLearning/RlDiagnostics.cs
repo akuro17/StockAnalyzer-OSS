@@ -29,8 +29,12 @@ public sealed class RlActionDiagnosticCounter
 {
     private readonly Dictionary<string, int> _counts = new(StringComparer.Ordinal)
     {
-        ["raw_outside"] = 0, ["size_lower"] = 0, ["size_upper"] = 0,
-        ["stop_lower"] = 0, ["stop_upper"] = 0, ["was_clipped"] = 0,
+        ["raw_outside"] = 0,
+        ["size_lower"] = 0,
+        ["size_upper"] = 0,
+        ["stop_lower"] = 0,
+        ["stop_upper"] = 0,
+        ["was_clipped"] = 0,
     };
     private int _denominator;
     public RlActionDiagnosticCounter() { }

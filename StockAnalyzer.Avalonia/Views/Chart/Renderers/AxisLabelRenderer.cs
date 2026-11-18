@@ -94,7 +94,7 @@ public sealed class AxisLabelRenderer : IDisposable
         for (int i = 0; i < labels.Count; i++)
         {
             var req = labels[i];
-            
+
             float y;
             if (req.PanelIndex < 0)
             {
@@ -107,11 +107,11 @@ public sealed class AxisLabelRenderer : IDisposable
                 // Sub-window Panel
                 if (panelRanges == null || !panelRanges.TryGetValue(req.PanelIndex, out var range)) continue;
                 if (req.PanelIndex >= layout.PanelAreas.Count) continue;
-                
+
                 var area = layout.PanelAreas[req.PanelIndex];
                 decimal rangeVal = range.Max - range.Min;
                 if (rangeVal <= 0) rangeVal = 1m;
-                
+
                 decimal normalizedY = 1m - (req.Value - range.Min) / rangeVal;
                 y = (float)(area.Height * (double)normalizedY + area.Top);
             }
@@ -143,7 +143,7 @@ public sealed class AxisLabelRenderer : IDisposable
 
             float priceY = y;
             float boxTopY = MathF.Floor(priceY - ChartTheme.AxisLabelHeight / 2f);
-            
+
             float textWidth = _textPaint.MeasureText(req.Label);
             _resolvedLabels.Add(new ResolvedLabel(
                 boxTopY, // Resolved Box Top
@@ -160,10 +160,10 @@ public sealed class AxisLabelRenderer : IDisposable
         _resolvedLabels.Sort();
 
         float topLimit = (float)layout.ChartArea.Top;
-        float lastBottom = (layout.PanelAreas.Count > 0) 
-            ? (float)layout.PanelAreas[layout.PanelAreas.Count - 1].Bottom 
+        float lastBottom = (layout.PanelAreas.Count > 0)
+            ? (float)layout.PanelAreas[layout.PanelAreas.Count - 1].Bottom
             : (float)layout.ChartArea.Bottom;
-            
+
         // Tight clamping to ensure the entire label box (Height) stays within chart area boundaries
         float minTop = topLimit + 1f;
         float maxBottom = lastBottom - ChartTheme.AxisLabelHeight - 1f;
@@ -312,11 +312,11 @@ public sealed class AxisLabelRenderer : IDisposable
         // Draw rounded rectangle background
         // RATIO-102: Use consistent snapping for the background box to match the arrow tip
         var rect = new SKRect(
-            MathF.Floor(labelX) + 0.5f, 
-            MathF.Floor(labelY) + 0.5f, 
-            MathF.Floor(labelX + labelWidth) + 0.5f, 
+            MathF.Floor(labelX) + 0.5f,
+            MathF.Floor(labelY) + 0.5f,
+            MathF.Floor(labelX + labelWidth) + 0.5f,
             MathF.Floor(labelY + ChartTheme.AxisLabelHeight) + 0.5f);
-            
+
         _backgroundPaint.Color = bgColor;
         canvas.DrawRoundRect(rect, ChartTheme.AxisLabelCornerRadius, ChartTheme.AxisLabelCornerRadius, _backgroundPaint);
 

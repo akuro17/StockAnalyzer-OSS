@@ -22,7 +22,7 @@ public sealed class AreaChartRenderer : IChartRenderer, IDisposable
     private readonly SKPaint _projectionPaint;
     private readonly SKPath _linePath;
     private readonly SKPath _areaPath;
-    
+
     // Shader Cache
     private SKShader? _activeShader;
     private SKColor _lastThemeColor;
@@ -87,13 +87,13 @@ public sealed class AreaChartRenderer : IChartRenderer, IDisposable
         double x1;
         if (isIndexMode)
         {
-             x0 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex), 0)).X;
-             x1 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex + 1), 0)).X;
+            x0 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex), 0)).X;
+            x1 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex + 1), 0)).X;
         }
         else
         {
-             x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
-             x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp + interval, 0)).X;
+            x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
+            x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp + interval, 0)).X;
         }
 
         float candleWidth = (float)(x1 - x0);
@@ -108,7 +108,7 @@ public sealed class AreaChartRenderer : IChartRenderer, IDisposable
         try
         {
             int pointCount = LttbDownsampler.Downsample(snapshot.Candles, maxPoints, indicesBuffer.AsSpan(0, maxPoints));
-            
+
             bool firstPoint = true;
             float firstX = 0;
             float lastX = 0;
@@ -119,7 +119,7 @@ public sealed class AreaChartRenderer : IChartRenderer, IDisposable
             {
                 int dataIndex = indicesBuffer[i];
                 var candle = snapshot.Candles[dataIndex];
-                
+
                 float x;
                 if (isIndexMode)
                 {
@@ -130,7 +130,7 @@ public sealed class AreaChartRenderer : IChartRenderer, IDisposable
                 {
                     x = (float)transform.ChartToScreen(new ChartPoint(candle.Timestamp, 0)).X + (float)chartArea.Left;
                 }
-                
+
                 float centerX = MathF.Floor(x + candleWidth / 2f) + 0.5f;
                 float y = MathF.Floor((float)transform.ChartToScreen(new ChartPoint(DateTime.MinValue, candle.Close)).Y + (float)chartArea.Top) + 0.5f;
 
@@ -165,7 +165,7 @@ public sealed class AreaChartRenderer : IChartRenderer, IDisposable
                 // 2. Dynamic Alpha Scaling based on Background Luminance
                 SKColor bgColor = config.ThemeManager.CurrentTheme.ChartBackground.ToSkColor();
                 float luminance = IndicatorColor.Luma(bgColor.Red, bgColor.Green, bgColor.Blue);
-                
+
                 // Scale alpha: Light (L=1.0) -> 100%, Dark (L=0.0) -> ~60%
                 float alphaScale = ChartTheme.AreaChartAlphaBaseScale + ChartTheme.AreaChartAlphaLuminanceScale * luminance;
                 byte alphaTop = (byte)Math.Clamp(ChartTheme.AreaFillAlphaTop * alphaScale, 0, 255);
@@ -173,23 +173,23 @@ public sealed class AreaChartRenderer : IChartRenderer, IDisposable
 
                 var areaColor = config.AreaChartColor.ToSkColor();
                 // Update Shader Cache if necessary
-                if (_activeShader == null || 
-                    areaColor != _lastThemeColor || 
+                if (_activeShader == null ||
+                    areaColor != _lastThemeColor ||
                     bgColor != _lastBgColor ||
-                    (float)chartArea.Top != _lastTop || 
+                    (float)chartArea.Top != _lastTop ||
                     (float)chartArea.Bottom != _lastBottom)
                 {
                     _activeShader?.Dispose();
                     _activeShader = SKShader.CreateLinearGradient(
                         new SKPoint(0, (float)chartArea.Top),
                         new SKPoint(0, (float)chartArea.Bottom),
-                        new SKColor[] { 
-                            areaColor.WithAlpha(alphaTop), 
-                            areaColor.WithAlpha(alphaBottom) 
+                        new SKColor[] {
+                            areaColor.WithAlpha(alphaTop),
+                            areaColor.WithAlpha(alphaBottom)
                         },
                         null,
                         SKShaderTileMode.Clamp);
-                    
+
                     _lastThemeColor = areaColor;
                     _lastBgColor = bgColor;
                     _lastTop = (float)chartArea.Top;

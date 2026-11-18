@@ -12,7 +12,7 @@ namespace StockAnalyzer.Core.Services.Analysis;
 public interface IAnalysisPipelineService
 {
     Dictionary<string, IIndicatorResult> CalculateIndicators(
-        IReadOnlyList<CoreCandleData> candles, 
+        IReadOnlyList<CoreCandleData> candles,
         IEnumerable<CoreIndicatorSettings> settings,
         IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol = null);
 
@@ -25,7 +25,7 @@ public interface IAnalysisPipelineService
     /// <param name="secondaryCandlesBySymbol">Optional dictionary of secondary candle data keyed by symbol for cross-ticker indicators.</param>
     /// <returns>A dictionary of indicator values keyed by setting ID.</returns>
     System.Threading.Tasks.Task<Dictionary<string, IIndicatorResult>> CalculateIndicatorsAsync(
-        IReadOnlyList<CoreCandleData> candles, 
+        IReadOnlyList<CoreCandleData> candles,
         IEnumerable<CoreIndicatorSettings> settings,
         IReadOnlyDictionary<string, IReadOnlyList<CoreCandleData?>>? secondaryCandlesBySymbol = null);
 

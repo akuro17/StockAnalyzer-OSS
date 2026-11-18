@@ -18,7 +18,7 @@ namespace StockAnalyzer.Core.Models.Indicators;
 public abstract class CoreIndicatorBase : ICoreIndicator
 {
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _propertyCache = new();
-    
+
     public abstract string Name { get; }
     protected List<decimal?> _values = new();
     public IReadOnlyList<decimal?> Values => _values;
@@ -28,13 +28,13 @@ public abstract class CoreIndicatorBase : ICoreIndicator
     /// Default is PriceType.Close.
     /// </summary>
     public virtual PriceType PriceSource { get; set; } = PriceType.Close;
-    
+
     /// <summary>
     /// Reusable signal provider for indicators that follow the standard naming convention
     /// for signal series (e.g., BullishSignals, BearishSignals).
     /// </summary>
     protected StandardConfluenceSignalProvider? _signalProvider;
-    
+
     /// <summary>
     /// Context used for the current calculation execution.
     /// Used to pass optimization parameters (e.g. parallelism threshold) to internal methods.
@@ -129,7 +129,7 @@ public abstract class CoreIndicatorBase : ICoreIndicator
             {
                 var mockCandles = GetMockCandles();
                 var testInst = (CoreIndicatorBase)Activator.CreateInstance(GetType())!;
-                
+
                 // 3. Try to auto-discover parameters via naming convention
                 string expectedParamName = GetType().Name.Replace("Indicator", "Parameter");
                 var paramType = GetType().Assembly.GetTypes()
@@ -293,12 +293,12 @@ public abstract class CoreIndicatorBase : ICoreIndicator
     private static List<CoreCandleData> GetMockCandles()
     {
         if (_mockCandles != null) return _mockCandles;
-        
+
         var mockCandles = new List<CoreCandleData>();
         decimal currentPrice = 10000m; // Base price for mock calculation (to distinguish from 0-100 oscillators)
         var random = new Random(12345); // Deterministic random seed
         var startDate = new DateTime(2020, 1, 1);
-        
+
         for (int i = 0; i < 500; i++)
         {
             decimal change = (decimal)(random.NextDouble() * 100 - 50); // +/- 50 price change
@@ -312,7 +312,7 @@ public abstract class CoreIndicatorBase : ICoreIndicator
                 Volume: (long)(1000000 + random.NextDouble() * 500000)
             ));
         }
-        
+
         return _mockCandles = mockCandles;
     }
 
@@ -339,7 +339,7 @@ public abstract class CoreIndicatorBase : ICoreIndicator
     public IIndicatorResult Calculate(IReadOnlyList<CoreCandleData> candles)
     {
         _values.Clear();
-        
+
         if (candles == null)
         {
             return IndicatorResult.Failure("Candles data is null.");

@@ -113,7 +113,7 @@ public class LinearCoordinateTransform : ICoordinateTransform
     {
         if (canvasWidth <= 0 || canvasHeight <= 0)
             throw new ArgumentException("Canvas dimensions must be positive.");
-            
+
         _minTime = minTime;
         _maxTime = maxTime;
         _minPrice = minPrice;
@@ -122,7 +122,7 @@ public class LinearCoordinateTransform : ICoordinateTransform
         // Validation / Correction
         if (_minTime >= _maxTime) _maxTime = _minTime.AddMinutes(1);
         if (_minPrice >= _maxPrice) _maxPrice = _minPrice + 1m;
-        
+
         CanvasWidth = canvasWidth;
         CanvasHeight = canvasHeight;
 

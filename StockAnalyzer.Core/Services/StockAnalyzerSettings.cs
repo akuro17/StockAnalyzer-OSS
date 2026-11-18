@@ -159,21 +159,21 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
 
     public string GetReverseWatchPhaseColor(int phase)
     {
-         // Default Fallback Colors matching ChartViewModel defaults
-         string defaultColor = phase switch
-         {
-             1 => "#88CC00", // Deeper Lime Green (Phase 1)
-             2 => "#00AA00", // Standard Green (Phase 2)
-             3 => "#005500", // Dark Green (Phase 3)
-             4 => "#E6B800", // Deep Yellow (Phase 4)
-             5 => "#E65C5C", // Deep Salmon/Light Red (Phase 5)
-             6 => "#EE0000", // Red (Phase 6)
-             7 => "#8B0000", // Dark Red (Phase 7)
-             8 => "#607D8B", // Blue Gray (Phase 8)
-             _ => "#808080"
-         };
+        // Default Fallback Colors matching ChartViewModel defaults
+        string defaultColor = phase switch
+        {
+            1 => "#88CC00", // Deeper Lime Green (Phase 1)
+            2 => "#00AA00", // Standard Green (Phase 2)
+            3 => "#005500", // Dark Green (Phase 3)
+            4 => "#E6B800", // Deep Yellow (Phase 4)
+            5 => "#E65C5C", // Deep Salmon/Light Red (Phase 5)
+            6 => "#EE0000", // Red (Phase 6)
+            7 => "#8B0000", // Dark Red (Phase 7)
+            8 => "#607D8B", // Blue Gray (Phase 8)
+            _ => "#808080"
+        };
 
-         return _configuration[$"Chart:ReverseWatch:Phase{phase}Color"] ?? defaultColor;
+        return _configuration[$"Chart:ReverseWatch:Phase{phase}Color"] ?? defaultColor;
     }
 
     public string? ScreeningDataPath => _smartScreenerSettings.ScreeningDataPath;
@@ -225,8 +225,8 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
 
     // AI Prediction
     public string PredictionModelPath => _predictionSettings.ModelPath;
-    public int PredictionWindowSize => _predictionSettingsManager != null && _predictionSettingsManager.WindowSize > 0 
-        ? _predictionSettingsManager.WindowSize 
+    public int PredictionWindowSize => _predictionSettingsManager != null && _predictionSettingsManager.WindowSize > 0
+        ? _predictionSettingsManager.WindowSize
         : _predictionSettings.WindowSize;
     public PredictionFeatureMode PredictionFeatureMode => _predictionSettings.FeatureMode;
     public StockAnalyzer.Core.Models.Training.TargetType PredictionTargetType => _predictionSettings.TargetType;

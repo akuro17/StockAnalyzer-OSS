@@ -31,7 +31,7 @@ public class RayObject : RelativeGeometricRenderer, IDrawingCalculatedValuesProv
 
         var bounds = canvas.LocalClipBounds;
         float extension = Math.Max(bounds.Width, bounds.Height) * 2;
-        
+
         double len = Math.Sqrt(vX * vX + vY * vY);
         if (len == 0) return;
 
@@ -52,18 +52,18 @@ public class RayObject : RelativeGeometricRenderer, IDrawingCalculatedValuesProv
         double vX = p2.X - p1.X;
         double vY = p2.Y - p1.Y;
         double vLen = Math.Sqrt(vX * vX + vY * vY);
-        
+
         if (vLen == 0) return false;
 
         double wX = screenPoint.X - p1.X;
         double wY = screenPoint.Y - p1.Y;
-        
+
         double dot = wX * vX + wY * vY;
         if (dot < 0) return false;
-        
+
         double det = vX * wY - vY * wX;
         double dist = Math.Abs(det) / vLen;
-        
+
         return dist <= tolerance;
     }
 

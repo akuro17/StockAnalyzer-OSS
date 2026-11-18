@@ -24,7 +24,7 @@ namespace StockAnalyzer.UITests.Tests
 
                 var dialog = mainPage.OpenAddIndicatorDialog();
                 var settingsPage = new SettingsDialogPage(dialog, this);
-                
+
                 settingsPage.AddIndicator("Simple Moving Average", "20");
                 settingsPage.VerifyActiveIndicator("Simple Moving Average (20)");
                 settingsPage.Close();

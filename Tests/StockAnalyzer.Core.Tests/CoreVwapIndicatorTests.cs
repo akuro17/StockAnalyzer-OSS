@@ -90,8 +90,8 @@ namespace StockAnalyzer.Core.Tests
             // Candles where High != Close, so Typical != Close
             var candles = CreateTestCandles(
                 new decimal[] { 20, 22 },
-                new decimal[] { 8,  9  },
-                new decimal[] { 9,  10 },
+                new decimal[] { 8, 9 },
+                new decimal[] { 9, 10 },
                 new decimal[] { 100, 100 }
             );
 

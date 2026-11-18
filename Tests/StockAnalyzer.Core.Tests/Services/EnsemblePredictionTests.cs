@@ -314,11 +314,18 @@ public sealed class EnsemblePredictionTests
                 var revision = new string('a', 64);
                 var report = new
                 {
-                    evaluation_status = "independent_outer", evaluation_revision = revision,
-                    scored_model_sha256 = hash, target_type = "classification", timeframe = "daily",
+                    evaluation_status = "independent_outer",
+                    evaluation_revision = revision,
+                    scored_model_sha256 = hash,
+                    target_type = "classification",
+                    timeframe = "daily",
                     horizon = int.Parse(metadata[PredictionModelMetadata.HorizonKey]),
-                    class_order = metadata[PredictionModelMetadata.ClassOrderKey], fold_macro_f1 = accuracy,
-                    fold_accuracy = accuracy, fold_is_holdout = 1.0, fold = 2.0, fold_n = 20.0,
+                    class_order = metadata[PredictionModelMetadata.ClassOrderKey],
+                    fold_macro_f1 = accuracy,
+                    fold_accuracy = accuracy,
+                    fold_is_holdout = 1.0,
+                    fold = 2.0,
+                    fold_n = 20.0,
                     n_splits = 3.0,
                     outer_folds = new[]
                     {
@@ -372,8 +379,11 @@ public sealed class EnsemblePredictionTests
             var lastCandle = candles[^1];
             try
             {
-                candles[^1] = lastCandle with { Close = lastCandle.Close + 1000m,
-                    Timestamp = candles[^2].Timestamp };
+                candles[^1] = lastCandle with
+                {
+                    Close = lastCandle.Close + 1000m,
+                    Timestamp = candles[^2].Timestamp
+                };
             }
             finally { processor.Release(); }
             var stableResult = await stablePrediction.WaitAsync(BarrierTimeout);
@@ -461,11 +471,18 @@ public sealed class EnsemblePredictionTests
                 var revision = new string('a', 64);
                 var report = new
                 {
-                    evaluation_status = "independent_outer", evaluation_revision = revision,
-                    scored_model_sha256 = hash, target_type = "classification", timeframe = "daily",
+                    evaluation_status = "independent_outer",
+                    evaluation_revision = revision,
+                    scored_model_sha256 = hash,
+                    target_type = "classification",
+                    timeframe = "daily",
                     horizon = int.Parse(metadata[PredictionModelMetadata.HorizonKey]),
-                    class_order = metadata[PredictionModelMetadata.ClassOrderKey], fold_macro_f1 = .4,
-                    fold_is_holdout = 1.0, fold = 2.0, fold_n = 20.0, n_splits = 3.0,
+                    class_order = metadata[PredictionModelMetadata.ClassOrderKey],
+                    fold_macro_f1 = .4,
+                    fold_is_holdout = 1.0,
+                    fold = 2.0,
+                    fold_n = 20.0,
+                    n_splits = 3.0,
                     outer_folds = new[]
                     {
                         new { fold = 0.0, evaluation_revision = revision, scored_model_sha256 = hash, fold_macro_f1 = .2 },

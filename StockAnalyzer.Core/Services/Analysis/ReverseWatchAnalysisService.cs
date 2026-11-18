@@ -34,7 +34,7 @@ public class ReverseWatchAnalysisService : IReverseWatchAnalysisService
         }
 
         var points = new List<ReverseWatchCurvePoint>(candleList.Count - period + 1);
-        
+
         // Use decimal for accumulators to prevent precision loss (C001)
         decimal currentPriceSum = 0m;
         decimal currentVolumeSum = 0m;
@@ -88,11 +88,12 @@ public class ReverseWatchAnalysisService : IReverseWatchAnalysisService
         }
 
         // Pass 2: Calculate Bounds for the target visible curve points
-        if (points.Count == 0) return new ReverseWatchCurveData { 
-            Points = new(), 
-            Bounds = new ReverseWatchCurveBounds { MinPrice = 0, MaxPrice = 0, MinVolume = 0, MaxVolume = 0 }, 
-            Period = period, 
-            StockCode = stockCode 
+        if (points.Count == 0) return new ReverseWatchCurveData
+        {
+            Points = new(),
+            Bounds = new ReverseWatchCurveBounds { MinPrice = 0, MaxPrice = 0, MinVolume = 0, MaxVolume = 0 },
+            Period = period,
+            StockCode = stockCode
         };
 
         int targetCount = dataCount > 0 ? Math.Min(points.Count, dataCount) : points.Count;
@@ -113,7 +114,7 @@ public class ReverseWatchAnalysisService : IReverseWatchAnalysisService
         // Ensure non-zero range
         if (minP == maxP) { minP *= ChartConstants.MinRangeShrinkFactor; maxP *= ChartConstants.MinRangeExpandFactor; }
         if (minV == maxV) { minV *= ChartConstants.MinRangeShrinkFactor; maxV *= ChartConstants.MinRangeExpandFactor; }
-        
+
         // Add slight padding
         var pricePadding = (maxP - minP) * ChartConstants.BoundsPaddingPercent;
         var volPadding = (maxV - minV) * ChartConstants.BoundsPaddingPercent;
@@ -129,10 +130,10 @@ public class ReverseWatchAnalysisService : IReverseWatchAnalysisService
         // Center of the logical area (without padding, or with? Usually logic centers on Data Range)
         decimal centerP = (minP + maxP) / 2m;
         decimal centerV = (minV + maxV) / 2m;
-        
+
         decimal rangeP = (maxP - minP) / 2m; // Radius equivalent for normalization
         decimal rangeV = (maxV - minV) / 2m;
-        
+
         // Avoid div by zero
         if (rangeP == 0) rangeP = 1;
         if (rangeV == 0) rangeV = 1;
@@ -153,7 +154,7 @@ public class ReverseWatchAnalysisService : IReverseWatchAnalysisService
 
             p.Phase = ReverseWatchSectors.PhaseAtAngle(degrees);
         }
-        
+
         // Scaling Factor: Range Ratio
         double scale = (double)(rangeP / rangeV);
 

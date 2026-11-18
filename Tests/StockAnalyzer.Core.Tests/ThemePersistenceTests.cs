@@ -20,7 +20,7 @@ public class ThemePersistenceTests
     {
         // Arrange
         var color = new SKColor(255, 128, 64, 200);
-        
+
         // Act
         string json = JsonSerializer.Serialize(color, _jsonOptions);
         var deserializedColor = JsonSerializer.Deserialize<SKColor>(json, _jsonOptions);
@@ -34,8 +34,8 @@ public class ThemePersistenceTests
     public void ThemeColors_ShouldRoundTripThroughJson()
     {
         // Arrange
-        var original = ThemeColors.Dark with 
-        { 
+        var original = ThemeColors.Dark with
+        {
             ChartBackground = IndicatorColor.FromRgb(0, 0, 255), // Blue
             Bullish = IndicatorColor.FromRgb(255, 255, 0) // Yellow
         };

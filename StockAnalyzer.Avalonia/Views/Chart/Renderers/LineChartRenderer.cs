@@ -39,7 +39,7 @@ public sealed class LineChartRenderer : IChartRenderer, IDisposable
         var config = (ILineChartRenderConfig)baseConfig;
         if (snapshot.Candles.Count == 0) return;
         if (config?.Transform is not ICoordinateTransform transform) return;
-        
+
         _linePaint.StrokeWidth = LayoutConstants.DefaultStrokeWidth * 2;
         _linePaint.Color = config.LineChartColor.ToSkColor();
 
@@ -58,15 +58,15 @@ public sealed class LineChartRenderer : IChartRenderer, IDisposable
         double x1;
         if (isIndexMode)
         {
-             x0 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex), 0)).X;
-             x1 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex + 1), 0)).X;
+            x0 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex), 0)).X;
+            x1 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex + 1), 0)).X;
         }
         else
         {
-             x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
-             x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp + interval, 0)).X;
+            x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
+            x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp + interval, 0)).X;
         }
-        
+
         float candleWidth = (float)(x1 - x0);
 
         _path.Reset();

@@ -197,8 +197,8 @@ public class ChartInteractionController
     {
         if (viewModel?.DrawingEditCoordinator != null && !_activeDragToken.HasValue)
         {
-            var kind = isHandleDrag 
-                ? StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.PointEdit 
+            var kind = isHandleDrag
+                ? StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.PointEdit
                 : StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.Move;
             var begin = viewModel.DrawingEditCoordinator.BeginEdit(kind);
             if (!begin.IsSuccess)
@@ -514,7 +514,7 @@ public class ChartInteractionController
         _crosshairData.MouseY = mouseY;
         _crosshairData.ScreenX = screenX;
         _crosshairData.ScreenY = screenY;
-        
+
         WeakReferenceMessenger.Default.Send(_crosshairMessage);
     }
 
@@ -531,7 +531,7 @@ public class ChartInteractionController
         _crosshairData.MouseY = null;
         _crosshairData.ScreenX = null;
         _crosshairData.ScreenY = null;
-        
+
         WeakReferenceMessenger.Default.Send(_crosshairMessage);
     }
 
@@ -672,9 +672,9 @@ public class ChartInteractionController
 
         // 2. Delegate Creation to Behavior (Lines, Shapes, Fibonacci, Gann, etc.)
         if (StartNewShape(
-            effectiveTool, 
-            chartPoint, 
-            viewModel.ObjectManager, 
+            effectiveTool,
+            chartPoint,
+            viewModel.ObjectManager,
             candleSource,
             viewModel.LastDrawingTool,
             modifiers.HasFlag(KeyModifiers.Shift),
@@ -697,7 +697,7 @@ public class ChartInteractionController
 
             if ((effectiveTool == DrawingTool.LongPosition || effectiveTool == DrawingTool.ShortPosition) && ShouldReturnToPointerAfterFinish())
             {
-                 viewModel.CurrentTool = DrawingTool.Pointer;
+                viewModel.CurrentTool = DrawingTool.Pointer;
             }
             return true;
         }
@@ -1354,7 +1354,7 @@ public class ChartInteractionController
                 {
                     var p1 = transform.ChartToScreen(selectedObject.Points[0]);
                     var p2 = transform.ChartToScreen(selectedObject.Points[1]);
-                    
+
                     var handles = new global::Avalonia.Point[] {
                         new global::Avalonia.Point(p1.X, p1.Y), // TopLeft or BottomLeft
                         new global::Avalonia.Point(p2.X, p1.Y), // TopRight or BottomRight
@@ -1364,7 +1364,7 @@ public class ChartInteractionController
 
                     for (int i = 0; i < 4; i++)
                     {
-                        if (Math.Abs(handles[i].X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx && 
+                        if (Math.Abs(handles[i].X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx &&
                             Math.Abs(handles[i].Y - chartPosition.Y) <= ChartConstants.HandleClickToleranceScreenPx)
                         {
                             return BeginHandleDrag(selectedObject, i, point, viewModel);
@@ -1399,7 +1399,7 @@ public class ChartInteractionController
                 {
                     var p0 = transform.ChartToScreen(selectedObject.Points[0]);
                     var p1 = transform.ChartToScreen(selectedObject.Points[1]);
-                    
+
                     if (Math.Abs(p0.X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx)
                     {
                         return BeginHandleDrag(selectedObject, 0, point, viewModel);
@@ -1587,9 +1587,9 @@ public class ChartInteractionController
 
         var chartRelativePos = new global::Avalonia.Point(mousePos.X - chartMarginHorizontal, mousePos.Y - chartMarginTop);
 
-        bool isHandleDrag = DraggedHandleIndex >= 0 && 
+        bool isHandleDrag = DraggedHandleIndex >= 0 &&
                             ((dragged is StockAnalyzer.Avalonia.Drawing.IAabbDeformableObject && DraggedHandleIndex < 8) ||
-                             DraggedHandleIndex < dragged.Points.Count || 
+                             DraggedHandleIndex < dragged.Points.Count ||
                              ((dragged is StockAnalyzer.Avalonia.Drawing.RectangleObject) && DraggedHandleIndex < 4));
 
         var activeMoveMode = (_activeObjectManager != null && _activeObjectManager.HasExplicitMoveAxisMode(dragged.Id))
@@ -1599,7 +1599,7 @@ public class ChartInteractionController
         bool isAltBypass = modifiers.HasFlag(KeyModifiers.Alt);
         bool isSmartGuidesActive = DrawingThemeContext.SmartGuidesEnabled && !isAltBypass;
         double snapDistance = DrawingThemeContext.SmartGuideSnapDistance;
-        var chartArea = bounds.Width > 0 && bounds.Height > 0 
+        var chartArea = bounds.Width > 0 && bounds.Height > 0
             ? new global::Avalonia.Rect(0, 0, bounds.Width, bounds.Height)
             : transform.ScreenRect;
 
@@ -1831,7 +1831,7 @@ public class ChartInteractionController
                     ssaAnomalyDrag.Points[DraggedHandleIndex] = new ChartPoint(chartPoint.Time, ssaAnomalyDrag.Points[DraggedHandleIndex].Price);
                 }
             }
-            else if (DraggedObject is StockAnalyzer.Avalonia.Drawing.Objects.HarmonicPatternObject || 
+            else if (DraggedObject is StockAnalyzer.Avalonia.Drawing.Objects.HarmonicPatternObject ||
                      DraggedObject is StockAnalyzer.Avalonia.Drawing.Objects.AutoElliottWaveObject ||
                      DraggedObject is StockAnalyzer.Avalonia.Drawing.Objects.HoughAutoLinesObject ||
                      DraggedObject is StockAnalyzer.Avalonia.Drawing.Objects.HoughParabolicCurveObject ||
@@ -1892,15 +1892,22 @@ public class ChartInteractionController
                 {
                     var p0 = DraggedObject.Points[0];
                     var p1 = DraggedObject.Points[1];
-                    
-                    if (DraggedHandleIndex == 0) {
+
+                    if (DraggedHandleIndex == 0)
+                    {
                         DraggedObject.Points[0] = chartPoint;
-                    } else if (DraggedHandleIndex == 2) {
+                    }
+                    else if (DraggedHandleIndex == 2)
+                    {
                         DraggedObject.Points[1] = chartPoint;
-                    } else if (DraggedHandleIndex == 1) {
+                    }
+                    else if (DraggedHandleIndex == 1)
+                    {
                         DraggedObject.Points[1] = new ChartPoint(chartPoint.Time, p1.Price);
                         DraggedObject.Points[0] = new ChartPoint(p0.Time, chartPoint.Price);
-                    } else if (DraggedHandleIndex == 3) {
+                    }
+                    else if (DraggedHandleIndex == 3)
+                    {
                         DraggedObject.Points[0] = new ChartPoint(chartPoint.Time, p0.Price);
                         DraggedObject.Points[1] = new ChartPoint(p1.Time, chartPoint.Price);
                     }
@@ -2426,11 +2433,11 @@ public class ChartInteractionController
         // Dragging Existing Object
         if (DraggedObject != null)
         {
-             if (HandleObjectDrag(point, snapshot, transform, chartMarginTop, chartMarginHorizontal, bounds, modifiers, viewModel.Candles))
-             {
-                 needsUpdate = true;
-                 return true;
-             }
+            if (HandleObjectDrag(point, snapshot, transform, chartMarginTop, chartMarginHorizontal, bounds, modifiers, viewModel.Candles))
+            {
+                needsUpdate = true;
+                return true;
+            }
         }
 
         // Panning Logic (if capturing mouse)
@@ -2513,74 +2520,74 @@ public class ChartInteractionController
         // Finish variable-point tools (Polyline, CurveLineText, ClothoidArrow, ElliottWave, etc.) on double tap
         if (IsDrawingNewShape)
         {
-             if (viewModel.ObjectManager != null)
-             {
-                 if (_activeBehavior?.RequiredSteps == 0 && CurrentDrawingObject != null)
-                 {
-                     CommitOrCancelVariableShape(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator, dropTrailingPreview: false);
-                 }
-                 else
-                 {
-                     FinishDrawing(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator);
-                 }
-                 if (ShouldReturnToPointerAfterFinish())
-                 {
-                     viewModel.CurrentTool = DrawingTool.Pointer;
-                 }
-                 return true;
-             }
+            if (viewModel.ObjectManager != null)
+            {
+                if (_activeBehavior?.RequiredSteps == 0 && CurrentDrawingObject != null)
+                {
+                    CommitOrCancelVariableShape(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator, dropTrailingPreview: false);
+                }
+                else
+                {
+                    FinishDrawing(viewModel.ObjectManager, viewModel.LayerService, viewModel.DrawingEditCoordinator);
+                }
+                if (ShouldReturnToPointerAfterFinish())
+                {
+                    viewModel.CurrentTool = DrawingTool.Pointer;
+                }
+                return true;
+            }
         }
         else
         {
 
 
-             // Show Settings Dialog for Drawing Objects
-             var hitObject = GetObjectAt(chartPosition, transform, viewModel);
-             if (hitObject != null && viewModel.DialogService != null)
-             {
-                 var layer = viewModel.LayerService.GetLayerForObject(hitObject.Id);
-                 if (layer == null || !layer.Value.IsEditLocked)
-                 {
-                     HandleEditObject(hitObject, viewModel, transform);
-                     return true;
-                 }
-                 return true;
-             }
-             
-             // Fallback: Check if we double-clicked a handle on the currently selected object
-             var selectedObject = viewModel.ObjectManager.SelectedObject;
-             if (selectedObject != null && viewModel.DialogService != null)
-             {
-                 if ((selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.HarmonicPatternObject || selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.AutoElliottWaveObject) && selectedObject.Points.Count >= 2)
-                 {
-                     var p1 = transform.ChartToScreen(selectedObject.Points[0]);
-                     var p2 = transform.ChartToScreen(selectedObject.Points[1]);
-                     var handles = new global::Avalonia.Point[] {
+            // Show Settings Dialog for Drawing Objects
+            var hitObject = GetObjectAt(chartPosition, transform, viewModel);
+            if (hitObject != null && viewModel.DialogService != null)
+            {
+                var layer = viewModel.LayerService.GetLayerForObject(hitObject.Id);
+                if (layer == null || !layer.Value.IsEditLocked)
+                {
+                    HandleEditObject(hitObject, viewModel, transform);
+                    return true;
+                }
+                return true;
+            }
+
+            // Fallback: Check if we double-clicked a handle on the currently selected object
+            var selectedObject = viewModel.ObjectManager.SelectedObject;
+            if (selectedObject != null && viewModel.DialogService != null)
+            {
+                if ((selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.HarmonicPatternObject || selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.AutoElliottWaveObject) && selectedObject.Points.Count >= 2)
+                {
+                    var p1 = transform.ChartToScreen(selectedObject.Points[0]);
+                    var p2 = transform.ChartToScreen(selectedObject.Points[1]);
+                    var handles = new global::Avalonia.Point[] {
                          new global::Avalonia.Point(p1.X, p1.Y), new global::Avalonia.Point(p2.X, p1.Y),
                          new global::Avalonia.Point(p2.X, p2.Y), new global::Avalonia.Point(p1.X, p2.Y)
                      };
-                     foreach (var h in handles)
-                     {
-                         if (Math.Abs(h.X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx && Math.Abs(h.Y - chartPosition.Y) <= ChartConstants.HandleClickToleranceScreenPx)
-                         {
-                             HandleEditObject(selectedObject, viewModel, transform);
-                             return true;
-                         }
-                     }
-                 }
-                 else
-                 {
-                     foreach (var pt in selectedObject.Points)
-                     {
-                         var handleScreenPoint = transform.ChartToScreen(pt);
-                         if (Math.Abs(handleScreenPoint.X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx && Math.Abs(handleScreenPoint.Y - chartPosition.Y) <= ChartConstants.HandleClickToleranceScreenPx)
-                         {
-                             HandleEditObject(selectedObject, viewModel, transform);
-                             return true;
-                         }
-                     }
-                 }
-             }
+                    foreach (var h in handles)
+                    {
+                        if (Math.Abs(h.X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx && Math.Abs(h.Y - chartPosition.Y) <= ChartConstants.HandleClickToleranceScreenPx)
+                        {
+                            HandleEditObject(selectedObject, viewModel, transform);
+                            return true;
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (var pt in selectedObject.Points)
+                    {
+                        var handleScreenPoint = transform.ChartToScreen(pt);
+                        if (Math.Abs(handleScreenPoint.X - chartPosition.X) <= ChartConstants.HandleClickToleranceScreenPx && Math.Abs(handleScreenPoint.Y - chartPosition.Y) <= ChartConstants.HandleClickToleranceScreenPx)
+                        {
+                            HandleEditObject(selectedObject, viewModel, transform);
+                            return true;
+                        }
+                    }
+                }
+            }
         }
         return false;
     }
@@ -2600,7 +2607,7 @@ public class ChartInteractionController
     {
         var chartRelativePos = chartPosition;
         if (CurrentDrawingObject == null) return false;
-        
+
         // Apply Magnet Snap for new shapes (skipped inside an indicator sub-panel).
         var chartPoint = ResolveDrawingChartPoint(chartRelativePos, candles, transform, bypassSnap: false);
 
@@ -2618,22 +2625,22 @@ public class ChartInteractionController
         // Fallback Logic (Legacy - Update Last Point)
         if (CurrentDrawingObject.Points.Count > 0)
         {
-             // Update the last point
-             CurrentDrawingObject.Points[CurrentDrawingObject.Points.Count - 1] = chartPoint;
-             
-             // Recalculate if needed
-             if (CurrentDrawingObject is RegressionTrendObject reg)
-             {
-                 reg.Recalculate(candles);
-             }
-             else if (CurrentDrawingObject is RangeSplineObject rangeSpline)
-             {
-                 rangeSpline.Recalculate(candles);
-             }
-             
-             return true;
+            // Update the last point
+            CurrentDrawingObject.Points[CurrentDrawingObject.Points.Count - 1] = chartPoint;
+
+            // Recalculate if needed
+            if (CurrentDrawingObject is RegressionTrendObject reg)
+            {
+                reg.Recalculate(candles);
+            }
+            else if (CurrentDrawingObject is RangeSplineObject rangeSpline)
+            {
+                rangeSpline.Recalculate(candles);
+            }
+
+            return true;
         }
-        
+
         return false;
     }
 
@@ -2661,8 +2668,8 @@ public class ChartInteractionController
     /// <param name="isShiftCheck">Whether Shift key is pressed (for Polyline finish).</param>
     /// <returns>True if the event was handled.</returns>
     public bool StartNewShape(
-        DrawingTool tool, 
-        ChartPoint chartPoint, 
+        DrawingTool tool,
+        ChartPoint chartPoint,
         ChartObjectManager? objectManager,
         IEnumerable<CoreCandleData>? candles = null,
         DrawingTool? lastDrawingTool = null,
@@ -2835,7 +2842,7 @@ public class ChartInteractionController
             var obj = behavior.CreateObject(chartPoint, candles);
             _presetService.ApplyPresetToNewObject(tool, obj);
             StartDrawingInternal(obj, behavior);
-            if (!behavior.FinishesOnRelease) 
+            if (!behavior.FinishesOnRelease)
             {
                 DrawingStep = 1; // P1 is moving, wait for next click to finish
             }
@@ -2884,20 +2891,20 @@ public class ChartInteractionController
                 var barPattern = CurrentDrawingObject as BarPatternObject;
                 if (barPattern != null && barPattern.Points.Count > 1)
                 {
-                     DateTime t1 = barPattern.Points[0].Time;
-                     DateTime t2 = chartPoint.Time;
-                     if (t1 > t2) (t1, t2) = (t2, t1);
+                    DateTime t1 = barPattern.Points[0].Time;
+                    DateTime t2 = chartPoint.Time;
+                    if (t1 > t2) (t1, t2) = (t2, t1);
 
-                     var source = candles
-                         .Where(c => c.Timestamp >= t1 && c.Timestamp <= t2)
-                         .OrderBy(c => c.Timestamp)
-                         .ToList();
-                         
-                     barPattern.Initialize(source);
+                    var source = candles
+                        .Where(c => c.Timestamp >= t1 && c.Timestamp <= t2)
+                        .OrderBy(c => c.Timestamp)
+                        .ToList();
 
-                     barPattern.Points.Clear();
-                     barPattern.Points.Add(chartPoint); // Anchor
-                     AdvanceDrawingStep(); // To Step 2
+                    barPattern.Initialize(source);
+
+                    barPattern.Points.Clear();
+                    barPattern.Points.Add(chartPoint); // Anchor
+                    AdvanceDrawingStep(); // To Step 2
                 }
             }
         }
@@ -2936,7 +2943,7 @@ public class ChartInteractionController
     /// Finishes the current drawing operation and registers the object.
     /// </summary>
     public void FinishDrawing(
-        ChartObjectManager objectManager, 
+        ChartObjectManager objectManager,
         StockAnalyzer.Avalonia.Services.Drawing.IDrawingLayerService? layerService = null,
         StockAnalyzer.Avalonia.Services.Drawing.IDrawingEditCoordinator? coordinator = null)
     {
@@ -3277,25 +3284,25 @@ public class ChartInteractionController
         IEnumerable<CoreCandleData>? candleSource,
         ICoordinateTransform transform)
     {
-         if (!IsDrawingNewShape || CurrentDrawingObject == null) return false;
+        if (!IsDrawingNewShape || CurrentDrawingObject == null) return false;
 
-         var candlesList = (candleSource as IReadOnlyList<CoreCandleData>) ?? candleSource?.ToList() ?? new List<CoreCandleData>();
+        var candlesList = (candleSource as IReadOnlyList<CoreCandleData>) ?? candleSource?.ToList() ?? new List<CoreCandleData>();
 
-         // Magnet Snap (skipped inside an indicator sub-panel).
-         var chartPoint = ResolveDrawingChartPoint(mouseScreenPoint, candlesList, transform, bypassSnap: false);
+        // Magnet Snap (skipped inside an indicator sub-panel).
+        var chartPoint = ResolveDrawingChartPoint(mouseScreenPoint, candlesList, transform, bypassSnap: false);
 
-         // Delegate to active behavior for tool-specific point update
-         if (_activeBehavior != null)
-         {
-             _activeBehavior.UpdatePoint(CurrentDrawingObject, DrawingStep, chartPoint, candlesList);
-         }
-         else
-         {
-             // Fallback: update last point directly (legacy path)
-             UpdateDrawingPoint(chartPoint, candlesList);
-         }
-         
-         return true;
+        // Delegate to active behavior for tool-specific point update
+        if (_activeBehavior != null)
+        {
+            _activeBehavior.UpdatePoint(CurrentDrawingObject, DrawingStep, chartPoint, candlesList);
+        }
+        else
+        {
+            // Fallback: update last point directly (legacy path)
+            UpdateDrawingPoint(chartPoint, candlesList);
+        }
+
+        return true;
     }
 
     /// <summary>

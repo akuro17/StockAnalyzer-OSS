@@ -11,7 +11,9 @@ namespace StockAnalyzer.Core.Tests.Services;
 
 public sealed class RlInsufficientDataTests
 {
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void CatalogWithoutCompleteEpisodeSupportIsClassifiedAsInsufficientData(bool smoke)
     {
         var error = Assert.Throws<InvalidDataException>(() => RlSourceSnapshot.BuildCatalog(

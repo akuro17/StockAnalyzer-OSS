@@ -24,24 +24,24 @@ public sealed class MultiWavePatternRenderer : System.IDisposable
     {
         _activeBullishPaint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
         _activeBearishPaint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
-        
+
         _invalidatedSignalPaint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true, Color = SKColors.Gray.WithAlpha(100) };
-        
-        _activeLinePaint = new SKPaint 
-        { 
-            Style = SKPaintStyle.Stroke, 
-            IsAntialias = true, 
+
+        _activeLinePaint = new SKPaint
+        {
+            Style = SKPaintStyle.Stroke,
+            IsAntialias = true,
             StrokeWidth = 2,
-            PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0) 
+            PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0)
         };
-        
-        _invalidatedLinePaint = new SKPaint 
-        { 
-            Style = SKPaintStyle.Stroke, 
-            IsAntialias = true, 
+
+        _invalidatedLinePaint = new SKPaint
+        {
+            Style = SKPaintStyle.Stroke,
+            IsAntialias = true,
             StrokeWidth = 2,
             Color = SKColors.Gray.WithAlpha(100),
-            PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0) 
+            PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0)
         };
     }
 
@@ -53,7 +53,7 @@ public sealed class MultiWavePatternRenderer : System.IDisposable
             return;
 
         var t = config.Transform;
-        
+
         var theme = config.ThemeManager?.CurrentTheme ?? new Core.Theme.ThemeColors();
         var baseBullish = config.MultiWaveBullishColor ?? theme.Bullish;
         var baseBearish = config.MultiWaveBearishColor ?? theme.Bearish;
@@ -113,7 +113,7 @@ public sealed class MultiWavePatternRenderer : System.IDisposable
 
             // WebAI Nuclear Fix: Use NumericToScreen for absolute coordinate consistency across all non-linear charts.
             // This eliminates DateTime-based ambiguity and ensures identical mapping to main renderers.
-            
+
             // X-Coordinates (Center of the column/bin)
             float startX = (float)t.NumericToScreen(logicalTriggerIdx, 0).X + (float)chartArea.Left;
             float endX = (float)t.NumericToScreen(logicalEndIdx, 0).X + (float)chartArea.Left;
@@ -129,7 +129,7 @@ public sealed class MultiWavePatternRenderer : System.IDisposable
             // Y-Coordinates (Discrete price levels)
             decimal effectiveTriggerPrice = signal.TriggerPrice;
             decimal effectiveInvalidationPrice = signal.InvalidationPrice;
-            
+
             if (config.ChartType == ChartType.PointAndFigure || config.ChartType == ChartType.Renko || config.ChartType == ChartType.ThreeLineBreak)
             {
                 // Center vertically in the price box/brick

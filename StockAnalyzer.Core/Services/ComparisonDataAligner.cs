@@ -19,9 +19,25 @@ namespace StockAnalyzer.Core.Services;
 /// </summary>
 public class ComparisonDataAligner : IComparisonDataAligner
 {
-    private const int MaxForwardFillDays = 30;
+    /// <summary>Most consecutive bars a comparison series carries its last close forward over a gap (a day its market was closed) on the chart and in the comparison tools.</summary>
+    public const int DefaultForwardFillLimit = 30;
+
     private const double MaxNullRatio = 0.50;
-    
+
+    /// <summary>
+    /// Most consecutive bars a series carries its last close forward over a gap; 0 (or less) leaves every gap empty. The standard value fills the gaps of a comparison chart;
+    /// <see cref="CreateStrict"/> gives 0 for the calculations that must not invent a bar. Fixed when the aligner is created, so a shared instance cannot change its
+    /// behaviour for the other users of it.
+    /// </summary>
+    public int ForwardFillLimit { get; init; } = DefaultForwardFillLimit;
+
+    /// <summary>
+    /// An aligner that never carries a close forward, so a bar exists only on a day every aligned series traded. The one place that defines such an aligner:
+    /// the synthetic symbols (<see cref="SyntheticSymbolDataService"/>) use it, because a carried-over bar would price one leg of a pair at a day its market was closed.
+    /// </summary>
+    public static ComparisonDataAligner CreateStrict(IDataService dataService, ILogger<ComparisonDataAligner>? logger = null)
+        => new(dataService, logger) { ForwardFillLimit = 0 };
+
     /// <summary>Most comparison symbols aligned (the primary symbol not counted); the standard value is what the settings dialog lets a user register.</summary>
     public int MaxComparisonSymbols { get; set; } = WatchlistConstants.MaxRelativePerformanceTargets;
 
@@ -55,9 +71,9 @@ public class ComparisonDataAligner : IComparisonDataAligner
     }
 
     public async Task<ComparisonAlignedData> AlignAsync(
-        string primarySymbol, 
-        IReadOnlyList<string> comparisonSymbols, 
-        TimeFrame timeFrame, 
+        string primarySymbol,
+        IReadOnlyList<string> comparisonSymbols,
+        TimeFrame timeFrame,
         int candleCount,
         CancellationToken ct = default)
     {
@@ -69,7 +85,7 @@ public class ComparisonDataAligner : IComparisonDataAligner
         {
             primaryCandles = await _resiliencePipeline.ExecuteAsync(
                 async t => await _dataService.LoadCandlesAsync(primarySymbol, timeFrame, candleCount), ct);
-            
+
             if (primaryCandles.Count == 0)
             {
                 throw new InvalidOperationException($"No data found for primary symbol: {primarySymbol}");
@@ -163,8 +179,9 @@ public class ComparisonDataAligner : IComparisonDataAligner
 
 
     /// <summary>
-    /// The W1 / MN1 form of <see cref="AlignSeries"/>. Weekly and monthly bars built by <see cref="TimeFrameAggregator"/> are dated by the first trading day of
-    /// their period, so two markets with different holidays date the same ISO week or calendar month differently and an exact-date match misses.
+    /// The W1 / MN1 form of <see cref="AlignSeries"/>. Weekly and monthly bars built by <see cref="TimeFrameAggregator.AggregateToPeriodStart(IReadOnlyList{CandleData}, TimeFrame)"/>
+    /// carry the period start as their date, so the bars of two markets already share it; a source that dates a bar by the first trading day of its period
+    /// (the legacy aggregation) would give two markets with different holidays different dates for the same ISO week or calendar month, and an exact-date match would miss.
     /// Here a comparison bar belongs to the base bar of the same <see cref="TimeFrameAggregator.GetPeriodKey"/>: it is re-dated to that base bar's timestamp
     /// (prices and volume unchanged) and then aligned by the unchanged <see cref="AlignSeries"/>, so carry-forward and the series shape are the same as for every other frame.
     /// A comparison bar of a period the base timeline does not contain is left as it is (it matches no base bar); when the base timeline holds two bars of one period,
@@ -192,21 +209,21 @@ public class ComparisonDataAligner : IComparisonDataAligner
 
     {
         var result = new CandleData?[baseTimeline.Length];
-        
+
         // Dictionary for O(1) lookup of existing data - Safe against duplicate timestamps
         var lookup = new Dictionary<DateTime, CandleData>();
         foreach (var candle in rawData)
         {
             lookup.TryAdd(candle.Timestamp, candle);
         }
-        
+
         CandleData? lastKnown = null;
         int gapCount = 0;
 
         for (int i = 0; i < baseTimeline.Length; i++)
         {
             var ts = baseTimeline[i];
-            
+
             if (lookup.TryGetValue(ts, out var candle))
             {
                 result[i] = candle;
@@ -216,7 +233,7 @@ public class ComparisonDataAligner : IComparisonDataAligner
             else
             {
                 // LOCF (Last Observation Carried Forward)
-                if (lastKnown.HasValue && gapCount < MaxForwardFillDays)
+                if (lastKnown.HasValue && gapCount < ForwardFillLimit)
                 {
                     var prev = lastKnown.Value;
                     // Forward-fill by carrying over the Close price. Volume is set to 0.

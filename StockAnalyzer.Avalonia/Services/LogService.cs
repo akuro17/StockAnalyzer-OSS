@@ -61,7 +61,8 @@ public class LogService : ILogService
             Directory.CreateDirectory(_logDirectory);
 
         return Directory.GetFiles(_logDirectory, "stockanalyzer-*.log")
-            .Select(f => {
+            .Select(f =>
+            {
                 var info = new FileInfo(f);
                 return new LogFileInfo(info.Name, info.LastWriteTime, info.Length, info.FullName);
             })

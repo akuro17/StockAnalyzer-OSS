@@ -210,7 +210,7 @@ public sealed class ScatterTimeFrameMeasurementTests : IClassFixture<ScatterMeas
             {
                 IReadOnlyList<CandleData> daily = series.D1;
                 IReadOnlyList<CandleData> parquet = series.For(frame);
-                IReadOnlyList<CandleData> aggregated = TimeFrameAggregator.Aggregate(daily, frame);
+                IReadOnlyList<CandleData> aggregated = TimeFrameAggregator.AggregateToPeriodStart(daily, frame);
                 symbolsCompared++;
 
                 if (parquet.Count == 0 && aggregated.Count > 0)
@@ -311,8 +311,8 @@ public sealed class ScatterTimeFrameMeasurementTests : IClassFixture<ScatterMeas
 
         foreach ((TimeFrame frame, IReadOnlyList<CandleData> bars) in new (TimeFrame, IReadOnlyList<CandleData>)[]
                  {
-                     (TimeFrame.W1, TimeFrameAggregator.AggregateDailyToWeekly(daily12000)),
-                     (TimeFrame.MN1, TimeFrameAggregator.AggregateDailyToMonthly(daily12000)),
+                     (TimeFrame.W1, TimeFrameAggregator.AggregateToPeriodStart(daily12000, TimeFrame.W1)),
+                     (TimeFrame.MN1, TimeFrameAggregator.AggregateToPeriodStart(daily12000, TimeFrame.MN1)),
                  })
         {
             SortedDictionary<string, RangeExcursion> found = OutsideRange(fixedIndicators, bars);

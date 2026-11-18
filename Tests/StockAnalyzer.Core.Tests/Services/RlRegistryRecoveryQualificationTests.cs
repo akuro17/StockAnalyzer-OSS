@@ -17,7 +17,8 @@ public sealed class RlRegistryRecoveryQualificationTests
     public sealed record RecoveryConfig(string Output, string EarlierDirection, string EarlierActor, string LaterDirection, string LaterActor);
     public sealed class RecoveryQualificationAttribute : FactAttribute
     { public RecoveryQualificationAttribute() { if (Environment.GetEnvironmentVariable(Enabled) != "1") Skip = "Opt-in owned R07 actual qualified T15/T16 backup dependency verification."; } }
-    [RecoveryQualification] public async Task ActualActorBackupRechecksItsFrozenDependencyBeforeExplicitRecovery()
+    [RecoveryQualification]
+    public async Task ActualActorBackupRechecksItsFrozenDependencyBeforeExplicitRecovery()
     {
         var config = JsonSerializer.Deserialize<RecoveryConfig>(File.ReadAllText(Environment.GetEnvironmentVariable(ConfigFile)!))!;
         string root = Path.Combine(config.Output, "owned_recovery_" + Guid.NewGuid().ToString("N"));
@@ -40,8 +41,16 @@ public sealed class RlRegistryRecoveryQualificationTests
         Assert.Equal(earlier.ModelId, registry.RlContinuousActiveId); Assert.Null(registry.RlActiveId);
         Assert.Equal(validBackup, File.ReadAllBytes(pointer + ".bak"));
         using var reopened = new ModelGenerationRegistry(Path.Combine(root, "Generations")); Assert.Equal(earlier.ModelId, reopened.RlContinuousActiveId);
-        await File.WriteAllTextAsync(Path.Combine(config.Output, "actual_recovery_evidence.json"), JsonSerializer.Serialize(new {
-            root, earlier_actor = earlier.ModelId, later_actor = later.ModelId, frozen_dependency = earlierDirection.ModelId,
-            corrupt_dependency_rejected = true, original_backup_preserved = true, explicit_recovery = true, original_active_untouched = true }, RlFiles.Json));
+        await File.WriteAllTextAsync(Path.Combine(config.Output, "actual_recovery_evidence.json"), JsonSerializer.Serialize(new
+        {
+            root,
+            earlier_actor = earlier.ModelId,
+            later_actor = later.ModelId,
+            frozen_dependency = earlierDirection.ModelId,
+            corrupt_dependency_rejected = true,
+            original_backup_preserved = true,
+            explicit_recovery = true,
+            original_active_untouched = true
+        }, RlFiles.Json));
     }
 }

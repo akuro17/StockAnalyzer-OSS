@@ -134,7 +134,8 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
             rows[i] = member.CanonicalIndices.Select(index => raw[index]).ToArray();
         }
         return Combine(spec, bundle.Canonical, rows, _settings.PredictionConfidenceThreshold, _processor, bundle.OutputContract)
-            with { Ensemble = spec };
+            with
+        { Ensemble = spec };
     }
 
     /// <summary>
@@ -291,20 +292,20 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
             scaler.Transform(raw, tensor);
         }
         else switch (member.Mode)
-        {
-            case PredictionFeatureMode.LogReturn:
-                _processor.ComputeLogReturns(candles, start, member.Window, tensor); break;
-            case PredictionFeatureMode.LogReturnOhlc:
-                _processor.ComputeLogReturnsOhlc(candles, start, member.Window, tensor); break;
-            case PredictionFeatureMode.ZScoreStandardized:
-                _processor.NormalizeZScoreOhlcv(candles, start, member.Window, tensor); break;
-            case PredictionFeatureMode.ZScoreOhlcvJoint:
-                _processor.ComputeJointZScoreOhlcv(candles, start, member.Window, tensor); break;
-            case PredictionFeatureMode.ComposedFeatures:
-                PredictionService.BuildComposedTensor(candles, start, member.Window, member.FeatureSpec!, _indicators, tensor); break;
-            default:
-                _processor.NormalizeCandles(candles, start, member.Window, tensor); break;
-        }
+            {
+                case PredictionFeatureMode.LogReturn:
+                    _processor.ComputeLogReturns(candles, start, member.Window, tensor); break;
+                case PredictionFeatureMode.LogReturnOhlc:
+                    _processor.ComputeLogReturnsOhlc(candles, start, member.Window, tensor); break;
+                case PredictionFeatureMode.ZScoreStandardized:
+                    _processor.NormalizeZScoreOhlcv(candles, start, member.Window, tensor); break;
+                case PredictionFeatureMode.ZScoreOhlcvJoint:
+                    _processor.ComputeJointZScoreOhlcv(candles, start, member.Window, tensor); break;
+                case PredictionFeatureMode.ComposedFeatures:
+                    PredictionService.BuildComposedTensor(candles, start, member.Window, member.FeatureSpec!, _indicators, tensor); break;
+                default:
+                    _processor.NormalizeCandles(candles, start, member.Window, tensor); break;
+            }
         using var inputValue = OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, tensor.AsMemory(),
             member.InputShape);
         using var result = member.Session.Run(member.Options, member.InputNames, new[] { inputValue }, member.OutputNames);

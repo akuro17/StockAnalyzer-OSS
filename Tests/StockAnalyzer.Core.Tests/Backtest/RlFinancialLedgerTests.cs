@@ -27,8 +27,15 @@ public sealed class RlFinancialLedgerTests
         return new(bars, "R03_HAND_LEDGER", TimeFrame.D1, BacktestInput.CurrentDataVersion, Start, Start.AddDays(bars.Length), 0, RlContract.WindowLength - 1);
     }
     private static BacktestConfiguration Costs(decimal capital = 1000m, decimal flat = 2m, decimal perUnit = .5m, decimal slip = 0m)
-        => RlContract.CreateConfiguration(new BacktestConfiguration { InitialCapital = capital, CommissionFlat = flat, CommissionPerUnit = perUnit,
-            SlippageRatio = slip, SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter });
+        => RlContract.CreateConfiguration(new BacktestConfiguration
+        {
+            InitialCapital = capital,
+            CommissionFlat = flat,
+            CommissionPerUnit = perUnit,
+            SlippageRatio = slip,
+            SizingModel = BacktestDefaults.SizingModel,
+            SizingParameter = BacktestDefaults.SizingParameter
+        });
     private static IRlContinuousTradingSession Session(BacktestInput input, BacktestConfiguration costs)
         => new BacktestEngine(IndicatorFactory.Default).CreateRlContinuousSession(input, costs);
     private static void Account(RlSessionSnapshot actual, decimal cash, decimal margin, decimal quantity, decimal entry,
@@ -40,7 +47,8 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal(dd, actual.Drawdown); Assert.Equal(maximumDd, actual.MaximumDrawdown);
     }
 
-    [Fact] public void FlatAndGapEntryHaveFixedHandAccountAndFeeAnswers()
+    [Fact]
+    public void FlatAndGapEntryHaveFixedHandAccountAndFeeAnswers()
     {
         using var session = Session(Input(i => i == 64 ? Bar(i, 400m) : Bar(i)), Costs());
         var reset = session.Reset(); Account(reset, 1000m, 0m, 0m, 0m, 0m, 1000m, 1000m, 0m, 0m);
@@ -54,7 +62,8 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal(64, orders[1].SubmittedBar); Assert.Equal(65, orders[1].EarliestFillBar);
     }
 
-    [Fact] public void InsufficientFutureOpenPreservesMoneyWhileMarketObservationProgresses()
+    [Fact]
+    public void InsufficientFutureOpenPreservesMoneyWhileMarketObservationProgresses()
     {
         using var session = Session(Input(i => i == 64 ? Bar(i, 600m) : Bar(i)), Costs()); var initial = session.Reset();
         var rejected = session.Step(RlAction.Buy, 1f, 1f);
@@ -66,7 +75,8 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal(600m, rejected.Snapshot.MarketWindow[^1].Close); Assert.Equal(1, rejected.Snapshot.CompletedDecisions);
     }
 
-    [Fact] public void GapThroughStopHasFixedExitLedgerAndCosts()
+    [Fact]
+    public void GapThroughStopHasFixedExitLedgerAndCosts()
     {
         using var session = Session(Input(i => i == 64 ? Bar(i, 400m) : i == 65 ? Bar(i, 350m, low: 340m) : Bar(i)), Costs());
         session.Reset(); session.Step(RlAction.Buy, 1f, 1f);
@@ -81,7 +91,8 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal(6m, result.Fills.Sum(f => f.Commission));
     }
 
-    [Fact] public void SellCancellationAndNextMarketExitHaveFixedHandLedgerAndTiming()
+    [Fact]
+    public void SellCancellationAndNextMarketExitHaveFixedHandLedgerAndTiming()
     {
         using var session = Session(Input(i => i == 64 ? Bar(i, 400m) : i == 65 ? Bar(i, 410m) : i == 66 ? Bar(i, 450m) : Bar(i)), Costs());
         session.Reset(); session.Step(RlAction.Buy, 1f, 1f);
@@ -98,7 +109,8 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal(2, trade.HoldingBars);
     }
 
-    [Fact] public void SlippageIsReferenceCostAndIsNotDeductedTwice()
+    [Fact]
+    public void SlippageIsReferenceCostAndIsNotDeductedTwice()
     {
         using var session = Session(Input(i => i == 65 ? Bar(i, 110m) : i == 66 ? Bar(i, 120m) : Bar(i)), Costs(slip: .01m));
         session.Reset(); var buy = session.Step(RlAction.Buy, 1f, 1f);
@@ -112,7 +124,9 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal(6m, result.Trades[0].TotalCommission); Assert.Equal(4.4m, result.Trades[0].TotalSlippage);
     }
 
-    [Theory] [InlineData(999, 2, 799)] [InlineData(1000, 3, 700)]
+    [Theory]
+    [InlineData(999, 2, 799)]
+    [InlineData(1000, 3, 700)]
     public void FloorBoundaryUsesFixedDecisionClose(int capital, int quantity, int cash)
     {
         using var session = Session(Input(), Costs(capital, 0m, 0m)); session.Reset(); var buy = session.Step(RlAction.Buy, 1f, 1f);
@@ -120,7 +134,9 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal((decimal)capital, buy.Snapshot.EquityPoint.Equity);
     }
 
-    [Theory] [InlineData(3333334, 10000, false)] [InlineData(3333667, 10001, true)]
+    [Theory]
+    [InlineData(3333334, 10000, false)]
+    [InlineData(3333667, 10001, true)]
     public void QuantityCapAdmitsExactBoundaryAndRejectsExcessWithoutResizing(int capital, int intended, bool rejected)
     {
         using var session = Session(Input(), Costs(capital, 0m, 0m)); session.Reset(); var buy = session.Step(RlAction.Buy, 1f, 1f);
@@ -132,7 +148,8 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal((decimal)capital, buy.Snapshot.EquityPoint.Equity);
     }
 
-    [Fact] public void TerminalResidualMarksCloseAndExpiresStopWithoutExtraFill()
+    [Fact]
+    public void TerminalResidualMarksCloseAndExpiresStopWithoutExtraFill()
     {
         using var session = Session(Input(i => i >= 64 ? Bar(i, 400m) : Bar(i)), Costs()); session.Reset();
         var terminal = session.Step(RlAction.Buy, 1f, 1f);
@@ -144,7 +161,8 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal(OrderStatus.Expired, session.GetResult().Orders[1].Status); Assert.Null(terminal.Snapshot.ActiveStopPrice);
     }
 
-    [Fact] public void CancellationAndArithmeticFailureRestorePrefixAndRequireReset()
+    [Fact]
+    public void CancellationAndArithmeticFailureRestorePrefixAndRequireReset()
     {
         using var cancelled = Session(Input(), Costs()); var before = cancelled.Reset();
         using var ct = new CancellationTokenSource(); ct.Cancel();
@@ -162,7 +180,8 @@ public sealed class RlFinancialLedgerTests
         Assert.Equal(0, overflow.Reset().CompletedDecisions);
     }
 
-    [Fact] public void MlCloseRawValuesCannotHideFloorCapOrStopEventChanges()
+    [Fact]
+    public void MlCloseRawValuesCannotHideFloorCapOrStopEventChanges()
     {
         var input = Input(i => i == 65 ? Bar(i, 100m, low: 96.12495m) : Bar(i));
         using var first = Session(input, Costs(1000m, 0m, 0m)); using var second = Session(input, Costs(1000m, 0m, 0m));
@@ -179,7 +198,8 @@ public sealed class RlFinancialLedgerTests
         }
     }
 
-    [Fact] public void SameRawTraceCarriesExactDecimalFieldsAndRejectsFinancialTampering()
+    [Fact]
+    public void SameRawTraceCarriesExactDecimalFieldsAndRejectsFinancialTampering()
     {
         using var session = Session(Input(i => i == 64 ? Bar(i, 400m) : Bar(i)), Costs()); session.Reset();
         var step = session.Step(RlAction.Buy, 1f, 1f); var trace = RlFinancialTrace.Capture(step, session.GetResult());

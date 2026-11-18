@@ -8,16 +8,16 @@ public static class ChartConstants
 
     /// <summary>Left margin for chart area.</summary>
     public const float MarginLeft = 10f;
-    
+
     /// <summary>Right margin for chart area (wide enough for Y-axis price labels).</summary>
     public const float MarginRight = 65f;
-    
+
     /// <summary>Horizontal margin (legacy).</summary>
     public const float MarginHorizontal = 10f;
-    
+
     /// <summary>Top margin for chart area.</summary>
     public const float MarginTop = 0f;
-    
+
     /// <summary>Bottom margin for chart area.</summary>
     public const float MarginBottom = 30f;
 
@@ -88,7 +88,7 @@ public static class ChartConstants
 
     /// <summary>Multi-scale thresholds to capture nested geometric structures (micro, medium, macro).</summary>
     public static readonly decimal[] GeometricMultiScaleThresholds = { 2.0m, 5.0m, 8.0m };
-    
+
     /// <summary>ATR multiplier for breakout tolerance to allow wicks outside pattern bounds depending on volatility.</summary>
     public const double GeometricAtrBreakoutMultiplier = 0.5; // e.g. 0.5 ATR
 

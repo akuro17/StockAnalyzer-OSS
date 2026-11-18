@@ -12,7 +12,7 @@ public class CoreYangZhangVolatilityIndicator : CoreIndicatorBase
     {
         if (parameters is CoreSmaParameter p)
         {
-            Period = p.Period; 
+            Period = p.Period;
         }
     }
 

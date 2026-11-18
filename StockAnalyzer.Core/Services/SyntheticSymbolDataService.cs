@@ -27,7 +27,7 @@ public sealed class SyntheticSymbolDataService : IDataService, IDataReadStatusSo
         ILogger<SyntheticSymbolDataService>? logger = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
-        _aligner = aligner ?? new ComparisonDataAligner(inner);
+        _aligner = aligner ?? ComparisonDataAligner.CreateStrict(inner);
         _logger = logger ?? NullLogger<SyntheticSymbolDataService>.Instance;
     }
 

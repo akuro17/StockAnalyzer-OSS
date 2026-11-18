@@ -784,9 +784,9 @@ public partial class ScreenerViewModel : ViewModelBase, IDisposable
 
         if (_screenerService == null)
         {
-             StatusMessage = "Screener service not initialized.";
-             _ = ScheduleStatusResetAsync();
-             return;
+            StatusMessage = "Screener service not initialized.";
+            _ = ScheduleStatusResetAsync();
+            return;
         }
 
         // Indicators that compare two symbols need the comparison symbols' bars. What the condition asks for is judged before anything starts, so a refusal changes nothing

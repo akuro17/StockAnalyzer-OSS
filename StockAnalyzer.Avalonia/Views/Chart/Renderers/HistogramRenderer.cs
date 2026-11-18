@@ -13,13 +13,13 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 public class HistogramRenderer
 {
     private readonly SKPaint _paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
-    public void Render(SKCanvas canvas, Rect chartArea, 
-        IReadOnlyList<decimal?> values, 
-        CoreIndicatorSettings setting, 
+    public void Render(SKCanvas canvas, Rect chartArea,
+        IReadOnlyList<decimal?> values,
+        CoreIndicatorSettings setting,
         decimal minVal, decimal maxVal,
         int visibleCandles, int offset, int startIndex,
-        IReadOnlyList<CoreCandleData> candles, 
-        TimeSpan interval, 
+        IReadOnlyList<CoreCandleData> candles,
+        TimeSpan interval,
         ICoordinateTransform? transform,
         SKColor? overrideColor = null,
         float xOffset = 0f)
@@ -32,27 +32,27 @@ public class HistogramRenderer
         var mainColor = overrideColor ?? new SKColor(setting.Color.R, setting.Color.G, setting.Color.B, setting.Color.A);
 
 
-        float zeroY = (float)((transform?.ChartToScreen(new ChartPoint(DateTime.MinValue, 0m)).Y ?? 0) + (double)chartArea.Top); 
+        float zeroY = (float)((transform?.ChartToScreen(new ChartPoint(DateTime.MinValue, 0m)).Y ?? 0) + (double)chartArea.Top);
 
         float candleWidth;
         if (transform != null && candles != null && candles.Count > 1)
         {
-             double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
-             double x1 = transform.ChartToScreen(new ChartPoint(candles[1].Timestamp, 0)).X;
-             candleWidth = (float)(x1 - x0);
+            double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
+            double x1 = transform.ChartToScreen(new ChartPoint(candles[1].Timestamp, 0)).X;
+            candleWidth = (float)(x1 - x0);
         }
         else if (transform != null && candles != null && candles.Count == 1)
         {
-             double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
-             double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
-             candleWidth = (float)(x1 - x0);
+            double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
+            double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
+            candleWidth = (float)(x1 - x0);
         }
         else
         {
-             candleWidth = (float)(chartArea.Width / visibleCandles);
+            candleWidth = (float)(chartArea.Width / visibleCandles);
         }
-        
-        float barWidth = candleWidth * 0.8f; 
+
+        float barWidth = candleWidth * 0.8f;
         decimal range = maxVal - minVal;
         if (range == 0) range = 1;
 
@@ -67,18 +67,18 @@ public class HistogramRenderer
             float x;
             if (transform is GenericCoordinateTransform gct && gct.Mode == ChartAxisMode.Index)
             {
-                 x = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i)), 0)).X;
+                x = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i)), 0)).X;
             }
             else if (transform != null && candles != null)
             {
-                 var t = GetCandleTime(i, candles, interval);
-                 x = (float)transform.ChartToScreen(new ChartPoint(t, 0)).X;
+                var t = GetCandleTime(i, candles, interval);
+                x = (float)transform.ChartToScreen(new ChartPoint(t, 0)).X;
             }
             else
             {
-                 x = (float)chartArea.Left + i * candleWidth;
+                x = (float)chartArea.Left + i * candleWidth;
             }
-            
+
             float centerX = transform != null ? (x + xOffset) : x + candleWidth / 2f + xOffset;
             float y = (float)((transform?.ChartToScreen(new ChartPoint(DateTime.MinValue, val.Value)).Y ?? 0) + (double)chartArea.Top);
 
@@ -96,7 +96,7 @@ public class HistogramRenderer
             float top = Math.Min(y, zeroY);
             float bottom = Math.Max(y, zeroY);
             float left = centerX - barWidth / 2f;
-            
+
             var rect = new SKRect(left, top, left + barWidth, bottom);
             canvas.DrawRect(rect, _paint);
         }

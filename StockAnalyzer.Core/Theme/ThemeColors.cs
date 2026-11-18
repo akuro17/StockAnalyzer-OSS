@@ -243,16 +243,16 @@ public record ThemeColors
 
     public IndicatorColor GetSemanticColor(SemanticRole role) => role switch
     {
-        SemanticRole.Bullish    => SemanticPlus,
-        SemanticRole.Bearish    => SemanticMinus,
-        SemanticRole.Neutral    => SemanticNeutral,
-        SemanticRole.Support    => GeometricSupportLine,
+        SemanticRole.Bullish => SemanticPlus,
+        SemanticRole.Bearish => SemanticMinus,
+        SemanticRole.Neutral => SemanticNeutral,
+        SemanticRole.Support => GeometricSupportLine,
         SemanticRole.Resistance => GeometricResistanceLine,
-        SemanticRole.EntryLong  => CrossMarkerGolden,
+        SemanticRole.EntryLong => CrossMarkerGolden,
         SemanticRole.EntryShort => CrossMarkerDead,
-        SemanticRole.Exit       => SemanticNeutral,
-        SemanticRole.PivotHigh  => SemanticMinus,
-        SemanticRole.PivotLow   => SemanticPlus,
-        _                       => Neutral, // Fallback
+        SemanticRole.Exit => SemanticNeutral,
+        SemanticRole.PivotHigh => SemanticMinus,
+        SemanticRole.PivotLow => SemanticPlus,
+        _ => Neutral, // Fallback
     };
 }

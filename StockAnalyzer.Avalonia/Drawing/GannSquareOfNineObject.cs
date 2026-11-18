@@ -23,7 +23,7 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
     public bool IsMoveAxisModeExplicit { get; set; } = false;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.GannSquareOfNine;
-    
+
     public List<ChartPoint> Points { get; private set; }
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
@@ -54,7 +54,7 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
 
         double baseSqrt = Math.Sqrt(startPrice);
         var p1 = transform.ChartToScreen(startPoint);
-        
+
         using var paint = new SKPaint
         {
             Color = SkiaColor,
@@ -62,7 +62,7 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
             IsAntialias = true,
             Style = SKPaintStyle.Stroke
         };
-        
+
         using var textPaint = new SKPaint
         {
             Color = SkiaColor,
@@ -83,17 +83,17 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
         // Usually, if we select a Low, we want Resistance (Up). If High, Support (Down).
         // Let's draw BOTH for versatility, or prioritize Up if no second point to define direction.
         // Or assume Up for now as it's "Square of Nine" usually for projections.
-        
+
         ReadOnlySpan<double> factors = GannSquareOfNineValues.Factors;
         ReadOnlySpan<string> labels = GannSquareOfNineValues.Labels;
         for (int i = 0; i < factors.Length; i++)
         {
             double factor = factors[i];
-            
+
             // Resistance (Up)
             double priceUp = Math.Pow(baseSqrt + factor, 2);
             var pUp = transform.ChartToScreen(new ChartPoint(startPoint.Time, (decimal)priceUp));
-            
+
             if (pUp.Y >= clip.Top - 20 && pUp.Y <= clip.Bottom + 20)
             {
                 canvas.DrawLine(clip.Left, (float)pUp.Y, clip.Right, (float)pUp.Y, paint);
@@ -105,7 +105,7 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
             if (priceDown > 0)
             {
                 var pDown = transform.ChartToScreen(new ChartPoint(startPoint.Time, (decimal)priceDown));
-                 if (pDown.Y >= clip.Top - 20 && pDown.Y <= clip.Bottom + 20)
+                if (pDown.Y >= clip.Top - 20 && pDown.Y <= clip.Bottom + 20)
                 {
                     canvas.DrawLine(clip.Left, (float)pDown.Y, clip.Right, (float)pDown.Y, paint);
                     canvas.DrawText($"-{labels[i]} ({priceDown:F2})", clip.Right - 5, (float)pDown.Y - 5, textPaint);
@@ -122,12 +122,12 @@ public class GannSquareOfNineObject : IChartObject, IDrawingCalculatedValuesProv
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
         if (Points.Count < 1) return false;
-        
+
         // Hit test near the base line or the start point
         var p1 = transform.ChartToScreen(Points[0]);
         // Simple hit test on the start point
         if (Math.Abs(screenPoint.X - p1.X) < tolerance && Math.Abs(screenPoint.Y - p1.Y) < tolerance) return true;
-        
+
         // Also hit test on the base line
         // The base line spans the entire width of the chart
         var lineStart = new global::Avalonia.Point(0, p1.Y);

@@ -268,94 +268,94 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             {
                 s.Operation = BacktestArithmeticOperation.OrderFillPricing;
                 decimal reqQty = s.Orders[s.PendingEntryOrderIndex].Quantity;
-            bool reject = false;
-            bool skipFill = false;
-            decimal? fillQty = null;
+                bool reject = false;
+                bool skipFill = false;
+                decimal? fillQty = null;
 
-            if (maxParticipationRatio.HasValue)
-            {
-                if (availableVolume <= 0m)
+                if (maxParticipationRatio.HasValue)
                 {
-                    if (configuration.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
+                    if (availableVolume <= 0m)
                     {
-                        skipFill = true;
-                    }
-                    else
-                    {
-                        reject = true;
-                    }
-                }
-                else if (reqQty > availableVolume)
-                {
-                    if (configuration.VolumeConstraintMode == VolumeConstraintMode.RejectIfExceeds)
-                    {
-                        reject = true;
-                    }
-                    else // ClampAndCancelRemainder or ClampAndCarryOverRemainder
-                    {
-                        decimal clampedQty = availableVolume;
-                        if (clampedQty < 1m)
+                        if (configuration.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
                         {
-                            if (configuration.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
-                            {
-                                skipFill = true;
-                            }
-                            else
-                            {
-                                reject = true;
-                            }
+                            skipFill = true;
                         }
                         else
                         {
-                            fillQty = clampedQty;
-                            availableVolume = 0m;
+                            reject = true;
                         }
                     }
-                }
-                else
-                {
-                    availableVolume -= reqQty;
-                }
-            }
-
-            if (reject)
-            {
-                s.Orders[s.PendingEntryOrderIndex] = s.Orders[s.PendingEntryOrderIndex] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
-                s.PendingEntryOrderIndex = -1;
-            }
-            else if (!skipFill)
-            {
-                BacktestOrder origMocOrder = s.Orders[s.PendingEntryOrderIndex];
-                OrderFillOutcome mocEntryOutcome = OrderFillEvaluator.EvaluateMarketOnClose(origMocOrder, bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit, fillQty);
-                CommitOrRejectFill(s, i, bar, mocEntryOutcome, configuration, isEntry: true);
-
-                if (configuration.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder && fillQty.HasValue && reqQty > fillQty.Value)
-                {
-                    decimal remQty = reqQty - fillQty.Value;
-                    if (remQty >= 1m)
+                    else if (reqQty > availableVolume)
                     {
-                        var carryOrder = origMocOrder with
+                        if (configuration.VolumeConstraintMode == VolumeConstraintMode.RejectIfExceeds)
                         {
-                            OrderId = s.NextOrderId++,
-                            Quantity = remQty,
-                            EarliestFillBar = i + 1,
-                            Status = OrderStatus.Submitted,
-                            StopActivated = mocEntryOutcome.StopActivated,
-                        };
-                        s.Orders.Add(carryOrder);
-                        s.PendingEntryOrderIndex = s.Orders.Count - 1;
+                            reject = true;
+                        }
+                        else // ClampAndCancelRemainder or ClampAndCarryOverRemainder
+                        {
+                            decimal clampedQty = availableVolume;
+                            if (clampedQty < 1m)
+                            {
+                                if (configuration.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder)
+                                {
+                                    skipFill = true;
+                                }
+                                else
+                                {
+                                    reject = true;
+                                }
+                            }
+                            else
+                            {
+                                fillQty = clampedQty;
+                                availableVolume = 0m;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        availableVolume -= reqQty;
                     }
                 }
 
-                // A MOC Entry opens AT Close, so its only exposure is its Close state (G2-1): a breach there cannot be executed on this bar
-                // (no executable price is observable after Close), so the position waits as LiquidationPending for the next bar's Open.
-                if (s.Q != 0m && s.EntryBar == i)
+                if (reject)
                 {
-                    s.LiquidationPending = TryFindNewPositionBreach(s, configuration, bar, FillPathScanner.ClosePoint(bar.Close), out _, out _);
+                    s.Orders[s.PendingEntryOrderIndex] = s.Orders[s.PendingEntryOrderIndex] with { Status = OrderStatus.Rejected, RejectedReason = RejectedReason.InsufficientVolume };
+                    s.PendingEntryOrderIndex = -1;
+                }
+                else if (!skipFill)
+                {
+                    BacktestOrder origMocOrder = s.Orders[s.PendingEntryOrderIndex];
+                    OrderFillOutcome mocEntryOutcome = OrderFillEvaluator.EvaluateMarketOnClose(origMocOrder, bar, configuration.SlippageRatio, configuration.CommissionFlat, configuration.CommissionPerUnit, fillQty);
+                    CommitOrRejectFill(s, i, bar, mocEntryOutcome, configuration, isEntry: true);
+
+                    if (configuration.VolumeConstraintMode == VolumeConstraintMode.ClampAndCarryOverRemainder && fillQty.HasValue && reqQty > fillQty.Value)
+                    {
+                        decimal remQty = reqQty - fillQty.Value;
+                        if (remQty >= 1m)
+                        {
+                            var carryOrder = origMocOrder with
+                            {
+                                OrderId = s.NextOrderId++,
+                                Quantity = remQty,
+                                EarliestFillBar = i + 1,
+                                Status = OrderStatus.Submitted,
+                                StopActivated = mocEntryOutcome.StopActivated,
+                            };
+                            s.Orders.Add(carryOrder);
+                            s.PendingEntryOrderIndex = s.Orders.Count - 1;
+                        }
+                    }
+
+                    // A MOC Entry opens AT Close, so its only exposure is its Close state (G2-1): a breach there cannot be executed on this bar
+                    // (no executable price is observable after Close), so the position waits as LiquidationPending for the next bar's Open.
+                    if (s.Q != 0m && s.EntryBar == i)
+                    {
+                        s.LiquidationPending = TryFindNewPositionBreach(s, configuration, bar, FillPathScanner.ClosePoint(bar.Close), out _, out _);
+                    }
                 }
             }
         }
-    }
 
         if (s.Q != 0m && s.EntryBar != i)
         {

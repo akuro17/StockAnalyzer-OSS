@@ -29,11 +29,11 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
         _upPaint = new SKPaint { Style = SKPaintStyle.Fill };
         _downPaint = new SKPaint { Style = SKPaintStyle.Fill };
         _borderPaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 1 };
-        _textPaint = new SKPaint 
-        { 
-            IsAntialias = true, 
-            TextSize = 12, 
-            Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold) 
+        _textPaint = new SKPaint
+        {
+            IsAntialias = true,
+            TextSize = 12,
+            Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold)
         };
 
         _reversalDashEffect = SKPathEffect.CreateDash(new float[] { 5f, 5f }, 0);
@@ -50,7 +50,7 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
     {
         var config = (IThreeLineBreakRenderConfig)baseConfig;
         if (snapshot == null || snapshot.Candles == null || snapshot.Candles.Count == 0) return;
-        
+
         var candles = snapshot.Candles;
         int candleCount = candles.Count;
 
@@ -75,7 +75,7 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
         {
             var block = candles[i];
             int absoluteIndex = snapshot.StartIndex + i;
-            
+
             // X-Coordinate (Offset by ChartArea.Left)
             float x = (float)t.ChartToScreen(new ChartPoint(new DateTime(absoluteIndex), 0)).X + (float)chartArea.Left;
             float centerX = x + columnWidth / 2f;
@@ -83,24 +83,24 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
             // Y-Coordinates (Offset by ChartArea.Top)
             float yOpen = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, block.Open)).Y + (float)chartArea.Top;
             float yClose = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, block.Close)).Y + (float)chartArea.Top;
-            
+
             float top = Math.Min(yOpen, yClose);
             float bottom = Math.Max(yOpen, yClose);
-            
+
             var rect = new SKRect(centerX - bodyWidth / 2f, top, centerX + bodyWidth / 2f, bottom);
 
             bool isUp = block.Close >= block.Open;
             var paint = isUp ? _upPaint : _downPaint;
-            
+
             // Apply context color
             if (isUp)
-                 _upPaint.Color = config.ThreeLineBreakBullishColor.ToSkColor();
+                _upPaint.Color = config.ThreeLineBreakBullishColor.ToSkColor();
             else
-                 _downPaint.Color = config.ThreeLineBreakBearishColor.ToSkColor();
+                _downPaint.Color = config.ThreeLineBreakBearishColor.ToSkColor();
 
             // Draw Fill
             canvas.DrawRect(rect, paint);
-            
+
             // Draw Border
             canvas.DrawRect(rect, _borderPaint);
         }
@@ -109,7 +109,7 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
         {
             var lastBlock = candles[candleCount - 1];
             bool isLastUp = lastBlock.Close >= lastBlock.Open;
-            
+
             decimal reversalPrice = 0;
             int reversalOriginIndex = candleCount - 1; // Default to last candle
 
@@ -154,11 +154,11 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
             {
                 // Draw horizontal dashed line for Reversal Price
                 float yReversal = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, reversalPrice)).Y + (float)chartArea.Top;
-                
+
                 // Start line from the exact block that provides the reversal point
                 int originAbsoluteIndex = snapshot.StartIndex + reversalOriginIndex;
                 float originX = (float)t.ChartToScreen(new ChartPoint(new DateTime(originAbsoluteIndex), 0)).X + (float)chartArea.Left;
-                
+
                 // Start from the center of that block
                 float startX = originX + columnWidth / 2f;
                 float endX = (float)chartArea.Right;
@@ -186,7 +186,7 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
         int candleCount = candles.Count;
         var lastBlock = candles[candleCount - 1];
         bool isLastUp = lastBlock.Close >= lastBlock.Open;
-        
+
         decimal reversalPrice = 0;
 
         if (candleCount >= lineCount + 1)
@@ -199,7 +199,7 @@ public sealed class ThreeLineBreakRenderer : IChartRenderer, IDisposable, IAxisP
                 {
                     decimal blockLow = Math.Min(candles[j].Open, candles[j].Close);
                     if (blockLow <= lowestLow) lowestLow = blockLow;
-                    
+
                 }
                 reversalPrice = lowestLow;
             }

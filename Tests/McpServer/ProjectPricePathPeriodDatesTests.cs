@@ -12,8 +12,8 @@ namespace StockAnalyzer.Tests.McpServer;
 
 /// <summary>
 /// MCP Part 3 review, T9: the future dates of a W1 or MN1 projection are calendar period starts (Monday of each week, the 1st of each month), not the last
-/// bar's label plus 7 or 30 days. The fixture's market is closed on Wednesday 2024-05-01 and on the Mondays 2024-06-17 and 2024-06-24, so the last bars of
-/// both frames are labelled with a first trading day that is NOT the period start - without that the check would be vacuous.
+/// bar's label plus 7 or 30 days. The fixture's market is closed on Wednesday 2024-05-01 and on the Mondays 2024-06-17 and 2024-06-24, so the first trading
+/// day of those periods is NOT the period start; the asOfDate assertions (Monday, the 1st) fail if the last bars are ever labelled by the first trading day again.
 /// </summary>
 public sealed class ProjectPricePathPeriodDatesTests : IDisposable
 {

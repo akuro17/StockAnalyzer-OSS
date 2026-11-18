@@ -15,7 +15,7 @@ public partial class ViewportManager : ObservableObject
     private double _visibleEndUnit;   // Primary state: End of viewport in logical units
     private double _pixelsPerUnit;    // Primary state: Horizontal scale
     private Rect _screenBounds;
-    
+
     // Limits in logical units
     private double _dataStartUnit;
     private double _dataEndUnit;     // Last known data point
@@ -121,7 +121,7 @@ public partial class ViewportManager : ObservableObject
             if (_screenBounds != value)
             {
                 _screenBounds = value;
-                
+
                 // WebAI Fix: Only perform auto-panning if NOT in the middle of a reset/transition.
                 // Otherwise, ScreenBounds assignment might use a stale PixelsPerUnit to shift the view.
                 if (!_isResetting)
@@ -141,7 +141,7 @@ public partial class ViewportManager : ObservableObject
                         }
                     }
                 }
-                
+
                 OnPropertyChanged(nameof(ScreenBounds));
                 UpdateVisibleRange();
             }
@@ -153,7 +153,7 @@ public partial class ViewportManager : ObservableObject
         // Default initialization (Time-based default)
         _visibleStartUnit = DateTime.Now.AddMonths(-1).Ticks;
         _visibleEndUnit = DateTime.Now.Ticks;
-        _pixelsPerUnit = 0.0001; 
+        _pixelsPerUnit = 0.0001;
     }
 
     /// <summary>
@@ -164,19 +164,19 @@ public partial class ViewportManager : ObservableObject
         _dataStartUnit = first.Ticks;
         _dataEndUnit = last.Ticks;
         if (_futureEndUnit < _dataEndUnit) _futureEndUnit = _dataEndUnit;
-        
+
         UpdateMaxVisibleDuration();
 
         // WebAI Fix: Skip default initialization during a family transition (ResetScale sets _isResetting).
         // Without this guard, switching to Comparison chart overwrites the viewport with a 30-day window
         // before ForceVisibleRange in the adaptation block can set the correct full range.
         // This matches the existing guard in the Index-based SetDataBounds overload.
-        if (_pixelsPerUnit == 0.0001 && !_isResetting) 
+        if (_pixelsPerUnit == 0.0001 && !_isResetting)
         {
-             var initialViewDurationUnits = TimeSpan.FromDays(30).Ticks;
-             VisibleStartUnit = _dataEndUnit - initialViewDurationUnits;
-             VisibleEndUnit = _dataEndUnit;
-             UpdateScaleFromDuration(_screenBounds.Width, initialViewDurationUnits);
+            var initialViewDurationUnits = TimeSpan.FromDays(30).Ticks;
+            VisibleStartUnit = _dataEndUnit - initialViewDurationUnits;
+            VisibleEndUnit = _dataEndUnit;
+            UpdateScaleFromDuration(_screenBounds.Width, initialViewDurationUnits);
         }
     }
 
@@ -191,7 +191,7 @@ public partial class ViewportManager : ObservableObject
         _pixelsPerUnit = 0.0001;
         _visibleStartUnit = 0;
         _visibleEndUnit = 1;
-        
+
         OnPropertyChanged(nameof(PixelsPerUnit));
         OnPropertyChanged(nameof(VisibleStartUnit));
         OnPropertyChanged(nameof(VisibleEndUnit));
@@ -205,7 +205,7 @@ public partial class ViewportManager : ObservableObject
         _dataStartUnit = firstIndex;
         _dataEndUnit = lastIndex;
         if (_futureEndUnit < _dataEndUnit) _futureEndUnit = _dataEndUnit;
-        
+
         UpdateMaxVisibleDuration();
 
         // Default view for index: show last 100 items if not set
@@ -231,13 +231,13 @@ public partial class ViewportManager : ObservableObject
     public void ResetView(double visibleDurationUnits)
     {
         if (_screenBounds.Width <= 0 || visibleDurationUnits <= 0) return;
-        
+
         if (visibleDurationUnits > _maxVisibleDurationUnits) visibleDurationUnits = _maxVisibleDurationUnits;
         if (visibleDurationUnits < _minVisibleDurationUnits) visibleDurationUnits = _minVisibleDurationUnits;
-        
+
         UpdateScaleFromDuration(_screenBounds.Width, visibleDurationUnits);
         PanToLatestInternal();
-        
+
         _isResetting = false; // WebAI Fix: End critical section
         UpdateVisibleRange(); // Final sync
     }
@@ -279,7 +279,7 @@ public partial class ViewportManager : ObservableObject
         if (total < 1) total = 1;
 
         // Snaps exactly to the bounds (0 to total + offset) without excessive 50% blank padding
-        _maxVisibleDurationUnits = total; 
+        _maxVisibleDurationUnits = total;
     }
 
     public void Pan(double pixelDeltaX)
@@ -292,14 +292,14 @@ public partial class ViewportManager : ObservableObject
             // Move the left edge, and recalculate pixelsPerUnit to keep the right edge fixed.
             double unitDelta = pixelDeltaX / _pixelsPerUnit;
             double newStart = _visibleStartUnit - unitDelta;
-            
+
             // Limit start
             if (newStart < _dataStartUnit - 1) newStart = _dataStartUnit - 1;
-            
+
             double newDuration = _futureEndUnit - newStart;
             if (newDuration < _minVisibleDurationUnits) newDuration = _minVisibleDurationUnits;
             if (newDuration > _maxVisibleDurationUnits) newDuration = _maxVisibleDurationUnits;
-            
+
             _pixelsPerUnit = _screenBounds.Width / newDuration;
             _visibleStartUnit = _futureEndUnit - newDuration;
             UpdateVisibleRange();
@@ -310,13 +310,13 @@ public partial class ViewportManager : ObservableObject
         double unitDeltaStandard = pixelDeltaX / _pixelsPerUnit;
         double newStartStandard = _visibleStartUnit - unitDeltaStandard;
         double visibleUnits = _screenBounds.Width / _pixelsPerUnit;
-        
+
         double newEnd = newStartStandard + visibleUnits;
-        
+
         // Soft Clamp Right: Don't push further out of bounds if already out, limit to bounds if moving out
         if (newEnd > _futureEndUnit)
         {
-            if (_visibleEndUnit > _futureEndUnit && newEnd > _visibleEndUnit) 
+            if (_visibleEndUnit > _futureEndUnit && newEnd > _visibleEndUnit)
             {
                 newStartStandard = _visibleEndUnit - visibleUnits;
             }
@@ -325,7 +325,7 @@ public partial class ViewportManager : ObservableObject
                 newStartStandard = _futureEndUnit - visibleUnits;
             }
         }
-        
+
         // Soft Clamp Left
         if (newStartStandard < _dataStartUnit - 1)
         {
@@ -338,18 +338,18 @@ public partial class ViewportManager : ObservableObject
                 newStartStandard = _dataStartUnit - 1;
             }
         }
-        
+
         VisibleStartUnit = newStartStandard;
         UpdateVisibleRange();
         ViewportChanged?.Invoke(this, EventArgs.Empty);
     }
-    
+
     public void Zoom(double zoomFactor, double pivotScreenX)
     {
         if (_screenBounds.Width <= 0 || _pixelsPerUnit <= 0) return;
 
         double effectivePivotX = IsRightPinned ? _screenBounds.Right : pivotScreenX;
-        
+
         double pivotOffsetPixels = effectivePivotX - _screenBounds.X;
         double pivotUnitFromStart = pivotOffsetPixels / _pixelsPerUnit;
         double pivotUnit = _visibleStartUnit + pivotUnitFromStart;
@@ -358,7 +358,7 @@ public partial class ViewportManager : ObservableObject
 
         double maxScale = _screenBounds.Width / _minVisibleDurationUnits;
         double minScale = _screenBounds.Width / _maxVisibleDurationUnits;
-        
+
         if (newPixelsPerUnit > maxScale) newPixelsPerUnit = maxScale;
         if (newPixelsPerUnit < minScale) newPixelsPerUnit = minScale;
 
@@ -368,7 +368,7 @@ public partial class ViewportManager : ObservableObject
         double newPivotUnitFromStart = pivotOffsetPixels / newPixelsPerUnit;
         double newStart = pivotUnit - newPivotUnitFromStart;
         double visibleUnits = _screenBounds.Width / newPixelsPerUnit;
-        
+
         if (IsRightPinned)
         {
             // Lock right edge exactly to boundary
@@ -393,7 +393,7 @@ public partial class ViewportManager : ObservableObject
                 }
             }
         }
-        
+
         VisibleStartUnit = newStart;
         UpdateVisibleRange();
         ViewportChanged?.Invoke(this, EventArgs.Empty);
@@ -416,7 +416,7 @@ public partial class ViewportManager : ObservableObject
                 OnPropertyChanged(nameof(PixelsPerUnit));
             }
         }
-        
+
         _isResetting = false; // WebAI Fix: End critical section
         UpdateVisibleRange(); // Final sync
     }
@@ -425,9 +425,9 @@ public partial class ViewportManager : ObservableObject
     {
         if (_isResetting) return; // WebAI Fix: Skip processing during atomic reset/transition
         if (_pixelsPerUnit <= 0 || _screenBounds.Width <= 0) return;
-        
+
         double visibleUnits = _screenBounds.Width / _pixelsPerUnit;
-        
+
         if (IsRightPinned)
         {
             VisibleEndUnit = _futureEndUnit;
@@ -437,13 +437,13 @@ public partial class ViewportManager : ObservableObject
         {
             VisibleEndUnit = _visibleStartUnit + visibleUnits;
         }
-        
+
         OnPropertyChanged(nameof(VisibleStartUnit));
         OnPropertyChanged(nameof(VisibleEndUnit));
         OnPropertyChanged(nameof(VisibleStartTime));
         OnPropertyChanged(nameof(VisibleEndTime));
     }
-    
+
     private void UpdateScaleFromDuration(double width, double durationUnits)
     {
         if (width <= 0 || durationUnits <= 0) return;
@@ -467,7 +467,7 @@ public partial class ViewportManager : ObservableObject
         if (_pixelsPerUnit <= 0) return _visibleStartUnit;
         return (screenX - _screenBounds.X) / _pixelsPerUnit + _visibleStartUnit;
     }
-    
+
     /// <summary>
     /// Pans the view to show the latest data.
     /// </summary>

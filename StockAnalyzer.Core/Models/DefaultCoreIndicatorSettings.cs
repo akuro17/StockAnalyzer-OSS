@@ -17,68 +17,68 @@ public static class DefaultCoreIndicatorSettings
     {
         return new List<CoreIndicatorSettings>
         {
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.SMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.SMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.EMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreEmaParameter { Period = IndicatorDefaultConstants.EmaPeriod }, 
-                Color = IndicatorDefaultConstants.EmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.EMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreEmaParameter { Period = IndicatorDefaultConstants.EmaPeriod },
+                Color = IndicatorDefaultConstants.EmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.KAMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreKamaParameter 
-                { 
-                    Period = IndicatorDefaultConstants.KamaPeriod, 
-                    Fast = IndicatorDefaultConstants.KamaFastPeriod, 
-                    Slow = IndicatorDefaultConstants.KamaSlowPeriod 
-                }, 
-                Color = IndicatorDefaultConstants.KamaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.KAMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreKamaParameter
+                {
+                    Period = IndicatorDefaultConstants.KamaPeriod,
+                    Fast = IndicatorDefaultConstants.KamaFastPeriod,
+                    Slow = IndicatorDefaultConstants.KamaSlowPeriod
+                },
+                Color = IndicatorDefaultConstants.KamaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = true
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.BB, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreBollingerBandsParameter { Period = IndicatorDefaultConstants.BollingerPeriod, StdDevMultiplier = IndicatorDefaultConstants.BollingerStdDevMultiplier }, 
-                Color = IndicatorDefaultConstants.BollingerMiddleColor, 
-                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.BB,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreBollingerBandsParameter { Period = IndicatorDefaultConstants.BollingerPeriod, StdDevMultiplier = IndicatorDefaultConstants.BollingerStdDevMultiplier },
+                Color = IndicatorDefaultConstants.BollingerMiddleColor,
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
                 Style = CoreLineStyle.Solid,
-                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "Middle", DisplayName = "Middle Band", Color = IndicatorDefaultConstants.BollingerMiddleColor, TargetSeries = new List<string> { "Main" } },
                     new SeriesColorConfig { Name = "Bands", DisplayName = "Bands (Upper/Lower)", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { "Upper", "Lower" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.Donchian, 
-                Category = CoreIndicatorCategory.Volatility, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = 20 }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.Donchian,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = 20 },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = true,
-                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "Upper", DisplayName = "Upper Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { nameof(CoreDonchianChannelIndicator.UpperBand) } },
                     new SeriesColorConfig { Name = "Middle", DisplayName = "Middle Line", Color = IndicatorDefaultConstants.SmaColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
@@ -105,13 +105,13 @@ public static class DefaultCoreIndicatorSettings
             new CoreIndicatorSettings
             {
                 TypeEnum = IndicatorType.Ichimoku,
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreIchimokuParameter(), 
-                Color = IndicatorDefaultConstants.IchimokuBaseColor, 
-                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreIchimokuParameter(),
+                Color = IndicatorDefaultConstants.IchimokuBaseColor,
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
                 Style = CoreLineStyle.Solid,
-                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "Tenkan", DisplayName = "Tenkan-sen", Color = IndicatorDefaultConstants.IchimokuTenkanColor, TargetSeries = new List<string> { "Main" } },
                     new SeriesColorConfig { Name = "Kijun", DisplayName = "Kijun-sen", Color = IndicatorDefaultConstants.IchimokuKijunColor, TargetSeries = new List<string> { CoreIchimokuIndicator.KijunSenSeriesName } },
@@ -120,150 +120,150 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "SenkouB", DisplayName = "Senkou Span B", Color = IndicatorDefaultConstants.IchimokuSenkouBColor, TargetSeries = new List<string> { CoreIchimokuIndicator.SenkouSpanBSeriesName } },
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.ParabolicSAR, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreParabolicSarParameter { AccelerationStart = IndicatorDefaultConstants.ParabolicAccelerationStart, AccelerationStep = IndicatorDefaultConstants.ParabolicAccelerationStep, AccelerationMax = IndicatorDefaultConstants.ParabolicAccelerationMax }, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.ParabolicSAR,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreParabolicSarParameter { AccelerationStart = IndicatorDefaultConstants.ParabolicAccelerationStart, AccelerationStep = IndicatorDefaultConstants.ParabolicAccelerationStep, AccelerationMax = IndicatorDefaultConstants.ParabolicAccelerationMax },
                 Color = IndicatorDefaultConstants.ParabolicColor,
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
                 Style = CoreLineStyle.Dot,
                 IsOverlay = true,
                 UseUpDownColors = true,
                 UpColor = IndicatorDefaultConstants.ParabolicUpColor,
                 DownColor = IndicatorDefaultConstants.ParabolicDownColor
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.RSI, 
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CoreRsiParameter { Period = IndicatorDefaultConstants.RsiPeriod }, 
-                Color = IndicatorDefaultConstants.RsiColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.RSI,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreRsiParameter { Period = IndicatorDefaultConstants.RsiPeriod },
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 MinValue = IndicatorDefaultConstants.RsiMinValue,
                 MaxValue = IndicatorDefaultConstants.RsiMaxValue
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.MACD, 
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CoreMacdParameter(), 
-                Color = IndicatorDefaultConstants.MacdLineColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.MACD,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreMacdParameter(),
+                Color = IndicatorDefaultConstants.MacdLineColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 UpColor = IndicatorDefaultConstants.MacdHistogramUpColor,
                 DownColor = IndicatorDefaultConstants.MacdHistogramDownColor,
-                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "MACD", DisplayName = "MACD Line", Color = IndicatorDefaultConstants.MacdLineColor, TargetSeries = new List<string> { "Main" } },
                     new SeriesColorConfig { Name = "Signal", DisplayName = "Signal Line", Color = IndicatorDefaultConstants.MacdSignalColor, TargetSeries = new List<string> { "Signal" } },
                     new SeriesColorConfig { Name = "Histogram", DisplayName = "Histogram", Color = IndicatorDefaultConstants.MacdHistogramColor, TargetSeries = new List<string> { "Histogram" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.Stoch, 
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CoreStochasticParameter(), 
-                Color = IndicatorDefaultConstants.StochBaseColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.Stoch,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreStochasticParameter(),
+                Color = IndicatorDefaultConstants.StochBaseColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 MinValue = IndicatorDefaultConstants.StochMinValue,
                 MaxValue = IndicatorDefaultConstants.StochMaxValue,
-                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "K", DisplayName = "%K", Color = IndicatorDefaultConstants.StochKColor, TargetSeries = new List<string> { "Main", "Slow %K" } },
                     new SeriesColorConfig { Name = "D", DisplayName = "%D", Color = IndicatorDefaultConstants.StochDColor, TargetSeries = new List<string> { "PercentD", "Slow %D" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.VolumeProfile, 
-                Category = CoreIndicatorCategory.Chart, 
-                IsEnabled = false, 
-                ParameterObject = new CoreVolumeProfileParameter { Period = IndicatorDefaultConstants.VolumeProfilePeriod, RowCount = IndicatorDefaultConstants.VolumeProfileRowCount, Opacity = IndicatorDefaultConstants.VolumeProfileOpacity, Side = DisplaySide.Left, Mode = VolumeDistributionMode.Proportional }, 
-                Color = IndicatorDefaultConstants.VolumeProfileColor, 
-                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.VolumeProfile,
+                Category = CoreIndicatorCategory.Chart,
+                IsEnabled = false,
+                ParameterObject = new CoreVolumeProfileParameter { Period = IndicatorDefaultConstants.VolumeProfilePeriod, RowCount = IndicatorDefaultConstants.VolumeProfileRowCount, Opacity = IndicatorDefaultConstants.VolumeProfileOpacity, Side = DisplaySide.Left, Mode = VolumeDistributionMode.Proportional },
+                Color = IndicatorDefaultConstants.VolumeProfileColor,
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
                 Style = CoreLineStyle.Solid,
-                IsOverlay = true 
+                IsOverlay = true
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.TimeAtPrice, 
-                Category = CoreIndicatorCategory.Chart, 
-                IsEnabled = false, 
-                ParameterObject = new CoreTimeAtPriceParameter { Period = IndicatorDefaultConstants.VolumeProfilePeriod, RowCount = IndicatorDefaultConstants.VolumeProfileRowCount, PriceType = PriceType.Close, Opacity = IndicatorDefaultConstants.VolumeProfileOpacity, Side = DisplaySide.Left }, 
-                Color = IndicatorDefaultConstants.VolumeProfileColor, 
-                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.TimeAtPrice,
+                Category = CoreIndicatorCategory.Chart,
+                IsEnabled = false,
+                ParameterObject = new CoreTimeAtPriceParameter { Period = IndicatorDefaultConstants.VolumeProfilePeriod, RowCount = IndicatorDefaultConstants.VolumeProfileRowCount, PriceType = PriceType.Close, Opacity = IndicatorDefaultConstants.VolumeProfileOpacity, Side = DisplaySide.Left },
+                Color = IndicatorDefaultConstants.VolumeProfileColor,
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
                 Style = CoreLineStyle.Solid,
-                IsOverlay = true 
+                IsOverlay = true
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.MESA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreMesaParameter(), 
-                Color = IndicatorDefaultConstants.MesaBaseColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.MESA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreMesaParameter(),
+                Color = IndicatorDefaultConstants.MesaBaseColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = true,
-                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "MAMA", DisplayName = "MAMA", Color = IndicatorDefaultConstants.MesaMamaColor, TargetSeries = new List<string> { "Main" } },
                     new SeriesColorConfig { Name = "FAMA", DisplayName = "FAMA", Color = IndicatorDefaultConstants.MesaFamaColor, TargetSeries = new List<string> { "Fama" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.Volume, 
-                Category = CoreIndicatorCategory.Volume, 
-                IsEnabled = false, 
-                ParameterObject = null, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.Volume,
+                Category = CoreIndicatorCategory.Volume,
+                IsEnabled = false,
+                ParameterObject = null,
                 Color = IndicatorDefaultConstants.Gray, // Gray fallback
-                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 UseUpDownColors = true,
                 UpColor = IndicatorDefaultConstants.VolumeUpColor,
                 DownColor = IndicatorDefaultConstants.VolumeDownColor
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.PVT, 
-                Category = CoreIndicatorCategory.Volume, 
-                IsEnabled = false, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.PVT,
+                Category = CoreIndicatorCategory.Volume,
+                IsEnabled = false,
                 Color = IndicatorDefaultConstants.Purple, // Purple #AB47BC
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.VPT, 
-                Category = CoreIndicatorCategory.Volume, 
-                IsEnabled = false, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.VPT,
+                Category = CoreIndicatorCategory.Volume,
+                IsEnabled = false,
                 Color = IndicatorDefaultConstants.Purple, // Purple #AB47BC
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.OBV, 
-                Category = CoreIndicatorCategory.Volume, 
-                IsEnabled = false, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.OBV,
+                Category = CoreIndicatorCategory.Volume,
+                IsEnabled = false,
                 Color = IndicatorDefaultConstants.Cyan, // Cyan #00ACC1
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false
             },
             new CoreIndicatorSettings
@@ -304,42 +304,42 @@ public static class DefaultCoreIndicatorSettings
             new CoreIndicatorSettings
             {
                 TypeEnum = IndicatorType.MarketStructureShift,
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreMarketStructureShiftParameter(), 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreMarketStructureShiftParameter(),
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
                 Style = CoreLineStyle.Dash,
                 IsOverlay = true,
-                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "BOS", DisplayName = "BOS Lines", Color = IndicatorDefaultConstants.LightBlue, TargetSeries = new List<string> { "BOS_Lines" } },
                     new SeriesColorConfig { Name = "CHoCH", DisplayName = "CHoCH Lines", Color = IndicatorDefaultConstants.Orange, TargetSeries = new List<string> { "CHoCH_Lines" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.StructuralDtw, 
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CoreStructuralDtwParameter(), 
-                Color = IndicatorDefaultConstants.StructuralDtwColor, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.StructuralDtw,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreStructuralDtwParameter(),
+                Color = IndicatorDefaultConstants.StructuralDtwColor,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.GranvilleLaw, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreGranvilleLawParameter(), 
-                Color = IndicatorDefaultConstants.GranvilleBuy1Color, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.GranvilleLaw,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreGranvilleLawParameter(),
+                Color = IndicatorDefaultConstants.GranvilleBuy1Color,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 MinValue = -4,
                 MaxValue = 4,
-                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "Buy1", DisplayName = "Buy 1 (Trend Reversal) : MA Flat/Up & Price crosses above MA", Color = IndicatorDefaultConstants.GranvilleBuy1Color, TargetSeries = new List<string> { "Signals" } },
                     new SeriesColorConfig { Name = "Buy2", DisplayName = "Buy 2 (Trend Continuation) : MA Up & Price drops below MA temporarily", Color = IndicatorDefaultConstants.GranvilleBuy2Color, TargetSeries = new List<string> { "Signals" } },
@@ -351,164 +351,164 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "Sell4", DisplayName = "Sell 4 (Mean Reversion) : MA Up & Price deviates far above MA", Color = IndicatorDefaultConstants.GranvilleSell4Color, TargetSeries = new List<string> { "Signals" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.WMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.WMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.HMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.HMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.TMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.TMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.DEMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.DEMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.TEMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.TEMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = true
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.VWMA, 
-                Category = CoreIndicatorCategory.Volume, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.VWMA,
+                Category = CoreIndicatorCategory.Volume,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = true
             },
-             new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.VAMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+             new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.VAMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.SMMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.SMMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.ZLEMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.ZLEMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.LSMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod }, 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.LSMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = IndicatorDefaultConstants.SmaPeriod },
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.ALMA, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreAlmaParameter(), 
-                Color = IndicatorDefaultConstants.SmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.ALMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreAlmaParameter(),
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.MtfLaggedEma, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreMtfLaggedEmaParameter(), 
-                Color = IndicatorDefaultConstants.EmaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.MtfLaggedEma,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreMtfLaggedEmaParameter(),
+                Color = IndicatorDefaultConstants.EmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = true
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.DMI, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreDmiParameter { Period = IndicatorDefaultConstants.DmiDefaultPeriod }, 
-                Color = IndicatorDefaultConstants.DmiPlusDiColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.DMI,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreDmiParameter { Period = IndicatorDefaultConstants.DmiDefaultPeriod },
+                Color = IndicatorDefaultConstants.DmiPlusDiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = false,
-                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "PlusDI", DisplayName = "+DI", Color = IndicatorDefaultConstants.DmiPlusDiColor, TargetSeries = new List<string> { "PlusDI", "Main" } },
                     new SeriesColorConfig { Name = "MinusDI", DisplayName = "-DI", Color = IndicatorDefaultConstants.DmiMinusDiColor, TargetSeries = new List<string> { "MinusDI" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.ATR, 
-                Category = CoreIndicatorCategory.Volatility, 
-                IsEnabled = false, 
-                ParameterObject = new CoreAtrParameter(), 
-                Color = IndicatorDefaultConstants.AtrColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.ATR,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreAtrParameter(),
+                Color = IndicatorDefaultConstants.AtrColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = false
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.ROC, 
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CoreRocParameter(), 
-                Color = IndicatorDefaultConstants.RocColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.ROC,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreRocParameter(),
+                Color = IndicatorDefaultConstants.RocColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = false
             },
@@ -574,48 +574,48 @@ public static class DefaultCoreIndicatorSettings
             new CoreIndicatorSettings
             {
                 TypeEnum = IndicatorType.DPO,
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = 20 }, 
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = 20 },
                 Color = IndicatorDefaultConstants.Purple, // Purple #AB47BC
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = false
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.DeMarker, 
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CoreSmaParameter { Period = 14 }, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.DeMarker,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreSmaParameter { Period = 14 },
                 Color = IndicatorDefaultConstants.Purple, // Purple #AB47BC
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = false
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.PrimeNumberOscillator, 
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CorePrimeNumberOscillatorParameter(), 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.PrimeNumberOscillator,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CorePrimeNumberOscillatorParameter(),
                 Color = IndicatorDefaultConstants.RsiColor, // Purple #AB47BC
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
-                IsOverlay = false 
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.PrimeNumberBands, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CorePrimeNumberBandsParameter 
-                { 
-                    Period = IndicatorDefaultConstants.PrimeNumberBandsPeriod, 
-                    ScaleMultiplier = IndicatorDefaultConstants.PrimeNumberBandsScaleMultiplier 
-                }, 
-                Color = IndicatorDefaultConstants.PrimeNumberBandsMiddleColor, 
-                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.PrimeNumberBands,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CorePrimeNumberBandsParameter
+                {
+                    Period = IndicatorDefaultConstants.PrimeNumberBandsPeriod,
+                    ScaleMultiplier = IndicatorDefaultConstants.PrimeNumberBandsScaleMultiplier
+                },
+                Color = IndicatorDefaultConstants.PrimeNumberBandsMiddleColor,
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
                 Style = CoreLineStyle.Solid,
                 IsOverlay = true,
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
@@ -1175,48 +1175,48 @@ public static class DefaultCoreIndicatorSettings
                 MinValue = IndicatorDefaultConstants.FdiMinValue,
                 MaxValue = IndicatorDefaultConstants.FdiMaxValue
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.ClothoidOscillator, 
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CoreClothoidOscillatorParameter(), 
-                Color = IndicatorDefaultConstants.ClothoidOscillatorColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.ClothoidOscillator,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreClothoidOscillatorParameter(),
+                Color = IndicatorDefaultConstants.ClothoidOscillatorColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 MinValue = null,
                 MaxValue = null,
                 IncludeZeroBaseline = true,
                 UpColor = IndicatorDefaultConstants.ClothoidOscillatorHistUpColor,
                 DownColor = IndicatorDefaultConstants.ClothoidOscillatorHistDownColor,
-                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig> 
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = "ClothoidOscillator", DisplayName = "Curvature Rate", Color = IndicatorDefaultConstants.ClothoidOscillatorColor, TargetSeries = new List<string> { "Main" } },
                     new SeriesColorConfig { Name = "Signal", DisplayName = "Signal Line", Color = IndicatorDefaultConstants.ClothoidOscillatorSignalColor, TargetSeries = new List<string> { "Signal" } },
                     new SeriesColorConfig { Name = "Histogram", DisplayName = "Histogram", Color = IndicatorDefaultConstants.ClothoidOscillatorHistColor, TargetSeries = new List<string> { "Histogram" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.ClothoidMovingAverage, 
-                Category = CoreIndicatorCategory.Trend, 
-                IsEnabled = false, 
-                ParameterObject = new CoreClothoidMovingAverageParameter(), 
-                Color = IndicatorDefaultConstants.ClothoidMovingAverageColor, 
-                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness, 
-                Style = CoreLineStyle.Solid, 
-                IsOverlay = true 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.ClothoidMovingAverage,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreClothoidMovingAverageParameter(),
+                Color = IndicatorDefaultConstants.ClothoidMovingAverageColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.CrossCorrelation, 
-                Category = CoreIndicatorCategory.Other, 
-                IsEnabled = false, 
-                ParameterObject = new CoreCrossCorrelationParameter(), 
-                Color = IndicatorDefaultConstants.CrossCorrelationColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.CrossCorrelation,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreCrossCorrelationParameter(),
+                Color = IndicatorDefaultConstants.CrossCorrelationColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 MinValue = IndicatorDefaultConstants.CrossCorrelationMinValue,
                 MaxValue = IndicatorDefaultConstants.CrossCorrelationMaxValue,
@@ -1226,15 +1226,15 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "CrossCorrelation", DisplayName = "Correlation", Color = IndicatorDefaultConstants.CrossCorrelationColor, TargetSeries = new List<string> { "Main" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.RollingBeta, 
-                Category = CoreIndicatorCategory.Other, 
-                IsEnabled = false, 
-                ParameterObject = new CoreRollingBetaParameter(), 
-                Color = IndicatorDefaultConstants.RollingBetaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.RollingBeta,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreRollingBetaParameter(),
+                Color = IndicatorDefaultConstants.RollingBetaColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 IncludeZeroBaseline = true,
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
@@ -1243,15 +1243,15 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "RollingCorrelation", DisplayName = "Correlation", Color = IndicatorDefaultConstants.RollingBetaCorrelationColor, TargetSeries = new List<string> { "RollingCorrelation" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.RollingAlpha, 
-                Category = CoreIndicatorCategory.Other, 
-                IsEnabled = false, 
-                ParameterObject = new CoreRollingAlphaParameter(), 
-                Color = IndicatorDefaultConstants.RollingAlphaColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.RollingAlpha,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreRollingAlphaParameter(),
+                Color = IndicatorDefaultConstants.RollingAlphaColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 IncludeZeroBaseline = true,
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
@@ -1259,15 +1259,15 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "Values", DisplayName = "Alpha", Color = IndicatorDefaultConstants.RollingAlphaColor, TargetSeries = new List<string> { "Main" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.Ratiocator, 
-                Category = CoreIndicatorCategory.Oscillator, 
-                IsEnabled = false, 
-                ParameterObject = new CoreRatiocatorParameter(), 
-                Color = IndicatorDefaultConstants.RatiocatorColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.Ratiocator,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreRatiocatorParameter(),
+                Color = IndicatorDefaultConstants.RatiocatorColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
@@ -1275,15 +1275,15 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "Signal", DisplayName = "Signal (EMA)", Color = IndicatorDefaultConstants.RatiocatorSignalColor, TargetSeries = new List<string> { "Signal" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.RollingRSquared, 
-                Category = CoreIndicatorCategory.Other, 
-                IsEnabled = false, 
-                ParameterObject = new CoreRollingRSquaredParameter(), 
-                Color = IndicatorDefaultConstants.RollingRSquaredColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.RollingRSquared,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreRollingRSquaredParameter(),
+                Color = IndicatorDefaultConstants.RollingRSquaredColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 MinValue = IndicatorDefaultConstants.RollingRSquaredMinValue,
                 MaxValue = IndicatorDefaultConstants.RollingRSquaredMaxValue,
@@ -1293,15 +1293,15 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "Values", DisplayName = "R²", Color = IndicatorDefaultConstants.RollingRSquaredColor, TargetSeries = new List<string> { "Main" } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.CointegrationSpread, 
-                Category = CoreIndicatorCategory.Other, 
-                IsEnabled = false, 
-                ParameterObject = new CoreCointegrationSpreadParameter(), 
-                Color = IndicatorDefaultConstants.CointegrationSpreadColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.CointegrationSpread,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreCointegrationSpreadParameter(),
+                Color = IndicatorDefaultConstants.CointegrationSpreadColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = false,
                 IncludeZeroBaseline = true,
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
@@ -1366,9 +1366,9 @@ public static class DefaultCoreIndicatorSettings
                 Category = CoreIndicatorCategory.Chart,
                 IsEnabled = false,
                 ParameterObject = new CoreClassicPivotPointsParameter(),
-                Color = IndicatorDefaultConstants.ClassicPivotPointsPivotColor, 
-                Thickness = IndicatorDefaultConstants.DefaultBandThickness, 
-                Style = CoreLineStyle.Solid, 
+                Color = IndicatorDefaultConstants.ClassicPivotPointsPivotColor,
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
+                Style = CoreLineStyle.Solid,
                 IsOverlay = true,
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
@@ -1381,8 +1381,8 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = CoreClassicPivotPointsIndicator.S3SeriesName, DisplayName = "Support 3 (S3)", Color = IndicatorDefaultConstants.ClassicPivotPointsS3Color, TargetSeries = new List<string> { CoreClassicPivotPointsIndicator.S3SeriesName } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
+            new CoreIndicatorSettings
+            {
                 TypeEnum = IndicatorType.PivotPointsAdvanced,
                 Category = CoreIndicatorCategory.Chart,
                 IsEnabled = false,
@@ -1404,27 +1404,27 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = CorePivotPointsAdvancedIndicator.S4SeriesName, DisplayName = "Support 4 (S4)", Color = IndicatorDefaultConstants.ClassicPivotPointsS3Color, TargetSeries = new List<string> { CorePivotPointsAdvancedIndicator.S4SeriesName } }
                 }
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.StandardDeviation, 
-                Category = CoreIndicatorCategory.Volatility, 
-                IsEnabled = false, 
-                ParameterObject = new CoreStandardDeviationParameter(), 
-                Color = IndicatorDefaultConstants.RsiColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
-                IsOverlay = false 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.StandardDeviation,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreStandardDeviationParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false
             },
-            new CoreIndicatorSettings 
-            { 
-                TypeEnum = IndicatorType.MassIndex, 
-                Category = CoreIndicatorCategory.Volatility, 
-                IsEnabled = false, 
-                ParameterObject = new CoreMassIndexParameter(), 
-                Color = IndicatorDefaultConstants.RsiColor, 
-                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness, 
-                Style = CoreLineStyle.Solid, 
-                IsOverlay = false 
+            new CoreIndicatorSettings
+            {
+                TypeEnum = IndicatorType.MassIndex,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreMassIndexParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false
             },
             new CoreIndicatorSettings
             {
@@ -1816,6 +1816,183 @@ public static class DefaultCoreIndicatorSettings
                 SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
                 {
                     new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Market Breadth", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): statistics main line = RsiColor; the kurtosis line has its own colour. Axis: automatic (G1 and G2 are unbounded).
+                TypeEnum = IndicatorType.SkewnessKurtosis,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreSkewnessKurtosisParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Skewness", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreSkewnessKurtosisIndicator.ExcessKurtosisSeriesName, DisplayName = "Excess Kurtosis", Color = IndicatorDefaultConstants.SkewnessKurtosisKurtosisColor, TargetSeries = new List<string> { CoreSkewnessKurtosisIndicator.ExcessKurtosisSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): statistics main line = RsiColor; fixed axis 0..1 (p-value). The JB statistic is chart-suppressed, so it has no colour entry.
+                TypeEnum = IndicatorType.JarqueBera,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreJarqueBeraParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = IndicatorDefaultConstants.UnitIntervalMinValue,
+                MaxValue = IndicatorDefaultConstants.UnitIntervalMaxValue,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Jarque-Bera p-value", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreJarqueBeraIndicator.SignificanceLevelSeriesName, DisplayName = "Significance Level", Color = IndicatorDefaultConstants.TestSignificanceLineColor, TargetSeries = new List<string> { CoreJarqueBeraIndicator.SignificanceLevelSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): statistics main line = RsiColor; fixed axis 0..1 (p-value). The Q statistic is chart-suppressed, so it has no colour entry.
+                TypeEnum = IndicatorType.LjungBoxQ,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreLjungBoxQParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                MinValue = IndicatorDefaultConstants.UnitIntervalMinValue,
+                MaxValue = IndicatorDefaultConstants.UnitIntervalMaxValue,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Ljung-Box p-value", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreLjungBoxQIndicator.SignificanceLevelSeriesName, DisplayName = "Significance Level", Color = IndicatorDefaultConstants.TestSignificanceLineColor, TargetSeries = new List<string> { CoreLjungBoxQIndicator.SignificanceLevelSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): volatility main line = RsiColor; the upside line has its own colour. RollingSortino and SemivarianceAsymmetry are chart-suppressed (scale), so they have no colour entry.
+                TypeEnum = IndicatorType.DownsideDeviation,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreDownsideDeviationParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Downside Deviation", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreDownsideDeviationIndicator.UpsideDeviationSeriesName, DisplayName = "Upside Deviation", Color = IndicatorDefaultConstants.DownsideDeviationUpsideColor, TargetSeries = new List<string> { CoreDownsideDeviationIndicator.UpsideDeviationSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): volatility main line = RsiColor; total volatility and the jump bars have their own colours. JumpRatio is chart-suppressed (scale), so it has no colour entry.
+                TypeEnum = IndicatorType.BipowerVariation,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreBipowerVariationParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Bipower Volatility", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreBipowerVariationIndicator.TotalVolatilitySeriesName, DisplayName = "Total Volatility", Color = IndicatorDefaultConstants.BipowerVariationTotalColor, TargetSeries = new List<string> { CoreBipowerVariationIndicator.TotalVolatilitySeriesName } },
+                    new SeriesColorConfig { Name = CoreBipowerVariationIndicator.JumpComponentHistogramSeriesName, DisplayName = "Jump Component", Color = IndicatorDefaultConstants.BipowerVariationJumpColor, TargetSeries = new List<string> { CoreBipowerVariationIndicator.JumpComponentHistogramSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): statistics main line = RsiColor, reference line = the test-panel line colour; auto axis (tau is unbounded). Rho and HalfLife are chart-suppressed (scale), so they have no colour entry.
+                TypeEnum = IndicatorType.ADFStationarity,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreAdfStationarityParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "ADF Statistic", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreAdfStationarityIndicator.CriticalValue5PctSeriesName, DisplayName = "5% Critical Value", Color = IndicatorDefaultConstants.TestSignificanceLineColor, TargetSeries = new List<string> { CoreAdfStationarityIndicator.CriticalValue5PctSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): statistics main line = RsiColor, random-walk level = the test-panel line colour; auto axis. ZStarStatistic and PValue are chart-suppressed (scale), so they have no colour entry.
+                TypeEnum = IndicatorType.VarianceRatio,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreVarianceRatioParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Variance Ratio", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreVarianceRatioIndicator.RandomWalkLineSeriesName, DisplayName = "Random Walk (1)", Color = IndicatorDefaultConstants.TestSignificanceLineColor, TargetSeries = new List<string> { CoreVarianceRatioIndicator.RandomWalkLineSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Price overlay (Donchian precedent: middle line = SmaColor, bands = BollingerBandsColor). IQR and MAD are price-unit spreads: chart-suppressed, no colour entry.
+                TypeEnum = IndicatorType.QuantileBands,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreQuantileBandsParameter(),
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultBandThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Median", Color = IndicatorDefaultConstants.SmaColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreQuantileBandsIndicator.UpperBandSeriesName, DisplayName = "Upper Quantile", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { CoreQuantileBandsIndicator.UpperBandSeriesName } },
+                    new SeriesColorConfig { Name = CoreQuantileBandsIndicator.LowerBandSeriesName, DisplayName = "Lower Quantile", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { CoreQuantileBandsIndicator.LowerBandSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Price overlay: the robust line = SmaColor, the residual bands = BollingerBandsColor. Slope and Intercept are chart-suppressed (not price levels), no colour entry.
+                TypeEnum = IndicatorType.TheilSenRegression,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreTheilSenRegressionParameter(),
+                Color = IndicatorDefaultConstants.SmaColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Robust Line", Color = IndicatorDefaultConstants.SmaColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreTheilSenRegressionIndicator.UpperBandSeriesName, DisplayName = "Upper Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { CoreTheilSenRegressionIndicator.UpperBandSeriesName } },
+                    new SeriesColorConfig { Name = CoreTheilSenRegressionIndicator.LowerBandSeriesName, DisplayName = "Lower Band", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { CoreTheilSenRegressionIndicator.LowerBandSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Colours by role (decision U-01=A): VaR main line = RsiColor, the Gaussian VaR has its own colour; auto axis. ProbabilisticSharpeRatio is chart-suppressed (scale), no colour entry.
+                TypeEnum = IndicatorType.CornishFisherVaR,
+                Category = CoreIndicatorCategory.Volatility,
+                IsEnabled = false,
+                ParameterObject = new CoreCornishFisherVarParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Cornish-Fisher VaR", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreCornishFisherVarIndicator.GaussianVarSeriesName, DisplayName = "Gaussian VaR", Color = IndicatorDefaultConstants.CornishFisherGaussianColor, TargetSeries = new List<string> { CoreCornishFisherVarIndicator.GaussianVarSeriesName } }
                 }
             }
         };

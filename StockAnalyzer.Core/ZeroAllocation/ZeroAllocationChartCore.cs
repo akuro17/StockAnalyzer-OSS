@@ -41,10 +41,10 @@ namespace StockAnalyzer.ZeroAllocation
         {
             if (Length > destination.Length)
                 throw new ArgumentOutOfRangeException(nameof(destination));
-            
+
             for (int i = 0; i < Length; i++)
                 destination[i] = Start + i;
-            
+
             return destination.Slice(0, Length);
         }
     }
@@ -306,13 +306,13 @@ namespace StockAnalyzer.ZeroAllocation
         static ZeroAllocChartDataFactory()
         {
             Register(ZeroAllocChartDataType.TimeSeries, (candles, _) => new TimeSeriesAdapter(candles));
-            
+
             Register(ZeroAllocChartDataType.Renko, (candles, parameters) =>
             {
                 var renkoParams = parameters as RenkoParameters ?? new RenkoParameters();
                 return RenkoCalculator.Calculate(candles, renkoParams);
             });
-            
+
             Register(ZeroAllocChartDataType.Kagi, (candles, parameters) =>
             {
                 var kagiParams = parameters as KagiParameters ?? new KagiParameters();
@@ -332,7 +332,7 @@ namespace StockAnalyzer.ZeroAllocation
             {
                 if (_initialized)
                     throw new InvalidOperationException("Factory already initialized");
-                
+
                 registrations?.Invoke();
                 _initialized = true;
             }
@@ -341,7 +341,7 @@ namespace StockAnalyzer.ZeroAllocation
         public static void Register(ZeroAllocChartDataType type, ChartAdapterCreator creator)
         {
             if (creator == null) throw new ArgumentNullException(nameof(creator));
-            
+
             _providers.AddOrUpdate(type, creator, (_, __) => creator);
         }
 
@@ -402,14 +402,14 @@ namespace StockAnalyzer.ZeroAllocation
         public void Dispose()
         {
             if (_disposed) return;
-            
+
             var buffer = _buffer;
             if (buffer != null)
             {
                 _buffer = null;
                 ArrayPool<ZeroAllocCandleData>.Shared.Return(buffer, clearArray: true);
             }
-            
+
             _disposed = true;
         }
     }
@@ -422,7 +422,7 @@ namespace StockAnalyzer.ZeroAllocation
         public static IPooledCandleBuffer ToPooledBuffer(IZeroAllocChartDataAdapter adapter)
         {
             if (adapter == null) throw new ArgumentNullException(nameof(adapter));
-            
+
             int n = adapter.Count;
             var pooled = new PooledCandleBuffer(n);
             var buffer = pooled.Buffer;
@@ -448,7 +448,7 @@ namespace StockAnalyzer.ZeroAllocation
         public static IPooledArrayOwner<decimal> ToClosePriceBuffer(IZeroAllocChartDataAdapter adapter)
         {
             if (adapter == null) throw new ArgumentNullException(nameof(adapter));
-            
+
             int n = adapter.Count;
             var owner = new PooledArrayOwner<decimal>(n);
             adapter.Closes.Span.CopyTo(owner.Span);
@@ -478,12 +478,12 @@ namespace StockAnalyzer.ZeroAllocation
         public ReadOnlyMemory<ZeroAllocCandleData> GetCandleData()
         {
             if (_disposed) throw new ObjectDisposedException(nameof(RenkoIndicatorDataAdapter));
-            
+
             if (_pooledBuffer == null)
             {
                 _pooledBuffer = IndicatorBridgePooled.ToPooledBuffer(_adapter);
             }
-            
+
             return _pooledBuffer.Buffer.AsMemory(0, _pooledBuffer.Length);
         }
 
@@ -556,14 +556,14 @@ namespace StockAnalyzer.ZeroAllocation
         public void Dispose()
         {
             if (_disposed) return;
-            
+
             var array = _array;
             if (array != null)
             {
                 _array = null;
                 ArrayPool<T>.Shared.Return(array, clearArray: true);
             }
-            
+
             _disposed = true;
         }
     }
@@ -588,7 +588,7 @@ namespace StockAnalyzer.ZeroAllocation
             // Phase 2 Zero Allocation Fix: Use ArrayPool instead of List<T> for intermediate calculations
             // Estimate initial capacity (e.g. half of source length, min 64)
             int capacity = Math.Max(64, span.Length / 2);
-            
+
             var timestamps = System.Buffers.ArrayPool<DateTime>.Shared.Rent(capacity);
             var opens = System.Buffers.ArrayPool<decimal>.Shared.Rent(capacity);
             var highs = System.Buffers.ArrayPool<decimal>.Shared.Rent(capacity);
@@ -596,7 +596,7 @@ namespace StockAnalyzer.ZeroAllocation
             var closes = System.Buffers.ArrayPool<decimal>.Shared.Rent(capacity);
             var volumes = System.Buffers.ArrayPool<long>.Shared.Rent(capacity);
             var ranges = System.Buffers.ArrayPool<OriginalIndexRange>.Shared.Rent(capacity);
-            
+
             int count = 0;
 
             try
@@ -607,7 +607,7 @@ namespace StockAnalyzer.ZeroAllocation
                     if (count >= capacity)
                     {
                         int newCapacity = capacity * 2;
-                        
+
                         var newTimestamps = System.Buffers.ArrayPool<DateTime>.Shared.Rent(newCapacity);
                         var newOpens = System.Buffers.ArrayPool<decimal>.Shared.Rent(newCapacity);
                         var newHighs = System.Buffers.ArrayPool<decimal>.Shared.Rent(newCapacity);
@@ -649,7 +649,7 @@ namespace StockAnalyzer.ZeroAllocation
                     closes[count] = close;
                     volumes[count] = vol;
                     ranges[count] = new OriginalIndexRange(startIdx, endIdx);
-                    
+
                     count++;
                     vol = 0; // reset volume
                 }
@@ -660,9 +660,9 @@ namespace StockAnalyzer.ZeroAllocation
                     ? Math.Floor(first.Close / blockSize) * blockSize
                     : ChartMath.Quantize(first.Close, blockSize, roundingMode);
                 decimal currentHigh = currentLow + blockSize;
-                
+
                 // 0 = Unknown, 1 = Up, -1 = Down
-                int direction = 0; 
+                int direction = 0;
                 int startIndex = 0;
                 long currentVolume = 0;
 
@@ -681,9 +681,9 @@ namespace StockAnalyzer.ZeroAllocation
                                 direction = 1;
                                 decimal brickStart = currentHigh;
                                 decimal brickEnd = currentHigh + blockSize;
-                                
+
                                 AddBrick(c.Timestamp, brickStart, brickEnd, brickStart, brickEnd, ref currentVolume, startIndex, i);
-                                    
+
                                 currentHigh = brickEnd;
                                 currentLow = brickStart;
                                 startIndex = i;
@@ -694,9 +694,9 @@ namespace StockAnalyzer.ZeroAllocation
                                 direction = -1;
                                 decimal brickStart = currentLow;
                                 decimal brickEnd = currentLow - blockSize;
-                                
+
                                 AddBrick(c.Timestamp, brickStart, brickStart, brickEnd, brickEnd, ref currentVolume, startIndex, i);
-                                    
+
                                 currentHigh = brickStart;
                                 currentLow = brickEnd;
                                 startIndex = i;
@@ -709,9 +709,9 @@ namespace StockAnalyzer.ZeroAllocation
                             {
                                 decimal brickStart = currentHigh;
                                 decimal brickEnd = currentHigh + blockSize;
-                                
+
                                 AddBrick(c.Timestamp, brickStart, brickEnd, brickStart, brickEnd, ref currentVolume, startIndex, i);
-                                    
+
                                 currentHigh = brickEnd;
                                 currentLow = brickStart;
                                 startIndex = i;
@@ -723,9 +723,9 @@ namespace StockAnalyzer.ZeroAllocation
                                 // Reversal skips the vertical area of the previous brick
                                 decimal brickStart = currentLow;
                                 decimal brickEnd = currentLow - blockSize;
-                                
+
                                 AddBrick(c.Timestamp, brickStart, brickStart, brickEnd, brickEnd, ref currentVolume, startIndex, i);
-                                    
+
                                 currentHigh = brickStart;
                                 currentLow = brickEnd;
                                 startIndex = i;
@@ -738,9 +738,9 @@ namespace StockAnalyzer.ZeroAllocation
                             {
                                 decimal brickStart = currentLow;
                                 decimal brickEnd = currentLow - blockSize;
-                                
+
                                 AddBrick(c.Timestamp, brickStart, brickStart, brickEnd, brickEnd, ref currentVolume, startIndex, i);
-                                    
+
                                 currentHigh = brickStart;
                                 currentLow = brickEnd;
                                 startIndex = i;
@@ -752,9 +752,9 @@ namespace StockAnalyzer.ZeroAllocation
                                 // Reversal skips the vertical area of the previous brick
                                 decimal brickStart = currentHigh;
                                 decimal brickEnd = currentHigh + blockSize;
-                                
+
                                 AddBrick(c.Timestamp, brickStart, brickEnd, brickStart, brickEnd, ref currentVolume, startIndex, i);
-                                    
+
                                 currentHigh = brickEnd;
                                 currentLow = brickStart;
                                 startIndex = i;
@@ -803,7 +803,7 @@ namespace StockAnalyzer.ZeroAllocation
             lows.Add(Math.Min(open, close));
             volumes.Add(currentVolume);
             ranges.Add(new OriginalIndexRange(startIndex, currentIndex - startIndex + 1));
-            
+
             // Note: If we add multiple bricks for a single candle, the volume belongs to the first brick.
             // Clear out accumulated volume to avoid double routing it to subsequent bricks in the same tick.
             currentVolume = 0;
@@ -1239,10 +1239,10 @@ namespace StockAnalyzer.ZeroAllocation
             if (willTurnYin)
             {
                 decimal boundary = state.LastLow;
-                
+
                 // 1. Process first half: start -> boundary (with original IsYang = true)
                 AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ed, ref count, time, start, boundary, true, startIdx, len, forceNewSegment);
-                
+
                 // 2. Process second half: boundary -> end (with new IsYang = false)
                 state.IsYang = false;
                 // Force a new segment for the second half to guarantee split structure
@@ -1251,10 +1251,10 @@ namespace StockAnalyzer.ZeroAllocation
             else if (willTurnYang)
             {
                 decimal boundary = state.LastHigh;
-                
+
                 // 1. Process first half: start -> boundary (with original IsYang = false)
                 AddSegmentInternal(ts, op, hi, lo, cl, vol, rg, ed, ref count, time, start, boundary, false, startIdx, len, forceNewSegment);
-                
+
                 // 2. Process second half: boundary -> end (with new IsYang = true)
                 state.IsYang = true;
                 // Force a new segment for the second half to guarantee split structure
@@ -1280,7 +1280,7 @@ namespace StockAnalyzer.ZeroAllocation
                 bool lastDirUp = cl[lastIdx] >= op[lastIdx];
                 bool currDirUp = end >= start;
                 bool lastIsYang = vol[lastIdx] == 1L;
-                
+
                 if (cl[lastIdx] == start && lastIsYang == stateIsYang && lastDirUp == currDirUp)
                 {
                     cl[lastIdx] = end;
@@ -1288,7 +1288,7 @@ namespace StockAnalyzer.ZeroAllocation
                     lo[lastIdx] = Math.Min(op[lastIdx], end);
                     ts[lastIdx] = time;
                     ed[lastIdx] = ed[lastIdx] with { End = time };
-                    
+
                     var oldRange = rg[lastIdx];
                     rg[lastIdx] = new OriginalIndexRange(oldRange.Start, oldRange.Length + len);
                     isExtension = true;

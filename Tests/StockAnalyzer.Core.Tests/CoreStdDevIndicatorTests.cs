@@ -33,13 +33,13 @@ public class CoreStdDevIndicatorTests
         // Implementation uses Sample Variance (N-1)
         // Variance = ((10-12)^2 + (12-12)^2 + (14-12)^2) / (3-1) = (4+0+4)/2 = 8/2 = 4
         // StdDev = Sqrt(4) = 2.0
-        
+
         // Wait, if implementation uses N-1, check expected values.
         // Test previously expected ~1.63 (which is Sqrt(8/3) ~ Sqrt(2.66)).
         // So the test expected Population Variance.
         // The implementation was seen using (Period - 1).
         // I will assert 2.0.
-        
+
         Assert.Equal(2.0m, Math.Round(indicator.Values[2]!.Value, 2));
 
         // At index 3: Data = [12, 14, 13]. Mean = 13.
@@ -55,8 +55,8 @@ public class CoreStdDevIndicatorTests
         indicator.Calculate(new List<CoreCandleData>());
         // If result is expected to be populated
         if (indicator.Values.Any())
-             Assert.Fail("Expected empty values but found some");
-        else 
-             Assert.Empty(indicator.Values);
+            Assert.Fail("Expected empty values but found some");
+        else
+            Assert.Empty(indicator.Values);
     }
 }

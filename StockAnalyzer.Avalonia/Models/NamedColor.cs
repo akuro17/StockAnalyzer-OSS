@@ -21,22 +21,22 @@ public class NamedColor
     {
         Name = name;
         Value = colorString;
-        
+
         if (global::Avalonia.Media.Color.TryParse(colorString, out var avaColor))
         {
-             Color = new SKColor(avaColor.R, avaColor.G, avaColor.B, avaColor.A);
+            Color = new SKColor(avaColor.R, avaColor.G, avaColor.B, avaColor.A);
         }
         else
         {
-             try 
-             {
-                 var c = SKColor.Parse(colorString);
-                 Color = c;
-             }
-             catch
-             {
-                 Color = SKColors.Black;
-             }
+            try
+            {
+                var c = SKColor.Parse(colorString);
+                Color = c;
+            }
+            catch
+            {
+                Color = SKColors.Black;
+            }
         }
     }
 }

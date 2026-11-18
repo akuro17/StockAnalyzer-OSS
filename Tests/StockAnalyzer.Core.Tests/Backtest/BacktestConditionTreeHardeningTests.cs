@@ -99,7 +99,12 @@ public class BacktestConditionTreeHardeningTests
                 SchemaVersion = BacktestConfigurationDto.ConditionTreeSchemaVersion,
                 ConditionTree = new BacktestConditionTreeDto
                 {
-                    EntryLong = nodes[0], EntryShort = nodes[1], ExitLong = nodes[2], ExitShort = nodes[3], ReverseLong = nodes[4], ReverseShort = nodes[5],
+                    EntryLong = nodes[0],
+                    EntryShort = nodes[1],
+                    ExitLong = nodes[2],
+                    ExitShort = nodes[3],
+                    ReverseLong = nodes[4],
+                    ReverseShort = nodes[5],
                 },
             };
 

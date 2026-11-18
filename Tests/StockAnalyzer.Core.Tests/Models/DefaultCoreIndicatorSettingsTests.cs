@@ -36,7 +36,12 @@ public class DefaultCoreIndicatorSettingsTests
         // + 1 HarRv (disabled by default, added 2026-11-16, Plan 02 Task 2B).
         // + 1 Bocpd (disabled by default, added 2026-11-16, Plan 04 Task 4B).
         // + 2 GrangerCausality + JohansenCointegration (disabled by default, added 2026-11-16, Plan 05 Task 5A).
-        Assert.Equal(115, defaults.Count);
+        // + 3 SkewnessKurtosis + JarqueBera + LjungBoxQ (disabled by default, added 2026-11-17, statistical functions plan R3).
+        // + 2 DownsideDeviation + BipowerVariation (disabled by default, added 2026-11-17, statistical functions plan R4).
+        // + 1 ADFStationarity (disabled by default, added 2026-11-17, statistical functions plan R5).
+        // + 1 VarianceRatio (disabled by default, added 2026-11-17, statistical functions plan R6).
+        // + 3 QuantileBands + TheilSenRegression + CornishFisherVaR (disabled by default, added 2026-11-17, statistical functions plan R7).
+        Assert.Equal(125, defaults.Count);
     }
 
     [Fact]

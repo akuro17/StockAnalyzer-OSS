@@ -7,7 +7,7 @@ public enum DrawingTool
     Eraser,
     Text,
     Information,
-    
+
     // Lines
     TrendLine,
     HorizontalLine,
@@ -31,7 +31,7 @@ public enum DrawingTool
     ClothoidZone,
     NurbsConic,
     NurbsEllipse,
-    
+
     // Fibonacci
     FibonacciRetracement,
     FibonacciTimeZone,
@@ -47,7 +47,7 @@ public enum DrawingTool
     GoldenSpiral,
     LogarithmicSpiral,
     ArchimedeanSpiral,
-    
+
     // Gann
     GannFan,
     GannBox,
@@ -56,7 +56,7 @@ public enum DrawingTool
     GannSquareOfNine,
     GannSquare144,
     GannWheel,
-    
+
     // Patterns
     Pitchfork,
     ParallelChannel,
@@ -64,7 +64,7 @@ public enum DrawingTool
     AutoElliottWave,
     HarmonicPattern,
     GeometricPattern,
-    
+
     // Analysis
     RegressionTrend,
     RangeSpline,
@@ -88,20 +88,20 @@ public enum DrawingTool
     SsaDynamicEnvelopes,
     SsaProjectedTargets,
     SsaAnomalyHighlight,
-    
+
     // Prediction
     LongPosition,
     ShortPosition,
     GhostFeed,
     BarPattern,
-    
+
     // Cycle
     CyclicLines,
     IchimokuTimeLines,
     SineLine,
     TimeCycles,
     AutoTimeCycle,
-    
+
     // Other
     AngleTool,
     PriceLabel,

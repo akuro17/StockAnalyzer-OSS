@@ -4,7 +4,7 @@ namespace StockAnalyzer.Core.Models.Parameters;
 
 public class CoreRsiParameter : CoreSmaParameter
 {
-     public override string GetDisplayName(string type) => $"{type} ({Period})";
+    public override string GetDisplayName(string type) => $"{type} ({Period})";
 
-     public override int GetRequiredWarmupBars() => Period * 3;
+    public override int GetRequiredWarmupBars() => Period * 3;
 }

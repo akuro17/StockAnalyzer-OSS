@@ -15,6 +15,7 @@ internal sealed class SeriesOutputOptions
 {
     public const string SummaryArgument = "summary";
     public const string TrendBarsArgument = "trendBars";
+    public const string SummaryDistributionArgument = "summaryDistribution";
     public const string LookbackOffsetsArgument = "lookbackOffsets";
     public const string IncludeSeriesArgument = "includeSeries";
     public const string DecimalPlacesArgument = "decimalPlaces";
@@ -22,10 +23,20 @@ internal sealed class SeriesOutputOptions
     /// <summary>The most decimal places <c>decimalPlaces</c> may name (owner decision U-02: 0..10).</summary>
     public const int MaxDecimalPlaces = 10;
 
-    private SeriesOutputOptions(bool includeSeries, bool summary, int trendBars, IReadOnlyList<long> lookbackOffsets, int? decimalPlaces)
+    /// <summary>
+    /// The description every tool that offers <c>summaryDistribution</c> gives the argument (one text, so the two tools cannot disagree): the six added fields and the rule for robustTrendSlope.
+    /// </summary>
+    public static readonly string SummaryDistributionDescription =
+        "true adds, to every series summary, median, iqr (interquartile range, type 7), mad (median absolute deviation, raw), skewness (sample G1; null below 3 values or for a flat series), " +
+        "excessKurtosis (sample G2; null below 4 values or for a flat series) and robustTrendSlope (Theil-Sen slope per bar over the same trendBars window as trendSlope; null below two values). " +
+        $"For protection against the quadratic cost, robustTrendSlope is only calculated when trendBars is {SeriesSummaryStatistics.MinTrendBars} to {SeriesSummaryStatistics.MaxRobustTrendBars}: with a larger trendBars it is null " +
+        "(that is not an error and not a data shortage; trendSlope and every other field are unaffected). Needs summary true. Default false.";
+
+    private SeriesOutputOptions(bool includeSeries, bool summary, bool summaryDistribution, int trendBars, IReadOnlyList<long> lookbackOffsets, int? decimalPlaces)
     {
         IncludeSeries = includeSeries;
         Summary = summary;
+        SummaryDistribution = summaryDistribution;
         TrendBars = trendBars;
         LookbackOffsets = lookbackOffsets;
         DecimalPlaces = decimalPlaces;
@@ -35,6 +46,9 @@ internal sealed class SeriesOutputOptions
     public bool IncludeSeries { get; }
 
     public bool Summary { get; }
+
+    /// <summary>True adds the distribution figures (median, iqr, mad, skewness, excessKurtosis, robustTrendSlope) to every series summary; needs <see cref="Summary"/>.</summary>
+    public bool SummaryDistribution { get; }
 
     /// <summary>The trend window, in bars, of the summary's <c>trendSlope</c>.</summary>
     public int TrendBars { get; }
@@ -76,6 +90,15 @@ internal sealed class SeriesOutputOptions
     {
         bool includeSeries = ToolArgs.Boolean(arguments, IncludeSeriesArgument) ?? includeSeriesDefault;
         bool summary = ToolArgs.Boolean(arguments, SummaryArgument) ?? false;
+        bool summaryDistribution = ToolArgs.Boolean(arguments, SummaryDistributionArgument) ?? false;
+        if (summaryDistribution && !summary)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{SummaryDistributionArgument}' adds fields to the summary and has no effect without '{SummaryArgument}'.",
+                SummaryDistributionArgument,
+                $"Set {SummaryArgument} to true, or omit {SummaryDistributionArgument}.");
+        }
 
         int trendBars = McpLimitsContract.EffectiveDefaultTrendBars(limits);
         if (ToolArgs.Integer(arguments, TrendBarsArgument) is { } requested)
@@ -145,7 +168,7 @@ internal sealed class SeriesOutputOptions
                 $"Also set {SummaryArgument} true or name {LookbackOffsetsArgument}, or leave {IncludeSeriesArgument} out.");
         }
 
-        return new SeriesOutputOptions(includeSeries, summary, trendBars, offsets, ReadDecimalPlaces(arguments));
+        return new SeriesOutputOptions(includeSeries, summary, summaryDistribution, trendBars, offsets, ReadDecimalPlaces(arguments));
     }
 
     /// <summary>
@@ -165,7 +188,7 @@ internal sealed class SeriesOutputOptions
             writer.WriteStartObject("summary");
             foreach ((string name, IReadOnlyList<decimal?> values) in windows)
             {
-                SeriesSummary summary = SeriesSummaryStatistics.Calculate(values, TrendBars);
+                SeriesSummary summary = SummaryDistribution ? SeriesSummaryStatistics.CalculateDistribution(values, TrendBars) : SeriesSummaryStatistics.Calculate(values, TrendBars);
                 writer.WriteStartObject(name);
                 writer.WriteNumber("count", summary.Count);
                 WriteNullable(writer, "latest", Round(summary.Latest));
@@ -175,6 +198,16 @@ internal sealed class SeriesOutputOptions
                 WriteNullable(writer, "percentileRankOfLatest", Round(summary.PercentileRankOfLatest));
                 WriteNullable(writer, "trendSlope", Round(summary.TrendSlope));
                 writer.WriteNumber("trendBars", summary.TrendBars);
+                if (SummaryDistribution)
+                {
+                    WriteNullable(writer, "median", Round(summary.Median));
+                    WriteNullable(writer, "iqr", Round(summary.Iqr));
+                    WriteNullable(writer, "mad", Round(summary.Mad));
+                    WriteNullable(writer, "skewness", Round(summary.Skewness));
+                    WriteNullable(writer, "excessKurtosis", Round(summary.ExcessKurtosis));
+                    WriteNullable(writer, "robustTrendSlope", Round(summary.RobustTrendSlope));
+                }
+
                 writer.WriteEndObject();
             }
 

@@ -76,7 +76,7 @@ namespace StockAnalyzer.Core.Tests.Services
             // Ensure JSON file exists or mock it (but we depend on real file in the service for now)
             // A meaningful test requires the jsonDataPath to be valid.
             // In the service constructor, it tries to find the repo root.
-            
+
             // Act
             // Criteria: Symbol is 'AAPL' (should exist in S&P 500)
             // Or Price > 0
@@ -107,11 +107,11 @@ namespace StockAnalyzer.Core.Tests.Services
             Assert.Single(result);
             Assert.Equal("AAPL", result[0]);
         }
-        
+
         [Fact]
         public async Task ScreenAsync_ShouldHandleComplexQueries()
         {
-             // Arrange
+            // Arrange
             var settings = new StubScreenerSettings();
             var pythonService = new PythonService(settings);
             var service = new SmartScreenerService(pythonService, settings);

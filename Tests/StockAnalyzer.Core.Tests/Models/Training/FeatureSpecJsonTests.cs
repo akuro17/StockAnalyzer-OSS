@@ -93,7 +93,10 @@ public class FeatureSpecJsonTests
     {
         var config = new TrainingJobConfig
         {
-            Symbols = new[] { "7203-T" }, Architecture = "lstm", WindowSize = 60, Horizon = 5,
+            Symbols = new[] { "7203-T" },
+            Architecture = "lstm",
+            WindowSize = 60,
+            Horizon = 5,
             FeatureMode = PredictionFeatureMode.OhlcvMinMax,
         };
 
@@ -124,7 +127,10 @@ public class FeatureSpecJsonTests
     {
         var config = new TrainingJobConfig
         {
-            Symbols = new[] { "7203-T" }, Architecture = "lstm", WindowSize = 60, Horizon = 5,
+            Symbols = new[] { "7203-T" },
+            Architecture = "lstm",
+            WindowSize = 60,
+            Horizon = 5,
             FeatureMode = PredictionFeatureMode.ComposedFeatures,
         };
 
@@ -145,7 +151,10 @@ public class FeatureSpecJsonTests
     {
         var config = new TrainingJobConfig
         {
-            Symbols = new[] { "7203-T" }, Architecture = "lstm", WindowSize = 60, Horizon = 5,
+            Symbols = new[] { "7203-T" },
+            Architecture = "lstm",
+            WindowSize = 60,
+            Horizon = 5,
             FeatureMode = PredictionFeatureMode.OhlcvMinMax,
             FeatureSpec = SampleSpec(),
         };

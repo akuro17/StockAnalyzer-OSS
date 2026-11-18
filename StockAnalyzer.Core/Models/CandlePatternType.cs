@@ -12,19 +12,19 @@ public enum CandlePatternType
 
     /// <summary>大陽線_丸坊主 (Bullish Marubozu): Large body, no upper or lower shadows.</summary>
     BullishMarubozu,
-    
+
     /// <summary>大陽線_大引坊主 (Bullish Closing Marubozu): Large body, no upper shadow, has lower shadow.</summary>
     BullishClosingMarubozu,
-    
+
     /// <summary>大陽線_寄付坊主 (Bullish Opening Marubozu): Large body, has upper shadow, no lower shadow.</summary>
     BullishOpeningMarubozu,
-    
+
     /// <summary>小陽線_コマ (Bullish Spinning Top): Small body, small upper and lower shadows.</summary>
     BullishSpinningTop,
-    
+
     /// <summary>下影陽線_カラカサ (Bullish Umbrella / Hammer): Small body at top, long lower shadow, no upper shadow.</summary>
     BullishUmbrella,
-    
+
     /// <summary>上影陽線_トンカチ (Bullish Inverted Umbrella / Inverted Hammer): Small body at bottom, long upper shadow, no lower shadow.</summary>
     BullishInvertedUmbrella,
 
@@ -32,19 +32,19 @@ public enum CandlePatternType
 
     /// <summary>大陰線_丸坊主 (Bearish Marubozu): Large body, no upper or lower shadows.</summary>
     BearishMarubozu,
-    
+
     /// <summary>大陰線_大引坊主 (Bearish Closing Marubozu): Large body, no lower shadow, has upper shadow.</summary>
     BearishClosingMarubozu,
-    
+
     /// <summary>大陰線_寄付坊主 (Bearish Opening Marubozu): Large body, has lower shadow, no upper shadow.</summary>
     BearishOpeningMarubozu,
-    
+
     /// <summary>小陰線_コマ (Bearish Spinning Top): Small body, small upper and lower shadows.</summary>
     BearishSpinningTop,
-    
+
     /// <summary>下影陰線_カラカサ (Bearish Umbrella / Hanging Man): Small body at top, long lower shadow, no upper shadow.</summary>
     BearishUmbrella,
-    
+
     /// <summary>上影陰線_トンカチ (Bearish Inverted Umbrella / Shooting Star): Small body at bottom, long upper shadow, no lower shadow.</summary>
     BearishInvertedUmbrella,
 
@@ -52,13 +52,13 @@ public enum CandlePatternType
 
     /// <summary>トンボ (Dragonfly Doji): Open and close are at high, long lower shadow.</summary>
     DragonflyDoji,
-    
+
     /// <summary>トウバ (Gravestone Doji): Open and close are at low, long upper shadow.</summary>
     GravestoneDoji,
-    
+
     /// <summary>十字線 (Cross Doji): Open and close are equal, both upper and lower shadows present.</summary>
     CrossDoji,
-    
+
     /// <summary>四値同時 (Four-Price Doji): Open, High, Low, and Close are all equal (no range).</summary>
     FourPriceDoji,
 

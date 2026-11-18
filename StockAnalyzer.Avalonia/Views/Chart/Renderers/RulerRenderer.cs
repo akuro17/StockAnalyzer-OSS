@@ -38,7 +38,7 @@ public sealed class RulerRenderer : IDisposable
             Style = SKPaintStyle.Fill,
             IsAntialias = true
         };
-        
+
         _areaPaint = new SKPaint
         {
             Style = SKPaintStyle.Fill,
@@ -70,7 +70,7 @@ public sealed class RulerRenderer : IDisposable
             Math.Min((float)StartPoint.Y, (float)EndPoint.Y),
             Math.Max((float)StartPoint.X, (float)EndPoint.X),
             Math.Max((float)StartPoint.Y, (float)EndPoint.Y));
-        
+
         canvas.DrawRect(areaRect, _areaPaint);
 
         // Draw Measurement Line
@@ -86,7 +86,7 @@ public sealed class RulerRenderer : IDisposable
         // For Phase 1, we will just keep XToIndex if we didn't remove it from ChartHelpers OR replace it.
         // Wait, I DID remove it from ChartHelpers. I must replace it here.
         // I will use transform.ScreenToChart if available.
-        
+
         // TEMPORARY: Re-adding the logic locally or using the transform.
         var startIndex = (int)Math.Floor((StartPoint.X - chartArea.X) / (chartArea.Width / snapshot.Candles.Count));
         var endIndex = (int)Math.Floor((EndPoint.X - chartArea.X) / (chartArea.Width / snapshot.Candles.Count));
@@ -97,7 +97,7 @@ public sealed class RulerRenderer : IDisposable
         var validEnd = Math.Clamp(endIndex, 0, cCount - 1);
 
         var bars = endIndex - startIndex; // Raw difference in bars (visual)
-        
+
         var startTime = snapshot.Candles[validStart].Timestamp;
         var endTime = snapshot.Candles[validEnd].Timestamp;
         var timeSpan = endTime - startTime;
@@ -125,7 +125,7 @@ public sealed class RulerRenderer : IDisposable
 
         var rect = new SKRect(x, y, x + boxWidth, y + boxHeight);
         canvas.DrawRoundRect(rect, 4, 4, _bgPaint); // _bgPaint is label background
-        
+
         canvas.DrawText(line1, x + padding, y + padding + _font.Size, _font, _textPaint);
         canvas.DrawText(line2, x + padding, y + padding + _font.Size * 2 + 5, _font, _textPaint);
     }

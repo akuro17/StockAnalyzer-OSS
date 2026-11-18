@@ -73,7 +73,7 @@ public partial class ColumnChooserWindow : Window
 
         var visual = e.Source as Visual;
         var grip = visual as PathIcon ?? visual?.FindAncestorOfType<PathIcon>();
-        
+
         // Ensure we are dragging using the Grip handle
         if (grip != null && grip.Classes.Contains("grip"))
         {

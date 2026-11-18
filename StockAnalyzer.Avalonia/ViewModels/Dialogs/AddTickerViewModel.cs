@@ -29,7 +29,7 @@ public partial class AddTickerViewModel : ViewModelBase, IDisposable
     private readonly IDispatcherService _dispatcherService;
     private readonly ILogger<AddTickerViewModel> _logger;
     private bool _isDisposed;
-    
+
     private IReadOnlyList<string>? _masterTickers;
     private CancellationTokenSource? _searchCts;
 
@@ -108,7 +108,7 @@ public partial class AddTickerViewModel : ViewModelBase, IDisposable
         _watchlistManager = watchlistManager;
         _dispatcherService = dispatcherService;
         _logger = logger ?? NullLogger<AddTickerViewModel>.Instance;
-        
+
         _ = InitializeAsync();
     }
 
@@ -118,11 +118,11 @@ public partial class AddTickerViewModel : ViewModelBase, IDisposable
         {
             _masterTickers = await _marketDataProvider.GetAvailableTickersAsync();
             var profiles = _watchlistManager.GetAllProfiles();
-            
+
             var watchlists = System.Linq.Enumerable.OrderBy(
                 System.Linq.Enumerable.Where(profiles, p => !p.IsPortfolio),
                 p => p.Name, StringComparer.OrdinalIgnoreCase);
-            
+
             var portfolios = System.Linq.Enumerable.OrderBy(
                 System.Linq.Enumerable.Where(profiles, p => p.IsPortfolio),
                 p => p.Name, StringComparer.OrdinalIgnoreCase);
@@ -183,7 +183,7 @@ public partial class AddTickerViewModel : ViewModelBase, IDisposable
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _searchCts = new CancellationTokenSource();
-        
+
         if (string.IsNullOrWhiteSpace(value))
         {
             State = ValidationState.Idle;
@@ -240,7 +240,7 @@ public partial class AddTickerViewModel : ViewModelBase, IDisposable
                 }
 
                 string ticker = _masterTickers[i];
-                
+
                 // Case-insensitive exact match check
                 if (string.Equals(ticker, normalized, StringComparison.OrdinalIgnoreCase))
                 {

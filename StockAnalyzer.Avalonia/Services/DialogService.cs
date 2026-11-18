@@ -147,18 +147,18 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-             await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-             {
+            await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
                 var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
                 var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
                 var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
-                var warningBrush = Application.Current!.FindResource("Brush.Semantic.Warning") as IBrush 
-                    ?? Application.Current!.FindResource("Brush.Accent.Primary") as IBrush 
-                    ?? Brushes.Orange;
+                var warningBrush = Application.Current!.FindResource("Brush.Semantic.Warning") as IBrush
+                     ?? Application.Current!.FindResource("Brush.Accent.Primary") as IBrush
+                     ?? Brushes.Orange;
 
-                var btnOk = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_OK"] ?? "OK", 
+                var btnOk = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_OK"] ?? "OK",
                     Width = 90,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
@@ -192,9 +192,9 @@ public partial class DialogService : IDialogService
                 {
                     Padding = new Thickness(24, 20),
                     Background = bgPrimaryBrush,
-                    Child = new TextBlock 
-                    { 
-                        Text = message, 
+                    Child = new TextBlock
+                    {
+                        Text = message,
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = textPrimaryBrush,
                         FontSize = GetBaseFontSize()
@@ -233,7 +233,7 @@ public partial class DialogService : IDialogService
                 {
                     window.Show();
                 }
-             });
+            });
         }
         else
         {
@@ -245,31 +245,31 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-             return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-             {
+            return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
                 var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
                 var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
                 var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
                 var accentBrush = Application.Current!.FindResource("Brush.Accent.Primary") as IBrush ?? Brushes.DodgerBlue;
 
-                var btnYes = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_Yes"] ?? "Yes", 
-                    Width = 90, 
+                var btnYes = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_Yes"] ?? "Yes",
+                    Width = 90,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsDefault = true, 
+                    IsDefault = true,
                     CornerRadius = new CornerRadius(4)
                 };
-                var btnNo = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_No"] ?? "No", 
-                    Width = 90, 
+                var btnNo = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_No"] ?? "No",
+                    Width = 90,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsCancel = true, 
+                    IsCancel = true,
                     CornerRadius = new CornerRadius(4)
                 };
 
@@ -299,9 +299,9 @@ public partial class DialogService : IDialogService
                 {
                     Padding = new Thickness(24, 20),
                     Background = bgPrimaryBrush,
-                    Child = new TextBlock 
-                    { 
-                        Text = message, 
+                    Child = new TextBlock
+                    {
+                        Text = message,
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = textPrimaryBrush,
                         FontSize = GetBaseFontSize()
@@ -347,50 +347,50 @@ public partial class DialogService : IDialogService
                     window.Show();
                 }
                 return result;
-             });
+            });
         }
-        
+
         System.Diagnostics.Debug.WriteLine($"[Confirm] {title}: {message} (Defaulting to false for safety)");
-        return false; 
+        return false;
     }
 
     public async Task<string?> ShowInputAsync(string title, string message, string defaultValue = "")
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-             return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-             {
+            return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
                 var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
                 var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
                 var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
                 var accentBrush = Application.Current!.FindResource("Brush.Accent.Primary") as IBrush ?? Brushes.DodgerBlue;
 
-                var input = new TextBox 
-                { 
-                    Text = defaultValue, 
+                var input = new TextBox
+                {
+                    Text = defaultValue,
                     Height = 36,
                     FontSize = GetBaseFontSize(),
-                    Margin = new Thickness(0, 12, 0, 0) 
+                    Margin = new Thickness(0, 12, 0, 0)
                 };
-                var btnOk = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_OK"] ?? "OK", 
+                var btnOk = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_OK"] ?? "OK",
                     Width = 90,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsDefault = true, 
-                    CornerRadius = new CornerRadius(4) 
+                    IsDefault = true,
+                    CornerRadius = new CornerRadius(4)
                 };
-                var btnCancel = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_Cancel"] ?? "Cancel", 
+                var btnCancel = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_Cancel"] ?? "Cancel",
                     Width = 90,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsCancel = true, 
-                    CornerRadius = new CornerRadius(4) 
+                    IsCancel = true,
+                    CornerRadius = new CornerRadius(4)
                 };
 
                 btnOk.Classes.Add("accent");
@@ -422,16 +422,16 @@ public partial class DialogService : IDialogService
                     Child = new StackPanel
                     {
                         Children =
-                        {
-                            new TextBlock 
-                            { 
-                                Text = message, 
+                       {
+                            new TextBlock
+                            {
+                                Text = message,
                                 TextWrapping = TextWrapping.Wrap,
                                 Foreground = textPrimaryBrush,
                                 FontSize = GetBaseFontSize()
                             },
                             input
-                        }
+                       }
                     }
                 };
 
@@ -454,7 +454,7 @@ public partial class DialogService : IDialogService
                     BorderThickness = new Thickness(1),
                     Child = grid
                 };
-                
+
                 string? result = null;
 
                 btnOk.Click += (_, _) => { result = input.Text; window.Close(); };
@@ -469,7 +469,7 @@ public partial class DialogService : IDialogService
                     window.Show();
                 }
                 return result;
-             });
+            });
         }
         return null;
     }
@@ -554,72 +554,72 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-             return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-             {
+            return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
                 var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
                 var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
                 var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
                 var accentBrush = Application.Current!.FindResource("Brush.Accent.Primary") as IBrush ?? Brushes.DodgerBlue;
 
-                var input = new TextBox 
-                { 
-                    Text = defaultText, 
-                    Margin = new Thickness(0, 5, 0, 12), 
-                    AcceptsReturn = true, 
+                var input = new TextBox
+                {
+                    Text = defaultText,
+                    Margin = new Thickness(0, 5, 0, 12),
+                    AcceptsReturn = true,
                     Height = 60,
                     FontSize = GetBaseFontSize()
                 };
-                var fontSizeLabel = new TextBlock 
-                { 
-                    Text = LocalizationManager.Instance["Dialog_FontSize"] ?? "Font Size:", 
+                var fontSizeLabel = new TextBlock
+                {
+                    Text = LocalizationManager.Instance["Dialog_FontSize"] ?? "Font Size:",
                     VerticalAlignment = VerticalAlignment.Center,
                     FontSize = GetDetailFontSize(),
                     Foreground = textPrimaryBrush
                 };
                 var fontSizes = new System.Collections.ObjectModel.ObservableCollection<double> { 10, 12, 14, 16, 18, 20, 24, 32, 48, 64, 72, 96 };
-                
+
                 if (!fontSizes.Contains(defaultFontSize))
                 {
                     fontSizes.Add(defaultFontSize);
                     // The custom font size is appended at the end; sorting is intentionally skipped.
                 }
 
-                var fontSizeCombo = new ComboBox 
-                { 
+                var fontSizeCombo = new ComboBox
+                {
                     ItemsSource = fontSizes,
                     SelectedItem = defaultFontSize,
                     Width = 100,
                     Height = 36
                 };
-                
-                var fontPanel = new StackPanel 
-                { 
+
+                var fontPanel = new StackPanel
+                {
                     Orientation = Orientation.Horizontal,
                     Spacing = 10,
                     Children = { fontSizeLabel, fontSizeCombo }
                 };
 
-                var btnOk = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_OK"] ?? "OK", 
+                var btnOk = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_OK"] ?? "OK",
                     Width = 90,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsDefault = true, 
+                    IsDefault = true,
                     CornerRadius = new CornerRadius(4),
-                    Tag = true 
+                    Tag = true
                 };
-                var btnCancel = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_Cancel"] ?? "Cancel", 
+                var btnCancel = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_Cancel"] ?? "Cancel",
                     Width = 90,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsCancel = true, 
+                    IsCancel = true,
                     CornerRadius = new CornerRadius(4),
-                    Tag = false 
+                    Tag = false
                 };
 
                 btnOk.Classes.Add("accent");
@@ -651,11 +651,11 @@ public partial class DialogService : IDialogService
                     Child = new StackPanel
                     {
                         Children =
-                        {
+                       {
                             new TextBlock { Text = LocalizationManager.Instance["Dialog_Text"] ?? "Text:", Margin = new Thickness(0,0,0,5), FontSize = GetDetailFontSize(), Foreground = textPrimaryBrush },
                             input,
                             fontPanel
-                        }
+                       }
                     }
                 };
 
@@ -678,15 +678,15 @@ public partial class DialogService : IDialogService
                     BorderThickness = new Thickness(1),
                     Child = grid
                 };
-                
+
                 (string Text, double FontSize)? result = null;
 
-                btnOk.Click += (_, _) => 
-                { 
-                    double fs = (double?)fontSizeCombo.SelectedItem ?? 12.0;
-                    result = (input.Text ?? "", fs); 
-                    window.Close(); 
-                };
+                btnOk.Click += (_, _) =>
+                 {
+                     double fs = (double?)fontSizeCombo.SelectedItem ?? 12.0;
+                     result = (input.Text ?? "", fs);
+                     window.Close();
+                 };
                 btnCancel.Click += (_, _) => { result = null; window.Close(); };
 
                 if (desktop.MainWindow != null)
@@ -698,7 +698,7 @@ public partial class DialogService : IDialogService
                     window.Show();
                 }
                 return result;
-             });
+            });
         }
         return null;
     }
@@ -706,13 +706,13 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-             return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-             {
+            return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
                 var registry = _serviceProvider?.GetService<IDrawingSettingsPanelRegistry>();
                 var dialog = new Views.Dialogs.DrawingSettingsDialog(drawing, registry, onApply, coordinator, candles);
                 var result = await dialog.ShowDialog<DrawingSettingsResult?>(desktop.MainWindow!);
                 return result ?? DrawingSettingsResult.None;
-             });
+            });
         }
         return DrawingSettingsResult.None;
     }
@@ -737,11 +737,11 @@ public partial class DialogService : IDialogService
             await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
             {
                 var settingsWindow = new Views.IndicatorSettingsWindow();
-                var indicatorFactory = _serviceProvider?.GetService<StockAnalyzer.Core.Models.Indicators.IIndicatorFactory>() 
+                var indicatorFactory = _serviceProvider?.GetService<StockAnalyzer.Core.Models.Indicators.IIndicatorFactory>()
                     ?? StockAnalyzer.Core.Models.Indicators.IndicatorFactory.Default;
-                var toastService = _serviceProvider?.GetService<IToastNotificationService>() 
+                var toastService = _serviceProvider?.GetService<IToastNotificationService>()
                 ?? throw new InvalidOperationException("IToastNotificationService must be registered in DI.");
-                var templateService = _serviceProvider?.GetRequiredService<StockAnalyzer.Core.Interfaces.ITemplateService>() 
+                var templateService = _serviceProvider?.GetRequiredService<StockAnalyzer.Core.Interfaces.ITemplateService>()
                     ?? throw new InvalidOperationException("ITemplateService must be registered in DI.");
                 var sourceIndicatorService = _serviceProvider?.GetService<StockAnalyzer.Core.Interfaces.ISourceIndicatorService>();
                 var driverService = _serviceProvider?.GetService<StockAnalyzer.Core.Interfaces.IDynamicPeriodDriverService>();
@@ -762,8 +762,8 @@ public partial class DialogService : IDialogService
     }
 
     public async Task ShowIndicatorPropertiesDialogAsync(
-        CoreIndicatorSettings indicator, 
-        Action<CoreIndicatorSettings>? onApply = null, 
+        CoreIndicatorSettings indicator,
+        Action<CoreIndicatorSettings>? onApply = null,
         IEnumerable<CoreIndicatorSettings>? allIndicators = null)
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -772,7 +772,7 @@ public partial class DialogService : IDialogService
             {
                 var dialog = new Views.Dialogs.IndicatorPropertiesDialog();
                 var messenger = _serviceProvider?.GetRequiredService<IMessenger>() ?? WeakReferenceMessenger.Default;
-                var dispatcher = _serviceProvider?.GetRequiredService<StockAnalyzer.Core.Services.IDispatcherService>() 
+                var dispatcher = _serviceProvider?.GetRequiredService<StockAnalyzer.Core.Services.IDispatcherService>()
                                 ?? new StockAnalyzer.Avalonia.Services.DispatcherService();
                 var sourceIndicatorService = _serviceProvider?.GetService<StockAnalyzer.Core.Interfaces.ISourceIndicatorService>();
                 var driverService = _serviceProvider?.GetService<StockAnalyzer.Core.Interfaces.IDynamicPeriodDriverService>();
@@ -904,7 +904,7 @@ public partial class DialogService : IDialogService
                     {
                         DataContext = vm
                     };
-                    
+
                     var parent = desktop.MainWindow;
                     var result = await window.ShowDialog<bool>(parent!);
                     return result ? vm.GetActiveColumnNames() : null;
@@ -935,7 +935,7 @@ public partial class DialogService : IDialogService
                     {
                         DataContext = vm
                     };
-                    
+
                     var parent = desktop.Windows.FirstOrDefault(w => w.IsActive) ?? desktop.MainWindow;
                     var result = await window.ShowDialog<bool>(parent!);
                     return result ? vm.GetActiveColumnIds() : null;
@@ -966,7 +966,7 @@ public partial class DialogService : IDialogService
                     {
                         DataContext = vm
                     };
-                    
+
                     var parent = desktop.Windows.FirstOrDefault(w => w.IsActive) ?? desktop.MainWindow;
                     var result = await window.ShowDialog<bool>(parent!);
                     return result ? vm.GetActiveMetricNames() : null;
@@ -1036,7 +1036,7 @@ public partial class DialogService : IDialogService
     }
 
     public async Task<StockAnalyzer.Core.Models.Settings.FilterSettings?> ShowFilterSettingsDialogAsync(
-        StockAnalyzer.Core.Models.Settings.FilterSettings initialSettings, 
+        StockAnalyzer.Core.Models.Settings.FilterSettings initialSettings,
         Action<StockAnalyzer.Core.Models.Settings.FilterSettings>? onApply = null)
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -1101,10 +1101,10 @@ public partial class DialogService : IDialogService
             {
                 if (_serviceProvider != null)
                 {
-                    try 
+                    try
                     {
                         var vm = _serviceProvider.GetRequiredService<SettingsViewModel>();
-                        
+
                         if (!string.IsNullOrEmpty(initialCategoryKey))
                         {
                             // Flatten categories to find the matching one
@@ -1174,7 +1174,7 @@ public partial class DialogService : IDialogService
                 var screenerWindow = new Views.ScreenerWindow();
                 if (_serviceProvider != null)
                 {
-                    try 
+                    try
                     {
                         var vm = _serviceProvider.GetRequiredService<ScreenerViewModel>();
                         screenerWindow.DataContext = vm;
@@ -1297,7 +1297,7 @@ public partial class DialogService : IDialogService
                 var logViewerWindow = new Views.LogViewerView();
                 if (_serviceProvider != null)
                 {
-                    try 
+                    try
                     {
                         var vm = _serviceProvider.GetRequiredService<LogViewerViewModel>();
                         logViewerWindow.DataContext = vm;
@@ -1477,17 +1477,17 @@ public partial class DialogService : IDialogService
         {
             return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
             {
-                var exportService = _serviceProvider?.GetService<Services.Export.IChartImageExportService>() 
+                var exportService = _serviceProvider?.GetService<Services.Export.IChartImageExportService>()
                     ?? new Services.Export.ChartImageExportService();
                 var logger = _serviceProvider?.GetService<ILogger<ExportChartImageDialogViewModel>>();
                 var marketDataProvider = _serviceProvider?.GetService<StockAnalyzer.Core.Services.IMarketDataProvider>();
-                var themeManager = _serviceProvider?.GetService<StockAnalyzer.Core.Theme.IThemeManager>() 
+                var themeManager = _serviceProvider?.GetService<StockAnalyzer.Core.Theme.IThemeManager>()
                     ?? new StockAnalyzer.Core.Theme.ThemeManager();
 
                 var bounds = new Rect(0, 0, 1280, 720);
                 var layout = Views.Chart.ChartLayoutService.CreateLayout(
-                    bounds, 
-                    chartViewModel.ChartType, 
+                    bounds,
+                    chartViewModel.ChartType,
                     chartViewModel.Indicators,
                     chartViewModel.EffectiveIsSubWindowVisible,
                     chartViewModel.IsMainWindowVisible,
@@ -1551,12 +1551,12 @@ public partial class DialogService : IDialogService
                 var profile = Views.Chart.ChartTypeProfileRegistry.Get(chartViewModel.ChartType);
                 var renderer = profile.CreateRenderer();
                 var config = profile.CreateRenderConfig(
-                    chartViewModel, 
-                    chartViewModel.CurrentPrice, 
-                    snapshot.StartIndex, 
-                    snapshot.VisibleCandleCount, 
-                    new StockAnalyzer.Core.Models.Point(0, 0), 
-                    transform, 
+                    chartViewModel,
+                    chartViewModel.CurrentPrice,
+                    snapshot.StartIndex,
+                    snapshot.VisibleCandleCount,
+                    new StockAnalyzer.Core.Models.Point(0, 0),
+                    transform,
                     1.0);
 
                 string companyName = string.Empty;
@@ -1633,40 +1633,40 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-             return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-             {
+            return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
                 var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
                 var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
                 var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
                 var accentBrush = Application.Current!.FindResource("Brush.Accent.Primary") as IBrush ?? Brushes.DodgerBlue;
 
-                var btnAuto = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_AutoSetup"] ?? "Automatic Setup (Recommended)", 
-                    Width = 200, 
+                var btnAuto = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_AutoSetup"] ?? "Automatic Setup (Recommended)",
+                    Width = 200,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsDefault = true, 
+                    IsDefault = true,
                     CornerRadius = new CornerRadius(4)
                 };
-                var btnManual = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_ConfigureManually"] ?? "Configure Manually", 
-                    Width = 140, 
+                var btnManual = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_ConfigureManually"] ?? "Configure Manually",
+                    Width = 140,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
                     CornerRadius = new CornerRadius(4)
                 };
-                var btnCancel = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_Cancel"] ?? "Cancel", 
-                    Width = 100, 
+                var btnCancel = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_Cancel"] ?? "Cancel",
+                    Width = 100,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsCancel = true, 
+                    IsCancel = true,
                     CornerRadius = new CornerRadius(4)
                 };
 
@@ -1700,9 +1700,9 @@ public partial class DialogService : IDialogService
                 {
                     Padding = new Thickness(24, 20),
                     Background = bgPrimaryBrush,
-                    Child = new TextBlock 
-                    { 
-                        Text = message, 
+                    Child = new TextBlock
+                    {
+                        Text = message,
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = textPrimaryBrush,
                         FontSize = GetBaseFontSize(),
@@ -1737,27 +1737,27 @@ public partial class DialogService : IDialogService
                 EventHandler<RoutedEventArgs>? cancelHandler = null;
 
                 Action cleanHandlers = () =>
-                {
-                    btnAuto.Click -= autoHandler;
-                    btnManual.Click -= manualHandler;
-                    btnCancel.Click -= cancelHandler;
-                };
+                 {
+                     btnAuto.Click -= autoHandler;
+                     btnManual.Click -= manualHandler;
+                     btnCancel.Click -= cancelHandler;
+                 };
 
                 autoHandler = new EventHandler<RoutedEventArgs>((sender, e) => { cleanHandlers(); result = StockAnalyzer.Core.Services.PythonSetupDecision.Automatic; window.Close(); });
-                manualHandler = new EventHandler<RoutedEventArgs>(async (sender, e) => 
-                { 
-                    cleanHandlers(); 
-                    if (desktop.MainWindow?.Clipboard != null)
-                    {
-                        try
-                        {
-                            await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Setup(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell));
-                        }
-                        catch { }
-                    }
-                    result = StockAnalyzer.Core.Services.PythonSetupDecision.Manual; 
-                    window.Close(); 
-                });
+                manualHandler = new EventHandler<RoutedEventArgs>(async (sender, e) =>
+                 {
+                     cleanHandlers();
+                     if (desktop.MainWindow?.Clipboard != null)
+                     {
+                         try
+                         {
+                             await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Setup(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell));
+                         }
+                         catch { }
+                     }
+                     result = StockAnalyzer.Core.Services.PythonSetupDecision.Manual;
+                     window.Close();
+                 });
                 cancelHandler = new EventHandler<RoutedEventArgs>((sender, e) => { cleanHandlers(); result = StockAnalyzer.Core.Services.PythonSetupDecision.Cancel; window.Close(); });
 
                 btnAuto.Click += autoHandler;
@@ -1773,7 +1773,7 @@ public partial class DialogService : IDialogService
                     window.Show();
                 }
                 return result;
-             });
+            });
         }
         return StockAnalyzer.Core.Services.PythonSetupDecision.Cancel;
     }
@@ -1797,90 +1797,90 @@ public partial class DialogService : IDialogService
 
             await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
              {
-                var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
-                var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
-                var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
-                var accentBrush = Application.Current!.FindResource("Brush.Accent.Primary") as IBrush ?? Brushes.DodgerBlue;
+                 var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
+                 var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
+                 var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
+                 var accentBrush = Application.Current!.FindResource("Brush.Accent.Primary") as IBrush ?? Brushes.DodgerBlue;
 
-                var btnOk = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_OK"] ?? "OK", 
-                    Width = 90, 
-                    Height = 36,
-                    VerticalContentAlignment = VerticalAlignment.Center,
-                    HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsDefault = true, 
-                    CornerRadius = new CornerRadius(4)
-                };
-                btnOk.Classes.Add("accent");
+                 var btnOk = new Button
+                 {
+                     Content = LocalizationManager.Instance["Btn_OK"] ?? "OK",
+                     Width = 90,
+                     Height = 36,
+                     VerticalContentAlignment = VerticalAlignment.Center,
+                     HorizontalContentAlignment = HorizontalAlignment.Center,
+                     IsDefault = true,
+                     CornerRadius = new CornerRadius(4)
+                 };
+                 btnOk.Classes.Add("accent");
 
-                var title = LocalizationManager.Instance["PythonSetup_Manual_Title"] ?? "Manual Setup Instructions";
+                 var title = LocalizationManager.Instance["PythonSetup_Manual_Title"] ?? "Manual Setup Instructions";
 
-                var window = new Window
-                {
-                    Title = title,
-                    MinWidth = 500,
-                    MinHeight = 280,
-                    SizeToContent = SizeToContent.Height,
-                    Width = 520,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    CanResize = false,
-                    ExtendClientAreaToDecorationsHint = true,
-                    ExtendClientAreaChromeHints = global::Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome,
-                    ExtendClientAreaTitleBarHeightHint = -1,
-                    Background = bgPrimaryBrush,
-                    Foreground = textPrimaryBrush,
-                    Icon = desktop.MainWindow?.Icon
-                };
+                 var window = new Window
+                 {
+                     Title = title,
+                     MinWidth = 500,
+                     MinHeight = 280,
+                     SizeToContent = SizeToContent.Height,
+                     Width = 520,
+                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                     CanResize = false,
+                     ExtendClientAreaToDecorationsHint = true,
+                     ExtendClientAreaChromeHints = global::Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome,
+                     ExtendClientAreaTitleBarHeightHint = -1,
+                     Background = bgPrimaryBrush,
+                     Foreground = textPrimaryBrush,
+                     Icon = desktop.MainWindow?.Icon
+                 };
 
-                var header = CreateStandardHeader(title, SharedIconGeometries.Info, GetTitleFontSize(), window, accentBrush);
+                 var header = CreateStandardHeader(title, SharedIconGeometries.Info, GetTitleFontSize(), window, accentBrush);
 
-                var body = new Border
-                {
-                    Padding = new Thickness(24, 20),
-                    Background = bgPrimaryBrush,
-                    Child = new TextBlock 
-                    { 
-                        Text = (LocalizationManager.Instance["PythonSetup_Manual_Instructions"] ?? "").Replace("{ManualCommands}", StockAnalyzer.Core.Services.ManualPipCommands.AllShells(StockAnalyzer.Core.Services.ManualPipCommands.Setup)),
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = textPrimaryBrush,
-                        FontSize = GetBaseFontSize(),
-                        MaxWidth = 480
-                    }
-                };
+                 var body = new Border
+                 {
+                     Padding = new Thickness(24, 20),
+                     Background = bgPrimaryBrush,
+                     Child = new TextBlock
+                     {
+                         Text = (LocalizationManager.Instance["PythonSetup_Manual_Instructions"] ?? "").Replace("{ManualCommands}", StockAnalyzer.Core.Services.ManualPipCommands.AllShells(StockAnalyzer.Core.Services.ManualPipCommands.Setup)),
+                         TextWrapping = TextWrapping.Wrap,
+                         Foreground = textPrimaryBrush,
+                         FontSize = GetBaseFontSize(),
+                         MaxWidth = 480
+                     }
+                 };
 
-                var footer = CreateStandardFooter(new[] { btnOk });
+                 var footer = CreateStandardFooter(new[] { btnOk });
 
-                var grid = new Grid
-                {
-                    RowDefinitions = new RowDefinitions("56, *, 64")
-                };
-                Grid.SetRow(header, 0);
-                Grid.SetRow(body, 1);
-                Grid.SetRow(footer, 2);
-                grid.Children.Add(header);
-                grid.Children.Add(body);
-                grid.Children.Add(footer);
+                 var grid = new Grid
+                 {
+                     RowDefinitions = new RowDefinitions("56, *, 64")
+                 };
+                 Grid.SetRow(header, 0);
+                 Grid.SetRow(body, 1);
+                 Grid.SetRow(footer, 2);
+                 grid.Children.Add(header);
+                 grid.Children.Add(body);
+                 grid.Children.Add(footer);
 
-                window.Content = new Border
-                {
-                    BorderBrush = borderPrimaryBrush,
-                    BorderThickness = new Thickness(1),
-                    Child = grid
-                };
+                 window.Content = new Border
+                 {
+                     BorderBrush = borderPrimaryBrush,
+                     BorderThickness = new Thickness(1),
+                     Child = grid
+                 };
 
-                EventHandler<RoutedEventArgs>? okSetupHandler = null;
-                okSetupHandler = new EventHandler<RoutedEventArgs>((sender, e) => { btnOk.Click -= okSetupHandler; window.Close(); });
-                btnOk.Click += okSetupHandler;
+                 EventHandler<RoutedEventArgs>? okSetupHandler = null;
+                 okSetupHandler = new EventHandler<RoutedEventArgs>((sender, e) => { btnOk.Click -= okSetupHandler; window.Close(); });
+                 btnOk.Click += okSetupHandler;
 
-                if (desktop.MainWindow != null)
-                {
-                    await window.ShowDialog(desktop.MainWindow);
-                }
-                else
-                {
-                    window.Show();
-                }
+                 if (desktop.MainWindow != null)
+                 {
+                     await window.ShowDialog(desktop.MainWindow);
+                 }
+                 else
+                 {
+                     window.Show();
+                 }
              });
         }
     }
@@ -1889,41 +1889,41 @@ public partial class DialogService : IDialogService
     {
         if (Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-             return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
-             {
+            return await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+            {
                 var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
                 var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
                 var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
                 var accentBrush = Application.Current!.FindResource("Brush.Accent.Primary") as IBrush ?? Brushes.DodgerBlue;
 
-                var btnAuto = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_AutoUpdate"] ?? "Update Automatically", 
-                    Width = 200, 
+                var btnAuto = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_AutoUpdate"] ?? "Update Automatically",
+                    Width = 200,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsDefault = true, 
+                    IsDefault = true,
                     CornerRadius = new CornerRadius(4)
                 };
-                var btnManual = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_ConfigureManually"] ?? "Configure Manually", 
-                    MinWidth = ManualButtonMinWidth, 
-                    Padding = new Thickness(ManualButtonHorizontalPadding, 0), 
+                var btnManual = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_ConfigureManually"] ?? "Configure Manually",
+                    MinWidth = ManualButtonMinWidth,
+                    Padding = new Thickness(ManualButtonHorizontalPadding, 0),
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
                     CornerRadius = new CornerRadius(4)
                 };
-                var btnCancel = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_Cancel"] ?? "Cancel", 
-                    Width = 100, 
+                var btnCancel = new Button
+                {
+                    Content = LocalizationManager.Instance["Btn_Cancel"] ?? "Cancel",
+                    Width = 100,
                     Height = 36,
                     VerticalContentAlignment = VerticalAlignment.Center,
                     HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsCancel = true, 
+                    IsCancel = true,
                     CornerRadius = new CornerRadius(4)
                 };
 
@@ -1957,9 +1957,9 @@ public partial class DialogService : IDialogService
                 {
                     Padding = new Thickness(24, 20),
                     Background = bgPrimaryBrush,
-                    Child = new TextBlock 
-                    { 
-                        Text = message, 
+                    Child = new TextBlock
+                    {
+                        Text = message,
                         TextWrapping = TextWrapping.Wrap,
                         Foreground = textPrimaryBrush,
                         FontSize = GetBaseFontSize(),
@@ -1990,19 +1990,19 @@ public partial class DialogService : IDialogService
                 var result = StockAnalyzer.Core.Services.PythonSetupDecision.Cancel;
 
                 btnAuto.Click += (_, _) => { result = StockAnalyzer.Core.Services.PythonSetupDecision.Automatic; window.Close(); };
-                btnManual.Click += async (_, _) => 
-                { 
-                    if (desktop.MainWindow?.Clipboard != null)
-                    {
-                        try
-                        {
-                            await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Update(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell));
-                        }
-                        catch { }
-                    }
-                    result = StockAnalyzer.Core.Services.PythonSetupDecision.Manual; 
-                    window.Close(); 
-                };
+                btnManual.Click += async (_, _) =>
+                 {
+                     if (desktop.MainWindow?.Clipboard != null)
+                     {
+                         try
+                         {
+                             await desktop.MainWindow.Clipboard.SetTextAsync(StockAnalyzer.Core.Services.ManualPipCommands.Update(StockAnalyzer.Core.Services.ManualPipCommands.ClipboardShell));
+                         }
+                         catch { }
+                     }
+                     result = StockAnalyzer.Core.Services.PythonSetupDecision.Manual;
+                     window.Close();
+                 };
                 btnCancel.Click += (_, _) => { result = StockAnalyzer.Core.Services.PythonSetupDecision.Cancel; window.Close(); };
 
                 if (desktop.MainWindow != null)
@@ -2014,7 +2014,7 @@ public partial class DialogService : IDialogService
                     window.Show();
                 }
                 return result;
-             });
+            });
         }
         return StockAnalyzer.Core.Services.PythonSetupDecision.Cancel;
     }
@@ -2038,90 +2038,90 @@ public partial class DialogService : IDialogService
 
             await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
              {
-                var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
-                var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
-                var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
-                var accentBrush = Application.Current!.FindResource("Brush.Accent.Primary") as IBrush ?? Brushes.DodgerBlue;
+                 var bgPrimaryBrush = Application.Current!.FindResource("Brush.Background.Primary") as IBrush ?? Brushes.Black;
+                 var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
+                 var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
+                 var accentBrush = Application.Current!.FindResource("Brush.Accent.Primary") as IBrush ?? Brushes.DodgerBlue;
 
-                var btnOk = new Button 
-                { 
-                    Content = LocalizationManager.Instance["Btn_OK"] ?? "OK", 
-                    Width = 90, 
-                    Height = 36,
-                    VerticalContentAlignment = VerticalAlignment.Center,
-                    HorizontalContentAlignment = HorizontalAlignment.Center,
-                    IsDefault = true, 
-                    CornerRadius = new CornerRadius(4)
-                };
-                btnOk.Classes.Add("accent");
+                 var btnOk = new Button
+                 {
+                     Content = LocalizationManager.Instance["Btn_OK"] ?? "OK",
+                     Width = 90,
+                     Height = 36,
+                     VerticalContentAlignment = VerticalAlignment.Center,
+                     HorizontalContentAlignment = HorizontalAlignment.Center,
+                     IsDefault = true,
+                     CornerRadius = new CornerRadius(4)
+                 };
+                 btnOk.Classes.Add("accent");
 
-                var title = LocalizationManager.Instance["PythonUpdate_Manual_Title"] ?? "Manual Update Instructions";
+                 var title = LocalizationManager.Instance["PythonUpdate_Manual_Title"] ?? "Manual Update Instructions";
 
-                var window = new Window
-                {
-                    Title = title,
-                    MinWidth = 500,
-                    MinHeight = 280,
-                    SizeToContent = SizeToContent.Height,
-                    Width = 520,
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                    CanResize = false,
-                    ExtendClientAreaToDecorationsHint = true,
-                    ExtendClientAreaChromeHints = global::Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome,
-                    ExtendClientAreaTitleBarHeightHint = -1,
-                    Background = bgPrimaryBrush,
-                    Foreground = textPrimaryBrush,
-                    Icon = desktop.MainWindow?.Icon
-                };
+                 var window = new Window
+                 {
+                     Title = title,
+                     MinWidth = 500,
+                     MinHeight = 280,
+                     SizeToContent = SizeToContent.Height,
+                     Width = 520,
+                     WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                     CanResize = false,
+                     ExtendClientAreaToDecorationsHint = true,
+                     ExtendClientAreaChromeHints = global::Avalonia.Platform.ExtendClientAreaChromeHints.NoChrome,
+                     ExtendClientAreaTitleBarHeightHint = -1,
+                     Background = bgPrimaryBrush,
+                     Foreground = textPrimaryBrush,
+                     Icon = desktop.MainWindow?.Icon
+                 };
 
-                var header = CreateStandardHeader(title, SharedIconGeometries.Info, GetTitleFontSize(), window, accentBrush);
+                 var header = CreateStandardHeader(title, SharedIconGeometries.Info, GetTitleFontSize(), window, accentBrush);
 
-                var body = new Border
-                {
-                    Padding = new Thickness(24, 20),
-                    Background = bgPrimaryBrush,
-                    Child = new TextBlock 
-                    { 
-                        Text = (LocalizationManager.Instance["PythonUpdate_Manual_Instructions"] ?? "").Replace("{ManualCommands}", StockAnalyzer.Core.Services.ManualPipCommands.AllShells(StockAnalyzer.Core.Services.ManualPipCommands.Update)),
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = textPrimaryBrush,
-                        FontSize = GetBaseFontSize(),
-                        MaxWidth = 480
-                    }
-                };
+                 var body = new Border
+                 {
+                     Padding = new Thickness(24, 20),
+                     Background = bgPrimaryBrush,
+                     Child = new TextBlock
+                     {
+                         Text = (LocalizationManager.Instance["PythonUpdate_Manual_Instructions"] ?? "").Replace("{ManualCommands}", StockAnalyzer.Core.Services.ManualPipCommands.AllShells(StockAnalyzer.Core.Services.ManualPipCommands.Update)),
+                         TextWrapping = TextWrapping.Wrap,
+                         Foreground = textPrimaryBrush,
+                         FontSize = GetBaseFontSize(),
+                         MaxWidth = 480
+                     }
+                 };
 
-                var footer = CreateStandardFooter(new[] { btnOk });
+                 var footer = CreateStandardFooter(new[] { btnOk });
 
-                var grid = new Grid
-                {
-                    RowDefinitions = new RowDefinitions("56, *, 64")
-                };
-                Grid.SetRow(header, 0);
-                Grid.SetRow(body, 1);
-                Grid.SetRow(footer, 2);
-                grid.Children.Add(header);
-                grid.Children.Add(body);
-                grid.Children.Add(footer);
+                 var grid = new Grid
+                 {
+                     RowDefinitions = new RowDefinitions("56, *, 64")
+                 };
+                 Grid.SetRow(header, 0);
+                 Grid.SetRow(body, 1);
+                 Grid.SetRow(footer, 2);
+                 grid.Children.Add(header);
+                 grid.Children.Add(body);
+                 grid.Children.Add(footer);
 
-                window.Content = new Border
-                {
-                    BorderBrush = borderPrimaryBrush,
-                    BorderThickness = new Thickness(1),
-                    Child = grid
-                };
+                 window.Content = new Border
+                 {
+                     BorderBrush = borderPrimaryBrush,
+                     BorderThickness = new Thickness(1),
+                     Child = grid
+                 };
 
-                EventHandler<RoutedEventArgs>? okUpdateHandler = null;
-                okUpdateHandler = new EventHandler<RoutedEventArgs>((sender, e) => { btnOk.Click -= okUpdateHandler; window.Close(); });
-                btnOk.Click += okUpdateHandler;
+                 EventHandler<RoutedEventArgs>? okUpdateHandler = null;
+                 okUpdateHandler = new EventHandler<RoutedEventArgs>((sender, e) => { btnOk.Click -= okUpdateHandler; window.Close(); });
+                 btnOk.Click += okUpdateHandler;
 
-                if (desktop.MainWindow != null)
-                {
-                    await window.ShowDialog(desktop.MainWindow);
-                }
-                else
-                {
-                    window.Show();
-                }
+                 if (desktop.MainWindow != null)
+                 {
+                     await window.ShowDialog(desktop.MainWindow);
+                 }
+                 else
+                 {
+                     window.Show();
+                 }
              });
         }
     }
@@ -2136,9 +2136,9 @@ public partial class DialogService : IDialogService
                 var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
                 var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
 
-                var textBlock = new TextBlock 
-                { 
-                    Text = "Initializing...", 
+                var textBlock = new TextBlock
+                {
+                    Text = "Initializing...",
                     TextWrapping = TextWrapping.Wrap,
                     Foreground = textPrimaryBrush,
                     FontSize = GetBaseFontSize(),

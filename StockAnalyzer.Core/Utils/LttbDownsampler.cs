@@ -52,7 +52,7 @@ public static class LttbDownsampler
             int nextBucketStart = (int)Math.Floor((i + 1) * every) + 1;
             int nextBucketEnd = (int)Math.Floor((i + 2) * every) + 1;
             if (nextBucketEnd > dataLength) nextBucketEnd = dataLength;
-            
+
             int nextBucketSize = nextBucketEnd - nextBucketStart;
             double avgX = 0, avgY = 0;
             if (nextBucketSize > 0)
@@ -86,7 +86,7 @@ public static class LttbDownsampler
             {
                 double pointBx = j;
                 double pointBy = (double)data[j].Close;
-                
+
                 double area = Math.Abs(
                     (pointAx - avgX) * (pointBy - pointAy) -
                     (pointAx - pointBx) * (avgY - pointAy)
@@ -145,7 +145,7 @@ public static class LttbDownsampler
             int nextBucketStart = (int)Math.Floor((i + 1) * every) + 1;
             int nextBucketEnd = (int)Math.Floor((i + 2) * every) + 1;
             if (nextBucketEnd > dataLength) nextBucketEnd = dataLength;
-            
+
             int nextBucketSize = nextBucketEnd - nextBucketStart;
             double avgX = 0, avgY = 0;
             if (nextBucketSize > 0)
@@ -195,7 +195,7 @@ public static class LttbDownsampler
 
                 double pointBx = j;
                 double pointBy = (double)valJ.Value;
-                
+
                 double area = Math.Abs(
                     (pointAx - avgX) * (pointBy - pointAy) -
                     (pointAx - pointBx) * (avgY - pointAy)

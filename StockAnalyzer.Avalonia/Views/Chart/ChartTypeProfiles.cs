@@ -12,13 +12,13 @@ namespace StockAnalyzer.Avalonia.Views.Chart;
 public abstract class ChartTypeProfileBase : IChartTypeProfile
 {
     public abstract ChartType Type { get; }
-    
+
     public ChartTypeCapabilities Capabilities => ChartTypeCapabilitiesRegistry.Get(Type);
-    
+
     public abstract IChartRenderer CreateRenderer();
-    
+
     public abstract IChartLayoutProvider LayoutProvider { get; }
-    
+
     public abstract IPriceRangeCalculator PriceRangeCalculator { get; }
 
     public abstract IChartRenderConfig CreateRenderConfig(

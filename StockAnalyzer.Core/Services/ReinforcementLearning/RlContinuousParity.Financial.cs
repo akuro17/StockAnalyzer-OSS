@@ -226,9 +226,19 @@ internal static partial class RlContinuousParity
 
     private static void RequireSavedAccount(JsonElement saved, RlSessionSnapshot s)
     {
-        foreach (var pair in new Dictionary<string, decimal> { ["cash"] = s.EquityPoint.Cash, ["equity"] = s.EquityPoint.Equity,
-            ["held_margin"] = s.EquityPoint.HeldMargin, ["quantity"] = s.Quantity, ["entry_price"] = s.EntryPrice, ["unrealized_pnl"] = s.UnrealizedPnL,
-            ["peak_equity"] = s.PeakEquity, ["drawdown"] = s.Drawdown, ["maximum_drawdown"] = s.MaximumDrawdown, ["retained_stop_distance"] = s.RetainedStopDistance })
+        foreach (var pair in new Dictionary<string, decimal>
+        {
+            ["cash"] = s.EquityPoint.Cash,
+            ["equity"] = s.EquityPoint.Equity,
+            ["held_margin"] = s.EquityPoint.HeldMargin,
+            ["quantity"] = s.Quantity,
+            ["entry_price"] = s.EntryPrice,
+            ["unrealized_pnl"] = s.UnrealizedPnL,
+            ["peak_equity"] = s.PeakEquity,
+            ["drawdown"] = s.Drawdown,
+            ["maximum_drawdown"] = s.MaximumDrawdown,
+            ["retained_stop_distance"] = s.RetainedStopDistance
+        })
             if (Decimal(saved, pair.Key) != pair.Value) throw new InvalidDataException("Saved financial account field differs: " + pair.Key);
         if (saved.GetProperty("held_bars").GetInt32() != s.HeldBars || saved.GetProperty("pending_entry").GetBoolean() != s.PendingEntry
             || saved.GetProperty("pending_exit").GetBoolean() != s.PendingExit || saved.GetProperty("deferred_market_exit").GetBoolean() != s.DeferredMarketExit

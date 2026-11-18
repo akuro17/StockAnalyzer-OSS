@@ -21,7 +21,7 @@ public class CoreWilliamsVixFixIndicator : CoreIndicatorBase
 
         if (candles == null || candles.Count < Period)
         {
-             if (candles != null) _values.AddRange(Enumerable.Repeat<decimal?>(null, candles.Count));
+            if (candles != null) _values.AddRange(Enumerable.Repeat<decimal?>(null, candles.Count));
             return IndicatorResult.Success(_values);
         }
 

@@ -17,7 +17,7 @@ public readonly record struct CandleData(
 {
     public DateTime Time => Timestamp;
     // public DateTime Date => Timestamp.Date; // Removed to prevent CS0200 errors and enforce Timestamp usage
-    
+
     public decimal BodyHeight => Math.Abs(Close - Open);
     public decimal UpperShadow => High - Math.Max(Open, Close);
     public decimal LowerShadow => Math.Min(Open, Close) - Low;

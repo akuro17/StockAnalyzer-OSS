@@ -14,8 +14,9 @@ namespace StockAnalyzer.Core.Tests.Models.Indicators.MovingAverages
         {
             var candles = new List<CoreCandleData>();
             decimal price = 100m;
-            for(int i=0; i<50; i++) {
-                candles.Add(new CoreCandleData(DateTime.Today.AddDays(i), price, price+(i%5), price-(i%3), price+1, 1000));
+            for (int i = 0; i < 50; i++)
+            {
+                candles.Add(new CoreCandleData(DateTime.Today.AddDays(i), price, price + (i % 5), price - (i % 3), price + 1, 1000));
                 price += 1m;
             }
 
@@ -24,17 +25,17 @@ namespace StockAnalyzer.Core.Tests.Models.Indicators.MovingAverages
 
             Assert.True(result.IsSuccessful);
             var mainValues = result.MainValues;
-            
+
             Assert.Equal(50, mainValues.Count);
-            
+
             // First Period-1 values should be null
-            for(int i=0; i<15; i++)
+            for (int i = 0; i < 15; i++)
             {
                 Assert.Null(mainValues[i]);
             }
-            
+
             // Following values should be non-null and NOT equal to the exact close price
-            for(int i=16; i<50; i++)
+            for (int i = 16; i < 50; i++)
             {
                 Assert.NotNull(mainValues[i]);
                 Assert.NotEqual(candles[i].Close, mainValues[i].Value);

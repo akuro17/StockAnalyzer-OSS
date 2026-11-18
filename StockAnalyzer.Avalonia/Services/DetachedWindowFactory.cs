@@ -17,7 +17,7 @@ public class DetachedWindowFactory : IDetachedWindowFactory
     private readonly IContainerRegistry _containerRegistry;
 
     public DetachedWindowFactory(
-        IServiceProvider serviceProvider, 
+        IServiceProvider serviceProvider,
         IContainerRegistry containerRegistry,
         ILogger<DetachedWindowFactory>? logger = null)
     {
@@ -29,7 +29,7 @@ public class DetachedWindowFactory : IDetachedWindowFactory
     public object CreateWindow(object owner)
     {
         _logger.LogDebug("Creating new empty DetachedWindow instance.");
-        
+
         var viewModel = ActivatorUtilities.CreateInstance<ViewModels.DetachedWindowViewModel>(_serviceProvider);
         _containerRegistry.Register(viewModel.ContainerId, viewModel);
 
@@ -43,10 +43,10 @@ public class DetachedWindowFactory : IDetachedWindowFactory
     public object CreateWindow(object owner, WorkspaceViewItem item)
     {
         _logger.LogDebug("Creating new DetachedWindow instance for {Title}.", item.Title);
-        
+
         var viewModel = ActivatorUtilities.CreateInstance<ViewModels.DetachedWindowViewModel>(_serviceProvider);
         _containerRegistry.Register(viewModel.ContainerId, viewModel);
-        
+
         viewModel.AddItem(item);
 
         var window = new DetachedWindow

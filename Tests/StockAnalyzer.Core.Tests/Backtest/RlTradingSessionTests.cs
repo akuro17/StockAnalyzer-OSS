@@ -26,8 +26,12 @@ public sealed class RlTradingSessionTests
     private static BacktestConfiguration Configuration(decimal capital = 1_000m, decimal commission = 0m, decimal unitCommission = 0m, decimal slippage = 0m)
         => RlContract.CreateConfiguration(new BacktestConfiguration
         {
-            InitialCapital = capital, CommissionFlat = commission, CommissionPerUnit = unitCommission,
-            SlippageRatio = slippage, SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = BacktestDefaults.SizingParameter,
+            InitialCapital = capital,
+            CommissionFlat = commission,
+            CommissionPerUnit = unitCommission,
+            SlippageRatio = slippage,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = BacktestDefaults.SizingParameter,
         });
 
     [Fact]
@@ -216,7 +220,9 @@ public sealed class RlTradingSessionTests
         var injected = admitted with
         {
             EquityPoint = admitted.EquityPoint with { Equity = 90m, Cash = -10m },
-            Drawdown = 0.1m, MaximumDrawdown = 0.1m, AccountFields = account,
+            Drawdown = 0.1m,
+            MaximumDrawdown = 0.1m,
+            AccountFields = account,
         };
         var points = (List<EquityPoint>)state.GetType().GetField("EquityPoints", BindingFlags.Public | BindingFlags.Instance)!.GetValue(state)!;
         points[^1] = injected.EquityPoint;
@@ -316,8 +322,11 @@ public sealed class RlTradingSessionTests
         var bars = Bars(i => i == 64 ? Bar(i, 100m, 110m, 10m, 100m) : Bar(i));
         var config = new BacktestConfiguration
         {
-            InitialCapital = 30m, InitialMarginRatio = 0.3m, MaintenanceMarginRatio = 0.2m,
-            SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m,
+            InitialCapital = 30m,
+            InitialMarginRatio = 0.3m,
+            MaintenanceMarginRatio = 0.2m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 1m,
         };
         var result = Engine().Run(Input(bars), config, new ScriptedStrategy(new Dictionary<int, RlAction> { [63] = RlAction.Buy }));
         Assert.Equal(RunStatus.Completed, result.Status);

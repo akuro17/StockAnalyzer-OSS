@@ -74,7 +74,7 @@ public class CoreRciIndicatorTests
         var indicator = new CoreRciIndicator { Period = 9 };
         indicator.Calculate(candles);
         var result = indicator.Values;
-        
+
         Assert.Empty(result);
     }
 
@@ -87,7 +87,7 @@ public class CoreRciIndicatorTests
         // But let's check the implementation.
         // If we can't be sure, we'll assert that Values is empty (it is initialized empty).
         // indicator.Calculate(null); // This might throw if logic doesn't support null
-        
+
         // Based on CoreRciIndicator logic I saw: if (candles == null || ...) return ...
         indicator.Calculate(null);
         Assert.Empty(indicator.Values);

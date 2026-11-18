@@ -8,17 +8,17 @@ public static class LayoutConstants
     // Chart Layout Ratios
     public const double ChartHeightRatio = 0.8;
     public const double VolumeHeightRatio = 0.2;
-    
+
     // Margins
     public const float ChartMarginTop = 30f;
     public const float ChartMarginBottom = 30f;
     public const float ChartMarginHorizontal = 50f;
-    
+
     // Default Sizes
     public const float ThinStrokeWidth = 0.5f;
     public const float DefaultStrokeWidth = 1.0f;
     public const float ThickStrokeWidth = 2.0f;
-    
+
     // Text Sizes
     public const float AxisFontSize = 12f;
     public const float LabelFontSize = 12f;
@@ -82,11 +82,11 @@ public static class LayoutConstants
     public const int PortfolioRefreshIntervalSeconds = 60;
     public const int PortfolioJitterMinMs = 1500;
     public const int PortfolioJitterMaxMs = 4500;
-    
+
     public const int AllocationRefreshIntervalSeconds = 60;
     public const int AllocationJitterMinMs = 1000;
     public const int AllocationJitterMaxMs = 3000;
-    
+
     public const int HeatmapJitterMinMs = 2000;
     public const int HeatmapJitterMaxMs = 5000;
 

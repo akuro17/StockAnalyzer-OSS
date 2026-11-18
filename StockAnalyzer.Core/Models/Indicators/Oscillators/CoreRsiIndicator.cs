@@ -82,7 +82,7 @@ public class CoreRsiIndicator : CoreIndicatorBase
     private List<decimal?> CalculateSegment(IReadOnlyList<decimal?> series, int start, int end)
     {
         var results = new List<decimal?>(end - start);
-        int overlap = Period * IndicatorDefaultConstants.EmaConvergenceMultiplier; 
+        int overlap = Period * IndicatorDefaultConstants.EmaConvergenceMultiplier;
         int calcStart = Math.Max(0, start - overlap);
 
         decimal avgGain = 0;

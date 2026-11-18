@@ -783,8 +783,13 @@ public sealed partial class PortfolioRlDialogViewModel : ObservableObject, IDisp
         {
             costs = RlContract.CreateConfiguration(new BacktestConfiguration
             {
-                SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter, InitialCapital = capital,
-                CommissionFlat = flat, CommissionPerUnit = unit, SlippageRatio = slippage, LiquidationPenaltyRatio = liquidation,
+                SizingModel = BacktestDefaults.SizingModel,
+                SizingParameter = BacktestDefaults.SizingParameter,
+                InitialCapital = capital,
+                CommissionFlat = flat,
+                CommissionPerUnit = unit,
+                SlippageRatio = slippage,
+                LiquidationPenaltyRatio = liquidation,
             });
             return true;
         }

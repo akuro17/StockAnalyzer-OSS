@@ -28,7 +28,7 @@ public class CoreWilderSmoothingIndicator : CoreIndicatorBase
         }
         decimal prev = sum / Period;
 
-        for(int i=0; i<Period-1; i++) _values.Add(null);
+        for (int i = 0; i < Period - 1; i++) _values.Add(null);
         _values.Add(prev);
 
         for (int i = Period; i < candles.Count; i++)

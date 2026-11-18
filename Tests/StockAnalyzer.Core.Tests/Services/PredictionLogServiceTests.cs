@@ -28,7 +28,8 @@ public sealed class PredictionLogServiceTests : IDisposable
         using var session = new InferenceSession(Path.Combine("Assets", "analysis_fixture.onnx"));
         _result = new("Up", 1, [new("Up", 1)])
         {
-            ModelId = model.ModelId, OutputContract = PredictionModelMetadata.ReadOutputContract(session.ModelMetadata.CustomMetadataMap),
+            ModelId = model.ModelId,
+            OutputContract = PredictionModelMetadata.ReadOutputContract(session.ModelMetadata.CustomMetadataMap),
         };
         return Create();
     }

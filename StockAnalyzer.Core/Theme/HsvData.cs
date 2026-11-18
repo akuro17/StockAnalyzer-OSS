@@ -102,7 +102,7 @@ public readonly record struct HsvData
         try
         {
             if (string.IsNullOrWhiteSpace(html)) return fallback;
-            
+
             string clean = html.Trim().TrimStart('#');
             if (clean.Length == 6)
             {

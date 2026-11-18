@@ -9,24 +9,24 @@ public static class AppTheme
 {
     // Chart Backgrounds
     public static readonly SKColor ChartBackground = new(0xFA, 0xEB, 0xBB);
-    
+
     // Grid & Axes
     public static readonly SKColor GridLine = SKColors.LightGray;
     public static readonly SKColor AxisText = SKColors.Black;
     public static readonly SKColor Crosshair = SKColors.Gray;
-    
+
     // Candle/Chart Colors
     public static readonly SKColor Bullish = SKColors.Green; // Western Style
     public static readonly SKColor Bearish = SKColors.Red; // Western Style
     public static readonly SKColor Neutral = SKColors.Gray;
-    
+
     // Tools
     public static readonly SKColor RulerFill = new(0, 0, 255, 30); // Blue with alpha
     public static readonly SKColor RulerStroke = SKColors.Blue;
     public static readonly SKColor RulerBackground = new(0, 0, 0, 160);
     public static readonly SKColor RulerArea = new(0, 120, 215, 50);
     public static readonly SKColor RulerText = SKColors.White;
-    
+
     public static readonly SKColor CrosshairLineAlpha = new(0x08, 0x12, 0x1F, 0xA0);
     public static readonly SKColor CrosshairText = new(0x08, 0x12, 0x1F);
 
@@ -34,26 +34,26 @@ public static class AppTheme
     public static readonly SKColor VolumeProfileFill = new(0, 0, 255, 50);
     public static readonly SKColor VolumeProfilePOC = SKColors.Red;
     public static readonly SKColor VolumeProfileBorder = new(100, 100, 100, 100);
-    
+
     // Volume
     public static readonly SKColor VolumeUp = new(0, 128, 0, 128); // Green
     public static readonly SKColor VolumeDown = new(255, 0, 0, 128); // Red
-    
+
     // Header & Info
     public static readonly SKColor HeaderBackground = new(255, 255, 255, 180);
-    
+
     // Chart Types
     public static readonly SKColor AreaChartFillBase = SKColors.DodgerBlue;
     public static readonly SKColor LineChartLine = SKColors.DodgerBlue;
     public static readonly SKColor OhlcBullish = new(0x10, 0xB9, 0x81); // Green
     public static readonly SKColor OhlcBearish = new(0xEF, 0x44, 0x44); // Red
-    
+
     // Indicators
     public static readonly SKColor IchimokuTenkan = SKColors.Blue;
     public static readonly SKColor IchimokuKijun = SKColors.Red;
     public static readonly SKColor IchimokuChikou = SKColors.Green;
     public static readonly SKColor IchimokuSenkou = SKColors.Orange;
-    
+
     // Reverse Watch Phases (Default)
     public static readonly SKColor RwPhase1 = SKColors.Red;
     public static readonly SKColor RwPhase2 = SKColors.Orange;
@@ -63,7 +63,7 @@ public static class AppTheme
     public static readonly SKColor RwPhase6 = SKColors.Cyan;
     public static readonly SKColor RwPhase7 = SKColors.Blue;
     public static readonly SKColor RwPhase8 = SKColors.Magenta;
-    
+
     // Reverse Watch XY Chart
     public static readonly SKColor RwChartBackground = new(30, 30, 30);
     public static readonly SKColor RwGridLine = new(40, 40, 40);

@@ -83,7 +83,8 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         if (_resourceSettings?.LoadError is { } loadError)
             throw new InvalidOperationException(loadError);
         var resourceLimits = TrainingResourceGuard.Resolve(_resourceSettings?.Snapshot ?? new TrainingResourceOverrides())
-            with { MaxRunDurationSeconds = _maxRunDurationSeconds };
+            with
+        { MaxRunDurationSeconds = _maxRunDurationSeconds };
         TrainingResourceGuard.Validate(config, resourceLimits);
         // Lists and maps inside the record are mutable. Freeze the complete wire
         // contract before the first await so later caller edits cannot change a run.
@@ -157,172 +158,172 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
         var keepEnsembleArtifacts = false;
         try
         {
-        if (config.RequiresFinalizedSource)
-        {
-            if (_sourceSnapshotProvider is null)
-                throw new InvalidOperationException("Training source snapshot provider is not configured.");
-            runToken.ThrowIfCancellationRequested();
-            if (Directory.Exists(preparedRunDirectory!))
-                throw new IOException("Run-owned training directory already exists.");
-            Directory.CreateDirectory(preparedRunDirectory!);
-            ownsPreparedRunDirectory = true;
-            IProgress<string> stage = new InlineStageProgress(name =>
-                runProgress?.Report(new TrainingProgress { Stage = name }));
-            var prepared = await _sourceSnapshotProvider.PrepareAsync(
-                config, preparedRunDirectory!, startedUtc, stage, runToken).ConfigureAwait(false);
-            runToken.ThrowIfCancellationRequested();
-            var exports = await _indicatorChannelExporter.ExportPreparedAsync(
-                config.FeatureSpec!, prepared, stage, runToken).ConfigureAwait(false);
-            runToken.ThrowIfCancellationRequested();
-            config = config with
-            {
-                PreparedInputDir = prepared.DatasetDirectory,
-                IndicatorChannelExportPaths = exports,
-                SourceProvenance = new TrainingSourceProvenance(prepared.ProviderId,
-                    prepared.DatasetRevision, prepared.AsOfUtc,
-                    prepared.Symbols.ToDictionary(p => p.Key, p => p.Value.SourceSha256,
-                        StringComparer.OrdinalIgnoreCase)),
-            };
-            runProgress?.Report(new TrainingProgress { Stage = "Ready" });
-        }
-
-        // Indicator-kind ComposedFeatures channels have no Python-side formula (single formula
-        // source: the ICoreIndicator implementations); export their per-symbol values now, before
-        // run_training.py starts, so it can read them instead of re-deriving indicator math.
-        // Price-only ComposedFeatures and every OhlcvMinMax run skip this (empty map, no-op).
-        if (!config.RequiresFinalizedSource
-            && config.FeatureMode == PredictionFeatureMode.ComposedFeatures
-            && config.FeatureSpec is not null
-            && config.FeatureSpec.Channels.Any(c => c.Kind == FeatureChannelKind.Indicator))
-        {
-            var indicatorChannelExportPaths = await _indicatorChannelExporter.ExportAsync(
-                config.FeatureSpec, config.Symbols, config.Timeframe, runId, runToken).ConfigureAwait(false);
-            ownedIndicatorExports = indicatorChannelExportPaths;
-            config = config with { IndicatorChannelExportPaths = indicatorChannelExportPaths };
-        }
-
-        runToken.ThrowIfCancellationRequested();
-        // A resolver only locates an installed interpreter; the service may initialise (and install) Python, which a caller that must not do so avoids.
-        string pythonExe;
-        if (_executableResolver is null)
-            pythonExe = await _pythonService.ResolvePythonExecutablePathAsync(runToken).ConfigureAwait(false);
-        else if (!_executableResolver.TryResolve(out pythonExe))
-            throw new FileNotFoundException("The Python interpreter is not installed.");
-        var scriptPath = PythonScriptLocator.Resolve(OrchestratorScriptRelativePath);
-
-        var remaining = TimeSpan.FromSeconds(resourceLimits.MaxRunDurationSeconds) - runClock.Elapsed;
-        if (remaining <= TimeSpan.Zero) timeout.Cancel();
-        runToken.ThrowIfCancellationRequested();
-        config = config with { ResourceLimits = resourceLimits, RemainingRunBudgetSeconds = remaining.TotalSeconds };
-
-        configPath = Path.Combine(Path.GetTempPath(), $"sa_training_job_{runId}_{Guid.NewGuid():N}.json");
-        // Utf8NoBom, not Encoding.UTF8: a BOM preamble breaks run_training.py's
-        // json.loads(config_path.read_text(encoding="utf-8")) (bug: trainer exited with a
-        // json.decoder.JSONDecodeError before doing anything).
-        await File.WriteAllTextAsync(configPath, TrainingConfigJson.Serialize(config), TrainingConfigJson.Utf8NoBom, runToken)
-            .ConfigureAwait(false);
-
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = pythonExe,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
-            CreateNoWindow = true,
-            WorkingDirectory = Path.GetDirectoryName(scriptPath),
-        };
-        startInfo.ArgumentList.Add("-u");
-        startInfo.ArgumentList.Add(scriptPath);
-        startInfo.ArgumentList.Add("--config");
-        startInfo.ArgumentList.Add(configPath);
-        startInfo.Environment[PythonChildEnvironment.IoEncodingVariable] = PythonChildEnvironment.IoEncodingValue;
-        // An ephemeral run leaves nothing next to the scripts either: no bytecode cache. A normal run keeps its environment.
-        if (config.ArtifactsDirectory is not null)
-            startInfo.Environment[PythonChildEnvironment.NoBytecodeVariable] = PythonChildEnvironment.NoBytecodeValue;
-        TrainingResourceGuard.ApplyToChild(startInfo, resourceLimits);
-
-        var state = new RunState { Stage = config.RequiresFinalizedSource ? "Training" : null };
-        processState = state;
-        using var process = new Process { StartInfo = startInfo };
-
-        process.OutputDataReceived += (_, e) => HandleStdOutLine(e.Data, state, runProgress,
-            config.RequiresFinalizedSource);
-        process.ErrorDataReceived += (_, e) => HandleStdErrLine(e.Data, state);
-
-        var processStarted = false;
-        CancellationTokenRegistration registration = default;
-        try
-        {
-            runToken.ThrowIfCancellationRequested();
             if (config.RequiresFinalizedSource)
-                runProgress?.Report(new TrainingProgress { Stage = "Training" });
-            runToken.ThrowIfCancellationRequested();
-            _logger.LogInformation(
-                "TrainingOrchestrator: starting run {RunId} ({Framework}/{Architecture}, {SymbolCount} symbol(s)).",
-                runId, config.Framework, config.Architecture, config.Symbols.Length);
-
-            if (!process.Start())
-                throw new InvalidOperationException("Training process did not start.");
-            processStarted = true;
-            // Register only after Start. An already-cancelled token invokes the callback now,
-            // closing the narrow cancellation window between the pre-start check and Start.
-            registration = runToken.Register(() => TryKillProcess(process));
-            // Best-effort OS-level safety net: if this app is killed abruptly (crash, Task
-            // Manager) rather than shut down gracefully, Windows closes our Job Object handle as
-            // part of process teardown, which kills this training subprocess too instead of
-            // leaving an orphaned python.exe behind. No-op on non-Windows or on failure (see
-            // WindowsJobObject.TryAssign). Mirrors PythonProcessManager's use of the same guard
-            // for its long-lived Python IPC process.
-            using var jobHandle = WindowsJobObject.TryAssign(process);
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
-            await process.WaitForExitAsync(runToken).ConfigureAwait(false);
-            runToken.ThrowIfCancellationRequested();
-        }
-        finally
-        {
-            registration.Dispose();
-            if (processStarted)
             {
-                if (!process.HasExited)
-                    TryKillProcess(process);
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
-                process.WaitForExit(); // Complete redirected DataReceived callbacks before cleanup.
+                if (_sourceSnapshotProvider is null)
+                    throw new InvalidOperationException("Training source snapshot provider is not configured.");
+                runToken.ThrowIfCancellationRequested();
+                if (Directory.Exists(preparedRunDirectory!))
+                    throw new IOException("Run-owned training directory already exists.");
+                Directory.CreateDirectory(preparedRunDirectory!);
+                ownsPreparedRunDirectory = true;
+                IProgress<string> stage = new InlineStageProgress(name =>
+                    runProgress?.Report(new TrainingProgress { Stage = name }));
+                var prepared = await _sourceSnapshotProvider.PrepareAsync(
+                    config, preparedRunDirectory!, startedUtc, stage, runToken).ConfigureAwait(false);
+                runToken.ThrowIfCancellationRequested();
+                var exports = await _indicatorChannelExporter.ExportPreparedAsync(
+                    config.FeatureSpec!, prepared, stage, runToken).ConfigureAwait(false);
+                runToken.ThrowIfCancellationRequested();
+                config = config with
+                {
+                    PreparedInputDir = prepared.DatasetDirectory,
+                    IndicatorChannelExportPaths = exports,
+                    SourceProvenance = new TrainingSourceProvenance(prepared.ProviderId,
+                        prepared.DatasetRevision, prepared.AsOfUtc,
+                        prepared.Symbols.ToDictionary(p => p.Key, p => p.Value.SourceSha256,
+                            StringComparer.OrdinalIgnoreCase)),
+                };
+                runProgress?.Report(new TrainingProgress { Stage = "Ready" });
             }
-        }
 
-        var completedUtc = DateTimeOffset.UtcNow;
-        var success = process.ExitCode == 0
-            && state.OnnxArtifactPath is not null
-            && File.Exists(state.OnnxArtifactPath);
-        runToken.ThrowIfCancellationRequested();
-        lock (state.Lock) { state.Terminal = true; }
+            // Indicator-kind ComposedFeatures channels have no Python-side formula (single formula
+            // source: the ICoreIndicator implementations); export their per-symbol values now, before
+            // run_training.py starts, so it can read them instead of re-deriving indicator math.
+            // Price-only ComposedFeatures and every OhlcvMinMax run skip this (empty map, no-op).
+            if (!config.RequiresFinalizedSource
+                && config.FeatureMode == PredictionFeatureMode.ComposedFeatures
+                && config.FeatureSpec is not null
+                && config.FeatureSpec.Channels.Any(c => c.Kind == FeatureChannelKind.Indicator))
+            {
+                var indicatorChannelExportPaths = await _indicatorChannelExporter.ExportAsync(
+                    config.FeatureSpec, config.Symbols, config.Timeframe, runId, runToken).ConfigureAwait(false);
+                ownedIndicatorExports = indicatorChannelExportPaths;
+                config = config with { IndicatorChannelExportPaths = indicatorChannelExportPaths };
+            }
 
-        _logger.LogInformation(
-            "TrainingOrchestrator: run {RunId} finished with exit code {ExitCode} (success={Success}).",
-            runId, process.ExitCode, success);
+            runToken.ThrowIfCancellationRequested();
+            // A resolver only locates an installed interpreter; the service may initialise (and install) Python, which a caller that must not do so avoids.
+            string pythonExe;
+            if (_executableResolver is null)
+                pythonExe = await _pythonService.ResolvePythonExecutablePathAsync(runToken).ConfigureAwait(false);
+            else if (!_executableResolver.TryResolve(out pythonExe))
+                throw new FileNotFoundException("The Python interpreter is not installed.");
+            var scriptPath = PythonScriptLocator.Resolve(OrchestratorScriptRelativePath);
 
-        if (config.RequiresFinalizedSource)
-            ReportTerminal(success ? "Completed" : "Failed", requireNotCancelled: true);
-        keepEnsembleArtifacts = success;
-        return new TrainingRunResult
-        {
-            RunId = runId,
-            Success = success,
-            ExitCode = process.ExitCode,
-            OnnxArtifactPath = state.OnnxArtifactPath,
-            MetricsArtifactPath = state.MetricsArtifactPath,
-            CheckpointManifestPath = state.CheckpointManifestPath,
-            EnsembleManifestPath = state.EnsembleManifestPath,
-            Metrics = state.LastMetric ?? new Dictionary<string, double>(),
-            Message = success ? null : BuildFailureMessage(process.ExitCode, state),
-            StartedUtc = startedUtc,
-            CompletedUtc = completedUtc,
-            SourceProvenance = config.SourceProvenance,
-            ResourceLimits = resourceLimits,
-        };
+            var remaining = TimeSpan.FromSeconds(resourceLimits.MaxRunDurationSeconds) - runClock.Elapsed;
+            if (remaining <= TimeSpan.Zero) timeout.Cancel();
+            runToken.ThrowIfCancellationRequested();
+            config = config with { ResourceLimits = resourceLimits, RemainingRunBudgetSeconds = remaining.TotalSeconds };
+
+            configPath = Path.Combine(Path.GetTempPath(), $"sa_training_job_{runId}_{Guid.NewGuid():N}.json");
+            // Utf8NoBom, not Encoding.UTF8: a BOM preamble breaks run_training.py's
+            // json.loads(config_path.read_text(encoding="utf-8")) (bug: trainer exited with a
+            // json.decoder.JSONDecodeError before doing anything).
+            await File.WriteAllTextAsync(configPath, TrainingConfigJson.Serialize(config), TrainingConfigJson.Utf8NoBom, runToken)
+                .ConfigureAwait(false);
+
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = pythonExe,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8,
+                CreateNoWindow = true,
+                WorkingDirectory = Path.GetDirectoryName(scriptPath),
+            };
+            startInfo.ArgumentList.Add("-u");
+            startInfo.ArgumentList.Add(scriptPath);
+            startInfo.ArgumentList.Add("--config");
+            startInfo.ArgumentList.Add(configPath);
+            startInfo.Environment[PythonChildEnvironment.IoEncodingVariable] = PythonChildEnvironment.IoEncodingValue;
+            // An ephemeral run leaves nothing next to the scripts either: no bytecode cache. A normal run keeps its environment.
+            if (config.ArtifactsDirectory is not null)
+                startInfo.Environment[PythonChildEnvironment.NoBytecodeVariable] = PythonChildEnvironment.NoBytecodeValue;
+            TrainingResourceGuard.ApplyToChild(startInfo, resourceLimits);
+
+            var state = new RunState { Stage = config.RequiresFinalizedSource ? "Training" : null };
+            processState = state;
+            using var process = new Process { StartInfo = startInfo };
+
+            process.OutputDataReceived += (_, e) => HandleStdOutLine(e.Data, state, runProgress,
+                config.RequiresFinalizedSource);
+            process.ErrorDataReceived += (_, e) => HandleStdErrLine(e.Data, state);
+
+            var processStarted = false;
+            CancellationTokenRegistration registration = default;
+            try
+            {
+                runToken.ThrowIfCancellationRequested();
+                if (config.RequiresFinalizedSource)
+                    runProgress?.Report(new TrainingProgress { Stage = "Training" });
+                runToken.ThrowIfCancellationRequested();
+                _logger.LogInformation(
+                    "TrainingOrchestrator: starting run {RunId} ({Framework}/{Architecture}, {SymbolCount} symbol(s)).",
+                    runId, config.Framework, config.Architecture, config.Symbols.Length);
+
+                if (!process.Start())
+                    throw new InvalidOperationException("Training process did not start.");
+                processStarted = true;
+                // Register only after Start. An already-cancelled token invokes the callback now,
+                // closing the narrow cancellation window between the pre-start check and Start.
+                registration = runToken.Register(() => TryKillProcess(process));
+                // Best-effort OS-level safety net: if this app is killed abruptly (crash, Task
+                // Manager) rather than shut down gracefully, Windows closes our Job Object handle as
+                // part of process teardown, which kills this training subprocess too instead of
+                // leaving an orphaned python.exe behind. No-op on non-Windows or on failure (see
+                // WindowsJobObject.TryAssign). Mirrors PythonProcessManager's use of the same guard
+                // for its long-lived Python IPC process.
+                using var jobHandle = WindowsJobObject.TryAssign(process);
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
+                await process.WaitForExitAsync(runToken).ConfigureAwait(false);
+                runToken.ThrowIfCancellationRequested();
+            }
+            finally
+            {
+                registration.Dispose();
+                if (processStarted)
+                {
+                    if (!process.HasExited)
+                        TryKillProcess(process);
+                    await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                    process.WaitForExit(); // Complete redirected DataReceived callbacks before cleanup.
+                }
+            }
+
+            var completedUtc = DateTimeOffset.UtcNow;
+            var success = process.ExitCode == 0
+                && state.OnnxArtifactPath is not null
+                && File.Exists(state.OnnxArtifactPath);
+            runToken.ThrowIfCancellationRequested();
+            lock (state.Lock) { state.Terminal = true; }
+
+            _logger.LogInformation(
+                "TrainingOrchestrator: run {RunId} finished with exit code {ExitCode} (success={Success}).",
+                runId, process.ExitCode, success);
+
+            if (config.RequiresFinalizedSource)
+                ReportTerminal(success ? "Completed" : "Failed", requireNotCancelled: true);
+            keepEnsembleArtifacts = success;
+            return new TrainingRunResult
+            {
+                RunId = runId,
+                Success = success,
+                ExitCode = process.ExitCode,
+                OnnxArtifactPath = state.OnnxArtifactPath,
+                MetricsArtifactPath = state.MetricsArtifactPath,
+                CheckpointManifestPath = state.CheckpointManifestPath,
+                EnsembleManifestPath = state.EnsembleManifestPath,
+                Metrics = state.LastMetric ?? new Dictionary<string, double>(),
+                Message = success ? null : BuildFailureMessage(process.ExitCode, state),
+                StartedUtc = startedUtc,
+                CompletedUtc = completedUtc,
+                SourceProvenance = config.SourceProvenance,
+                ResourceLimits = resourceLimits,
+            };
         }
         catch (OperationCanceledException ex) when (!ct.IsCancellationRequested && timeout.IsCancellationRequested)
         {

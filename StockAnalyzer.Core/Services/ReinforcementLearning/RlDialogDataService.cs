@@ -46,7 +46,7 @@ public class RlDialogDataService(IRlModelGenerationRegistry registry, IQValueSer
             ?? RlMeasuredEvaluation.FromEpisodes(ReadEpisodes(metrics.RootElement, "validation_episodes"));
         ct.ThrowIfCancellationRequested();
         return new RlDialogBlocks(source.Catalog.Validation.Concat(source.Catalog.Oos).ToImmutableArray(), constraints, expanded)
-            { ShortHistory = shortHistory, Measured = measured };
+        { ShortHistory = shortHistory, Measured = measured };
     }, ct);
 
     private static RlEpisodeEvaluation[] ReadEpisodes(JsonElement report, string property)

@@ -481,7 +481,7 @@ internal sealed class BacktestConditionBinder
 
             if (!BacktestConditionOffsetRule.IsWithinLimit(offset, _settings.BacktestMaxConditionOffset))
             {
-                throw TreeLimit($"The offset {offset} is above the maximum {_settings.BacktestMaxConditionOffset}.", $"{path}.offset", MaxConditionOffsetSetting,_settings.BacktestMaxConditionOffset);
+                throw TreeLimit($"The offset {offset} is above the maximum {_settings.BacktestMaxConditionOffset}.", $"{path}.offset", MaxConditionOffsetSetting, _settings.BacktestMaxConditionOffset);
             }
         }
 

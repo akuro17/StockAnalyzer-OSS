@@ -27,7 +27,7 @@ public partial class DataWindowItemViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _useCustomColor = false;
-    
+
     [ObservableProperty]
     private bool _showCheckbox = true;
 

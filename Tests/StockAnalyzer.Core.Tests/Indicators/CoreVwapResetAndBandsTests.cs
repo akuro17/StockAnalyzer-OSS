@@ -268,7 +268,7 @@ public class CoreVwapResetAndBandsTests
         Assert.Equal(IndicatorDefaultConstants.Cyan, entry.Color);
         Assert.Equal(IndicatorDefaultConstants.Cyan, entry.SeriesColors.Single(c => c.TargetSeries.Contains("Main")).Color);
         CoreIndicatorSettings bollinger = DefaultCoreIndicatorSettings.GetDefault().Single(s => s.TypeEnum == IndicatorType.BB);
-        var bandColor =bollinger.SeriesColors.Single(c => c.TargetSeries.Contains("Upper")).Color;
+        var bandColor = bollinger.SeriesColors.Single(c => c.TargetSeries.Contains("Upper")).Color;
         Assert.Equal(bandColor, entry.SeriesColors.Single(c => c.TargetSeries.Contains("UpperBand")).Color);
         Assert.Equal(bandColor, entry.SeriesColors.Single(c => c.TargetSeries.Contains("LowerBand")).Color);
     }

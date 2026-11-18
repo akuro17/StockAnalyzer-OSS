@@ -9,30 +9,30 @@ public class CoreMtfLaggedEmaParameter : CoreIndicatorParameterBase
     [CoreParameterRange(1, 10000)]
     [DisplayName("Period")]
     [Description("Base EMA period.")]
-    public int Period 
-    { 
-        get => _period; 
-        set => SetProperty(ref _period, value); 
+    public int Period
+    {
+        get => _period;
+        set => SetProperty(ref _period, value);
     }
 
     private int _timeFrameMultiplier = 4;
     [CoreParameterRange(1, 100)]
     [DisplayName("Timeframe Multiplier")]
     [Description("Multiplier for the secondary timeframe.")]
-    public int TimeFrameMultiplier 
-    { 
-        get => _timeFrameMultiplier; 
-        set => SetProperty(ref _timeFrameMultiplier, value); 
+    public int TimeFrameMultiplier
+    {
+        get => _timeFrameMultiplier;
+        set => SetProperty(ref _timeFrameMultiplier, value);
     }
 
     private int _lag = 1;
     [CoreParameterRange(1, 1000)]
     [DisplayName("Lag")]
     [Description("Lag offset (must be >= 1 to prevent lookahead bias from incomplete higher timeframe bars).")]
-    public int Lag 
-    { 
-        get => _lag; 
-        set => SetProperty(ref _lag, value); 
+    public int Lag
+    {
+        get => _lag;
+        set => SetProperty(ref _lag, value);
     }
 
     public override string GetDisplayName(string type) => $"{type} ({Period}, {TimeFrameMultiplier}, {Lag})";

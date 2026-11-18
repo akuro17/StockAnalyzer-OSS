@@ -17,14 +17,15 @@ public static class TimeFrameAggregator
     private const int DaysPerWeek = 7;
 
     /// <summary>
-    /// True for the frames built from daily bars by period (W1, MN1): a bar covers an ISO week or a calendar month, is dated by the first trading day
-    /// (aggregated) or the period start (stored files), and can be a partial period. The one definition of this set for callers that branch on it.
+    /// True for the frames built from daily bars by period (W1, MN1): a bar covers an ISO week or a calendar month, is dated by the period start (the Monday,
+    /// the 1st) in the aggregated and the stored bars alike (the first and last trading day are metadata of <see cref="Models.AggregatedPeriodBar"/>), and can
+    /// be a partial period. The one definition of this set for callers that branch on it.
     /// </summary>
     public static bool IsPeriodFrame(Models.TimeFrame timeFrame) => timeFrame is Models.TimeFrame.W1 or Models.TimeFrame.MN1;
 
     /// <summary>
     /// The last calendar day of the period a bar belongs to: the Sunday of its ISO week (W1), the last day of its month (MN1), or the bar's own date
-    /// (any other frame). <paramref name="barTimestamp"/> is the bar's timestamp, which for W1 and MN1 is the first trading day of the period.
+    /// (any other frame). <paramref name="barTimestamp"/> is the bar's timestamp, which for W1 and MN1 is the period start; any date of the period gives the same end.
     /// A period is complete once the data (or an as-of date) reaches this day.
     /// </summary>
     public static DateTime PeriodEnd(DateTime barTimestamp, Models.TimeFrame timeFrame)
@@ -74,8 +75,9 @@ public static class TimeFrameAggregator
 
     /// <summary>
     /// The date bars of different symbols are matched by when their series are joined: the bar's own date, or for W1 and MN1 the first calendar day of its
-    /// period (<see cref="PeriodStart"/>), because a W1 or MN1 bar is dated by its first trading day and two markets with different holidays date the same
-    /// period differently. The one definition for the cross-symbol statistics (cross-asset, market breadth).
+    /// period (<see cref="PeriodStart"/>). The bars built by <see cref="AggregateToPeriodStart(IReadOnlyList{Models.CandleData}, Models.TimeFrame)"/> already carry that date;
+    /// a bar of a source that dates it by its first trading day (the legacy <see cref="Aggregate"/>) is brought to it, so two markets with different holidays
+    /// still fall on the same period. The one definition for the cross-symbol statistics (cross-asset, market breadth).
     /// </summary>
     public static DateTime PeriodMatchDate(DateTime barTimestamp, Models.TimeFrame timeFrame)
         => IsPeriodFrame(timeFrame) ? PeriodStart(barTimestamp, timeFrame) : barTimestamp.Date;
@@ -115,10 +117,13 @@ public static class TimeFrameAggregator
     /// <summary>
     /// Aggregates daily candle data into the specified target timeframe.
     /// Returns the input unchanged if target is Daily or lower.
+    /// Legacy: a W1 or MN1 bar is dated by its first trading day, not the period start; kept for the golden vectors and the regression tests that pin that label.
+    /// Production code uses <see cref="AggregateToPeriodStart(IReadOnlyList{Models.CandleData}, Models.TimeFrame)"/>.
     /// </summary>
     /// <param name="dailyCandles">Source daily candle data, must be sorted by Timestamp ascending.</param>
     /// <param name="targetTimeFrame">Target timeframe to aggregate into.</param>
     /// <returns>Aggregated candle data for the target timeframe.</returns>
+    [Obsolete("Use AggregateToPeriodStart or AggregateWithMetadata instead.")]
     public static IReadOnlyList<Models.CandleData> Aggregate(
         IReadOnlyList<Models.CandleData> dailyCandles,
         Models.TimeFrame targetTimeFrame)
@@ -233,8 +238,9 @@ public static class TimeFrameAggregator
     }
 
     /// <summary>
-    /// Aggregates daily candles into weekly candles (ISO 8601 week, Monday start).
+    /// Aggregates daily candles into weekly candles (ISO 8601 week, Monday start). Legacy: a bar is dated by its first trading day, not the period start.
     /// </summary>
+    [Obsolete("Use AggregateToPeriodStart or AggregateWithMetadata instead.")]
     public static IReadOnlyList<Models.CandleData> AggregateDailyToWeekly(
         IReadOnlyList<Models.CandleData> dailyCandles)
     {
@@ -249,8 +255,9 @@ public static class TimeFrameAggregator
     }
 
     /// <summary>
-    /// Aggregates daily candles into monthly candles.
+    /// Aggregates daily candles into monthly candles. Legacy: a bar is dated by its first trading day, not the period start.
     /// </summary>
+    [Obsolete("Use AggregateToPeriodStart or AggregateWithMetadata instead.")]
     public static IReadOnlyList<Models.CandleData> AggregateDailyToMonthly(
         IReadOnlyList<Models.CandleData> dailyCandles)
     {

@@ -195,7 +195,7 @@ namespace StockAnalyzer.Core.Tests.Utilities
             Assert.True(signal.IsBullish);
             Assert.Equal(DateTime.Parse("2023-01-05", System.Globalization.CultureInfo.InvariantCulture), signal.TriggerTimestamp);
             // It breaks the most recent X column high
-            Assert.Equal(18m, signal.SignalLevel); 
+            Assert.Equal(18m, signal.SignalLevel);
             Assert.Equal(19m, signal.TriggerPrice);
         }
 
@@ -225,7 +225,7 @@ namespace StockAnalyzer.Core.Tests.Utilities
             Assert.False(signal.IsBullish);
             Assert.Equal(DateTime.Parse("2023-01-05", System.Globalization.CultureInfo.InvariantCulture), signal.TriggerTimestamp);
             // It breaks the most recent O column low
-            Assert.Equal(13m, signal.SignalLevel); 
+            Assert.Equal(13m, signal.SignalLevel);
             Assert.Equal(12m, signal.TriggerPrice);
         }
 

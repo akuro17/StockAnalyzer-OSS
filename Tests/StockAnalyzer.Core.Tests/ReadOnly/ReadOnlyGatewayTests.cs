@@ -255,7 +255,7 @@ public sealed class ReadOnlyGatewayTests : IDisposable
         var cut = await CreateGateway().GetCandlesUpToAsync("SPIKE", timeFrame, endDate, 100);
 
         Assert.Equal(10, daily.Count);
-        Assert.Equal(TimeFrameAggregator.Aggregate(daily, timeFrame), cut);
+        Assert.Equal(TimeFrameAggregator.AggregateToPeriodStart(daily, timeFrame), cut);
         Assert.All(cut, bar => Assert.True(DateOnly.FromDateTime(bar.Timestamp) <= endDate));
     }
 
@@ -478,7 +478,7 @@ public sealed class ReadOnlyGatewayTests : IDisposable
     [Fact]
     public async Task GetStoredTickerMetadata_ReturnsTheStoredRecordAndDoesNotWrite()
     {
-        await _fixture.SeedMetadataAsync(Msft, TickerMetadata.Unknown with { ShortName = "Microsoft", Sector = "Technology" } );
+        await _fixture.SeedMetadataAsync(Msft, TickerMetadata.Unknown with { ShortName = "Microsoft", Sector = "Technology" });
         var before = _fixture.Snapshot();
 
         var metadata = await CreateGateway().GetStoredTickerMetadataAsync("msft");

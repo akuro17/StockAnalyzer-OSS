@@ -14,7 +14,7 @@ namespace StockAnalyzer.Core.Tests
             var startDate = DateTime.Today;
             return closes.Select((close, i) => new CoreCandleData(
                 startDate.AddDays(i),
-                i > 0 ? closes[i-1] : close,
+                i > 0 ? closes[i - 1] : close,
                 close + 1,
                 close - 1,
                 close,
@@ -108,7 +108,7 @@ namespace StockAnalyzer.Core.Tests
             var indicator = new CoreCVarIndicator { Period = 10 };
             var candles = CreateTestCandles(new decimal[] { 100, 101, 102, 103, 104 });
             var result = indicator.Calculate(candles);
-            
+
             Assert.Equal(5, result.MainValues.Count);
             Assert.All(result.MainValues, v => Assert.Null(v));
         }

@@ -24,7 +24,7 @@ public sealed class RlPortfolioV2FeatureTests
     private static readonly FixedScaler Identity5 = RlPortfolioScaler.Create(Enumerable.Repeat(new FixedScalerStatistic(0d, 1d, -100d, 100d), 5).ToArray());
 
     private static BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
-        { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
+    { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
 
     private static RlPortfolioSession Session(IRlPanelBars bars, params int[] tradable)
         => new(bars, RlPanelBarsFixture.Block(tradable), tradable.ToImmutableArray(), Costs());
@@ -259,8 +259,13 @@ public sealed class RlPortfolioV2FeatureTests
         long sequence = 0;
         JsonElement Request(string hash) => JsonDocument.Parse(JsonSerializer.Serialize(new Dictionary<string, object>
         {
-            ["protocol_version"] = 1, ["run_id"] = run.ToString("N"), ["contract_hash"] = hash, ["sequence"] = ++sequence,
-            ["session_id"] = "", ["method"] = "Ready", ["payload"] = new { },
+            ["protocol_version"] = 1,
+            ["run_id"] = run.ToString("N"),
+            ["contract_hash"] = hash,
+            ["sequence"] = ++sequence,
+            ["session_id"] = "",
+            ["method"] = "Ready",
+            ["payload"] = new { },
         })).RootElement.Clone();
         var v1Host = new RlPortfolioIpcHost(run, bars, catalog, Identity5, 3, Costs(), 100);
         Assert.Throws<InvalidDataException>(() => v1Host.Handle(Request(RlPortfolioV2Contract.ContractHash), default));

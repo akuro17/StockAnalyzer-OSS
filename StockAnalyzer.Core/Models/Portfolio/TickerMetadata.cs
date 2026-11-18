@@ -5,11 +5,11 @@ namespace StockAnalyzer.Core.Models.Portfolio;
 /// Defined as a readonly record struct for high-performance zero-allocation use.
 /// </summary>
 public readonly record struct TickerMetadata(
-    string ShortName, 
+    string ShortName,
     string LongName,
-    string Region, 
-    string Sector, 
-    string Industry, 
+    string Region,
+    string Sector,
+    string Industry,
     string Currency,
     decimal? CurrentPrice = null,
     decimal? LastClose = null)

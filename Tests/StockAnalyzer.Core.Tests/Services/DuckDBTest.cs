@@ -54,7 +54,7 @@ public class DuckDBTest : System.IDisposable
         });
         var provider = new ParquetMarketDataProvider(_dbManager, new MockPythonServiceBase(), settings, NullLogger<ParquetMarketDataProvider>.Instance);
         var meta = await provider.GetMetadataAsync("AA");
-        
+
         Assert.Equal("Alcoa Corporation", meta.ShortName);
         Assert.Equal("Basic Materials", meta.Sector);
         Assert.Equal("Aluminum", meta.Industry);
@@ -67,11 +67,11 @@ public class DuckDBTest : System.IDisposable
     {
         using var connection = new DuckDBConnection("DataSource=:memory:");
         connection.Open();
-        
+
         using var command = connection.CreateCommand();
         command.CommandText = "SELECT 1";
         var result = command.ExecuteScalar();
-        
+
         Assert.Equal(1, result);
     }
 
@@ -87,7 +87,7 @@ public class DuckDBTest : System.IDisposable
         using var command = connection.CreateCommand();
         // Query parquet file directly to get column types
         command.CommandText = $"SELECT * FROM read_parquet('{parquetPath.Replace("\\", "/")}') LIMIT 1";
-        
+
         using (var reader = command.ExecuteReader())
         {
             if (reader.Read())

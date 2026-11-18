@@ -75,7 +75,7 @@ public class MarketDataSettings
 
         foreach (var entry in pathEntries)
         {
-            if (!string.IsNullOrEmpty(entry.Value) && 
+            if (!string.IsNullOrEmpty(entry.Value) &&
                 (entry.Value.IndexOfAny(invalidChars) >= 0 || entry.Value.IndexOfAny(extraInvalidChars) >= 0))
             {
                 throw new System.ArgumentException($"Path '{entry.Value}' contains invalid characters.", entry.Name);

@@ -20,7 +20,7 @@ public class PortfolioAggregationTests
         // 3 categories with exact 1/3 weight each
         // 1/3 * 100.00 = 33.3333...
         // 0.3333 * 3 = 0.9999 -> deficit of 0.0001 (or 1 unit in 10000)
-        
+
         var portfolio = new Portfolio(
             0,
             new Dictionary<string, Position>
@@ -50,7 +50,7 @@ public class PortfolioAggregationTests
         // Assert
         Assert.Equal(300m, result.TotalValue);
         Assert.Equal(3, result.SectorAllocations.Count);
-        
+
         var sum = result.SectorAllocations.Sum(a => a.Percentage);
         Assert.Equal(100.00m, sum);
 
@@ -81,7 +81,7 @@ public class PortfolioAggregationTests
 
         // Assert
         Assert.Equal(2000m, result.TotalValue);
-        
+
         // Asset Allocation: 50% Equity, 50% Cash
         Assert.Equal(2, result.AssetAllocations.Count);
         Assert.Contains(result.AssetAllocations, a => a.Category == "Equity" && a.Percentage == 50.00m);
@@ -288,7 +288,7 @@ public class PortfolioAggregationTests
     {
         var sut = new PortfolioManager();
         var now = DateTimeOffset.UtcNow;
-        
+
         var buy1 = new Transaction(now.AddDays(-5), TransactionType.Buy, "AAPL", 10, 150m, 1500m, fee: 10m);
         var buy2 = new Transaction(now.AddDays(-4), TransactionType.Buy, "AAPL", 5, 160m, 800m, fee: 5m);
         var sell = new Transaction(now.AddDays(-3), TransactionType.Sell, "AAPL", 12, 180m, 2160m, fee: 12m);
@@ -314,7 +314,7 @@ public class PortfolioAggregationTests
 
         Assert.Equal(316m, portfolio.TotalRealizedPnL);
         Assert.Equal(2, portfolio.ClosedPositions.Count);
-        
+
         var closed1 = portfolio.ClosedPositions[0];
         Assert.Equal("AAPL", closed1.Ticker);
         Assert.Equal(10m, closed1.Quantity);
@@ -337,7 +337,7 @@ public class PortfolioAggregationTests
     {
         var sut = new PortfolioManager();
         var now = DateTimeOffset.UtcNow;
-        
+
         var buy1 = new Transaction(now.AddDays(-5), TransactionType.Buy, "AAPL", 10, 150m, 1500m, fee: 10m);
         var buy2 = new Transaction(now.AddDays(-4), TransactionType.Buy, "AAPL", 5, 160m, 800m, fee: 5m);
         // Specifically exit buy2 first (RelatedTransactionId pointing to buy2)
@@ -357,7 +357,7 @@ public class PortfolioAggregationTests
         // PnL: 5 * (180 - 160) - 5 - 5 = 100 - 10 = 90
         Assert.Equal(90m, portfolio.TotalRealizedPnL);
         Assert.Single(portfolio.ClosedPositions);
-        
+
         var closed = portfolio.ClosedPositions[0];
         Assert.Equal("AAPL", closed.Ticker);
         Assert.Equal(5m, closed.Quantity);
@@ -413,7 +413,7 @@ public class PortfolioAggregationTests
         };
 
         var portfolio = sut.RebuildPortfolio(0m, transactions);
-        
+
         var latestPrices = new Dictionary<string, decimal>
         {
             { "AAPL", 150m }

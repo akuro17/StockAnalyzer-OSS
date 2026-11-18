@@ -234,10 +234,13 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
             else
             {
                 bool active = Volatile.Read(ref _running) != 0 || state.Status == RetrainingStatus.Running;
-                await PersistAsync(state with { Enabled = enabled,
+                await PersistAsync(state with
+                {
+                    Enabled = enabled,
                     LastOccurrenceUtc = enabled ? LatestOccurrence(_clock.GetUtcNow()) : state.LastOccurrenceUtc,
                     Status = active ? state.Status : enabled ? RetrainingStatus.Waiting : RetrainingStatus.Disabled,
-                    Error = null }).ConfigureAwait(false);
+                    Error = null
+                }).ConfigureAwait(false);
             }
         }
         finally { _gate.Release(); }
@@ -295,8 +298,13 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
     {
         if (JournalFor(scan, due) is { } journal)
             return state with { LastOccurrenceUtc = due, Status = journal.Status, CandidateModelId = journal.CandidateModelId, Error = journal.Error };
-        return state with { LastOccurrenceUtc = due, Status = ownerHeld ? RetrainingStatus.Running : RetrainingStatus.Interrupted,
-            CandidateModelId = null, Error = null };
+        return state with
+        {
+            LastOccurrenceUtc = due,
+            Status = ownerHeld ? RetrainingStatus.Running : RetrainingStatus.Interrupted,
+            CandidateModelId = null,
+            Error = null
+        };
     }
 
     /// <summary>
@@ -347,8 +355,12 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
                 // Registration verifies T05 evidence; activation remains a separate existing T05 action.
                 var candidate = await _registry.RegisterAsync(result.OnnxArtifactPath, result.MetricsArtifactPath,
                     cancellation.Token).ConfigureAwait(false);
-                occurrence = occurrence with { Status = RetrainingStatus.Succeeded, RunId = result.RunId,
-                    CandidateModelId = candidate.ModelId };
+                occurrence = occurrence with
+                {
+                    Status = RetrainingStatus.Succeeded,
+                    RunId = result.RunId,
+                    CandidateModelId = candidate.ModelId
+                };
             }
             catch (TrainingJobBusyException) { occurrence = occurrence with { Status = RetrainingStatus.Skipped }; }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -453,8 +465,12 @@ public sealed class RetrainingScheduler : IRetrainingScheduler
                 occurrence, TrainingConfigJson.Options).ConfigureAwait(false);
             if (await LoadScheduleAsync().ConfigureAwait(false) is not { } disk) return;
             if (disk.JobId == occurrence.JobId && disk.LastOccurrenceUtc == occurrence.DueUtc)
-                await PersistAsync(disk with { Status = occurrence.Status,
-                    CandidateModelId = occurrence.CandidateModelId, Error = occurrence.Error }).ConfigureAwait(false);
+                await PersistAsync(disk with
+                {
+                    Status = occurrence.Status,
+                    CandidateModelId = occurrence.CandidateModelId,
+                    Error = occurrence.Error
+                }).ConfigureAwait(false);
             else _current = disk;
         }
         finally { _gate.Release(); }

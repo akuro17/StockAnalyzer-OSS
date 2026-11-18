@@ -23,10 +23,10 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
 
         public VolumeProfileRenderer()
         {
-            _barPaint = new SKPaint 
-            { 
-                Style = SKPaintStyle.Fill, 
-                IsAntialias = true 
+            _barPaint = new SKPaint
+            {
+                Style = SKPaintStyle.Fill,
+                IsAntialias = true
             };
 
             _valueAreaPaint = new SKPaint
@@ -34,15 +34,15 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
                 Style = SKPaintStyle.Fill,
                 IsAntialias = true
             };
-            
-            _pocPaint = new SKPaint 
-            { 
-                Style = SKPaintStyle.Stroke, 
+
+            _pocPaint = new SKPaint
+            {
+                Style = SKPaintStyle.Stroke,
                 StrokeWidth = 2,
-                IsAntialias = true 
+                IsAntialias = true
             };
 
-             _borderPaint = new SKPaint
+            _borderPaint = new SKPaint
             {
                 Style = SKPaintStyle.Stroke,
                 StrokeWidth = 1,
@@ -54,7 +54,7 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
         internal SKPaint PocPaint => _pocPaint;
         internal SKPaint BorderPaint => _borderPaint;
 
-        public void Render(SKCanvas canvas, Rect chartArea, List<VolumeBin> profile, 
+        public void Render(SKCanvas canvas, Rect chartArea, List<VolumeBin> profile,
             decimal minPrice, decimal maxPrice, ICoordinateTransform transform, bool isRightSide, IChartRenderConfig config,
             CoreIndicatorSettings? setting = null)
         {
@@ -102,20 +102,20 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
                 // Direct conversion from Price to screen Y coordinate via ICoordinateTransform
                 float yTop = (float)transform.GetYFromPrice(bin.UpperBound) + (float)chartArea.Top;
                 float yBottom = (float)transform.GetYFromPrice(bin.LowerBound) + (float)chartArea.Top;
-                
+
                 // Width based on volume
                 float barLength = (bin.TotalVolume / (float)maxVol) * profileWidth;
-                
+
                 float x0 = isRightSide ? (float)chartArea.Right : (float)chartArea.Left;
                 float x1 = isRightSide ? (float)chartArea.Right - barLength : (float)chartArea.Left + barLength;
 
                 // Rect: normalize both horizontal and vertical bounds to guarantee valid geometry
                 var rect = new SKRect(
-                    Math.Min(x0, x1), 
-                    Math.Min(yTop, yBottom), 
-                    Math.Max(x0, x1), 
+                    Math.Min(x0, x1),
+                    Math.Min(yTop, yBottom),
+                    Math.Max(x0, x1),
                     Math.Max(yTop, yBottom));
-                
+
                 // Draw
                 canvas.DrawRect(rect, _barPaint);
                 canvas.DrawRect(rect, _borderPaint);

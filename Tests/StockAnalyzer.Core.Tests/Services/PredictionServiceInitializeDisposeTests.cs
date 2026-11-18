@@ -60,7 +60,7 @@ public class PredictionServiceInitializeDisposeTests
     {
         var registry = new BlockingRegistry();
         var service = new PredictionService(
-            new PredictionServiceTests.TestSettings(PredictionServiceTests.ConformantModelPath,predictionWindowSize: PredictionWindowSize),
+            new PredictionServiceTests.TestSettings(PredictionServiceTests.ConformantModelPath, predictionWindowSize: PredictionWindowSize),
             new MLDataProcessor(),
             modelRegistry: registry);
 

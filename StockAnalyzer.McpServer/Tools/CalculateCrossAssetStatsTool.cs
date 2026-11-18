@@ -20,7 +20,9 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
     private const string LookbackArgument = "lookbackBars";
     private const string EndDateArgument = "endDate";
     private const string ReturnBasisArgument = "returnBasis";
+    private const string HoldingPeriodModeArgument = "holdingPeriodMode";
     private const string IncludeCovarianceArgument = "includeCovariance";
+    private const string IncludeDistributionStatsArgument = "includeDistributionStats";
 
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
     private readonly SymbolResolver _symbols;
@@ -50,7 +52,13 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         "With timeFrame W1 or MN1 the bars are matched by period. " +
         $"{ReturnStatistics.PeriodStartDateNote} " +
         "multiBarReturnCount counts the common dates whose returns cover different holding periods because a market traded on a day another was closed. " +
-        "Supports returnBasis 'SimpleReturn' (default) or 'LogReturn'. Read-only.";
+        $"{HoldingPeriodModeArgument} {nameof(HoldingPeriodAlignmentMode.IncludeAll)} (default) uses those dates unchanged; {nameof(HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod)} leaves them out and calculates on the rest, " +
+        $"and then adds holdingPeriodMode and excludedMultiBarDateCount to the result (commonDateCount is what remains; with fewer than {ReturnStatistics.MinCommonDates} left the call fails with INSUFFICIENT_MARKET_DATA). " +
+        "Supports returnBasis 'SimpleReturn' (default) or 'LogReturn'. " +
+        $"{IncludeDistributionStatsArgument} true (default false) adds downsideBeta and upsideBeta to every betaAlpha entry (the OLS beta inside the dates with a strictly negative / strictly positive benchmark return; a zero benchmark return belongs to neither; null below 3 such dates or without benchmark variance there) " +
+        "and a symbolStats array in symbols order: mean, stdDev (sample, N-1), downsideDeviation (target 0), skewness (G1, 3+ returns), excessKurtosis (G2, 4+), jarqueBeraStat and jarqueBeraPValue (8+; p = exp(-JB/2)), " +
+        "cornishFisherVar95 (4+; the 5 % lower-tail return quantile with the Cornish-Fisher correction: a LOSS IS NEGATIVE, so it equals minus the positive valueAtRisk convention of sa_analyze_portfolio_risk; null where the expansion is not monotone). " +
+        "Statistics that are undefined for the data (a flat series, too few returns) are null. Read-only.";
 
     public bool IsHeavy => false;
 
@@ -65,7 +73,9 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         .Integer(LookbackArgument, $"Stored bars each symbol evaluates, newest last. Default {_limits.DefaultCandleCount}, maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.DefaultCandleCount, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, bars up to this date are evaluated.")
         .String(ReturnBasisArgument, "Return calculation basis: 'SimpleReturn' (default) or 'LogReturn'.", allowedValues: new[] { ReturnStatistics.SimpleReturnBasis, ReturnStatistics.LogReturnBasis })
+        .String(HoldingPeriodModeArgument, $"Common return dates whose returns cover different holding periods (multiBarReturnCount): '{nameof(HoldingPeriodAlignmentMode.IncludeAll)}' (default) uses them unchanged, '{nameof(HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod)}' leaves them out.", allowedValues: Enum.GetNames<HoldingPeriodAlignmentMode>())
         .Boolean(IncludeCovarianceArgument, "Whether to include the sample covariance matrix in the result. Default false.")
+        .Boolean(IncludeDistributionStatsArgument, "Whether to add downsideBeta / upsideBeta to betaAlpha (needs a benchmark) and the symbolStats array (mean, stdDev, downsideDeviation, skewness, excessKurtosis, jarqueBeraStat, jarqueBeraPValue, cornishFisherVar95; the VaR is the negative lower-tail return). Default false: the output is unchanged.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -76,6 +86,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.DefaultCandleCount, _limits.MaxCandlesPerRequest);
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         bool includeCovariance = ToolArgs.Boolean(arguments, IncludeCovarianceArgument) ?? false;
+        bool includeDistributionStats = ToolArgs.Boolean(arguments, IncludeDistributionStatsArgument) ?? false;
 
         string returnBasis = ToolArgs.String(arguments, ReturnBasisArgument) ?? ReturnStatistics.SimpleReturnBasis;
         if (!string.Equals(returnBasis, ReturnStatistics.SimpleReturnBasis, StringComparison.OrdinalIgnoreCase) &&
@@ -83,6 +94,8 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         {
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"returnBasis must be '{ReturnStatistics.SimpleReturnBasis}' or '{ReturnStatistics.LogReturnBasis}'.", ReturnBasisArgument);
         }
+
+        HoldingPeriodAlignmentMode holdingPeriodMode = ReadHoldingPeriodMode(arguments);
 
         // 1. Resolve Benchmark Symbol shape (if any) first per sa_ai_integration_0007
         string? canonicalBenchmark = null;
@@ -153,13 +166,16 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         }
 
         // 5. Calculate Cross-Asset Statistics (external benchmark passed separately)
-        CrossAssetStatsResult result = ReturnStatistics.Calculate(universeDict, canonicalBenchmark, includeCovariance, returnBasis, benchmarkCandles, timeFrame);
+        CrossAssetStatsResult result = ReturnStatistics.Calculate(universeDict, canonicalBenchmark, includeCovariance, returnBasis, benchmarkCandles, timeFrame, holdingPeriodMode);
 
         if (result.CommonDateCount < ReturnStatistics.MinCommonDates)
         {
+            string left = result.ExcludedMultiBarDateCount > 0
+                ? $" after leaving out {result.ExcludedMultiBarDateCount} whose returns cover different holding periods ({HoldingPeriodModeArgument} {result.HoldingPeriodMode})"
+                : string.Empty;
             throw new ToolException(
                 ToolErrorCodes.InsufficientMarketData,
-                $"At least {ReturnStatistics.MinCommonDates} common return dates are required across the evaluated symbols, but only {result.CommonDateCount} were found.",
+                $"At least {ReturnStatistics.MinCommonDates} common return dates are required across the evaluated symbols, but only {result.CommonDateCount} were found{left}.",
                 LookbackArgument);
         }
 
@@ -185,6 +201,13 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
 
             writer.WriteNumber("commonDateCount", result.CommonDateCount);
             writer.WriteNumber("multiBarReturnCount", result.MultiBarReturnCount);
+            if (result.HoldingPeriodMode != HoldingPeriodAlignmentMode.IncludeAll)
+            {
+                // Only a non-standard mode adds its fields, so a call without the argument keeps the known output byte for byte.
+                writer.WriteString("holdingPeriodMode", result.HoldingPeriodMode.ToString());
+                writer.WriteNumber("excludedMultiBarDateCount", result.ExcludedMultiBarDateCount);
+            }
+
             if (result.StartDate.HasValue)
             {
                 writer.WriteString("startDate", ToolJson.FormatDate(result.StartDate.Value));
@@ -230,15 +253,43 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
             if (canonicalBenchmark != null && result.BetaAlpha.Count > 0)
             {
                 writer.WriteStartArray("betaAlpha");
-                foreach (var entry in result.BetaAlpha)
+                foreach (var entry in includeDistributionStats ? CrossAssetDistributionStatistics.WithConditionalBetas(result) : result.BetaAlpha)
                 {
                     writer.WriteStartObject();
                     writer.WriteString("symbol", entry.Symbol);
                     WriteNullableDouble(writer, "beta", entry.Beta);
                     WriteNullableDouble(writer, "alpha", entry.Alpha);
                     WriteNullableDouble(writer, "rSquared", entry.RSquared);
+                    if (includeDistributionStats)
+                    {
+                        WriteNullableDouble(writer, "downsideBeta", entry.DownsideBeta);
+                        WriteNullableDouble(writer, "upsideBeta", entry.UpsideBeta);
+                    }
+
                     writer.WriteEndObject();
                 }
+                writer.WriteEndArray();
+            }
+
+            // Distribution statistics per symbol (only when asked for)
+            if (includeDistributionStats)
+            {
+                writer.WriteStartArray("symbolStats");
+                foreach (SymbolDistributionStats stats in CrossAssetDistributionStatistics.SymbolStats(result))
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("symbol", stats.Symbol);
+                    WriteNullableDouble(writer, "mean", stats.Mean);
+                    WriteNullableDouble(writer, "stdDev", stats.StdDev);
+                    WriteNullableDouble(writer, "downsideDeviation", stats.DownsideDeviation);
+                    WriteNullableDouble(writer, "skewness", stats.Skewness);
+                    WriteNullableDouble(writer, "excessKurtosis", stats.ExcessKurtosis);
+                    WriteNullableDouble(writer, "jarqueBeraStat", stats.JarqueBeraStatistic);
+                    WriteNullableDouble(writer, "jarqueBeraPValue", stats.JarqueBeraPValue);
+                    WriteNullableDouble(writer, "cornishFisherVar95", stats.CornishFisherVar95);
+                    writer.WriteEndObject();
+                }
+
                 writer.WriteEndArray();
             }
 
@@ -263,6 +314,13 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
 
             writer.WriteEndObject();
         });
+    }
+
+    private static HoldingPeriodAlignmentMode ReadHoldingPeriodMode(JsonElement arguments)
+    {
+        // The input schema (allowedValues) refuses every value that is not an enum name before the tool runs.
+        string? raw = ToolArgs.String(arguments, HoldingPeriodModeArgument);
+        return raw is null ? HoldingPeriodAlignmentMode.IncludeAll : Enum.Parse<HoldingPeriodAlignmentMode>(raw);
     }
 
     private async Task<List<string>> ResolveUniverseSymbolsAsync(JsonElement arguments, CancellationToken cancellationToken)

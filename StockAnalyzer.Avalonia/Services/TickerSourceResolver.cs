@@ -202,12 +202,23 @@ public sealed class TickerSourceResolver : ITickerSourceResolver
             var item = new WatchlistItemViewModel(ticker, meta.ShortName ?? ticker, meta.Sector ?? "", meta.Industry ?? "", 0, 0, 0, 0, 0, 0, 0)
             {
                 Tag = !string.IsNullOrEmpty(liveTag) ? liveTag : meta.Tag,
-                Sector = meta.Sector ?? "", Industry = meta.Industry ?? "",
-                ReturnOnEquity = meta.ReturnOnEquity, ReturnOnAssets = meta.ReturnOnAssets, GrossMargins = meta.GrossMargins,
-                OperatingMargins = meta.OperatingMargins, ProfitMargins = meta.ProfitMargins, CurrentRatio = meta.CurrentRatio,
-                QuickRatio = meta.QuickRatio, DebtToEquity = meta.DebtToEquity, MarketCap = meta.MarketCap,
-                EnterpriseValue = meta.EnterpriseValue, TrailingPE = meta.TrailingPE, ForwardPE = meta.ForwardPE,
-                PegRatio = meta.PegRatio, PriceToSalesTrailing12Months = meta.PriceToSalesTrailing12Months, PriceToBook = meta.PriceToBook,
+                Sector = meta.Sector ?? "",
+                Industry = meta.Industry ?? "",
+                ReturnOnEquity = meta.ReturnOnEquity,
+                ReturnOnAssets = meta.ReturnOnAssets,
+                GrossMargins = meta.GrossMargins,
+                OperatingMargins = meta.OperatingMargins,
+                ProfitMargins = meta.ProfitMargins,
+                CurrentRatio = meta.CurrentRatio,
+                QuickRatio = meta.QuickRatio,
+                DebtToEquity = meta.DebtToEquity,
+                MarketCap = meta.MarketCap,
+                EnterpriseValue = meta.EnterpriseValue,
+                TrailingPE = meta.TrailingPE,
+                ForwardPE = meta.ForwardPE,
+                PegRatio = meta.PegRatio,
+                PriceToSalesTrailing12Months = meta.PriceToSalesTrailing12Months,
+                PriceToBook = meta.PriceToBook,
             };
             if (latest is not null && latest.TryGetValue(ticker, out decimal price) && price > 0) item.Close = price;
             if (_filters.EvaluateSettings(item, settings)) result.Add(ticker);

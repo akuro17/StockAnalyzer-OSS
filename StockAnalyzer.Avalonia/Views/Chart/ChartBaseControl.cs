@@ -172,13 +172,13 @@ public class ChartBaseControl : Control, ICustomHitTest
     /// Manages PointerMoved event subscription.
     /// </summary>
     private IDisposable? _pointerMovedSubscription;
-    
 
-    
+
+
     // New Architecture
     // _coordinateTransform is now managed by _dataCoordinator
 
-    
+
     // Drawing State - Delegated to ChartInteractionController (Phase 3.5)
     private readonly StockAnalyzer.Avalonia.Drawing.LayeredDrawingScene _layeredScene = new();
     private IDisposable? _sceneRetirementBinding;
@@ -222,7 +222,7 @@ public class ChartBaseControl : Control, ICustomHitTest
 
     // ReverseWatch specific data - Delegated to ChartDataCoordinator (Phase 3.5)
     private ReverseWatchCurveData? _reverseWatchData => _dataCoordinator.ReverseWatchData;
-    
+
     // RelativePerformance specific data
     private ComparisonAlignedData? _comparisonData => _dataCoordinator.ComparisonData;
 
@@ -251,7 +251,7 @@ public class ChartBaseControl : Control, ICustomHitTest
         var magnetService = services?.GetService<Services.Drawing.IMagnetSnapService>();
         var dialogService = services?.GetService<Services.IDialogService>();
         var smartGuideService = services?.GetService<Services.Drawing.ISmartGuideService>();
-        
+
         var indicatorRenderer = services?.GetService<IndicatorRenderer>() ?? new IndicatorRenderer();
         _vpCoordinator = services?.GetService<VolumeProfileViewportCoordinator>() ?? new VolumeProfileViewportCoordinator(services?.GetService<IDispatcherService>());
         indicatorRenderer.ViewportCoordinator = _vpCoordinator;
@@ -262,9 +262,9 @@ public class ChartBaseControl : Control, ICustomHitTest
         _tapCoordinator.ResultReady += _ => InvalidateVisual();
 
         _pipeline = new ChartRenderPipeline(indicatorRenderer);
-        
+
         _interactionController = (magnetService != null && dialogService != null)
-            ? new ChartInteractionController(magnetService, dialogService, smartGuideService, presetService) 
+            ? new ChartInteractionController(magnetService, dialogService, smartGuideService, presetService)
             : new ChartInteractionController(
                 new Services.Drawing.MagnetSnapService(),
                 new Services.DialogService(),
@@ -285,7 +285,7 @@ public class ChartBaseControl : Control, ICustomHitTest
         _interactionController.OnSelectionIdleTimeout = () => InvalidateVisual();
 
         // Forward drawing finished event to ViewModel for tool-specific actions (e.g., DTW search)
-        _interactionController.OnDrawingFinished = (obj) => 
+        _interactionController.OnDrawingFinished = (obj) =>
         {
             if (ViewModel != null)
             {
@@ -323,7 +323,7 @@ public class ChartBaseControl : Control, ICustomHitTest
         ClipToBounds = true;
         // _rulerRenderer is now in InteractionController
 
-        
+
         // Enable Focus for Key Events
         Focusable = true;
 
@@ -435,11 +435,11 @@ public class ChartBaseControl : Control, ICustomHitTest
             _subscribedViewModel.Indicators.CollectionChanged -= OnIndicatorsCollectionChanged;
             _subscribedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _subscribedViewModel.ObjectManager.Synced -= OnObjectManagerChanged;
-            
+
             // Critical Fix: Clear large buffers when VM is detached to prevent memory bloat
             // Especially important since ChartBaseControl may be cached by Avalonia's ViewSwitcher.
             _dataCoordinator.ClearAllBuffers();
-            
+
             _subscribedViewModel = null;
         }
     }
@@ -480,16 +480,16 @@ public class ChartBaseControl : Control, ICustomHitTest
             // Reset view on new ViewModel
             if (newVm.ChartType == ChartType.ReverseWatch)
             {
-                 _dataCoordinator.CalculateReverseWatch(newVm);
+                _dataCoordinator.CalculateReverseWatch(newVm);
             }
 
             if (newVm.Candles.Count > 0)
             {
-                 _dataCoordinator.ResetView(newVm.Candles.Count);
+                _dataCoordinator.ResetView(newVm.Candles.Count);
             }
             else
             {
-                 _dataCoordinator.ResetView(0);
+                _dataCoordinator.ResetView(0);
             }
 
             // Sync layout properties
@@ -523,10 +523,10 @@ public class ChartBaseControl : Control, ICustomHitTest
 
             if (_isDrawingNewShape && _currentDrawingObject != null)
             {
-                 ViewModel?.ObjectManager.RemoveObject(_currentDrawingObject.Id);
-                 _currentDrawingObject = null;
-                 _isDrawingNewShape = false;
-                 _drawingStep = 0;
+                ViewModel?.ObjectManager.RemoveObject(_currentDrawingObject.Id);
+                _currentDrawingObject = null;
+                _isDrawingNewShape = false;
+                _drawingStep = 0;
             }
             _drawingStep = 0;
 
@@ -542,26 +542,26 @@ public class ChartBaseControl : Control, ICustomHitTest
 
         else if (e.PropertyName == nameof(ChartViewModel.IsLoading)) // Handle IsLoading completion
         {
-             if (ViewModel != null && !ViewModel.IsLoading)
-             {
-                 // Data loading finished -> Force full update (Logic similar to OnCandlesCollectionChanged but for bulk)
-                 _dataCoordinator.SyncEffectiveValues(ViewModel); // Ensure ATR/BoxSize based on full data
+            if (ViewModel != null && !ViewModel.IsLoading)
+            {
+                // Data loading finished -> Force full update (Logic similar to OnCandlesCollectionChanged but for bulk)
+                _dataCoordinator.SyncEffectiveValues(ViewModel); // Ensure ATR/BoxSize based on full data
 
-                 // Reset view or Adjust?
-                 // If new data loaded, we generally want to show the latest.
-                 // But for P&F, if Box Size changed, we might need full reset.
-                 // Let's use ResetView logic if count changed significantly, or Adjust.
-                 // For safety with P&F, let's use AdjustForNewCandles with "AtEnd=true" assumption for new load.
-                 if (ViewModel.Candles.Count > 0)
-                 {
-                      _dataCoordinator.ResetView(ViewModel.Candles.Count); // Reset to end on fresh load
-                 }
+                // Reset view or Adjust?
+                // If new data loaded, we generally want to show the latest.
+                // But for P&F, if Box Size changed, we might need full reset.
+                // Let's use ResetView logic if count changed significantly, or Adjust.
+                // For safety with P&F, let's use AdjustForNewCandles with "AtEnd=true" assumption for new load.
+                if (ViewModel.Candles.Count > 0)
+                {
+                    _dataCoordinator.ResetView(ViewModel.Candles.Count); // Reset to end on fresh load
+                }
 
-                 SafeUpdateSnapshot();
-                 _dataCoordinator.CalculateReverseWatch(ViewModel);
-                 _interactionController.ResetSnapState();
-                 SafeInvalidateVisual();
-             }
+                SafeUpdateSnapshot();
+                _dataCoordinator.CalculateReverseWatch(ViewModel);
+                _interactionController.ResetSnapState();
+                SafeInvalidateVisual();
+            }
         }
         else if (e.PropertyName == nameof(ChartViewModel.IsSubWindowVisible) || e.PropertyName == nameof(ChartViewModel.EffectiveIsSubWindowVisible))
         {
@@ -636,19 +636,19 @@ public class ChartBaseControl : Control, ICustomHitTest
     private void OnCandlesUpdated()
     {
         if (ViewModel?.Candles == null) return;
-        
+
         // Fix: Suppress updates during bulk data loading (prevent flicker/instability)
         if (ViewModel.IsLoading) return;
-        
+
         // Always reset logic or keep pos logic
         bool wasAtEnd = (_startIndex + _visibleCandleCount >= _currentSnapshot.Candles.Count);
         if (_currentSnapshot.Candles.Count == 0 && ViewModel.Candles.Count > 0) wasAtEnd = true;
 
         if (ViewModel != null)
         {
-             // Fix: Ensure Box/Brick sizes are recalculated based on new data (ATR)
-             _dataCoordinator.SyncEffectiveValues(ViewModel);
-             _dataCoordinator.AdjustForNewCandles(ViewModel.Candles.Count, wasAtEnd);
+            // Fix: Ensure Box/Brick sizes are recalculated based on new data (ATR)
+            _dataCoordinator.SyncEffectiveValues(ViewModel);
+            _dataCoordinator.AdjustForNewCandles(ViewModel.Candles.Count, wasAtEnd);
         }
 
         SafeUpdateSnapshot();
@@ -690,108 +690,108 @@ public class ChartBaseControl : Control, ICustomHitTest
         _isRendering = true;
         try
         {
-        if (ViewModel == null) return;
+            if (ViewModel == null) return;
 
-        if (ViewModel.IsDisplayOff)
-        {
-            var text = "Display is OFF";
-            var typeface = new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.Bold);
-            var formattedText = new FormattedText(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, 24, Brushes.Gray);
-            var textPos = new global::Avalonia.Point((Bounds.Width - formattedText.Width) / 2, (Bounds.Height - formattedText.Height) / 2);
-            context.DrawText(formattedText, textPos);
-            return;
-        }
-
-        if (_currentSnapshot == null || _currentSnapshot.Candles == null || _currentSnapshot.Candles.Count == 0)
-        {
-            return;
-        }
-
-        if (_dataCoordinator.Transform is GenericCoordinateTransform gct)
-        {
-            // WebAI Fix: Comprehensive Layout Sync Guard
-            // Check for Margin, Base Chart Type, and Physical Dimension changes.
-            // This ensures that if Bounds change (Startup/Flyout) or Margins change (User Settings),
-            // the Transform and Snapshot are immediately synchronized before the DrawCall.
-            if (gct.Metadata.IsSubWindowVisible != ViewModel.EffectiveIsSubWindowVisible || 
-                gct.Metadata.IsMainWindowVisible != ViewModel.IsMainWindowVisible ||
-                gct.Metadata.BaseChartType != ViewModel.ChartType ||
-                Math.Abs(gct.ViewportX - EffectiveMarginLeft) > 0.5 ||
-                Math.Abs(gct.ViewportY - EffectiveMarginTop) > 0.5 ||
-                Math.Abs(gct.CanvasWidth - Bounds.Width) > 0.5 ||
-                Math.Abs(gct.CanvasHeight - Bounds.Height) > 0.5)
+            if (ViewModel.IsDisplayOff)
             {
-                UpdateSnapshot(true);
-                // Reference 'gct' may now be stale (new transform built in UpdateSnapshot). Re-fetch.
-                if (_dataCoordinator.Transform is GenericCoordinateTransform gctNew)
+                var text = "Display is OFF";
+                var typeface = new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.Bold);
+                var formattedText = new FormattedText(text, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, 24, Brushes.Gray);
+                var textPos = new global::Avalonia.Point((Bounds.Width - formattedText.Width) / 2, (Bounds.Height - formattedText.Height) / 2);
+                context.DrawText(formattedText, textPos);
+                return;
+            }
+
+            if (_currentSnapshot == null || _currentSnapshot.Candles == null || _currentSnapshot.Candles.Count == 0)
+            {
+                return;
+            }
+
+            if (_dataCoordinator.Transform is GenericCoordinateTransform gct)
+            {
+                // WebAI Fix: Comprehensive Layout Sync Guard
+                // Check for Margin, Base Chart Type, and Physical Dimension changes.
+                // This ensures that if Bounds change (Startup/Flyout) or Margins change (User Settings),
+                // the Transform and Snapshot are immediately synchronized before the DrawCall.
+                if (gct.Metadata.IsSubWindowVisible != ViewModel.EffectiveIsSubWindowVisible ||
+                    gct.Metadata.IsMainWindowVisible != ViewModel.IsMainWindowVisible ||
+                    gct.Metadata.BaseChartType != ViewModel.ChartType ||
+                    Math.Abs(gct.ViewportX - EffectiveMarginLeft) > 0.5 ||
+                    Math.Abs(gct.ViewportY - EffectiveMarginTop) > 0.5 ||
+                    Math.Abs(gct.CanvasWidth - Bounds.Width) > 0.5 ||
+                    Math.Abs(gct.CanvasHeight - Bounds.Height) > 0.5)
                 {
-                    gct = gctNew;
+                    UpdateSnapshot(true);
+                    // Reference 'gct' may now be stale (new transform built in UpdateSnapshot). Re-fetch.
+                    if (_dataCoordinator.Transform is GenericCoordinateTransform gctNew)
+                    {
+                        gct = gctNew;
+                    }
                 }
             }
-        }
 
-        // Phase 5: Get Profile and create Renderer/Layout/Config via Profile
-        var profile = ChartTypeProfileRegistry.Get(ViewModel.ChartType);
+            // Phase 5: Get Profile and create Renderer/Layout/Config via Profile
+            var profile = ChartTypeProfileRegistry.Get(ViewModel.ChartType);
 
-        var config = profile.CreateRenderConfig(
-            ViewModel,
-            ViewModel.Candles.LastOrDefault()?.Close ?? 0,
-            _startIndex,
-            _visibleCandleCount,
-            new StockAnalyzer.Core.Models.Point(_currentMousePosition.X, _currentMousePosition.Y),
-            _dataCoordinator.Transform,
-            TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0,
-            _reverseWatchData,
-            _comparisonData);
+            var config = profile.CreateRenderConfig(
+                ViewModel,
+                ViewModel.Candles.LastOrDefault()?.Close ?? 0,
+                _startIndex,
+                _visibleCandleCount,
+                new StockAnalyzer.Core.Models.Point(_currentMousePosition.X, _currentMousePosition.Y),
+                _dataCoordinator.Transform,
+                TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0,
+                _reverseWatchData,
+                _comparisonData);
 
-        // Create Layout Context (Centralized Layout Logic)
-        // FIX: Pass actual effective margins (synchronized with ViewModel) to the layout provider.
-        // This ensures the RENDERING layout matches the COORDINATOR layout and the TRANSFORM.
-        var layout = profile.LayoutProvider.CreateLayout(new Rect(Bounds.Size), ViewModel.Indicators, config.IsSubWindowVisible,
-            ViewModel.IsMainWindowVisible,
-            EffectiveMarginTop, EffectiveMarginBottom, EffectiveMarginRight);
-        _currentLayout = layout;
+            // Create Layout Context (Centralized Layout Logic)
+            // FIX: Pass actual effective margins (synchronized with ViewModel) to the layout provider.
+            // This ensures the RENDERING layout matches the COORDINATOR layout and the TRANSFORM.
+            var layout = profile.LayoutProvider.CreateLayout(new Rect(Bounds.Size), ViewModel.Indicators, config.IsSubWindowVisible,
+                ViewModel.IsMainWindowVisible,
+                EffectiveMarginTop, EffectiveMarginBottom, EffectiveMarginRight);
+            _currentLayout = layout;
 
-        // Get Renderer from Registry
-        var mainRenderer = _rendererRegistry.GetRenderer(ViewModel.ChartType);
+            // Get Renderer from Registry
+            var mainRenderer = _rendererRegistry.GetRenderer(ViewModel.ChartType);
 
-        if (ViewModel.ObjectManager?.InformationObject is { Snapshot: null, IsVisible: true } info &&
-            ViewModel.Candles != null && ViewModel.Candles.Count > 0)
-        {
-            var targetCandle = ViewModel.Candles.LastOrDefault();
-            if (targetCandle != null)
+            if (ViewModel.ObjectManager?.InformationObject is { Snapshot: null, IsVisible: true } info &&
+                ViewModel.Candles != null && ViewModel.Candles.Count > 0)
             {
-                info.Snapshot = StockAnalyzer.Avalonia.Drawing.ChartInformationDataProvider.Extract(
-                    ViewModel, targetCandle.Timestamp, targetCandle.Close);
+                var targetCandle = ViewModel.Candles.LastOrDefault();
+                if (targetCandle != null)
+                {
+                    info.Snapshot = StockAnalyzer.Avalonia.Drawing.ChartInformationDataProvider.Extract(
+                        ViewModel, targetCandle.Timestamp, targetCandle.Close);
+                }
             }
-        }
 
-        UpdateLayeredScene();
+            UpdateLayeredScene();
 
-        context.Custom(new ChartDrawOperation(
-            new Rect(Bounds.Size), 
-            _currentSnapshot, 
-            ViewModel.ChartType,
-            mainRenderer,
-            _pipeline,
-            _currentMousePosition, 
-            _isCrosshairVisible, 
-            new Rect(Bounds.Size), 
-            _interactionController.RulerRenderer, 
+            context.Custom(new ChartDrawOperation(
+                new Rect(Bounds.Size),
+                _currentSnapshot,
+                ViewModel.ChartType,
+                mainRenderer,
+                _pipeline,
+                _currentMousePosition,
+                _isCrosshairVisible,
+                new Rect(Bounds.Size),
+                _interactionController.RulerRenderer,
 
-            ViewModel.ObjectManager,
-            _dataCoordinator.Transform,
-            config,
-            layout, // Passed Layout
-            _lastSnapChartPoint.HasValue && _dataCoordinator.Transform != null ? 
-                new global::Avalonia.Point(
-                    // Pixel Snap X to match CandleStickRenderer (Math.Floor(x) + 0.5f)
-                    Math.Floor(_dataCoordinator.Transform.ChartToScreen(_lastSnapChartPoint.Value).X) + 0.5,
-                    _dataCoordinator.Transform.ChartToScreen(_lastSnapChartPoint.Value).Y
-                ) : null,
-            _currentDrawingObject, // Pass Current Drawing Object (evaluated via property: Freehand/Highlighter or Controller)
-            _layeredScene, ViewModel.RlPresentation, (float)RlFontSize, _rlForeground
-            ));
+                ViewModel.ObjectManager,
+                _dataCoordinator.Transform,
+                config,
+                layout, // Passed Layout
+                _lastSnapChartPoint.HasValue && _dataCoordinator.Transform != null ?
+                    new global::Avalonia.Point(
+                        // Pixel Snap X to match CandleStickRenderer (Math.Floor(x) + 0.5f)
+                        Math.Floor(_dataCoordinator.Transform.ChartToScreen(_lastSnapChartPoint.Value).X) + 0.5,
+                        _dataCoordinator.Transform.ChartToScreen(_lastSnapChartPoint.Value).Y
+                    ) : null,
+                _currentDrawingObject, // Pass Current Drawing Object (evaluated via property: Freehand/Highlighter or Controller)
+                _layeredScene, ViewModel.RlPresentation, (float)RlFontSize, _rlForeground
+                ));
         }
         finally
         {
@@ -831,7 +831,7 @@ public class ChartBaseControl : Control, ICustomHitTest
             {
                 var panelKey = obj.PanelIndex == -1
                     ? StockAnalyzer.Core.Models.Drawing.PanelKey.Main
-                    : DrawingPanelResolver.TryResolvePanelKey(obj.PanelIndex, ViewModel.Indicators, ViewModel.IsSubWindowVisible) 
+                    : DrawingPanelResolver.TryResolvePanelKey(obj.PanelIndex, ViewModel.Indicators, ViewModel.IsSubWindowVisible)
                       ?? StockAnalyzer.Core.Models.Drawing.PanelKey.OverlayGroup(obj.PanelIndex);
                 layerService.AddObjectToLayer(obj.Id, panelKey);
             }
@@ -975,12 +975,12 @@ public class ChartBaseControl : Control, ICustomHitTest
             _freehandAdapter.HandleCancel(DrawingCancelReason.ContextChanged, out _);
             _isDrawingNewShape = false;
         }
-        
+
         _pointerMovedSubscription?.Dispose();
         _pointerMovedSubscription = null;
 
         UnsubscribeFromViewModel();
-        
+
         // Phase 70-12-Fix: DO NOT dispose renderers/pipeline here.
         // ViewSwitcher caches this control and re-attaches it on tab switch.
         // Disposing native SkiaSharp resources (SKPaint, etc.) here causes
@@ -1021,7 +1021,7 @@ public class ChartBaseControl : Control, ICustomHitTest
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
-        
+
         var position = e.GetPosition(this);
         var renderMarginTop = GetRenderMarginTop();
         var chartX = position.X - EffectiveMarginLeft;
@@ -1098,11 +1098,11 @@ public class ChartBaseControl : Control, ICustomHitTest
         if (!interactionHandled && _interactionController.IsDragging)
         {
             var deltaX = position.X - _interactionController.LastDragPoint.X;
-            
+
             // Delegate pan calculation vs chart width
             chartWidth = Bounds.Width - EffectiveMarginLeft - EffectiveMarginRight;
             int totalCandles = ViewModel?.Candles?.Count ?? 0;
-            
+
             var futureOffset = ViewModel?.RequiredFutureOffset ?? 0;
             if (_dataCoordinator.ApplyPan(deltaX, chartWidth, totalCandles, ViewModel?.ChartType ?? ChartType.Candlestick, futureOffset))
             {
@@ -1111,10 +1111,10 @@ public class ChartBaseControl : Control, ICustomHitTest
                 needsUpdate = true;
             }
         }
-        
+
         // Update Crosshair Data (previously throttled via Rx)
         UpdateCrosshairAtPointer(position);
-        
+
         InvalidateVisual(); // Trigger repaint for Crosshair movement
     }
 
@@ -1152,11 +1152,11 @@ public class ChartBaseControl : Control, ICustomHitTest
             StockAnalyzer.Core.Models.Analysis.ReverseWatchCurvePoint? rwPoint = null;
             if (ViewModel?.ChartType == ChartType.ReverseWatch)
             {
-                 rwPoint = _dataCoordinator.GetNearestReverseWatchPoint(chartX, position.Y - renderMarginTop, new Rect(Bounds.Size));
-                 if (ViewModel != null)
-                 {
-                     ViewModel.LatestReverseWatchPoint = _reverseWatchData?.Points?.LastOrDefault();
-                 }
+                rwPoint = _dataCoordinator.GetNearestReverseWatchPoint(chartX, position.Y - renderMarginTop, new Rect(Bounds.Size));
+                if (ViewModel != null)
+                {
+                    ViewModel.LatestReverseWatchPoint = _reverseWatchData?.Points?.LastOrDefault();
+                }
             }
             _interactionController.UpdateCrosshairPosition(index, hoveredCandle, symbol, tlbCount, rwPoint, position.Y, position.X, position.Y);
         }
@@ -1183,7 +1183,7 @@ public class ChartBaseControl : Control, ICustomHitTest
 
         var point = e.GetCurrentPoint(this);
         var position = e.GetPosition(this);
-        
+
         // Match Render margin logic
         // Match Render margin logic
         float renderMarginTop = GetRenderMarginTop();
@@ -1192,147 +1192,147 @@ public class ChartBaseControl : Control, ICustomHitTest
         // Do NOT subtract Bounds.X/Y - that was the cause of the offset mismatch.
         // Only subtract chart margins to get Chart Area relative coordinates.
         var chartPosition = new global::Avalonia.Point(
-            position.X - EffectiveMarginLeft, 
+            position.X - EffectiveMarginLeft,
             position.Y - renderMarginTop);
 
-            
+
         // Important: Clamp chartPosition or handle out-of-bounds in Transform?
         // Transform assumes relative to ChartArea (0,0 is TopLeft of Chart).
-        
+
         if (point.Properties.IsLeftButtonPressed)
         {
-             // Route the press to the panel under the pointer (main chart when panel < 0).
-             var target = ResolvePointerTarget(position, renderMarginTop, _currentDrawingObject ?? _draggedObject);
+            // Route the press to the panel under the pointer (main chart when panel < 0).
+            var target = ResolvePointerTarget(position, renderMarginTop, _currentDrawingObject ?? _draggedObject);
 
-             // A press on the reserved-but-empty volume band is not a drawing action: fall straight
-             // through to Pan instead of a phantom pick/create (no gesture is in progress here).
-             int pressPanelClass = _currentLayout is { } pressLayout
-                 ? pressLayout.ResolvePanelIndex(position)
-                 : ChartLayoutExtensions.MainChartPanelIndex;
-             bool allowDrawingInteraction = !(IsNonDrawingSurface(pressPanelClass)
-                 && _currentDrawingObject is null && _draggedObject is null);
+            // A press on the reserved-but-empty volume band is not a drawing action: fall straight
+            // through to Pan instead of a phantom pick/create (no gesture is in progress here).
+            int pressPanelClass = _currentLayout is { } pressLayout
+                ? pressLayout.ResolvePanelIndex(position)
+                : ChartLayoutExtensions.MainChartPanelIndex;
+            bool allowDrawingInteraction = !(IsNonDrawingSurface(pressPanelClass)
+                && _currentDrawingObject is null && _draggedObject is null);
 
-             // Shift-click object deletion / modifier override takes precedence before drawing tools
-             if (allowDrawingInteraction && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-             {
-                 if (_freehandAdapter.IsActive)
-                 {
-                     var shiftPanelKey = target.PanelIndex < 0
-                         ? StockAnalyzer.Core.Models.Drawing.PanelKey.Main
-                         : (StockAnalyzer.Avalonia.Drawing.DrawingPanelResolver.TryResolvePanelKey(target.PanelIndex, ViewModel?.Indicators, ViewModel?.IsSubWindowVisible ?? false)
-                            ?? StockAnalyzer.Core.Models.Drawing.PanelKey.OverlayGroup(target.PanelIndex));
+            // Shift-click object deletion / modifier override takes precedence before drawing tools
+            if (allowDrawingInteraction && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                if (_freehandAdapter.IsActive)
+                {
+                    var shiftPanelKey = target.PanelIndex < 0
+                        ? StockAnalyzer.Core.Models.Drawing.PanelKey.Main
+                        : (StockAnalyzer.Avalonia.Drawing.DrawingPanelResolver.TryResolvePanelKey(target.PanelIndex, ViewModel?.Indicators, ViewModel?.IsSubWindowVisible ?? false)
+                           ?? StockAnalyzer.Core.Models.Drawing.PanelKey.OverlayGroup(target.PanelIndex));
 
-                     if (_freehandAdapter.HandleModifierComplete(ViewModel, target.PanelIndex, shiftPanelKey, out bool freehandNeedsUpdate))
-                     {
-                         _isDrawingNewShape = false;
-                         if (ViewModel?.ObjectManager != null)
-                         {
-                             _interactionController.ArmOrResetSelectionIdleTimer(ViewModel.ObjectManager);
-                         }
-                         if (freehandNeedsUpdate)
-                         {
-                             InvalidateVisual();
-                         }
-                         e.Handled = true;
-                         return;
-                     }
-                 }
-                 else if (_interactionController.HandlePointerPressed(
-                     position,
-                     target.ChartPos,
-                     ViewModel,
-                     target.Transform,
-                     e.KeyModifiers,
-                     e.ClickCount,
-                     target.PanelIndex))
-                 {
-                     _isDrawingNewShape = _interactionController.IsDrawingNewShape;
-                     _currentDrawingObject = _interactionController.CurrentDrawingObject;
-                     _draggedObject = _interactionController.DraggedObject;
-                     _drawingStep = _interactionController.DrawingStep;
+                    if (_freehandAdapter.HandleModifierComplete(ViewModel, target.PanelIndex, shiftPanelKey, out bool freehandNeedsUpdate))
+                    {
+                        _isDrawingNewShape = false;
+                        if (ViewModel?.ObjectManager != null)
+                        {
+                            _interactionController.ArmOrResetSelectionIdleTimer(ViewModel.ObjectManager);
+                        }
+                        if (freehandNeedsUpdate)
+                        {
+                            InvalidateVisual();
+                        }
+                        e.Handled = true;
+                        return;
+                    }
+                }
+                else if (_interactionController.HandlePointerPressed(
+                    position,
+                    target.ChartPos,
+                    ViewModel,
+                    target.Transform,
+                    e.KeyModifiers,
+                    e.ClickCount,
+                    target.PanelIndex))
+                {
+                    _isDrawingNewShape = _interactionController.IsDrawingNewShape;
+                    _currentDrawingObject = _interactionController.CurrentDrawingObject;
+                    _draggedObject = _interactionController.DraggedObject;
+                    _drawingStep = _interactionController.DrawingStep;
 
-                     InvalidateVisual();
-                     e.Handled = true;
-                     return;
-                 }
-             }
+                    InvalidateVisual();
+                    e.Handled = true;
+                    return;
+                }
+            }
 
-             // Freehand interaction routing:
-             // 1. Existing selection handle drag takes precedence
-             // 2. If no handle hit, route to FreehandPointerAdapter
-             if (allowDrawingInteraction && (ViewModel?.CurrentTool == DrawingTool.Freehand || ViewModel?.CurrentTool == DrawingTool.Highlighter))
-             {
-                 if (_interactionController.TryHandleSelectionHandle(position, target.ChartPos, ViewModel, target.Transform))
-                 {
-                     _draggedObject = _interactionController.DraggedObject;
-                     _draggedHandleIndex = _interactionController.DraggedHandleIndex;
-                     InvalidateVisual();
-                     e.Handled = true;
-                     return;
-                 }
+            // Freehand interaction routing:
+            // 1. Existing selection handle drag takes precedence
+            // 2. If no handle hit, route to FreehandPointerAdapter
+            if (allowDrawingInteraction && (ViewModel?.CurrentTool == DrawingTool.Freehand || ViewModel?.CurrentTool == DrawingTool.Highlighter))
+            {
+                if (_interactionController.TryHandleSelectionHandle(position, target.ChartPos, ViewModel, target.Transform))
+                {
+                    _draggedObject = _interactionController.DraggedObject;
+                    _draggedHandleIndex = _interactionController.DraggedHandleIndex;
+                    InvalidateVisual();
+                    e.Handled = true;
+                    return;
+                }
 
-                 var panelKey = target.PanelIndex < 0
-                     ? StockAnalyzer.Core.Models.Drawing.PanelKey.Main
-                     : (StockAnalyzer.Avalonia.Drawing.DrawingPanelResolver.TryResolvePanelKey(target.PanelIndex, ViewModel.Indicators, ViewModel.IsSubWindowVisible)
-                        ?? StockAnalyzer.Core.Models.Drawing.PanelKey.OverlayGroup(target.PanelIndex));
+                var panelKey = target.PanelIndex < 0
+                    ? StockAnalyzer.Core.Models.Drawing.PanelKey.Main
+                    : (StockAnalyzer.Avalonia.Drawing.DrawingPanelResolver.TryResolvePanelKey(target.PanelIndex, ViewModel.Indicators, ViewModel.IsSubWindowVisible)
+                       ?? StockAnalyzer.Core.Models.Drawing.PanelKey.OverlayGroup(target.PanelIndex));
 
-                 if (_freehandAdapter.HandlePointerPressed(
-                     position,
-                     target.ChartPos,
-                     e.Pointer.Id,
-                     ViewModel,
-                     target.Transform,
-                     target.PanelIndex,
-                     panelKey))
-                 {
-                     _isDrawingNewShape = true;
-                     e.Pointer.Capture(this);
-                     InvalidateVisual();
-                     e.Handled = true;
-                     return;
-                 }
-                 else
-                 {
-                     // R2-01: When CurrentTool is Freehand, adapter rejection or failure must NEVER fall
-                     // through to legacy _interactionController.HandlePointerPressed or Pan.
-                     // Consume the event strictly to prevent split/corrupted drawing state.
-                     e.Handled = true;
-                     return;
-                 }
-             }
+                if (_freehandAdapter.HandlePointerPressed(
+                    position,
+                    target.ChartPos,
+                    e.Pointer.Id,
+                    ViewModel,
+                    target.Transform,
+                    target.PanelIndex,
+                    panelKey))
+                {
+                    _isDrawingNewShape = true;
+                    e.Pointer.Capture(this);
+                    InvalidateVisual();
+                    e.Handled = true;
+                    return;
+                }
+                else
+                {
+                    // R2-01: When CurrentTool is Freehand, adapter rejection or failure must NEVER fall
+                    // through to legacy _interactionController.HandlePointerPressed or Pan.
+                    // Consume the event strictly to prevent split/corrupted drawing state.
+                    e.Handled = true;
+                    return;
+                }
+            }
 
-             // Delegate all "Start Drawing" / "Pick" logic to Controller
-             if (allowDrawingInteraction && _interactionController.HandlePointerPressed(
-                 position,
-                 target.ChartPos,
-                 ViewModel,
-                 target.Transform,
-                 e.KeyModifiers,
-                 e.ClickCount,
-                 target.PanelIndex))
-             {
-                 // Sync state
-                 _isDrawingNewShape = _interactionController.IsDrawingNewShape;
-                 _currentDrawingObject = _interactionController.CurrentDrawingObject;
-                 _draggedObject = _interactionController.DraggedObject;
-                 // _isDragging removed
-                 _drawingStep = _interactionController.DrawingStep;
+            // Delegate all "Start Drawing" / "Pick" logic to Controller
+            if (allowDrawingInteraction && _interactionController.HandlePointerPressed(
+                position,
+                target.ChartPos,
+                ViewModel,
+                target.Transform,
+                e.KeyModifiers,
+                e.ClickCount,
+                target.PanelIndex))
+            {
+                // Sync state
+                _isDrawingNewShape = _interactionController.IsDrawingNewShape;
+                _currentDrawingObject = _interactionController.CurrentDrawingObject;
+                _draggedObject = _interactionController.DraggedObject;
+                // _isDragging removed
+                _drawingStep = _interactionController.DrawingStep;
 
-                 InvalidateVisual();
-                 e.Handled = true;
-                 return;
-             }
-             
-              // Fallback: Pan
-              _interactionController.IsDragging = true;
-              _interactionController.LastDragPoint = position;
-              _vpCoordinator.IsPointerCaptured = true;
-              _tapCoordinator.IsPointerCaptured = true;
-              e.Pointer.Capture(this);
-              e.Handled = true;
-         }
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
 
-                
+            // Fallback: Pan
+            _interactionController.IsDragging = true;
+            _interactionController.LastDragPoint = position;
+            _vpCoordinator.IsPointerCaptured = true;
+            _tapCoordinator.IsPointerCaptured = true;
+            e.Pointer.Capture(this);
+            e.Handled = true;
+        }
+
+
 
 
 
@@ -1444,7 +1444,7 @@ public class ChartBaseControl : Control, ICustomHitTest
         // Sync state
         _isDrawingNewShape = _interactionController.IsDrawingNewShape;
         _currentDrawingObject = _interactionController.CurrentDrawingObject;
-        
+
         if (ViewModel != null) ViewModel.CurrentTool = DrawingTool.Pointer; // Reset tool
         InvalidateVisual();
     }
@@ -1565,29 +1565,29 @@ public class ChartBaseControl : Control, ICustomHitTest
                 }
             }
         }
-        
+
         if (_interactionController.HandlePointerReleased(ViewModel, _dataCoordinator?.Transform))
         {
-             // Sync State
-             _isDrawingNewShape = _interactionController.IsDrawingNewShape;
-             _currentDrawingObject = _interactionController.CurrentDrawingObject;
-             _draggedObject = _interactionController.DraggedObject;
-             // _isDragging removed
-             
-             InvalidateVisual();
-             e.Handled = true;
-        }
-            // Fix for Eraser Bug: Reset state when eraser interaction ends
-            else if (ViewModel?.CurrentTool == DrawingTool.Eraser)
-            {
-                 // Eraser doesn't draw a shape, but uses the flag? 
-                 // It seems Eraser logic is handled in OnPointerPressed, so this might be redundant fallback
-                 _isDrawingNewShape = false;
-                 if (ViewModel != null) ViewModel.CurrentTool = DrawingTool.Pointer;
-                 InvalidateVisual();
-            }
+            // Sync State
+            _isDrawingNewShape = _interactionController.IsDrawingNewShape;
+            _currentDrawingObject = _interactionController.CurrentDrawingObject;
+            _draggedObject = _interactionController.DraggedObject;
+            // _isDragging removed
 
-        
+            InvalidateVisual();
+            e.Handled = true;
+        }
+        // Fix for Eraser Bug: Reset state when eraser interaction ends
+        else if (ViewModel?.CurrentTool == DrawingTool.Eraser)
+        {
+            // Eraser doesn't draw a shape, but uses the flag? 
+            // It seems Eraser logic is handled in OnPointerPressed, so this might be redundant fallback
+            _isDrawingNewShape = false;
+            if (ViewModel != null) ViewModel.CurrentTool = DrawingTool.Pointer;
+            InvalidateVisual();
+        }
+
+
         if (_interactionController.IsDragging || _draggedObject != null)
         {
             _interactionController.IsDragging = false;
@@ -1616,7 +1616,7 @@ public class ChartBaseControl : Control, ICustomHitTest
             }
         }
     }
-    
+
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
@@ -1669,7 +1669,7 @@ public class ChartBaseControl : Control, ICustomHitTest
         UpdateSnapshot();
         UpdateCrosshairAtPointer(mousePos);
         InvalidateVisual();
-        
+
         e.Handled = true;
     }
 
@@ -1696,7 +1696,7 @@ public class ChartBaseControl : Control, ICustomHitTest
     // for improved maintainability and readability.
 
     #endregion
-    
+
 
 
     // ParseColorSafe has been moved to StockAnalyzer.Core.Utilities.ColorHelper

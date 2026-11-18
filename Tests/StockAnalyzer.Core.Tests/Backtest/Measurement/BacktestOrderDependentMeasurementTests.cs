@@ -254,12 +254,19 @@ public sealed class BacktestOrderDependentMeasurementTests
         BacktestConditionSide Sma() => new() { IndicatorType = IndicatorType.SMA, Parameters = new CoreSmaParameter { Period = Policy.SmaPeriod } };
         var entry = new BacktestConditionEntry
         {
-            Left = Close(), Operator = ComparisonOperator.GreaterThan, TargetMode = RightHandTargetMode.Indicator, Right = Sma(),
-            Role = BacktestConditionRole.EntryOnly, Position = TradeSide.Long,
+            Left = Close(),
+            Operator = ComparisonOperator.GreaterThan,
+            TargetMode = RightHandTargetMode.Indicator,
+            Right = Sma(),
+            Role = BacktestConditionRole.EntryOnly,
+            Position = TradeSide.Long,
         };
         var exit = new BacktestConditionEntry
         {
-            Left = Close(), Operator = ComparisonOperator.LessThan, TargetMode = RightHandTargetMode.Indicator, Right = Sma(),
+            Left = Close(),
+            Operator = ComparisonOperator.LessThan,
+            TargetMode = RightHandTargetMode.Indicator,
+            Right = Sma(),
             Role = BacktestConditionRole.ExitOnly,
         };
         return new ConditionBasedBacktestStrategy(new[] { entry, exit }, new BacktestRiskManagementSettings { StopLossPercent = stopLoss, TakeProfitPercent = takeProfit });

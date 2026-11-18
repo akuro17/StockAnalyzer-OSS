@@ -23,12 +23,12 @@ public class CoreDmiIndicatorTests
     public void Calculate_WithValidData_ReturnsResult()
     {
         var candles = GenerateCandleData(30, i =>
-            new CoreCandleData(DateTime.Today.AddDays(i), 100+i, 102+i, 98+i, 101+i, 100));
+            new CoreCandleData(DateTime.Today.AddDays(i), 100 + i, 102 + i, 98 + i, 101 + i, 100));
         var indicator = new CoreDmiIndicator { Period = 14 };
         var result = indicator.Calculate(candles);
 
         Assert.True(result.IsSuccessful);
-        
+
         var plusDi = result.GetSeries("PlusDI");
         var minusDi = result.GetSeries("MinusDI");
 
@@ -45,10 +45,10 @@ public class CoreDmiIndicatorTests
     public void Calculate_WithStrongUptrend_PlusDIGreaterThanMinusDI()
     {
         var candles = GenerateCandleData(30, i =>
-            new CoreCandleData(DateTime.Today.AddDays(i), 100 + i*2, 102 + i*2, 98 + i*2, 101 + i*2, 100));
+            new CoreCandleData(DateTime.Today.AddDays(i), 100 + i * 2, 102 + i * 2, 98 + i * 2, 101 + i * 2, 100));
         var indicator = new CoreDmiIndicator { Period = 14 };
         var result = indicator.Calculate(candles);
-        
+
         var plusDi = result.GetSeries("PlusDI");
         var minusDi = result.GetSeries("MinusDI");
 
@@ -61,10 +61,10 @@ public class CoreDmiIndicatorTests
     public void Calculate_WithStrongDowntrend_MinusDIGreaterThanPlusDI()
     {
         var candles = GenerateCandleData(30, i =>
-            new CoreCandleData(DateTime.Today.AddDays(i), 200 - i*2, 202 - i*2, 198 - i*2, 201 - i*2, 100));
+            new CoreCandleData(DateTime.Today.AddDays(i), 200 - i * 2, 202 - i * 2, 198 - i * 2, 201 - i * 2, 100));
         var indicator = new CoreDmiIndicator { Period = 14 };
         var result = indicator.Calculate(candles);
-        
+
         var plusDi = result.GetSeries("PlusDI");
         var minusDi = result.GetSeries("MinusDI");
 
@@ -79,10 +79,10 @@ public class CoreDmiIndicatorTests
         var candles = new List<CoreCandleData>();
         var indicator = new CoreDmiIndicator();
         var result = indicator.Calculate(candles);
-        
+
         if (result.IsSuccessful)
         {
-             Assert.Empty(result.MainValues);
+            Assert.Empty(result.MainValues);
         }
         else
         {

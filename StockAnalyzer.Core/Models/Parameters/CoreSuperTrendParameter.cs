@@ -10,10 +10,10 @@ public class CoreSuperTrendParameter : CoreIndicatorParameterBase
     [DisplayName("Period")]
     [Description("ATR period for SuperTrend.")]
     [Category("Periods")]
-    public int Period 
-    { 
-        get => _period; 
-        set => SetProperty(ref _period, value); 
+    public int Period
+    {
+        get => _period;
+        set => SetProperty(ref _period, value);
     }
 
     private decimal _multiplier = 3.0m;
@@ -21,10 +21,10 @@ public class CoreSuperTrendParameter : CoreIndicatorParameterBase
     [DisplayName("Multiplier")]
     [Description("ATR multiplier.")]
     [Category("Multiplier")]
-    public decimal Multiplier 
-    { 
-        get => _multiplier; 
-        set => SetProperty(ref _multiplier, value); 
+    public decimal Multiplier
+    {
+        get => _multiplier;
+        set => SetProperty(ref _multiplier, value);
     }
 
     public override string GetDisplayName(string type) => $"{type} ({Period}, {Multiplier})";

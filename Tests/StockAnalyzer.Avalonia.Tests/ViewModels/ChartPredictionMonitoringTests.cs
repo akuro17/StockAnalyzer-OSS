@@ -185,7 +185,7 @@ public sealed class ChartPredictionMonitoringTests
     public async Task MatchingProviderPeriodSnapshot_PreservesItsOwnClosureEvidence(TimeframeType timeframe)
     {
         var bars = Bars();
-        var periods = TimeFrameAggregator.Aggregate(bars, timeframe.ToCoreTimeFrame()).ToImmutableArray();
+        var periods = TimeFrameAggregator.AggregateToPeriodStart(bars, timeframe.ToCoreTimeFrame()).ToImmutableArray();
         var source = new EvidenceDataService(bars, Observe(periods));
         var log = new Mock<IPredictionLogService>(); MonitoringObservation? received = null;
         log.Setup(l => l.RefreshAsync("AAPL", timeframe, It.IsAny<MonitoringObservation>(), It.IsAny<CancellationToken>()))

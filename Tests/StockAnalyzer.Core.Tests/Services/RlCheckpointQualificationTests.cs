@@ -45,7 +45,8 @@ public sealed class RlCheckpointQualificationTests
         var direction = await registry.RegisterRlAsync(config.RootElement.GetProperty("LaterDirection").GetString()!);
         var job = new RlTrainingJob(captured.GetProperty("symbol").GetString()!,
             captured.GetProperty("start_date").Deserialize<DateOnly>(RlFiles.Json), captured.GetProperty("end_date_exclusive").Deserialize<DateOnly>(RlFiles.Json),
-            captured.GetProperty("costs").Deserialize<BacktestConfiguration>(RlFiles.Json)!, SmokeOnly: true) { FrozenDirectionModelId = direction.ModelId };
+            captured.GetProperty("costs").Deserialize<BacktestConfiguration>(RlFiles.Json)!, SmokeOnly: true)
+        { FrozenDirectionModelId = direction.ModelId };
         var training = new RlTrainingService(registry, new TrainingJobGate(Path.Combine(root, "job-locks")), dataRoot: root);
         using var pause = new CancellationTokenSource();
         var paused = await Assert.ThrowsAsync<RlTrainingPausedException>(() => training.RunResumableAsync(job, pause.Token,
@@ -102,10 +103,19 @@ public sealed class RlCheckpointQualificationTests
         Assert.Empty(registry.ListRlCheckpoints()); Assert.True(Directory.Exists(abandoned.Directory));
         Assert.DoesNotContain("Resumable", registry.PreviewRlArtifacts()!.Entries.Single(e => e.Id == abandoned.RunId.ToString("N")).Reasons);
         await File.WriteAllTextAsync(Path.Combine(output, "checkpoint_safety_actual_evidence.json"), JsonSerializer.Serialize(new
-        { root, stale_review_rejected = true, changed_source_rejected = true, corrupt_latest_rejected = true,
-            no_automatic_fallback = true, manual_older_resume_completed = true, live_run_lease_protected = true,
-            capacity_failure_preserved_previous_commit = true, newest_two_manual_cleanup = true,
-            abandon_only_releases_protection = true, active_raw_action_replay_exact_and_charged = true }, RlFiles.Json));
+        {
+            root,
+            stale_review_rejected = true,
+            changed_source_rejected = true,
+            corrupt_latest_rejected = true,
+            no_automatic_fallback = true,
+            manual_older_resume_completed = true,
+            live_run_lease_protected = true,
+            capacity_failure_preserved_previous_commit = true,
+            newest_two_manual_cleanup = true,
+            abandon_only_releases_protection = true,
+            active_raw_action_replay_exact_and_charged = true
+        }, RlFiles.Json));
     }
     private static void CheckActiveEpisodeReplay(string directory, string root)
     {
@@ -116,8 +126,15 @@ public sealed class RlCheckpointQualificationTests
         var costs = RlContract.CreateConfiguration(job.RootElement.GetProperty("costs").Deserialize<BacktestConfiguration>(RlFiles.Json)!);
         var run = Guid.NewGuid(); string session = Guid.NewGuid().ToString("N");
         JsonElement Frame(long sequence, string method, object payload, string id) => JsonSerializer.SerializeToElement(new
-        { protocol_version = RlContract.SchemaVersion, run_id = run.ToString("N"), sequence, session_id = id,
-            contract_hash = RlContinuousContract.ContractHash, method, payload }, RlFiles.Json);
+        {
+            protocol_version = RlContract.SchemaVersion,
+            run_id = run.ToString("N"),
+            sequence,
+            session_id = id,
+            contract_hash = RlContinuousContract.ContractHash,
+            method,
+            payload
+        }, RlFiles.Json);
         using var original = new RlIpcHost(run, source, costs, directory, metadata, null, continuous: true);
         original.Handle(Frame(1, "Ready", new { temporal_producer_revision = RlTemporalContract.ProducerRevision }, session), default);
         original.Handle(Frame(2, "Reset", new { role = "train", block_id = source.Catalog.Train[0].Id, seed = RlContract.CandidateSeeds[0], checkpoint = 0 }, session), default);
@@ -159,7 +176,7 @@ public sealed class RlCheckpointQualificationTests
         var job = new RlTrainingJob(captured.GetProperty("symbol").GetString()!,
             captured.GetProperty("start_date").Deserialize<DateOnly>(RlFiles.Json), captured.GetProperty("end_date_exclusive").Deserialize<DateOnly>(RlFiles.Json),
             captured.GetProperty("costs").Deserialize<BacktestConfiguration>(RlFiles.Json)!, SmokeOnly: smoke)
-            { FrozenDirectionModelId = direction.ModelId };
+        { FrozenDirectionModelId = direction.ModelId };
         int ownedWorker = 0;
         var training = new RlTrainingService(registry, new TrainingJobGate(Path.Combine(root, "job-locks")), dataRoot: root)
         { OwnedWorkerStarted = pid => ownedWorker = pid };
@@ -209,8 +226,15 @@ public sealed class RlCheckpointQualificationTests
         string label = smoke ? "smoke" : "full";
         await File.WriteAllTextAsync(Path.Combine(output, "strict_continuation_tensor_" + label + "_evidence.json"), await stdout);
         await File.WriteAllTextAsync(Path.Combine(output, "actual_continuation_" + label + "_evidence.json"), JsonSerializer.Serialize(new
-        { root, uninterrupted, resumed, pause_boundary = review.Steps, policy_optimizer_rng_exact = true,
-            decimal_evaluation_equal = true, frozen_dependency_protected = true }, RlFiles.Json));
+        {
+            root,
+            uninterrupted,
+            resumed,
+            pause_boundary = review.Steps,
+            policy_optimizer_rng_exact = true,
+            decimal_evaluation_equal = true,
+            frozen_dependency_protected = true
+        }, RlFiles.Json));
     }
     private sealed class InlineProgress(Action<RlTrainingProgress> report) : IProgress<RlTrainingProgress>
     { public void Report(RlTrainingProgress value) => report(value); }

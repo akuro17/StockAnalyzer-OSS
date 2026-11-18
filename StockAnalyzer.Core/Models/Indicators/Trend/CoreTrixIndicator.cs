@@ -34,23 +34,29 @@ public class CoreTrixIndicator : CoreIndicatorBase
             decimal? ema = null;
             for (int i = 0; i < source.Count; i++)
             {
-                if (i < Period - 1) {
+                if (i < Period - 1)
+                {
                     target.Add(null);
                     continue;
                 }
 
                 // Check if we can calculate the first SMA
-                if (ema == null) {
+                if (ema == null)
+                {
                     var window = source.Skip(i - Period + 1).Take(Period);
-                    if (window.Any(v => !v.HasValue)) {
+                    if (window.Any(v => !v.HasValue))
+                    {
                         target.Add(null);
                         continue;
                     }
                     ema = window.Average();
-                } else {
-                    if (!source[i].HasValue) { // Should not happen after first ema is calculated
-                         target.Add(null);
-                         continue;
+                }
+                else
+                {
+                    if (!source[i].HasValue)
+                    { // Should not happen after first ema is calculated
+                        target.Add(null);
+                        continue;
                     }
                     ema = (source[i]!.Value - ema!.Value) * mult + ema!.Value;
                 }

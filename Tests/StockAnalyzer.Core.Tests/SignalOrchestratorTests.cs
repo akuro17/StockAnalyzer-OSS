@@ -56,7 +56,7 @@ public class SignalOrchestratorTests
         };
 
         var result = _orchestrator.Orchestrate(100, signals);
-        
+
         // S_bull = 2.0, S_bear = 1.0
         // Raw = (2-1)/(2+1) = 1/3 = 0.3333...
         // Normalized = (0.3333 + 1.0) / 2 * 100 = 66.66... -> Round to 67
@@ -74,7 +74,7 @@ public class SignalOrchestratorTests
         };
 
         var result = _orchestrator.Orchestrate(100, signals);
-        
+
         // Should ignore index 99 and keep index 100 because they are ±1 bar
         Assert.Equal(1, result.ConfluenceCount);
     }
@@ -86,7 +86,7 @@ public class SignalOrchestratorTests
         // Each momentum signal gets weight 1.0 * 1/2 = 0.5. Total momentum weight = 1.0.
         // The independent Trend signal gets 1.0. Total trend weight = 1.0.
         // Resulting score should reflect equal influence despite signal count difference.
-        
+
         var signals = new List<ConfluenceSignal>
         {
             new(100, SignalType.RegularBullishDivergence, SignalDirection.Bullish, DecorrelationGroup.Momentum),

@@ -55,12 +55,12 @@ public sealed class MarketStructureShiftRenderer : IDisposable
     }
 
     public void Render(
-        SKCanvas canvas, 
-        Rect chartArea, 
+        SKCanvas canvas,
+        Rect chartArea,
         IReadOnlyList<MarketStructureShift> shifts,
         CoreIndicatorSettings setting,
-        decimal minVal, 
-        decimal maxVal, 
+        decimal minVal,
+        decimal maxVal,
         ICoordinateTransform? transform,
         IReadOnlyList<CoreCandleData> candles,
         TimeSpan interval)
@@ -70,7 +70,7 @@ public sealed class MarketStructureShiftRenderer : IDisposable
         // Base colors
         SKColor bosColor = new SKColor(33, 150, 243, 200); // Default Blue
         SKColor chochColor = new SKColor(255, 152, 0, 200); // Default Orange
-        
+
         // Attempt to extract from settings if available
         if (setting.SeriesColors != null)
         {
@@ -102,7 +102,7 @@ public sealed class MarketStructureShiftRenderer : IDisposable
             SKPaint linePaint;
             SKPaint textPaint;
             string label;
-            
+
             // Get pivot index and level
             decimal level;
 
@@ -118,9 +118,9 @@ public sealed class MarketStructureShiftRenderer : IDisposable
                 textPaint = textPaintChoch;
                 label = "CHoCH";
             }
-            
+
             System.DateTime startTime;
-            
+
             if (shift.Type == MarketStructureType.BullishBOS || shift.Type == MarketStructureType.BullishCHoCH)
             {
                 startTime = shift.PreviousPivotHighTime;
@@ -140,7 +140,7 @@ public sealed class MarketStructureShiftRenderer : IDisposable
             float startX, endX;
             if (transform is GenericCoordinateTransform gct && gct.Mode == ChartAxisMode.Index)
             {
-                int sIdx = (shift.Type == MarketStructureType.BullishBOS || shift.Type == MarketStructureType.BullishCHoCH) 
+                int sIdx = (shift.Type == MarketStructureType.BullishBOS || shift.Type == MarketStructureType.BullishCHoCH)
                     ? shift.PreviousPivotHighIndex : shift.PreviousPivotLowIndex;
                 int eIdx = shift.Index;
 
@@ -163,7 +163,7 @@ public sealed class MarketStructureShiftRenderer : IDisposable
             if (shift.Type == MarketStructureType.BearishBOS || shift.Type == MarketStructureType.BearishCHoCH)
             {
                 // For bearish break (breaking a low), put text slightly below the line
-                textY = y + 12f; 
+                textY = y + 12f;
             }
 
             canvas.DrawText(label, textX, textY, textPaint);

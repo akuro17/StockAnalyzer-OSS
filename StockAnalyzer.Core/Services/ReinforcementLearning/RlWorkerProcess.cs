@@ -43,9 +43,14 @@ internal static class RlWorkerProcess
         if (!File.Exists(python)) throw new FileNotFoundException("Managed RL virtual environment is unavailable.", python);
         var start = new ProcessStartInfo(python)
         {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true,
-            RedirectStandardOutput = true, RedirectStandardError = true, WorkingDirectory = pythonRoot,
-            StandardOutputEncoding = new UTF8Encoding(false, true), StandardErrorEncoding = Encoding.UTF8,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = pythonRoot,
+            StandardOutputEncoding = new UTF8Encoding(false, true),
+            StandardErrorEncoding = Encoding.UTF8,
             StandardInputEncoding = new UTF8Encoding(false, true),
         };
         start.ArgumentList.Add("-u"); start.ArgumentList.Add(script); start.ArgumentList.Add("--config"); start.ArgumentList.Add(configPath);

@@ -115,7 +115,12 @@ public sealed class RlReplayScopeClassifierTests
     }
 
     [Theory]
-    [InlineData(0, 0, 0)] [InlineData(5, 3, 4)] [InlineData(10, 6, 8)] [InlineData(11, 6, 8)] [InlineData(1_278, 766, 1_022)] [InlineData(5_200, 3_120, 4_160)]
+    [InlineData(0, 0, 0)]
+    [InlineData(5, 3, 4)]
+    [InlineData(10, 6, 8)]
+    [InlineData(11, 6, 8)]
+    [InlineData(1_278, 766, 1_022)]
+    [InlineData(5_200, 3_120, 4_160)]
     public void TheRatioCutsAreTheIntegerFloorsOfThreeFifthsAndFourFifths(int length, int cut1, int cut2)
         => Assert.Equal((cut1, cut2), RlPartitionCuts.Ratio(length));
 }

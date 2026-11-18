@@ -20,7 +20,7 @@ public static class ServiceCollectionExtensions
         // attached), while only direct Serilog.Log.* calls reach the log files.
         services.AddLogging(builder => builder.AddSerilog());
         services.AddOptions();
-        
+
         // Register configuration itself
         services.AddSingleton<IConfiguration>(configuration);
 
@@ -67,7 +67,7 @@ public static class ServiceCollectionExtensions
             sp.GetService<Microsoft.Extensions.Logging.ILogger<Core.Models.UI.LayoutStateStore>>(),
             sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Core.Models.Settings.LayoutSettings>>().Value));
         services.AddSingleton<ILayoutSaveScheduler, LayoutSaveScheduler>();
-        
+
         // Register Workspace Coordinator and Options
         services.Configure<WorkspaceCoordinatorOptions>(configuration.GetSection("Workspace"));
         services.AddSingleton<Core.Services.IWorkspaceTolerantReader, Core.Services.WorkspaceTolerantReader>();
@@ -83,9 +83,12 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Services.Export.ILayeredChartImageExportService, Services.Export.ChartImageExportService>();
         services.AddSingleton<ITickerSyncService, Services.TickerSyncService>();
         services.AddSingleton<Core.Services.ParquetDataService>();
+        // The synthetic symbols get their own aligner that never carries a close forward; the shared IComparisonDataAligner below keeps the chart's gap filling.
         services.AddSingleton<Core.Services.IDataService>(sp => new Core.Services.SyntheticSymbolDataService(
             sp.GetRequiredService<Core.Services.ParquetDataService>(),
-            sp.GetRequiredService<Core.Services.IComparisonDataAligner>(),
+            Core.Services.ComparisonDataAligner.CreateStrict(
+                sp.GetRequiredService<Core.Services.ParquetDataService>(),
+                sp.GetService<Microsoft.Extensions.Logging.ILogger<Core.Services.ComparisonDataAligner>>()),
             sp.GetService<Microsoft.Extensions.Logging.ILogger<Core.Services.SyntheticSymbolDataService>>()));
         services.AddSingleton<Core.Services.ITimeFrameManager, Core.Services.TimeFrameManager>();
         services.AddSingleton<Services.Drawing.IMagnetSnapService, Services.Drawing.MagnetSnapService>();
@@ -160,7 +163,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IWindowBoundaryService, WindowBoundaryService>();
         services.AddSingleton<IWindowManagementService, WindowManagementService>();
         services.AddSingleton<IDetachedTabManager, DetachedTabManager>();
-        
+
         // TimeFrame Parquet Generator
         services.AddSingleton<Core.Services.ITimeFrameParquetGenerator, Core.Services.TimeFrameParquetGenerator>();
 
@@ -174,9 +177,9 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Services.ScreenerService>();
         services.AddSingleton<Core.Services.Screener.IScreenerTemplateEvaluator, Core.Services.Screener.ScreenerTemplateEvaluator>();
         services.AddSingleton<Core.Services.MarketStructureService>();
-          services.AddSingleton<Core.Services.PredictionService>();
-          services.AddSingleton<Core.Services.IEnsembleSettingsManager, Core.Services.EnsembleSettingsManager>();
-          services.AddSingleton<Core.Services.IPredictionService, Core.Services.EnsemblePredictionService>();
+        services.AddSingleton<Core.Services.PredictionService>();
+        services.AddSingleton<Core.Services.IEnsembleSettingsManager, Core.Services.EnsembleSettingsManager>();
+        services.AddSingleton<Core.Services.IPredictionService, Core.Services.EnsemblePredictionService>();
         services.AddSingleton<Core.Services.IGraphPredictionService, Core.Services.GraphPredictionService>(); // T25: multi-symbol graph consumer, independent of the single-symbol prediction services
         services.AddSingleton<Core.Services.ReinforcementLearning.RlArtifactSettings>();
         services.AddSingleton<Core.Services.ModelGenerationRegistry>(sp =>
@@ -291,7 +294,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Interfaces.IUserPortfolioRepository, Core.Services.UserPortfolioRepository>();
         services.AddSingleton<Core.Interfaces.IPortfolioManager, Core.Services.PortfolioManager>();
         services.AddSingleton<Core.Interfaces.IWatchlistManager, Core.Services.WatchlistManager>();
-        
+
         // Fast Screening (DuckDB/Parquet)
         services.AddSingleton<Core.Services.DuckDBConnectionManager>();
         services.AddSingleton<Core.Services.IMarketDataProvider, Core.Services.ParquetMarketDataProvider>();
@@ -408,7 +411,7 @@ public static class ServiceCollectionExtensions
         // MultiSyncProgressViewModel, so an orphaned TickerListViewModel silently detached those settings
         // from the one the user actually configures and MainWindowViewModel persists.
         services.AddTransient<MultiSyncProgressViewModel>(sp => new MultiSyncProgressViewModel(sp.GetRequiredService<IWorkspaceViewModelFacade>().TickerList));
-        
+
         services.AddWorkspaceTabs();
 
         services.AddTransient<StockAnalyzer.Avalonia.ViewModels.Dialogs.ThemeSettingsViewModel>();
@@ -474,7 +477,7 @@ public static class ServiceCollectionExtensions
             var localizer = sp.GetRequiredService<StockAnalyzer.Core.Interfaces.ILocalizationService>();
 
             // Register default tab types using standard localization keys
-            registry.Register(new Core.Models.UI.TabMetadata("Chart", localizer.GetString("Tab_Chart"), AllowMultiple: true), 
+            registry.Register(new Core.Models.UI.TabMetadata("Chart", localizer.GetString("Tab_Chart"), AllowMultiple: true),
                 s => s.GetRequiredService<ChartViewModel>());
 
             // Resolved through the shared facade (not a fresh GetRequiredService<TickerListViewModel>()
@@ -487,8 +490,9 @@ public static class ServiceCollectionExtensions
             registry.Register(new Core.Models.UI.TabMetadata("TickerList", localizer.GetString("Tab_TickerList"), AllowMultiple: true),
                 s => s.GetRequiredService<IWorkspaceViewModelFacade>().TickerList);
 
-            registry.Register(new Core.Models.UI.TabMetadata("DataWindow", localizer.GetString("Tab_DataWindow"), AllowMultiple: true), 
-                s => {
+            registry.Register(new Core.Models.UI.TabMetadata("DataWindow", localizer.GetString("Tab_DataWindow"), AllowMultiple: true),
+                s =>
+                {
                     var dw = s.GetRequiredService<DataWindowViewModel>();
                     var mwvm = s.GetService<MainWindowViewModel>();
                     if (mwvm?.ChartViewModel != null)
@@ -498,8 +502,9 @@ public static class ServiceCollectionExtensions
                     return dw;
                 });
 
-            registry.Register(new Core.Models.UI.TabMetadata("DrawingTools", localizer.GetString("Tab_DrawingTools"), AllowMultiple: true), 
-                s => {
+            registry.Register(new Core.Models.UI.TabMetadata("DrawingTools", localizer.GetString("Tab_DrawingTools"), AllowMultiple: true),
+                s =>
+                {
                     var sidebar = s.GetRequiredService<DrawingToolSidebarViewModel>();
                     var mwvm = s.GetService<MainWindowViewModel>();
                     if (mwvm?.ChartViewModel != null)
@@ -509,7 +514,7 @@ public static class ServiceCollectionExtensions
                     return sidebar;
                 });
 
-            registry.Register(new Core.Models.UI.TabMetadata("PortfolioSummary", localizer.GetString("Tab_Portfolio"), AllowMultiple: true), 
+            registry.Register(new Core.Models.UI.TabMetadata("PortfolioSummary", localizer.GetString("Tab_Portfolio"), AllowMultiple: true),
                 s => s.GetRequiredService<PortfolioSummaryViewModel>());
 
             registry.Register(new Core.Models.UI.TabMetadata("Allocation", localizer.GetString("Tab_Allocation"), AllowMultiple: true),
@@ -521,8 +526,9 @@ public static class ServiceCollectionExtensions
             registry.Register(new Core.Models.UI.TabMetadata("NoteTimeline", localizer.GetString("Tab_Notes"), AllowMultiple: true),
                 s => s.GetRequiredService<StockAnalyzer.Avalonia.ViewModels.Notes.NoteTimelineViewModel>());
 
-            registry.Register(new Core.Models.UI.TabMetadata("DrawingObjects", localizer.GetString("Tab_DrawingObjects"), AllowMultiple: true), 
-                s => {
+            registry.Register(new Core.Models.UI.TabMetadata("DrawingObjects", localizer.GetString("Tab_DrawingObjects"), AllowMultiple: true),
+                s =>
+                {
                     var objects = s.GetRequiredService<DrawingObjectsViewModel>();
                     var mwvm = s.GetService<MainWindowViewModel>();
                     if (mwvm?.ChartViewModel != null)

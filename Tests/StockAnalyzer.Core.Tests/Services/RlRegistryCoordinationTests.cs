@@ -30,7 +30,8 @@ public sealed partial class RlGenerationAndQValueTests
         {
             Thread.Sleep(CancelDelay);
             try { source.Cancel(); } catch (ObjectDisposedException) { }
-        }) { IsBackground = true }.Start();
+        })
+        { IsBackground = true }.Start();
         return source;
     }
     private static readonly TimeSpan WorkerPoll = TimeSpan.FromMilliseconds(25);
@@ -46,7 +47,8 @@ public sealed partial class RlGenerationAndQValueTests
             await Task.Delay(WorkerPoll);
         }
     }
-    [RegistryWorker] public async Task R07Worker()
+    [RegistryWorker]
+    public async Task R07Worker()
     {
         var config = JsonSerializer.Deserialize<WorkerConfig>(File.ReadAllText(Environment.GetEnvironmentVariable(WorkerVariable)!))!;
         if (config.Operation == "checkpoint-budget")
@@ -64,23 +66,27 @@ public sealed partial class RlGenerationAndQValueTests
             File.WriteAllText(config.Ready, "held"); await WaitFile(config.Trigger); return;
         }
         using var registry = new ModelGenerationRegistry(config.Root,
-            config.Operation == "activate-pause" ? async (path, pointer) => {
+            config.Operation == "activate-pause" ? async (path, pointer) =>
+            {
                 File.WriteAllText(config.Ready, "before-pointer-commit"); await WaitFile(config.Trigger);
                 await AtomicJsonFile.SaveAsync(path, pointer, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-            } : null)
+            }
+        : null)
         {
             ArtifactFreeSpace = _ => long.MaxValue, // Owned lease worker uses the parent's injected free-space condition.
-            RlStagingPrepared = config.Operation == "register-pause" ? stage => {
+            RlStagingPrepared = config.Operation == "register-pause" ? stage =>
+            {
                 File.WriteAllText(config.Ready, stage); WaitFile(config.Trigger).GetAwaiter().GetResult();
-            } : null,
+            }
+            : null,
         };
         if (config.Operation == "artifact-run")
         {
             string dataRoot = Path.GetDirectoryName(config.Root)!;
             registry.ConfigureRlArtifacts(dataRoot, new StockAnalyzer.Core.Services.ReinforcementLearning.RlArtifactSettings(
                 Path.Combine(dataRoot, "config", StockAnalyzer.Core.Services.ReinforcementLearning.RlArtifactSettings.FileName)));
-            using var run = await registry.BeginRlArtifactRunAsync(Guid.ParseExact(config.Value,"N"), dataRoot);
-            File.WriteAllText(config.Ready,run!.Directory); await WaitFile(config.Trigger);
+            using var run = await registry.BeginRlArtifactRunAsync(Guid.ParseExact(config.Value, "N"), dataRoot);
+            File.WriteAllText(config.Ready, run!.Directory); await WaitFile(config.Trigger);
             await run.FinishAsync(StockAnalyzer.Core.Services.ReinforcementLearning.RlArtifactRunState.Failed); return;
         }
         if (config.Operation is "register" or "register-pause")
@@ -110,8 +116,14 @@ public sealed partial class RlGenerationAndQValueTests
     {
         string configPath = Path.Combine(_root, "worker_" + Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(configPath, JsonSerializer.Serialize(new WorkerConfig(operation, RegistryRoot, value, ready, trigger)));
-        var start = new ProcessStartInfo("dotnet") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            WorkingDirectory = AppContext.BaseDirectory };
+        var start = new ProcessStartInfo("dotnet")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            WorkingDirectory = AppContext.BaseDirectory
+        };
         start.ArgumentList.Add("vstest"); start.ArgumentList.Add(typeof(RlGenerationAndQValueTests).Assembly.Location);
         start.ArgumentList.Add("/Tests:StockAnalyzer.Core.Tests.Services.RlGenerationAndQValueTests.R07Worker");
         start.Environment[WorkerVariable] = configPath;
@@ -135,7 +147,8 @@ public sealed partial class RlGenerationAndQValueTests
         finally { worker.Process.Dispose(); }
     }
 
-    [ChildProcessFact] public async Task R09_WorkJournalSurvivesAbruptOwnedWriterExitWithoutPerStepPhysicalFlush()
+    [ChildProcessFact]
+    public async Task R09_WorkJournalSurvivesAbruptOwnedWriterExitWithoutPerStepPhysicalFlush()
     {
         Directory.CreateDirectory(_root);
         string directory = Path.Combine(_root, "r09-journal"), ready = Path.Combine(_root, "r09-journal-ready"),
@@ -149,7 +162,8 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.Throws<InvalidDataException>(() => StockAnalyzer.Core.Services.ReinforcementLearning.RlCheckpointStore.ReadBudget(directory));
     }
 
-    [ChildProcessFact] public async Task R07_ParallelRegistrationsAndStaleWriterSnapshotsKeepBothCommits()
+    [ChildProcessFact]
+    public async Task R07_ParallelRegistrationsAndStaleWriterSnapshotsKeepBothCommits()
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot);
         var first = await registry.RegisterRlAsync(Candidate(.01m).Directory); await registry.ActivateRlAsync(first.ModelId);
@@ -173,7 +187,9 @@ public sealed partial class RlGenerationAndQValueTests
         var history = pointer.RootElement.GetProperty("history").EnumerateArray().Select(v => v.GetString()).ToArray();
         Assert.Contains(first.ModelId, history); Assert.Contains(active == a ? b : a, history);
     }
-    [ChildProcessTheory] [InlineData(false)] [InlineData(true)]
+    [ChildProcessTheory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task R07_CrossProcessLeaseSurvivesPruneAndIsReleasedNormallyOrByExit(bool kill)
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot);
@@ -192,7 +208,8 @@ public sealed partial class RlGenerationAndQValueTests
         }
         catch { StopWorker(process); throw; }
     }
-    [ChildProcessFact] public async Task R07_OwnerExitAfterStagingOrBeforePointerCommitPreservesTheActive()
+    [ChildProcessFact]
+    public async Task R07_OwnerExitAfterStagingOrBeforePointerCommitPreservesTheActive()
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot);
         var first = await registry.RegisterRlAsync(Candidate(.01m).Directory); await registry.ActivateRlAsync(first.ModelId);
@@ -205,7 +222,8 @@ public sealed partial class RlGenerationAndQValueTests
         await WaitFile(ready); StopWorker(process);
         Assert.Equal(first.ModelId, registry.RlActiveId); Assert.True(await registry.ActivateRlAsync(second.ModelId));
     }
-    [ChildProcessFact] public async Task R07_TimeoutAndCancellationDoNotStealOwnershipAndLeaveEvidence()
+    [ChildProcessFact]
+    public async Task R07_TimeoutAndCancellationDoNotStealOwnershipAndLeaveEvidence()
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot) { StoreLockTimeout = TimeSpan.FromMilliseconds(150) };
         // The cancellation phase uses the default lock timeout so that only the cancellation can end the wait, never the timeout.
@@ -224,14 +242,17 @@ public sealed partial class RlGenerationAndQValueTests
         }
         catch { StopWorker(process); throw; }
     }
-    [Fact] public async Task R07_LocalMutationWaitIsBoundedAndCancelledWithoutChangingThePointer()
+    [Fact]
+    public async Task R07_LocalMutationWaitIsBoundedAndCancelledWithoutChangingThePointer()
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var registry = new ModelGenerationRegistry(RegistryRoot, async (path, pointer) => {
+        using var registry = new ModelGenerationRegistry(RegistryRoot, async (path, pointer) =>
+        {
             started.TrySetResult(); await release.Task;
             await AtomicJsonFile.SaveAsync(path, pointer, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        }) { StoreLockTimeout = TimeSpan.FromMilliseconds(150) };
+        })
+        { StoreLockTimeout = TimeSpan.FromMilliseconds(150) };
         var candidate = await registry.RegisterRlAsync(Candidate(.01m).Directory);
         var commit = registry.ActivateRlAsync(candidate.ModelId);
         try
@@ -252,7 +273,10 @@ public sealed partial class RlGenerationAndQValueTests
         var second = await registry.RegisterRlAsync(Candidate(.02m).Directory); await registry.ActivateRlAsync(second.ModelId);
         return (registry, first.ModelId, second.ModelId, Path.Combine(RegistryRoot, RlFiles.RlFolder, RlFiles.Active));
     }
-    [Theory] [InlineData("malformed")] [InlineData("schema")] [InlineData("missing")]
+    [Theory]
+    [InlineData("malformed")]
+    [InlineData("schema")]
+    [InlineData("missing")]
     public async Task R07_OnlyExplicitVerifiedBackupRecoveryChangesUnavailablePointer(string damage)
     {
         var fixture = await RecoveryFixture(); using var registry = fixture.Registry;
@@ -269,7 +293,8 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.Equal(backup, File.ReadAllBytes(fixture.Pointer + ".bak")); Assert.Equal(fixture.First, reopened.RlActiveId);
         await Assert.ThrowsAsync<InvalidOperationException>(() => registry.RecoverRlPointerAsync(preview));
     }
-    [Fact] public async Task R07_ChangedOrUnverifiedBackupAndHealthyActiveAreNeverRestored()
+    [Fact]
+    public async Task R07_ChangedOrUnverifiedBackupAndHealthyActiveAreNeverRestored()
     {
         var fixture = await RecoveryFixture(); using var registry = fixture.Registry;
         var healthy = registry.PreviewRlRecovery(RlFiles.Target); Assert.False(healthy.Unavailable);
@@ -282,7 +307,8 @@ public sealed partial class RlGenerationAndQValueTests
         File.WriteAllText(fixture.Pointer + ".bak", "{"); Assert.Null(registry.PreviewRlRecovery(RlFiles.Target).BackupModelId);
         await Assert.ThrowsAsync<InvalidOperationException>(() => registry.RecoverRlPointerAsync(registry.PreviewRlRecovery(RlFiles.Target)));
     }
-    [Fact] public async Task R07_FailedRecoveryWritePreservesCorruptionAndVerifiedBackup()
+    [Fact]
+    public async Task R07_FailedRecoveryWritePreservesCorruptionAndVerifiedBackup()
     {
         var fixture = await RecoveryFixture(); fixture.Registry.Dispose(); File.WriteAllText(fixture.Pointer, "{");
         byte[] backup = File.ReadAllBytes(fixture.Pointer + ".bak");
@@ -291,7 +317,8 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.Equal("{", File.ReadAllText(fixture.Pointer)); Assert.Equal(backup, File.ReadAllBytes(fixture.Pointer + ".bak")); Assert.Null(registry.RlActiveId);
         Assert.NotEmpty(Directory.GetFiles(Path.Combine(RegistryRoot, ModelGenerationRegistry.Coordination.Folder), ModelGenerationRegistry.Coordination.FailureEvidencePattern));
     }
-    [Fact] public async Task R07_WrongTargetBackupAndCorruptManifestCannotSelectAnUnknownGeneration()
+    [Fact]
+    public async Task R07_WrongTargetBackupAndCorruptManifestCannotSelectAnUnknownGeneration()
     {
         var fixture = await RecoveryFixture(); using var registry = fixture.Registry;
         string actorPointer = Path.Combine(RegistryRoot, RlFiles.RlFolder, RlContinuousContract.ActiveFile);
@@ -303,7 +330,8 @@ public sealed partial class RlGenerationAndQValueTests
         File.WriteAllText(manifest, "{"); Assert.Null(registry.PreviewRlRecovery(RlFiles.Target).BackupModelId);
         Assert.NotNull(registry.GetRlGeneration(fixture.Second)); Assert.Null(registry.RlActiveId);
     }
-    [Fact] public async Task R07_UnknownLeaseInformationRetainsFilesAndReturnedLeaseOutlivesRegistry()
+    [Fact]
+    public async Task R07_UnknownLeaseInformationRetainsFilesAndReturnedLeaseOutlivesRegistry()
     {
         var fixture = await RecoveryFixture(); using var registry = fixture.Registry;
         var lease = registry.AcquireRl(fixture.First)!;

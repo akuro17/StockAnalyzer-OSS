@@ -51,8 +51,13 @@ public sealed class RlShortHistoryQualificationTests
         var job = RlTrainingValidation.Freeze(new RlTrainingJob(Required(SymbolVariable),
             DateOnly.ParseExact(Required(StartVariable), "yyyy-MM-dd", CultureInfo.InvariantCulture),
             DateOnly.ParseExact(Required(EndVariable), "yyyy-MM-dd", CultureInfo.InvariantCulture),
-            new BacktestConfiguration { InitialCapital = BacktestDefaults.InitialCapital, SizingModel = BacktestDefaults.SizingModel,
-                SizingParameter = BacktestDefaults.SizingParameter, LiquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio }, SmokeOnly: smoke)
+            new BacktestConfiguration
+            {
+                InitialCapital = BacktestDefaults.InitialCapital,
+                SizingModel = BacktestDefaults.SizingModel,
+                SizingParameter = BacktestDefaults.SizingParameter,
+                LiquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio
+            }, SmokeOnly: smoke)
         { ShortHistorySpecificationId = RlShortHistoryEvaluationContract.SpecificationId });
         var result = await service.RunAsync(job);
         Assert.Equal(smoke ? 0 : 1, registry.ListRl().Count);

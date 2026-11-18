@@ -228,14 +228,14 @@ public static class EquityAxisTicks
             case StepKind.Minutes:
             case StepKind.Hours:
             case StepKind.Days:
-            {
-                long unit = FixedUnitTicks(step);
-                long first = ((startTicks + unit - 1) / unit) * unit;
-                if (first > endTicks) return instants;
-                if (((endTicks - first) / (double)unit) + 1d > tickLimit) return null;
-                for (long t = first; t <= endTicks; t += unit) instants.Add(t);
-                return instants;
-            }
+                {
+                    long unit = FixedUnitTicks(step);
+                    long first = ((startTicks + unit - 1) / unit) * unit;
+                    if (first > endTicks) return instants;
+                    if (((endTicks - first) / (double)unit) + 1d > tickLimit) return null;
+                    for (long t = first; t <= endTicks; t += unit) instants.Add(t);
+                    return instants;
+                }
             case StepKind.Months:
                 return GenerateCalendar(step.Count, startTicks, endTicks, tickLimit, monthsPerUnit: 1);
             default:

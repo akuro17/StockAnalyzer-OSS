@@ -206,7 +206,7 @@ public class LayoutStateStoreTests
         var store = new LayoutStateStore(logger);
 
         Assert.NotNull(store);
-        
+
         // Verify state machine transition logging path
         store.LifecycleState = WorkspaceLifecycleState.LoadingWorkspace;
         Assert.Equal(WorkspaceLifecycleState.LoadingWorkspace, store.LifecycleState);

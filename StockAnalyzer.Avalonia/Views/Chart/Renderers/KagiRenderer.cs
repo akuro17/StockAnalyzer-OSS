@@ -54,27 +54,27 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
 
         if (config.Transform == null) return;
         var t = config.Transform;
-        
+
         // Draw Kagi lines - only advance X on reversals
         float lastScreenY = 0;
         bool lastIsUp = true;
         bool lastIsYang = true;
         bool isAnchorBlock = false;
-        
+
         for (int i = 0; i < snapshot.Candles.Count; i++)
         {
             var segment = snapshot.Candles[i];
-            
+
             // Re-acquire raw physical bounds (sanitized by framework)
             decimal bottomPrice = Math.Min(segment.Open, segment.Close);
             decimal topPrice = Math.Max(segment.Open, segment.Close);
-            
+
             // IsYang (State) is now stored in Volume (1 = Yang, 0 = Yin)
             bool isYang = segment.Volume == 1;
-            
+
             // Physical drawing direction is calculated from Open/Close
             bool isUp = segment.Close >= segment.Open;
-            
+
             // Direction determines Color (Up = Green, Down = Red)
             // State determines Thickness (Yang = Thick, Yin = Thin)
             SKPaint paint;
@@ -98,8 +98,8 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
                     canvas.DrawLine(centerX, yTop, centerX, yBottom, paint);
                 }
                 // Flat anchor: no vertical line to draw (zero height), just record position
-                
-                lastScreenY = isAnchorBlock ? yTop : (isUp ? yTop : yBottom); 
+
+                lastScreenY = isAnchorBlock ? yTop : (isUp ? yTop : yBottom);
                 lastIsYang = isYang;
                 lastIsUp = isUp;
             }
@@ -110,21 +110,21 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
                 int prevLogicalX = (int)snapshot.GetLogicalXIndex(i - 1, config);
                 int currLogicalX = (int)logicalXIndex;
                 bool needsHorizontalConnector = currLogicalX != prevLogicalX || isAnchorBlock;
-                
+
                 if (needsHorizontalConnector)
                 {
                     float prevCenterX = (float)t.ChartToScreen(new ChartPoint(new DateTime(prevLogicalX), 0)).X + (float)chartArea.Left;
-                    
+
                     // 1. Draw horizontal shoulder using the PRECEDING segment's properties (Thickness Inheritance)
                     SKPaint prevPaint;
                     if (lastIsYang) prevPaint = lastIsUp ? _yangUpPaint : _yangDownPaint;
                     else prevPaint = lastIsUp ? _yinUpPaint : _yinDownPaint;
-                    
+
                     canvas.DrawLine(prevCenterX, lastScreenY, centerX, lastScreenY, prevPaint);
-                    
+
                     // 2. Draw vertical segment using the NEW properties (Z-Order: Vertical after horizontal)
                     canvas.DrawLine(centerX, lastScreenY, centerX, isUp ? yTop : yBottom, paint);
-                    
+
                     isAnchorBlock = false; // Clear after first use
                 }
                 else
@@ -132,13 +132,13 @@ public sealed class KagiRenderer : IChartRenderer, IDisposable
                     // Continuation
                     canvas.DrawLine(centerX, lastScreenY, centerX, isUp ? yTop : yBottom, paint);
                 }
-                
+
                 lastScreenY = isUp ? yTop : yBottom;
                 lastIsUp = isUp;
                 lastIsYang = isYang;
             }
         }
-        
+
         // On-chart labels for Kagi reversals have been migrated to the right-side DataWindow.
         // See DataWindowViewModel for extraction logic.
     }

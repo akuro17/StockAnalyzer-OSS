@@ -30,7 +30,7 @@ public class CoreIchimokuParameter : CoreIndicatorParameterBase
         get => _kijunSample;
         set => SetProperty(ref _kijunSample, value);
     }
-    
+
     private int _senkouBSample = 52;
 
     [CoreParameterRange(1, 10000)]
@@ -43,7 +43,7 @@ public class CoreIchimokuParameter : CoreIndicatorParameterBase
         get => _senkouBSample;
         set => SetProperty(ref _senkouBSample, value);
     }
-    
+
     /// <summary>Standard Ichimoku displacement (bars): single source for the default used by the parameter and the indicator.</summary>
     public const int DefaultDisplacement = 26;
 
@@ -73,8 +73,8 @@ public class CoreIchimokuParameter : CoreIndicatorParameterBase
 
     public override void Validate()
     {
-         if (TenkanSample <= 0) throw new ArgumentOutOfRangeException(nameof(TenkanSample));
-         if (KijunSample <= 0) throw new ArgumentOutOfRangeException(nameof(KijunSample));
-         if (SenkouBSample <= 0) throw new ArgumentOutOfRangeException(nameof(SenkouBSample));
+        if (TenkanSample <= 0) throw new ArgumentOutOfRangeException(nameof(TenkanSample));
+        if (KijunSample <= 0) throw new ArgumentOutOfRangeException(nameof(KijunSample));
+        if (SenkouBSample <= 0) throw new ArgumentOutOfRangeException(nameof(SenkouBSample));
     }
 }

@@ -171,8 +171,13 @@ public sealed class TrainingResourceSettingsTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => TrainingResourceGuard.Validate(
             composed, new TrainingResourceOverrides(2, 2)));
 
-        var raw = composed with { FeatureMode = PredictionFeatureMode.OhlcvMinMax, FeatureSpec = null,
-            Lags = new[] { 1, 2 }, WindowSize = 20_000 };
+        var raw = composed with
+        {
+            FeatureMode = PredictionFeatureMode.OhlcvMinMax,
+            FeatureSpec = null,
+            Lags = new[] { 1, 2 },
+            WindowSize = 20_000
+        };
         Assert.Throws<InvalidOperationException>(() => TrainingResourceGuard.Validate(
             raw, new TrainingResourceOverrides(null, 1)));
         TrainingResourceGuard.Validate(raw with { FixedZScore = false, Lags = Array.Empty<int>() },
@@ -186,8 +191,11 @@ public sealed class TrainingResourceSettingsTests : IDisposable
             entries[i] = new FeatureChannel { Kind = FeatureChannelKind.Price, Price = PriceType.Close };
         return new TrainingJobConfig
         {
-            Symbols = new[] { "AAA" }, Architecture = "cnn", WindowSize = window,
-            Horizon = 1, FeatureMode = PredictionFeatureMode.ComposedFeatures,
+            Symbols = new[] { "AAA" },
+            Architecture = "cnn",
+            WindowSize = window,
+            Horizon = 1,
+            FeatureMode = PredictionFeatureMode.ComposedFeatures,
             FeatureSpec = new FeatureSpec { Channels = entries },
         };
     }

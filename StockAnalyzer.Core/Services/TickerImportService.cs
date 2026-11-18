@@ -17,7 +17,7 @@ namespace StockAnalyzer.Core.Services;
 public partial class TickerImportService : ITickerImportService
 {
     private readonly ILogger<TickerImportService> _logger;
-    
+
     private const int MaxSymbolLength = 16;
 
     // Ticker Regex: Allowed characters are A-Z, 0-9, dot, and hyphen. Length 1-16.

@@ -12,9 +12,12 @@ namespace StockAnalyzer.Core.Services;
 public sealed partial class ModelGenerationRegistry
 {
     internal Func<string, Pointer, Task>? RecoveryPointerWriter { get; init; }
-    private string RlPointerPath(string target) => Path.Combine(RlRoot, target switch {
-        RlFiles.Target => RlFiles.Active, RlContinuousContract.Target => RlContinuousContract.ActiveFile,
-        _ => throw new ArgumentException("Unsupported RL pointer target.", nameof(target)) });
+    private string RlPointerPath(string target) => Path.Combine(RlRoot, target switch
+    {
+        RlFiles.Target => RlFiles.Active,
+        RlContinuousContract.Target => RlContinuousContract.ActiveFile,
+        _ => throw new ArgumentException("Unsupported RL pointer target.", nameof(target))
+    });
     private void ValidateRlPointer(Pointer pointer, string target, bool full = false)
     {
         foreach (string id in pointer.History.Concat(pointer.ActiveId is { } active ? new[] { active } : Array.Empty<string>()))

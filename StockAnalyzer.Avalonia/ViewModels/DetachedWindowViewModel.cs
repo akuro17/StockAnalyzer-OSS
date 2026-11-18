@@ -46,8 +46,8 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
     private string _title = "Detached Window";
 
     public DetachedWindowViewModel(
-        IServiceProvider serviceProvider, 
-        IPanelTabFactory panelTabFactory, 
+        IServiceProvider serviceProvider,
+        IPanelTabFactory panelTabFactory,
         ITearOffService tearOffService,
         IContainerRegistry containerRegistry,
         IMessenger? messenger = null,
@@ -109,7 +109,7 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
                 SelectedItem = null;
             }
         }
-        
+
         UpdateTitle();
     }
 
@@ -141,10 +141,10 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
         item.CanClose = true;
 
         AddItem(item);
-        
+
         // Notify main window to include this tab in workspace persistence (FR-70-12)
         _messenger.Send(new Common.RegisterDetachedTabMessage(item));
-        
+
         _logger.LogInformation("Added new Tab [{Type}] to Detached Window.", tabId);
     }
 
@@ -252,7 +252,7 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
         newTab.CanClose = true;
 
         AddItem(newTab);
-        
+
         // Notify main window to include this tab in workspace persistence (FR-70-12)
         _messenger.Send(new Common.RegisterDetachedTabMessage(newTab));
         SelectedItem = newTab;
@@ -275,7 +275,7 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
         _isDisposed = true;
 
         _logger.LogInformation("Disposing DetachedWindowViewModel {ContainerId}. Cleaning up {Count} items.", ContainerId, Items.Count);
-        
+
         _messenger.UnregisterAll(this);
 
         // 1. Unregister from global registry to prevent leaks
@@ -294,7 +294,7 @@ public partial class DetachedWindowViewModel : ViewModelBase, IDetachedWindowCon
                 _logger.LogDebug("Disposed child ViewModel [{Type}] for Item {Id}.", item.ViewModel.GetType().Name, item.Id);
             }
         }
-        
+
         Items.Clear();
     }
 }

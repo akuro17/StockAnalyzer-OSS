@@ -14,16 +14,16 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
 
         public int Period { get; set; } = 20;
         private int _timeFrameMultiplier = 4;
-        public int TimeFrameMultiplier 
-        { 
-            get => _timeFrameMultiplier; 
-            set => _timeFrameMultiplier = Math.Max(1, value); 
+        public int TimeFrameMultiplier
+        {
+            get => _timeFrameMultiplier;
+            set => _timeFrameMultiplier = Math.Max(1, value);
         }
         private int _lag = 1;
-        public int Lag 
-        { 
-            get => _lag; 
-            set => _lag = Math.Max(1, value); 
+        public int Lag
+        {
+            get => _lag;
+            set => _lag = Math.Max(1, value);
         }
 
         public override void Configure(CoreIndicatorParameterBase parameters)

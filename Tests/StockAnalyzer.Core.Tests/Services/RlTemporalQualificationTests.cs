@@ -53,7 +53,8 @@ public sealed class RlTemporalQualificationTests
         }
     }
 
-    [Fact] public void MissingBoundUnknownVersionAndMismatchedDatesCannotQualify()
+    [Fact]
+    public void MissingBoundUnknownVersionAndMismatchedDatesCannotQualify()
     {
         var day = new DateOnly(2000, 1, 1);
         var evidence = Evidence(day, day, day);
@@ -67,7 +68,8 @@ public sealed class RlTemporalQualificationTests
         Assert.Throws<RlTemporalException>(() => RlTemporalValidator.Load(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))));
     }
 
-    [Fact] public void ExplicitVersionDispatchRejectsUnknownAndRetainsLegacy()
+    [Fact]
+    public void ExplicitVersionDispatchRejectsUnknownAndRetainsLegacy()
     {
         using var legacy = JsonDocument.Parse("{}");
         Assert.False(RlTemporalValidator.IsVersioned(legacy.RootElement));
@@ -85,16 +87,23 @@ public sealed class RlTemporalQualificationTests
         }
     }
 
-    [TemporalQualification] public async Task FullEarlierDirectionLaterActorQualification()
+    [TemporalQualification]
+    public async Task FullEarlierDirectionLaterActorQualification()
     {
         string output = Environment.GetEnvironmentVariable(OutputVariable) ?? Path.GetTempPath();
         string root = Path.Combine(output, "owned_qualification_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         using var registry = new ModelGenerationRegistry(Path.Combine(root, "Generations"));
-        var costs = new BacktestConfiguration { InitialCapital = BacktestDefaults.InitialCapital,
-            SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter,
-            CommissionFlat = 0m, CommissionPerUnit = 0m, SlippageRatio = 0m,
-            LiquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio };
+        var costs = new BacktestConfiguration
+        {
+            InitialCapital = BacktestDefaults.InitialCapital,
+            SizingModel = BacktestDefaults.SizingModel,
+            SizingParameter = BacktestDefaults.SizingParameter,
+            CommissionFlat = 0m,
+            CommissionPerUnit = 0m,
+            SlippageRatio = 0m,
+            LiquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio
+        };
         var service = new RlTrainingService(registry, new TrainingJobGate(Path.Combine(root, "job-locks")), dataRoot: root);
         var progress = new Progress<RlTrainingProgress>(p => File.AppendAllText(Path.Combine(root, "progress.log"),
             $"{DateTimeOffset.UtcNow:O} {p.RunId} {p.State} {p.CompletedSteps} {p.Message}{Environment.NewLine}"));
@@ -111,7 +120,7 @@ public sealed class RlTemporalQualificationTests
         Assert.Equal(RlTemporalRejection.FutureInformation,
             (await Assert.ThrowsAsync<RlTemporalException>(() => service.RunAsync(overlap))).Reason);
         var actor = await service.RunAsync(new RlTrainingJob("AAPL", new(2004, 1, 1), new(2026, 10, 4), costs)
-            { FrozenDirectionModelId = direction.ModelId }, progress);
+        { FrozenDirectionModelId = direction.ModelId }, progress);
         Assert.NotNull(actor.ModelId);
         Assert.Null(registry.RlActiveId); Assert.Null(registry.RlContinuousActiveId);
         var generation = registry.GetRlGeneration(actor.ModelId!)!;
@@ -141,18 +150,27 @@ public sealed class RlTemporalQualificationTests
         string producerProofPath = Path.Combine(direction.Directory, RlTemporalContract.EvidenceFile);
         string producerProof = await File.ReadAllTextAsync(producerProofPath);
         var changedSelection = proof.Selection with { UpperExclusive = proof.Selection.UpperExclusive.AddDays(-1) };
-        var changedEvidence = proof with { Selection = changedSelection,
-            InformationUpperExclusive = new[] { proof.Training.UpperExclusive, proof.Scaler.UpperExclusive, changedSelection.UpperExclusive }.Max() };
+        var changedEvidence = proof with
+        {
+            Selection = changedSelection,
+            InformationUpperExclusive = new[] { proof.Training.UpperExclusive, proof.Scaler.UpperExclusive, changedSelection.UpperExclusive }.Max()
+        };
         await File.WriteAllTextAsync(producerProofPath, JsonSerializer.Serialize(changedEvidence, RlFiles.Json));
-        try { Assert.Equal(RlTemporalRejection.IdentityMismatch, Assert.Throws<RlTemporalException>(() =>
-            RlTemporalValidator.LoadAndValidateProducer(direction.Directory, directionSource)).Reason); }
+        try
+        {
+            Assert.Equal(RlTemporalRejection.IdentityMismatch, Assert.Throws<RlTemporalException>(() =>
+            RlTemporalValidator.LoadAndValidateProducer(direction.Directory, directionSource)).Reason);
+        }
         finally { await File.WriteAllTextAsync(producerProofPath, producerProof); }
         string dependencyPath = Path.Combine(direction.Directory, RlFiles.Dependencies);
         string producerDependencies = await File.ReadAllTextAsync(dependencyPath);
         var unknownProducer = JsonNode.Parse(producerDependencies)!; unknownProducer["source_script_sha256"] = FixtureHash;
         await File.WriteAllTextAsync(dependencyPath, unknownProducer.ToJsonString(RlFiles.Json));
-        try { Assert.Equal(RlTemporalRejection.UnknownProducer, Assert.Throws<RlTemporalException>(() =>
-            RlTemporalValidator.Reconstruct(direction.Directory, directionSource)).Reason); }
+        try
+        {
+            Assert.Equal(RlTemporalRejection.UnknownProducer, Assert.Throws<RlTemporalException>(() =>
+            RlTemporalValidator.Reconstruct(direction.Directory, directionSource)).Reason);
+        }
         finally { await File.WriteAllTextAsync(dependencyPath, producerDependencies); }
         string metricsPath = direction.EvaluationPath;
         string producerMetrics = await File.ReadAllTextAsync(metricsPath);
@@ -160,8 +178,11 @@ public sealed class RlTemporalQualificationTests
         var selectedUsage = alteredUsage["information_usage"]!.AsArray().First(u => u!["role"]!.GetValue<string>() == "validation")!;
         selectedUsage["last_observed_index"] = selectedUsage["last_observed_index"]!.GetValue<int>() - 1;
         await File.WriteAllTextAsync(metricsPath, alteredUsage.ToJsonString(RlFiles.Json));
-        try { Assert.Equal(RlTemporalRejection.InconsistentUsage, Assert.Throws<RlTemporalException>(() =>
-            RlTemporalValidator.Reconstruct(direction.Directory, directionSource)).Reason); }
+        try
+        {
+            Assert.Equal(RlTemporalRejection.InconsistentUsage, Assert.Throws<RlTemporalException>(() =>
+            RlTemporalValidator.Reconstruct(direction.Directory, directionSource)).Reason);
+        }
         finally { await File.WriteAllTextAsync(metricsPath, producerMetrics); }
 
         // Direct registry callers cannot downgrade a newly produced actor into the legacy path.
@@ -178,9 +199,13 @@ public sealed class RlTemporalQualificationTests
         try { await Assert.ThrowsAsync<RlTemporalException>(() => registry.RegisterRlAsync(actor.Directory)); }
         finally { await File.WriteAllTextAsync(proofPath, originalProof); }
         // Even a registry adapter bypassing byte validation cannot bypass the replay date/reconstruction guard.
-        var premature = proof with { Training = proof.Training with { UpperExclusive = first.AddDays(1) },
+        var premature = proof with
+        {
+            Training = proof.Training with { UpperExclusive = first.AddDays(1) },
             Scaler = proof.Scaler with { UpperExclusive = first.AddDays(1) },
-            Selection = proof.Selection with { UpperExclusive = first.AddDays(1) }, InformationUpperExclusive = first.AddDays(1) };
+            Selection = proof.Selection with { UpperExclusive = first.AddDays(1) },
+            InformationUpperExclusive = first.AddDays(1)
+        };
         await File.WriteAllTextAsync(proofPath, JsonSerializer.Serialize(premature, RlFiles.Json));
         node = JsonNode.Parse(originalJob)!; node["direction"]!["temporal_evidence_sha256"] = ContentHash.OfFile(proofPath);
         await File.WriteAllTextAsync(jobPath, node.ToJsonString(RlFiles.Json));
@@ -194,13 +219,20 @@ public sealed class RlTemporalQualificationTests
         Assert.Null(registry.RlActiveId); Assert.Null(registry.RlContinuousActiveId);
         await AtomicJsonFile.SaveAsync(Path.Combine(output, "full_qualification_result.json"), new
         {
-            direction, actor, evidence = proof, first_train_decision = first,
-            registry_root = Path.Combine(root, "Generations"), costs,
-            source_price_pit = "Unverified", external_selection = "Unverified", profitability = "NotEstablished",
+            direction,
+            actor,
+            evidence = proof,
+            first_train_decision = first,
+            registry_root = Path.Combine(root, "Generations"),
+            costs,
+            source_price_pit = "Unverified",
+            external_selection = "Unverified",
+            profitability = "NotEstablished",
         }, RlFiles.Json);
     }
 
-    [TemporalQualification] public async Task ExistingLegacyBytesPointersAndResearchReplayRemainUnchanged()
+    [TemporalQualification]
+    public async Task ExistingLegacyBytesPointersAndResearchReplayRemainUnchanged()
     {
         string legacyActor = Environment.GetEnvironmentVariable(LegacyActorVariable)
             ?? throw new InvalidOperationException("Explicit legacy actor artifact directory required.");
@@ -243,9 +275,14 @@ public sealed class RlTemporalQualificationTests
         foreach (var original in originalHashes) Assert.Equal(original.Value, ContentHash.OfFile(original.Key));
         await AtomicJsonFile.SaveAsync(Path.Combine(output, "legacy_compatibility_result.json"), new
         {
-            actor.ModelId, direction_id = direction.ModelId, dependency_evidence = evidence,
-            original_bytes_unchanged = true, active_pointers_unchanged = true, research_replay = "passed",
-            same_period_new_qualification = "rejected", output_root = root,
+            actor.ModelId,
+            direction_id = direction.ModelId,
+            dependency_evidence = evidence,
+            original_bytes_unchanged = true,
+            active_pointers_unchanged = true,
+            research_replay = "passed",
+            same_period_new_qualification = "rejected",
+            output_root = root,
         }, RlFiles.Json);
     }
 

@@ -128,6 +128,11 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `Bocpd` | `205` | `CoreBocpdParameter` | `HazardLambda` (double, default `100`), `MaxRunLength` (int, default `150`), `WarmupPeriod` (int, default `50`), `CusumDrift` (double, default `0.5`), `CusumThreshold` (double, default `4`), `PriceSource` (PriceType, default `0 (Close)`) | `false` | `"Main"`, `"ExpectedRunLength"`, `"MapRunLength"`, `"CusumUp"`, `"CusumDown"` |
 | `GrangerCausality` | `206` | `CoreGrangerCausalityParameter` | `Period` (int, default `60`, range `[30, 500]`), `LagOrder` (int, default `2`, range `[1, 5]`), `ComparisonSymbol` (string, default `""`), `PriceSource` (PriceType, default `0 (Close)`), `ComparisonPriceSource` (PriceType, default `0 (Close)`) | `false` | `"Main"`, `"ReverseFStat"`, `"DirectionalDiff"`, `"DccCorrelation"` |
 | `JohansenCointegration` | `207` | `CoreJohansenCointegrationParameter` | `Period` (int, default `100`, range `[30, 500]`), `UseLogPrices` (bool, default `true`), `ComparisonSymbol` (string, default `""`), `PriceSource` (PriceType, default `0 (Close)`), `ComparisonPriceSource` (PriceType, default `0 (Close)`) | `false` | `"Main"`, `"MaxEigenStat"`, `"CriticalValue95"`, `"CointegrationSpreadZScore"` |
+| `SkewnessKurtosis` | `208` | `CoreSkewnessKurtosisParameter` | `Period` (int, default `30`), `UseLogReturn` (bool, default `true`) | `false` | `"Main"`, `"ExcessKurtosis"` |
+| `JarqueBera` | `209` | `CoreJarqueBeraParameter` | `Period` (int, default `60`), `Alpha` (double, default `0.05`), `UseLogReturn` (bool, default `true`) | `false` | `"Main"`, `"SignificanceLevel"`, `"JBStatistic"` |
+| `LjungBoxQ` | `210` | `CoreLjungBoxQParameter` | `Period` (int, default `60`), `MaxLag` (int, default `10`), `Alpha` (double, default `0.05`) | `false` | `"Main"`, `"SignificanceLevel"`, `"QStatistic"` |
+| `ADFStationarity` | `213` | `CoreAdfStationarityParameter` | `Period` (int, default `60`), `LagOrder` (int, default `1`), `UseLogPrice` (bool, default `true`) | `false` | `"Main"`, `"CriticalValue5Pct"`, `"HalfLife"`, `"Rho"` |
+| `VarianceRatio` | `214` | `CoreVarianceRatioParameter` | `Period` (int, default `60`), `AggregationHorizon` (int, default `5`) | `false` | `"Main"`, `"RandomWalkLine"`, `"ZStarStatistic"`, `"PValue"` |
 
 ### Category: Trend
 
@@ -182,6 +187,8 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `ChandelierExit` | `193` | `CoreChandelierExitParameter` | `Period` (int, default `22`), `Multiplier` (decimal, default `3.0`) | `true` | `"Main"`, `"ShortStop"` |
 | `T3` | `194` | `CoreT3Parameter` | `Period` (int, default `5`), `VolumeFactor` (decimal, default `0.7`) | `true` | `"Main"` |
 | `McGinleyDynamic` | `195` | `CoreMcGinleyDynamicParameter` | `Period` (int, default `14`), `Constant` (decimal, default `0.6`) | `true` | `"Main"` |
+| `QuantileBands` | `215` | `CoreQuantileBandsParameter` | `Period` (int, default `20`), `UpperQuantile` (double, default `0.75`), `LowerQuantile` (double, default `0.25`) | `true` | `"Main"`, `"UpperBand"`, `"LowerBand"`, `"IQR"`, `"MAD"` |
+| `TheilSenRegression` | `216` | `CoreTheilSenRegressionParameter` | `Period` (int, default `20`), `BandMultiplier` (double, default `2`), `UseSiegelMedian` (bool, default `false`) | `true` | `"Main"`, `"UpperBand"`, `"LowerBand"`, `"Slope"`, `"Intercept"` |
 
 ### Category: Volatility
 
@@ -217,6 +224,9 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `ParkinsonVolatility` | `200` | `CoreParkinsonVolatilityParameter` | `Period` (int, default `20`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`) | `false` | `"Main"` |
 | `RogersSatchellVolatility` | `201` | `CoreRogersSatchellVolatilityParameter` | `Period` (int, default `20`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`) | `false` | `"Main"` |
 | `HarRv` | `204` | `CoreHarRvParameter` | `EstimationWindow` (int, default `60`), `ShortPeriod` (int, default `1`), `MediumPeriod` (int, default `5`), `LongPeriod` (int, default `22`), `BaseEstimator` (HarRvBaseEstimator, default `0 (RogersSatchell)`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`) | `false` | `"Main"`, `"RvShort"`, `"RvMedium"`, `"RvLong"` |
+| `DownsideDeviation` | `211` | `CoreDownsideDeviationParameter` | `Period` (int, default `20`), `TargetReturn` (double, default `0`) | `false` | `"Main"`, `"UpsideDeviation"`, `"RollingSortino"`, `"SemivarianceAsymmetry"` |
+| `BipowerVariation` | `212` | `CoreBipowerVariationParameter` | `Period` (int, default `20`) | `false` | `"Main"`, `"TotalVolatility"`, `"JumpComponentHistogram"`, `"JumpRatio"` |
+| `CornishFisherVaR` | `217` | `CoreCornishFisherVarParameter` | `Period` (int, default `30`), `ConfidenceLevel` (double, default `0.95`) | `false` | `"Main"`, `"GaussianVaR"`, `"ProbabilisticSharpeRatio"` |
 
 ### Category: Volume
 

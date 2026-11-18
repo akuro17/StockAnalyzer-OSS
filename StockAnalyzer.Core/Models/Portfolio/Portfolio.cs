@@ -28,7 +28,7 @@ public sealed record Portfolio
         IReadOnlyDictionary<CurrencyCode, decimal>? realizedPnLByCurrency = null)
     {
         if (cashBalance < 0) throw new ArgumentOutOfRangeException(nameof(cashBalance), "Cash balance cannot be negative.");
-        
+
         CashBalances = cashBalances ?? new Dictionary<CurrencyCode, decimal> { { CurrencyCode.JPY, cashBalance } };
         CashBalance = cashBalances != null && cashBalances.TryGetValue(CurrencyCode.JPY, out var jpyBal) ? jpyBal : cashBalance;
         Positions = positions ?? new Dictionary<string, Position>();

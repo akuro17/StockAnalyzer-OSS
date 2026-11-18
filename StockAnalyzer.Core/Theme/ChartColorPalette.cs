@@ -55,7 +55,7 @@ public static class ChartColorPalette
     public static IndicatorColor Get(int index, bool isDark)
     {
         if (index < 0) throw new ArgumentOutOfRangeException(nameof(index), index, "Color index must be non-negative.");
-        
+
         var palette = isDark ? DarkColors : LightColors;
         return palette[index % 12];
     }

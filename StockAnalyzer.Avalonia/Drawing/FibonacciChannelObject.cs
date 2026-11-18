@@ -57,10 +57,10 @@ public class FibonacciChannelObject : IChartObject, IDrawingCalculatedValuesProv
 
         // 1. Calculate Trend Line Slope (m) and Intercept (b) in Screen Coordinates
         // y = mx + b
-        
+
         float dx = (float)(p2.X - p1.X);
         float dy = (float)(p2.Y - p1.Y);
-        
+
         if (Math.Abs(dx) < 0.001) dx = 0.001f; // Avoid division by zero
         float m = dy / dx;
         float b = (float)p1.Y - (m * (float)p1.X);
@@ -71,7 +71,7 @@ public class FibonacciChannelObject : IChartObject, IDrawingCalculatedValuesProv
         // Line through P3: y = mx + b3.
         // b3 = P3.Y - m * P3.X
         // Width W = b3 - b. (Vertical distance constant)
-        
+
         float b3 = (float)p3.Y - (m * (float)p3.X);
         float w = b3 - b;
 
@@ -81,16 +81,16 @@ public class FibonacciChannelObject : IChartObject, IDrawingCalculatedValuesProv
         // Let's try to match usage. Usually extends infinite right?
         xStart = (float)Math.Min(p1.X, p2.X);
         if (p1.X > xStart) xStart = -1000; // extend left too? Usually channels do.
-        
+
         // Let's extend full screen width roughly
         // We really need Canvas Bounds. Assuming xStart=0, xEnd=CanvasWidth for now is tricky without Bounds passed.
         // We will just draw "long enough" lines based on points range x10.
-        
+
         float minX = (float)Math.Min(p1.X, Math.Min(p2.X, p3.X));
         float maxX = (float)Math.Max(p1.X, Math.Max(p2.X, p3.X));
         float range = maxX - minX;
         if (range < 100) range = 100;
-        
+
         xStart = minX - range * 2;
         xEnd = maxX + range * 5;
 
@@ -99,12 +99,12 @@ public class FibonacciChannelObject : IChartObject, IDrawingCalculatedValuesProv
             // y = mx + b + (w * level)
             // b_level = b + (w * level)
             float b_level = b + (w * level);
-            
+
             float yStart = (m * xStart) + b_level;
             float yEnd = (m * xEnd) + b_level;
 
             // Optional: Clip to reasonable Y values? skia handles it.
-            
+
             canvas.DrawLine(xStart, yStart, xEnd, yEnd, paint);
         }
 
@@ -118,20 +118,20 @@ public class FibonacciChannelObject : IChartObject, IDrawingCalculatedValuesProv
 
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
-         if (Points.Count < 3) return false;
-         
-         var p1 = transform.ChartToScreen(Points[0]);
-         var p2 = transform.ChartToScreen(Points[1]);
-         var p3 = transform.ChartToScreen(Points[2]);
-         
-         if (GetDistance(screenPoint, p1) < tolerance * 2) return true;
-         if (GetDistance(screenPoint, p2) < tolerance * 2) return true;
-         if (GetDistance(screenPoint, p3) < tolerance * 2) return true;
+        if (Points.Count < 3) return false;
 
-         // Hit test closest line?
-         return false;
+        var p1 = transform.ChartToScreen(Points[0]);
+        var p2 = transform.ChartToScreen(Points[1]);
+        var p3 = transform.ChartToScreen(Points[2]);
+
+        if (GetDistance(screenPoint, p1) < tolerance * 2) return true;
+        if (GetDistance(screenPoint, p2) < tolerance * 2) return true;
+        if (GetDistance(screenPoint, p3) < tolerance * 2) return true;
+
+        // Hit test closest line?
+        return false;
     }
-    
+
     private double GetDistance(global::Avalonia.Point a, global::Avalonia.Point b) => Math.Sqrt(Math.Pow(a.X - b.X, 2) + Math.Pow(a.Y - b.Y, 2));
 
     public void Translate(TimeSpan timeDelta, decimal priceDelta)

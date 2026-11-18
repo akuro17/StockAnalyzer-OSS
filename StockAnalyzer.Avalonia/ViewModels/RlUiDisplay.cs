@@ -28,15 +28,20 @@ public static class RlUiDisplay
     };
     public static string Partition(string id, ILocalizationService text) => text.GetString(id switch
     {
-        "train" => "Rl.Ui.Partition.train", "validation" => "Rl.Ui.Partition.validation", "oos" => "Rl.Ui.Partition.oos",
+        "train" => "Rl.Ui.Partition.train",
+        "validation" => "Rl.Ui.Partition.validation",
+        "oos" => "Rl.Ui.Partition.oos",
         _ => "Rl.Ui.Load.Unsupported"
     });
     /// <summary>Caption of a list that is loading, failed, unsupported, empty or loaded.</summary>
     public static string LoadCaption(RlDialogLoadState state, int count, ILocalizationService text) => text.GetString(state switch
     {
-        RlDialogLoadState.Loading => "Rl.Ui.Load.Loading", RlDialogLoadState.Failed => "Rl.Ui.Load.Failed",
-        RlDialogLoadState.Unsupported => "Rl.Ui.Load.Unsupported", RlDialogLoadState.Loaded when count == 0 => "Rl.Ui.Load.Empty",
-        RlDialogLoadState.Loaded => "Rl.Checkpoint.Verified", _ => "Rl.Ui.Load.Unloaded"
+        RlDialogLoadState.Loading => "Rl.Ui.Load.Loading",
+        RlDialogLoadState.Failed => "Rl.Ui.Load.Failed",
+        RlDialogLoadState.Unsupported => "Rl.Ui.Load.Unsupported",
+        RlDialogLoadState.Loaded when count == 0 => "Rl.Ui.Load.Empty",
+        RlDialogLoadState.Loaded => "Rl.Checkpoint.Verified",
+        _ => "Rl.Ui.Load.Unloaded"
     });
     /// <summary>Summary of one stored generation: target and symbol, identifier, validation and final mean return.</summary>
     public static string Generation(RlGeneration g, ILocalizationService text, string? customDisplayName = null)

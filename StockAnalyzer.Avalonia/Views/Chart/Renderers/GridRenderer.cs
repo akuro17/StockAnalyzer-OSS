@@ -23,7 +23,7 @@ public sealed class GridRenderer : IDisposable
     {
         // Dash pattern: 2px line, 2px space
         _dashEffect = SKPathEffect.CreateDash(new float[] { ChartTheme.GridDashOn, ChartTheme.GridDashOff }, 0);
-        
+
         _gridPaint = new SKPaint
         {
             StrokeWidth = 1,
@@ -62,7 +62,7 @@ public sealed class GridRenderer : IDisposable
         if (snapshot.Candles.Count == 0) return;
 
         _gridPaint.Color = config.ThemeManager.CurrentTheme.GridLine.ToSkColor();
-        
+
         var gridColor = config.ThemeManager.CurrentTheme.GridLine.ToSkColor();
         _zScoreZeroPaint.Color = gridColor.WithAlpha(ChartTheme.ZScoreZeroAlpha);
         _zScoreThresholdPaint.Color = gridColor.WithAlpha(ChartTheme.ZScoreThresholdAlpha);
@@ -96,13 +96,13 @@ public sealed class GridRenderer : IDisposable
             // For P&F, rigidly lock the grid to exactly the predefined BoxSize.
             // Do NOT use CalculateNiceStep or ChartTheme.HorizontalGridLineTarget.
             step = snapshot.MaxBrickSize;
-            
+
             // For extreme zoom-out, we optionally skip lines to prevent the screen turning solid grid
             decimal roughStep = range / ChartTheme.HorizontalGridLineTarget;
-            if (roughStep > step * 2) 
+            if (roughStep > step * 2)
             {
-               decimal multiplier = Math.Max(1m, Math.Round(roughStep / step));
-               step = step * multiplier;
+                decimal multiplier = Math.Max(1m, Math.Round(roughStep / step));
+                step = step * multiplier;
             }
 
             // Snap the first line directly to a BoxSize multiple
@@ -130,7 +130,7 @@ public sealed class GridRenderer : IDisposable
             }
 
             float y = MathF.Floor((float)t.ChartToScreen(new StockAnalyzer.Avalonia.Drawing.ChartPoint(DateTime.MinValue, price)).Y + (float)chartArea.Top) + 0.5f;
-            
+
             // Draw horizontal line
             canvas.DrawLine((float)chartArea.Left, y, (float)chartArea.Right, y, _gridPaint);
 
@@ -149,7 +149,7 @@ public sealed class GridRenderer : IDisposable
 
                 float y = MathF.Floor((float)t.ChartToScreen(new StockAnalyzer.Avalonia.Drawing.ChartPoint(DateTime.MinValue, val)).Y + (float)chartArea.Top) + 0.5f;
                 var paint = val == 0m ? _zScoreZeroPaint : _zScoreThresholdPaint;
-                
+
                 canvas.DrawLine((float)chartArea.Left, y, (float)chartArea.Right, y, paint);
             }
         }
@@ -177,7 +177,7 @@ public sealed class GridRenderer : IDisposable
             // Ticks = Index
             int startIdx = (int)Math.Max(0, (int)Math.Floor((double)startPt.Time.Ticks));
             int endIdx = (int)Math.Min(count - 1, (int)Math.Ceiling((double)endPt.Time.Ticks));
-            
+
             if (startIdx >= count) return;
 
             // Figure out a reasonable interval based on screen density
@@ -197,10 +197,10 @@ public sealed class GridRenderer : IDisposable
         {
             var startPt = t.ScreenToNumeric(new global::Avalonia.Point(0, 0));
             var endPt = t.ScreenToNumeric(new global::Avalonia.Point(chartArea.Width, 0));
-            
+
             decimal minVol = (decimal)Math.Min(startPt.x, endPt.x);
             decimal maxVol = (decimal)Math.Max(startPt.x, endPt.x);
-            
+
             if (maxVol > minVol)
             {
                 decimal volRange = maxVol - minVol;
@@ -210,7 +210,7 @@ public sealed class GridRenderer : IDisposable
                 if (niceStep > 0)
                 {
                     decimal startVol = Math.Floor(minVol / niceStep) * niceStep;
-                    
+
                     for (decimal v = startVol; v <= maxVol; v += niceStep)
                     {
                         if (v < minVol) continue;
@@ -225,15 +225,15 @@ public sealed class GridRenderer : IDisposable
             // Standard calculation for time-based charts using exact transform mapping
             var startPt = t.ScreenToChart(new global::Avalonia.Point(0, 0));
             var endPt = t.ScreenToChart(new global::Avalonia.Point(chartArea.Width, 0));
-            
+
             // Find time bounds
             DateTime startTime = startPt.Time;
             DateTime endTime = endPt.Time;
-            
+
             if (startTime >= endTime) return;
-            
+
             TimeSpan visibleDuration = endTime - startTime;
-            
+
             // Determine logical step (must match AxisRenderer!)
             TimeSpan step;
             if (visibleDuration.TotalDays > 365 * 3) step = TimeSpan.FromDays(365);
@@ -260,7 +260,7 @@ public sealed class GridRenderer : IDisposable
                         canvas.DrawLine(x, (float)chartArea.Top, x, (float)chartArea.Bottom, _gridPaint);
                     }
                 }
-                
+
                 if (step.TotalDays == 365) curr = curr.AddYears(1);
                 else if (step.TotalDays == 30) curr = curr.AddMonths(1);
                 else curr = curr.Add(step);
@@ -337,33 +337,33 @@ public sealed class GridRenderer : IDisposable
         if (priceRange <= 0) return;
 
         decimal maxVal = minVal + priceRange;
-        
+
         _textPaint.Color = config.ThemeManager.CurrentTheme.AxisText.ToSkColor();
 
         if (isFixedRange)
         {
-              // Draw strictly at Min and Max
-              DrawGridLine(canvas, panelArea, minVal, minVal, priceRange, _textPaint);
-              DrawGridLine(canvas, panelArea, maxVal, minVal, priceRange, _textPaint);
-             
-              // Detect Granville Law range specifically (-4 to 4) and draw -2, 0, 2 instead of a single middle line
-              if (minVal == -4m && priceRange == 8m)
-              {
-                  DrawGridLine(canvas, panelArea, -2m, minVal, priceRange, _textPaint);
-                  DrawGridLine(canvas, panelArea, 0m, minVal, priceRange, _textPaint);
-                  DrawGridLine(canvas, panelArea, 2m, minVal, priceRange, _textPaint);
-              }
-              // If fixed range spans across zero (e.g. Correlation [-1, 1]), draw the 0 baseline
-              else if (minVal < 0m && maxVal > 0m)
-              {
-                  DrawGridLine(canvas, panelArea, 0m, minVal, priceRange, _textPaint);
-              }
-              // Add a middle line if range is large enough (e.g. 0-100 -> 50) and not Granville Law
-              else if (priceRange >= ChartTheme.FixedRangeMiddleLineThreshold)
-              {
-                  decimal mid = minVal + priceRange / 2m;
-                  DrawGridLine(canvas, panelArea, mid, minVal, priceRange, _textPaint);
-              }
+            // Draw strictly at Min and Max
+            DrawGridLine(canvas, panelArea, minVal, minVal, priceRange, _textPaint);
+            DrawGridLine(canvas, panelArea, maxVal, minVal, priceRange, _textPaint);
+
+            // Detect Granville Law range specifically (-4 to 4) and draw -2, 0, 2 instead of a single middle line
+            if (minVal == -4m && priceRange == 8m)
+            {
+                DrawGridLine(canvas, panelArea, -2m, minVal, priceRange, _textPaint);
+                DrawGridLine(canvas, panelArea, 0m, minVal, priceRange, _textPaint);
+                DrawGridLine(canvas, panelArea, 2m, minVal, priceRange, _textPaint);
+            }
+            // If fixed range spans across zero (e.g. Correlation [-1, 1]), draw the 0 baseline
+            else if (minVal < 0m && maxVal > 0m)
+            {
+                DrawGridLine(canvas, panelArea, 0m, minVal, priceRange, _textPaint);
+            }
+            // Add a middle line if range is large enough (e.g. 0-100 -> 50) and not Granville Law
+            else if (priceRange >= ChartTheme.FixedRangeMiddleLineThreshold)
+            {
+                decimal mid = minVal + priceRange / 2m;
+                DrawGridLine(canvas, panelArea, mid, minVal, priceRange, _textPaint);
+            }
         }
         else
         {
@@ -387,14 +387,14 @@ public sealed class GridRenderer : IDisposable
         if (availableHeight <= 0) availableHeight = 1;
         double scaleY = availableHeight / (double)priceRange;
         double offsetY = chartHeight - PaddingY;
-        
+
         float y = MathF.Floor((float)(offsetY - (double)(value - minVal) * scaleY + panelArea.Top)) + 0.5f;
-        
+
         // Clamp Y to avoid drawing outside? PriceToY handles it relative to Rect.
         // If value is slightly outside due to precision, it might be clipped.
-        
+
         canvas.DrawLine((float)panelArea.Left, y, (float)panelArea.Right, y, _gridPaint);
-        
+
         // Draw Label
         // Format based on range magnitude?
         string label = value.ToString(priceRange >= ChartTheme.FixedRangeMiddleLineThreshold ? "F0" : "F2");

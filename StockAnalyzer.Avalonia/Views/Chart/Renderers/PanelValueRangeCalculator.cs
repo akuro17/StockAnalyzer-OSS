@@ -30,14 +30,14 @@ public static class PanelValueRangeCalculator
             return (setting.MinValue.Value, setting.MaxValue.Value);
         }
 
-        if (snapshot.IndicatorResults != null && 
+        if (snapshot.IndicatorResults != null &&
             snapshot.IndicatorResults.TryGetValue(setting.Id, out var result) &&
             result.IsSuccessful)
         {
             decimal minVal = decimal.MaxValue;
             decimal maxVal = decimal.MinValue;
             bool hasValue = false;
-            
+
             foreach (var seriesName in result.SeriesNames)
             {
                 if (IsSignalSeries(seriesName)) continue;
@@ -49,7 +49,7 @@ public static class PanelValueRangeCalculator
 
                 var seriesValues = result.GetSeries(seriesName);
                 if (seriesValues == null) continue;
-                
+
                 foreach (var v in seriesValues)
                 {
                     if (v.HasValue)
@@ -60,12 +60,12 @@ public static class PanelValueRangeCalculator
                     }
                 }
             }
-            
-            if (!hasValue) 
+
+            if (!hasValue)
             {
                 return (0m, 1m);
             }
-            
+
             // Zero-baseline oscillator handling: include 0 in the scale if configured
             if (setting.IncludeZeroBaseline)
             {
@@ -80,7 +80,7 @@ public static class PanelValueRangeCalculator
                 buffer = Math.Abs(minVal) > 0m ? Math.Abs(minVal) * 0.1m : 0.05m;
                 if (buffer == 0m) buffer = 0.05m;
             }
-            
+
             return (minVal - buffer, maxVal + buffer);
         }
 

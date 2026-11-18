@@ -35,12 +35,17 @@ public static class RlTemporalValidator
 
     public static string JobIdentity(JsonElement job) => ContentHash.OfText(JsonSerializer.Serialize(new
     {
-        specification = job.GetProperty("temporal_specification_id"), symbol = job.GetProperty("symbol"),
-        start = job.GetProperty("start_date"), end = job.GetProperty("end_date_exclusive"),
-        source = job.GetProperty("source_revision"), catalog = job.GetProperty("catalog"),
-        costs = job.GetProperty("costs"), limits = job.GetProperty("resource_limits"),
+        specification = job.GetProperty("temporal_specification_id"),
+        symbol = job.GetProperty("symbol"),
+        start = job.GetProperty("start_date"),
+        end = job.GetProperty("end_date_exclusive"),
+        source = job.GetProperty("source_revision"),
+        catalog = job.GetProperty("catalog"),
+        costs = job.GetProperty("costs"),
+        limits = job.GetProperty("resource_limits"),
         direction = job.TryGetProperty("direction", out var direction) ? direction : (JsonElement?)null,
-        dependencies = job.GetProperty("dependencies_sha256"), contract = job.GetProperty("contract_hash"),
+        dependencies = job.GetProperty("dependencies_sha256"),
+        contract = job.GetProperty("contract_hash"),
     }, RlFiles.Json));
 
     public static RlTemporalEvidence Reconstruct(string directory, RlSourceSnapshot source)
@@ -182,8 +187,12 @@ public static class RlTemporalValidator
         var seeds = smoke ? RlContract.CandidateSeeds.Take(1) : RlContract.CandidateSeeds;
         foreach (var row in usage)
         {
-            var blocks = row.Role switch { "train" => source.Catalog.Train, "validation" => source.Catalog.Validation,
-                _ => throw Error(RlTemporalRejection.InconsistentUsage, "Unknown information-use role.") };
+            var blocks = row.Role switch
+            {
+                "train" => source.Catalog.Train,
+                "validation" => source.Catalog.Validation,
+                _ => throw Error(RlTemporalRejection.InconsistentUsage, "Unknown information-use role.")
+            };
             var block = blocks.SingleOrDefault(b => b.Id == row.BlockId);
             if (block is null || !seeds.Contains(row.Seed) || row.Resets < 1 || row.Transitions < 0
                 || row.Transitions > checked(row.Resets * RlContract.EpisodeHorizon)

@@ -72,7 +72,7 @@ public sealed class RlPanelPartitionPlumbingTests : IDisposable
             CancellationToken.None, plan);
 
     private static BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
-        { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
+    { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
 
     // ----- panel snapshot -----
 

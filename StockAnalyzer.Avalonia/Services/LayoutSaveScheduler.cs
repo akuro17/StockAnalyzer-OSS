@@ -12,11 +12,11 @@ public sealed class LayoutSaveScheduler : ILayoutSaveScheduler
     private readonly LayoutStateStore _stateStore;
     private readonly ILogger<LayoutSaveScheduler> _logger;
     private readonly int _throttleMs;
-    
+
     private Func<Task>? _saveAction;
     private Timer? _debounceTimer;
     private bool _isDisposed;
-    
+
     private readonly object _timerLock = new();
     private readonly SemaphoreSlim _saveGate = new(1, 1);
 
@@ -31,7 +31,7 @@ public sealed class LayoutSaveScheduler : ILayoutSaveScheduler
         _stateStore = stateStore ?? throw new ArgumentNullException(nameof(stateStore));
         _logger = logger ?? NullLogger<LayoutSaveScheduler>.Instance;
         _throttleMs = throttleMs;
-        
+
         // Initialize the reusable timer (does not tick initially)
         _debounceTimer = new Timer(OnTimerCallback, null, Timeout.Infinite, Timeout.Infinite);
     }
@@ -136,7 +136,7 @@ public sealed class LayoutSaveScheduler : ILayoutSaveScheduler
         // Wait for any active save action to complete before releasing resources.
         await _saveGate.WaitAsync().ConfigureAwait(false);
         _saveGate.Dispose();
-        
+
         _logger.LogInformation("LayoutSaveScheduler disposed cleanly.");
     }
 }

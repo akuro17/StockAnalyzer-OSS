@@ -43,12 +43,12 @@ public class CoreAdxrIndicatorTests
         // Implementation might have slightly different null start depending on pre-seed.
         // But asserting later value exists is safe.
         // Wait, if implementation returns correct count padded with nulls.
-    
+
         if (result.MainValues.Count > expectedNonNullIndex)
         {
-             // Assert.NotNull(result.MainValues[expectedNonNullIndex]); // This might be risky if index calculation is off by one
-             Assert.NotNull(result.MainValues.Last());
-             Assert.True(result.MainValues.Last() > 0);
+            // Assert.NotNull(result.MainValues[expectedNonNullIndex]); // This might be risky if index calculation is off by one
+            Assert.NotNull(result.MainValues.Last());
+            Assert.True(result.MainValues.Last() > 0);
         }
     }
 
@@ -72,7 +72,7 @@ public class CoreAdxrIndicatorTests
     [Fact]
     public void Calculate_WithInsufficientData_ReturnsNullValues()
     {
-        var candles = GenerateCandleData(40, i => new CoreCandleData(DateTime.Today,100,100,100,100,100));
+        var candles = GenerateCandleData(40, i => new CoreCandleData(DateTime.Today, 100, 100, 100, 100, 100));
         var indicator = new CoreAdxrIndicator { Period = 14, AdxrPeriod = 14 };
         var result = indicator.Calculate(candles);
 

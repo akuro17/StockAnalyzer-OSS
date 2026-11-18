@@ -34,7 +34,7 @@ public class CoreLsmaIndicatorTests
         Assert.True(result.MainValues.Take(period - 1).All(v => v == null));
 
         Assert.NotNull(result.MainValues[period - 1]);
-        
+
         // Verification logic logic
         decimal sumX = 0, sumY = 0, sumXy = 0, sumX2 = 0;
         for (int j = 0; j < period; j++)

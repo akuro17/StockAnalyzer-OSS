@@ -87,10 +87,10 @@ public class TrendLineObject : RelativeGeometricRenderer, IDrawingCalculatedValu
         if (dist > 0)
         {
             // Calculate logic-based "column width" for projection length
-            double columnWidth = (transform.TimeMap != null) 
+            double columnWidth = (transform.TimeMap != null)
                 ? Math.Abs(transform.NumericToScreen(1, 0).X - transform.NumericToScreen(0, 0).X)
                 : transform.ViewportWidth / 80.0;
-            
+
             double projectionLen = columnWidth * ProjectionColumns;
 
             float ux = (float)(dx / dist);
@@ -112,7 +112,7 @@ public class TrendLineObject : RelativeGeometricRenderer, IDrawingCalculatedValu
 
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
-        
+
         // Distance from point to line segment (the extended part counts like the body)
         var (start, end) = GetExtendedSegment(p1, p2, transform.ScreenRect, ExtendMode);
         double dist = DistancePointToSegment(screenPoint, start, end);

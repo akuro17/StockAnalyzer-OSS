@@ -133,7 +133,7 @@ public class MarketStructureDetectorTests
             // Swing 3 Down (weak to 180)
             Candle(180, 181, 179, 180, 12), // SL3 = 179 (idx 12)
             // Swing 3 Up (reversal breaking SH2=186 to 195)
-            Candle(185, 186, 184, 185, 13), 
+            Candle(185, 186, 184, 185, 13),
             Candle(195, 196, 194, 195, 14), // SH3 = 196 -> BullishCHoCH!
         };
     }

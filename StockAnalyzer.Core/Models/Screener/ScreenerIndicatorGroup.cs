@@ -116,7 +116,11 @@ public class ScreenerIndicatorGroup
                 IndicatorType.Highest, IndicatorType.Lowest, IndicatorType.ExpectedMove,
                 IndicatorType.TrueHigh, IndicatorType.TrueLow, IndicatorType.TrueRange,
                 IndicatorType.ParkinsonVolatility, IndicatorType.RogersSatchellVolatility,
-                IndicatorType.HarRv
+                IndicatorType.HarRv,
+                // Statistical functions plan R4: nearest siblings Parkinson, Rogers-Satchell, HAR-RV (volatility estimators of a window of returns).
+                IndicatorType.DownsideDeviation, IndicatorType.BipowerVariation,
+                // Statistical functions plan R7: nearest siblings Donchian and Bollinger Bands (a channel of the window prices).
+                IndicatorType.QuantileBands
             }, "Indicator", "ScreenerGroup_Volatility"),
 
             new("Math", new[]
@@ -137,7 +141,15 @@ public class ScreenerIndicatorGroup
                 IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared,
                 IndicatorType.CointegrationSpread, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator,
                 IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
-                IndicatorType.MansfieldRS, IndicatorType.McClellanOscillator, IndicatorType.MarketBreadth
+                IndicatorType.MansfieldRS, IndicatorType.McClellanOscillator, IndicatorType.MarketBreadth,
+                // Statistics of a window of returns (statistical functions plan R3): nearest siblings Hurst, Entropy, PACF, Variance, VaR.
+                IndicatorType.SkewnessKurtosis, IndicatorType.JarqueBera, IndicatorType.LjungBoxQ,
+                // Statistical functions plan R5: nearest sibling CointegrationSpread (augmented Dickey-Fuller test).
+                IndicatorType.ADFStationarity,
+                // Statistical functions plan R6: nearest sibling HurstExponent (its VarianceRatio series).
+                IndicatorType.VarianceRatio,
+                // Statistical functions plan R7: nearest siblings LinearRegression (robust line) and VaR / CVaR (Cornish-Fisher VaR).
+                IndicatorType.TheilSenRegression, IndicatorType.CornishFisherVaR
             }, "Indicator", "ScreenerGroup_Math"),
 
             new("Chart", new[]

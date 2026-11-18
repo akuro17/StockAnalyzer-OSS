@@ -22,13 +22,13 @@ public class StepLineRenderer : IDisposable
         _path.Dispose();
     }
 
-    public void Render(SKCanvas canvas, Rect chartArea, 
-        IReadOnlyList<decimal?> values, 
-        CoreIndicatorSettings setting, 
+    public void Render(SKCanvas canvas, Rect chartArea,
+        IReadOnlyList<decimal?> values,
+        CoreIndicatorSettings setting,
         decimal minVal, decimal maxVal,
         int visibleCandles, int offset, int startIndex,
-        IReadOnlyList<CoreCandleData> candles, 
-        TimeSpan interval, 
+        IReadOnlyList<CoreCandleData> candles,
+        TimeSpan interval,
         ICoordinateTransform? transform)
     {
         if (values == null || values.Count == 0) return;
@@ -39,17 +39,17 @@ public class StepLineRenderer : IDisposable
         var path = _path;
         path.Reset();
         bool isStarted = false;
-        
+
         float candleWidth;
         if (transform != null && candles != null && candles.Count > 0)
         {
-             double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
-             double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
-             candleWidth = (float)(x1 - x0);
+            double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
+            double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
+            candleWidth = (float)(x1 - x0);
         }
         else
         {
-             candleWidth = (float)(chartArea.Width / visibleCandles);
+            candleWidth = (float)(chartArea.Width / visibleCandles);
         }
 
         decimal range = maxVal - minVal;
@@ -64,7 +64,7 @@ public class StepLineRenderer : IDisposable
             if (valueIndex < 0 || valueIndex >= values.Count) continue;
 
             decimal? val = values[valueIndex];
-            if (!val.HasValue) 
+            if (!val.HasValue)
             {
                 isStarted = false;
                 prevX = null;
@@ -76,18 +76,18 @@ public class StepLineRenderer : IDisposable
             float x;
             if (transform is GenericCoordinateTransform gct && gct.Mode == ChartAxisMode.Index)
             {
-                 x = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i)), 0)).X;
+                x = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i)), 0)).X;
             }
             else if (transform != null && candles != null)
             {
-                 var t = GetCandleTime(i, candles, interval);
-                 x = (float)transform.ChartToScreen(new ChartPoint(t, 0)).X;
+                var t = GetCandleTime(i, candles, interval);
+                x = (float)transform.ChartToScreen(new ChartPoint(t, 0)).X;
             }
             else
             {
-                 x = (float)chartArea.Left + i * candleWidth;
+                x = (float)chartArea.Left + i * candleWidth;
             }
-            
+
             float centerX = x + candleWidth / 2f;
             float y = (float)((transform?.ChartToScreen(new ChartPoint(DateTime.MinValue, val.Value)).Y ?? 0) + (double)chartArea.Top);
 
@@ -105,7 +105,7 @@ public class StepLineRenderer : IDisposable
                     // Note: WPF logic was:
                     // points.Add(new Point(x, lastPoint.Y)); // Horizontal
                     // points.Add(new Point(x, y));           // Vertical
-                    
+
                     // So we draw from (prevX, prevY) to (centerX, prevY)
                     path.LineTo(centerX, prevY.Value);
                     // Then to (centerX, y)
@@ -123,12 +123,12 @@ public class StepLineRenderer : IDisposable
     private DateTime GetCandleTime(int index, IReadOnlyList<CoreCandleData> candles, TimeSpan interval)
     {
         if (candles.Count == 0) return DateTime.MinValue;
-        
+
         if (index < candles.Count)
         {
             return candles[index].Timestamp;
         }
-        
+
         var lastCandle = candles[candles.Count - 1];
         int diff = index - (candles.Count - 1);
         return lastCandle.Timestamp.AddTicks(interval.Ticks * diff);

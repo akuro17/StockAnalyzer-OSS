@@ -33,7 +33,7 @@ namespace StockAnalyzer.Avalonia.Views.Controls
             {
                 Padding = new Thickness(4)
             };
-            tooltipPanel.Bind(ItemsControl.ItemsSourceProperty, 
+            tooltipPanel.Bind(ItemsControl.ItemsSourceProperty,
                 new global::Avalonia.Data.Binding(nameof(WatchlistItemViewModel.TagsList)));
             tooltipPanel.ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel { Orientation = Orientation.Horizontal });
             tooltipPanel.ItemTemplate = new FuncDataTemplate<string>((tag, _) =>
@@ -97,12 +97,12 @@ namespace StockAnalyzer.Avalonia.Views.Controls
             {
                 VerticalAlignment = VerticalAlignment.Center
             };
-            editItemsControl.Bind(ItemsControl.ItemsSourceProperty, 
+            editItemsControl.Bind(ItemsControl.ItemsSourceProperty,
                 new global::Avalonia.Data.Binding(nameof(WatchlistItemViewModel.TagsList)));
 
-            editItemsControl.ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel 
-            { 
-                Orientation = Orientation.Horizontal 
+            editItemsControl.ItemsPanel = new FuncTemplate<Panel?>(() => new WrapPanel
+            {
+                Orientation = Orientation.Horizontal
             });
 
             editItemsControl.ItemTemplate = new FuncDataTemplate<string>((tag, _) =>
@@ -162,7 +162,7 @@ namespace StockAnalyzer.Avalonia.Views.Controls
             var inputTb = new TextBox
             {
                 MinWidth = 120,
-                Margin = new Thickness(2,0,2,0),
+                Margin = new Thickness(2, 0, 2, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Watermark = global::StockAnalyzer.Avalonia.Services.LocalizationManager.Instance["Settings_Tag_Watermark"]
             };
@@ -329,9 +329,9 @@ namespace StockAnalyzer.Avalonia.Views.Controls
                 {
                     chipWidth += ((tag[charIdx] < 256) ? 7.0 : 14.0) * fontSizeScale;
                 }
-                
+
                 double neededWidth = currentWidth + chipWidth;
-                
+
                 if (i < tags.Count - 1)
                 {
                     neededWidth += badgeWidth;

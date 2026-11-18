@@ -78,10 +78,10 @@ public class BarPatternObject : IChartObject
         {
             var p1 = transform.ChartToScreen(Points[0]);
             var p2 = transform.ChartToScreen(Points[1]);
-            
+
             var left = Math.Min(p1.X, p2.X);
             var right = Math.Max(p1.X, p2.X);
-            
+
             // Draw a vertical band to show time range selection
             var rect = new SKRect((float)left, 0, (float)right, canvas.LocalClipBounds.Height);
             using var bandPaint = new SKPaint { Color = new SKColor(0, 100, 255, 50), Style = SKPaintStyle.Fill };
@@ -92,7 +92,7 @@ public class BarPatternObject : IChartObject
         if (Candles.Count == 0) return;
 
         var anchor = Points[0];
-        
+
         DateTime baseTime = anchor.Time;
         decimal basePrice = anchor.Price;
 
@@ -114,7 +114,7 @@ public class BarPatternObject : IChartObject
 
         foreach (var c in Candles)
         {
-            DateTime t = baseTime.AddTicks(c.TicksOffset); 
+            DateTime t = baseTime.AddTicks(c.TicksOffset);
 
             decimal open = basePrice + c.Open;
             decimal close = basePrice + c.Close;
@@ -138,7 +138,7 @@ public class BarPatternObject : IChartObject
             float width = bodyWidth;
             float yO = (float)pOpen.Y;
             float yC = (float)pClose.Y;
-            
+
             float top = Math.Min(yO, yC);
             float bottom = Math.Max(yO, yC);
             float height = Math.Max(1, bottom - top);
@@ -150,9 +150,9 @@ public class BarPatternObject : IChartObject
             // Convert Avalonia Color to SKColor
             var upSkColor = new SKColor(UpColor.R, UpColor.G, UpColor.B);
             var downSkColor = new SKColor(DownColor.R, DownColor.G, DownColor.B);
-            
+
             var candleColor = (close >= open) ? upSkColor : downSkColor;
-            
+
             // Use Transparency property for alpha (0-100 mapping to 0-255)
             // 25 means 25% Opacity (faint), 100 means opaque? 
             // Wait, previous assumption: "Opacity 25" -> 25% Visible (Alpha ~64).
@@ -161,30 +161,30 @@ public class BarPatternObject : IChartObject
             // But in FRVP we used Opacity. 
             // Let's stick to "Value 25" -> Alpha ~64 (25% Opacity) because Ghost is meant to be faint.
             // If it's too faint, user can increase it.
-            
+
             byte alpha = (byte)(255 * (Transparency / 100.0));
             paint.Color = candleColor.WithAlpha(alpha);
-            
+
             canvas.DrawRect(bodyRect, paint);
-            
+
             if (IsSelected)
             {
-                 canvas.DrawRect(bodyRect, outlinePaint);
+                canvas.DrawRect(bodyRect, outlinePaint);
             }
         }
 
         if (IsSelected)
         {
-             // Draw Anchor Handle
-             var p = transform.ChartToScreen(anchor);
-             SelectionHandleRenderer.Draw(canvas, p, AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : SKColors.Yellow, ChartConstants.SelectedHandleRadius);
+            // Draw Anchor Handle
+            var p = transform.ChartToScreen(anchor);
+            SelectionHandleRenderer.Draw(canvas, p, AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : SKColors.Yellow, ChartConstants.SelectedHandleRadius);
         }
     }
 
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
         if (Points.Count == 0) return false;
-        
+
         var anchor = Points[0];
         DateTime baseTime = anchor.Time;
         decimal basePrice = anchor.Price;
@@ -192,25 +192,25 @@ public class BarPatternObject : IChartObject
         // Check if point is inside any candle
         foreach (var c in Candles)
         {
-             DateTime t = baseTime.AddTicks(c.TicksOffset);
-             decimal high = basePrice + c.High;
-             decimal low = basePrice + c.Low;
-             
-             var pHigh = transform.ChartToScreen(new ChartPoint(t, high));
-             var pLow = transform.ChartToScreen(new ChartPoint(t, low));
-             
-             float x = (float)pHigh.X;
-             float width = ChartConstants.BarPatternHitTestWidth; // Bit wider for hit test
-             
-             if (Math.Abs(screenPoint.X - x) <= width/2)
-             {
-                 if (screenPoint.Y >= Math.Min(pHigh.Y, pLow.Y) && screenPoint.Y <= Math.Max(pHigh.Y, pLow.Y))
-                 {
-                     return true;
-                 }
-             }
+            DateTime t = baseTime.AddTicks(c.TicksOffset);
+            decimal high = basePrice + c.High;
+            decimal low = basePrice + c.Low;
+
+            var pHigh = transform.ChartToScreen(new ChartPoint(t, high));
+            var pLow = transform.ChartToScreen(new ChartPoint(t, low));
+
+            float x = (float)pHigh.X;
+            float width = ChartConstants.BarPatternHitTestWidth; // Bit wider for hit test
+
+            if (Math.Abs(screenPoint.X - x) <= width / 2)
+            {
+                if (screenPoint.Y >= Math.Min(pHigh.Y, pLow.Y) && screenPoint.Y <= Math.Max(pHigh.Y, pLow.Y))
+                {
+                    return true;
+                }
+            }
         }
-        
+
         return false;
     }
 

@@ -28,7 +28,7 @@ public partial class CandlestickSettingsViewModel : BaseChartSettingsViewModel
     private HsvData _initialBearishColor;
     private HsvData _initialNeutralColor;
 
-    public override bool IsModified => 
+    public override bool IsModified =>
         BullishColor != _initialBullishColor ||
         BearishColor != _initialBearishColor ||
         NeutralColor != _initialNeutralColor;

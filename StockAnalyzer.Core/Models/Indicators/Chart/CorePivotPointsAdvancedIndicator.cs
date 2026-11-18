@@ -152,38 +152,38 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
             switch (PivotType)
             {
                 case PivotPointType.Fibonacci:
-                {
-                    decimal p = (high + low + close) / PivotAverageDivisor3;
-                    Add(p, p + FibonacciRatio1 * range, p + FibonacciRatio2 * range, p + FibonacciRatio3 * range, null,
-                        p - FibonacciRatio1 * range, p - FibonacciRatio2 * range, p - FibonacciRatio3 * range, null);
-                    break;
-                }
+                    {
+                        decimal p = (high + low + close) / PivotAverageDivisor3;
+                        Add(p, p + FibonacciRatio1 * range, p + FibonacciRatio2 * range, p + FibonacciRatio3 * range, null,
+                            p - FibonacciRatio1 * range, p - FibonacciRatio2 * range, p - FibonacciRatio3 * range, null);
+                        break;
+                    }
                 case PivotPointType.Woodie:
-                {
-                    decimal p = (high + low + WoodieCloseWeight * close) / WoodiePivotDivisor;
-                    decimal r1 = TwoTimes * p - low;
-                    decimal s1 = TwoTimes * p - high;
-                    Add(p, r1, p + range, high + TwoTimes * (p - low), null,
-                        s1, p - range, low - TwoTimes * (high - p), null);
-                    break;
-                }
+                    {
+                        decimal p = (high + low + WoodieCloseWeight * close) / WoodiePivotDivisor;
+                        decimal r1 = TwoTimes * p - low;
+                        decimal s1 = TwoTimes * p - high;
+                        Add(p, r1, p + range, high + TwoTimes * (p - low), null,
+                            s1, p - range, low - TwoTimes * (high - p), null);
+                        break;
+                    }
                 case PivotPointType.Camarilla:
-                {
-                    decimal p = (high + low + close) / PivotAverageDivisor3;
-                    decimal unit = range * CamarillaFactor;
-                    Add(p, close + unit / CamarillaDivisor1, close + unit / CamarillaDivisor2, close + unit / CamarillaDivisor3, close + unit / CamarillaDivisor4,
-                        close - unit / CamarillaDivisor1, close - unit / CamarillaDivisor2, close - unit / CamarillaDivisor3, close - unit / CamarillaDivisor4);
-                    break;
-                }
+                    {
+                        decimal p = (high + low + close) / PivotAverageDivisor3;
+                        decimal unit = range * CamarillaFactor;
+                        Add(p, close + unit / CamarillaDivisor1, close + unit / CamarillaDivisor2, close + unit / CamarillaDivisor3, close + unit / CamarillaDivisor4,
+                            close - unit / CamarillaDivisor1, close - unit / CamarillaDivisor2, close - unit / CamarillaDivisor3, close - unit / CamarillaDivisor4);
+                        break;
+                    }
                 default:
-                {
-                    decimal p = (high + low + close) / PivotAverageDivisor3;
-                    decimal r1 = TwoTimes * p - low;
-                    decimal s1 = TwoTimes * p - high;
-                    Add(p, r1, p + range, r1 + range, null,
-                        s1, p - range, s1 - range, null);
-                    break;
-                }
+                    {
+                        decimal p = (high + low + close) / PivotAverageDivisor3;
+                        decimal r1 = TwoTimes * p - low;
+                        decimal s1 = TwoTimes * p - high;
+                        Add(p, r1, p + range, r1 + range, null,
+                            s1, p - range, s1 - range, null);
+                        break;
+                    }
             }
         }
 

@@ -187,7 +187,9 @@ public sealed class TrainingCpcvTests
         yield return Case(c => c with { Cpcv = true, EnsembleMethod = TrainingEnsembleMethod.Bagging });
         yield return Case(c => c with
         {
-            Cpcv = true, InitializationMode = TrainingInitializationMode.Resume, CheckpointPath = "run.json",
+            Cpcv = true,
+            InitializationMode = TrainingInitializationMode.Resume,
+            CheckpointPath = "run.json",
         });
     }
 

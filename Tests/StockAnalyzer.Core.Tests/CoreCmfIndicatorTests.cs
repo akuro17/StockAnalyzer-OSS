@@ -86,7 +86,7 @@ namespace StockAnalyzer.Core.Tests
             Assert.Equal(expected.Length, result.MainValues.Count);
             for (int i = 2; i < expected.Length; i++) // Start check from the first valid value
             {
-                 Assert.Equal(expected[i].Value, result.MainValues[i].Value, 4);
+                Assert.Equal(expected[i].Value, result.MainValues[i].Value, 4);
             }
         }
 

@@ -37,7 +37,7 @@ namespace StockAnalyzer.Core.Tests
             var expected = new decimal?[] { null, null, null, null, 17.5m, 19.75m, 21.875m, 23.9375m, 25.96875m };
 
             // Smoke test: TEMA(3) needs 3*3-3=6 warmup, so first 6 values are null
-            for(int i = 0; i < 6; i++)
+            for (int i = 0; i < 6; i++)
                 Assert.Null(indicator.Values[i]);
             // Last values should be non-null
             Assert.NotNull(indicator.Values[6]);

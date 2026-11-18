@@ -49,13 +49,20 @@ public sealed record RlPresentation(string ModelId, string RequestKey, string Le
             Number(min), Number(max), min, max, snapshot.QValues[0], snapshot.QValues[1], snapshot.QValues[2],
             Action(RlAction.Hold) + " " + Number(snapshot.QValues[0]), Action(RlAction.Buy) + " " + Number(snapshot.QValues[1]),
             Action(RlAction.Sell) + " " + Number(snapshot.QValues[2]), snapshot.SelectedAction)
-            { PolicyId = snapshot.PolicyId, ContinuousReadout = FormatContinuous(snapshot, localization),
-                PolicyControlReadout = FormatPolicyControl(snapshot, localization),
-                ScopeReadout = FormatScope(snapshot, localization),
-                EvaluationReadout = (snapshot.AllBlockEvaluation is { } expanded ? FormatAllBlocks(expanded, localization) + Environment.NewLine : "")
+        {
+            PolicyId = snapshot.PolicyId,
+            ContinuousReadout = FormatContinuous(snapshot, localization),
+            PolicyControlReadout = FormatPolicyControl(snapshot, localization),
+            ScopeReadout = FormatScope(snapshot, localization),
+            EvaluationReadout = (snapshot.AllBlockEvaluation is { } expanded ? FormatAllBlocks(expanded, localization) + Environment.NewLine : "")
                     + (snapshot.EvaluationConstraints is { } report ? FormatEvaluation(report, localization) : ""),
-                AnchorDate = anchorDate, CurrentPrice = currentPrice, EntryPrice = entryPrice, StopPrice = stopPrice,
-                PositionQuantity = snapshot.Account.Quantity, ActionLabel = Action(snapshot.SelectedAction) };
+            AnchorDate = anchorDate,
+            CurrentPrice = currentPrice,
+            EntryPrice = entryPrice,
+            StopPrice = stopPrice,
+            PositionQuantity = snapshot.Account.Quantity,
+            ActionLabel = Action(snapshot.SelectedAction)
+        };
     }
     /// <summary>The scope line is omitted for <see cref="RlReplayScope.TrainingSource"/> so every existing display stays unchanged.</summary>
     private static string FormatScope(RlQSnapshot snapshot, StockAnalyzer.Core.Interfaces.ILocalizationService localization)

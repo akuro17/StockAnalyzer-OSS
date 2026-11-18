@@ -20,42 +20,42 @@ public enum IndicatorType
     [Description("Volume Weighted Moving Average")] VWMA,
     [Description("Volatility Adaptive Moving Average")] VAMA,
     [Description("Smoothed Moving Average")] SMMA,
-    
+
     // Batch 2
     [Description("Linear Regression Moving Average")] LRMA,
     [Description("Arnaud Legoux Moving Average")] ALMA,
     [Description("Zero Lag Exponential Moving Average")] ZLEMA,
     [Description("Least Squares Moving Average")] LSMA,
     [Description("Guppy Multiple Moving Average")] GMA,
-    
+
     // Batch 3
     [Description("TRIX Oscillator")] TRIX,
     [Description("Momentum")] Momentum,
     [Description("Stochastic Momentum Index")] SMI,
     [Description("Bollinger BandWidth")] BandWidth,
     [Description("Bollinger Bands Ratio")] BollingerBandsRatio,
-    
+
     // Volume Indicators (Batch 4)
     [Description("Accumulation/Distribution Line")] ADL,
     [Description("Volume Price Trend")] VPT,
     [Description("Positive Volume Index")] PVI,
-    
+
     // Oscillators (Batch 5)
     [Description("Fisher Transform")] FisherTransform,
     [Description("Ultimate Oscillator")] UltimateOscillator,
     [Description("Fast Fourier Transform Cycle")] FFTCycle,
-    
+
     // Risk Indicators (Batch 7)
     [Description("Value at Risk")] VaR,
     [Description("Conditional Value at Risk")] CVaR,
     [Description("Variance")] Variance,
     [Description("Standard Deviation")] StandardDeviation,
-    
+
     // Statistics (Batch 9)
     [Description("Correlation")] Correlation,
     [Description("Linear Regression")] LinearRegression,
     [Description("Regression Slope")] RegressionSlope,
-    
+
     // Existing Indicators
     [Description("Bollinger Bands")] BB,
     [Description("Relative Strength Index")] RSI,
@@ -93,7 +93,7 @@ public enum IndicatorType
     [Description("Rank Correlation Index")] RCI,
     [Description("Stochastic Oscillator")] Stoch,
     [Description("Money Flow Index")] MFI,
-    
+
     // Batch 8: Statistical & Advanced
     [Description("Wilder's Smoothing")] WilderSmoothing,
     [Description("Pivot Points Advanced")] PivotPointsAdvanced,
@@ -103,7 +103,7 @@ public enum IndicatorType
     [Description("Engle-Granger Test")]
     [Obsolete("Never implemented. Kept for enum ordinal stability of existing serialized templates; no class is registered in IndicatorFactory.")]
     EngleGrangerTest,
-    
+
     // Batch 9: Compatible Advanced Indicators
     [Description("McClellan Oscillator")] McClellanOscillator,
     [Description("Expected Move")] ExpectedMove,
@@ -124,7 +124,7 @@ public enum IndicatorType
     [Description("Point and Figure")] PointAndFigure,
     [Description("Hurst Exponent")] HurstExponent,
     [Description("Historical Volatility")] HistoricalVolatility,
-    
+
     // Batch 11 (Chart versions - true non-time-series from 3_1.md)
     [Description("Renko Chart")] RenkoChart,
     [Description("Kagi Chart")] KagiChart,
@@ -189,7 +189,7 @@ public enum IndicatorType
     [Description("Classic Pivot Points")] ClassicPivotPoints,
     [Description("Volume Profile")] VolumeProfile,
     [Description("Volume")] Volume,
-    
+
     // Batch 17: Overlays
     [Description("Renko Overlay")] RenkoOverlay,
     [Description("Point and Figure Overlay")] PointAndFigureOverlay,
@@ -346,7 +346,27 @@ public enum IndicatorType
 
     // Cross-asset econometrics: bivariate Granger causality + Engle DCC(1,1) and Johansen VECM cointegration (append-only).
     [Description("Granger Causality")] GrangerCausality,
-    [Description("Johansen Cointegration")] JohansenCointegration
+    [Description("Johansen Cointegration")] JohansenCointegration,
+
+    // Statistical functions (docs/indicators_formulas.md, section Statistical Functions): statistics of a window of returns (append-only).
+    [Description("Skewness / Kurtosis")] SkewnessKurtosis,
+    [Description("Jarque-Bera")] JarqueBera,
+    [Description("Ljung-Box Q")] LjungBoxQ,
+
+    // Statistical functions plan, run R4: asymmetric risk and realized jump variation of a window of returns (append-only).
+    [Description("Downside Deviation")] DownsideDeviation,
+    [Description("Bipower Variation")] BipowerVariation,
+
+    // Statistical functions plan, run R5: augmented Dickey-Fuller unit-root test of a window of prices (append-only).
+    [Description("ADF Stationarity")] ADFStationarity,
+
+    // Statistical functions plan, run R6: Lo-MacKinlay variance ratio test of a window of log returns (append-only).
+    [Description("Variance Ratio")] VarianceRatio,
+
+    // Statistical functions plan, run R7: robust price bands and lines of a window of prices, and the Cornish-Fisher Value at Risk of a window of returns (append-only).
+    [Description("Quantile Bands")] QuantileBands,
+    [Description("Theil-Sen Regression")] TheilSenRegression,
+    [Description("Cornish-Fisher VaR")] CornishFisherVaR
 }
 
 public static class IndicatorTypeExtensions

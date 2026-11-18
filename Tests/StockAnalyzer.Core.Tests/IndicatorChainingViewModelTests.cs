@@ -42,7 +42,7 @@ public class IndicatorChainingViewModelTests
 
         Assert.Equal(7, rsi.Period);
         Assert.Equal(candles.Count, rsi.Values.Count);
-        
+
         // Values after Period should not be null
         Assert.NotNull(rsi.Values[15]);
     }

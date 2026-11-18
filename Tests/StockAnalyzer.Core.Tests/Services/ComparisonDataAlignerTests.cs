@@ -61,13 +61,13 @@ public class ComparisonDataAlignerTests
         var ts1 = new DateTime(2024, 1, 1);
         var ts2 = new DateTime(2024, 1, 2);
         var ts3 = new DateTime(2024, 1, 3);
-        
+
         var primaryData = new List<CandleData> {
             new(ts1, 10, 10, 10, 10, 100),
             new(ts2, 11, 11, 11, 11, 100),
             new(ts3, 12, 12, 12, 12, 100)
         };
-        
+
         // MSFT is missing ts2
         var compData = new List<CandleData> {
             new(ts1, 100, 100, 100, 105, 1000),
@@ -96,7 +96,7 @@ public class ComparisonDataAlignerTests
         // Arrange
         var ts1 = new DateTime(2024, 1, 1);
         var ts2 = new DateTime(2024, 1, 2);
-        
+
         var primaryData = new List<CandleData> { new(ts1, 1, 1, 1, 1, 1), new(ts2, 2, 2, 2, 2, 1) };
         var compData = new List<CandleData> { new(ts2, 100, 100, 100, 100, 1) }; // Missing TS1
 
@@ -117,7 +117,7 @@ public class ComparisonDataAlignerTests
         // Arrange
         var dates = Enumerable.Range(0, 40).Select(i => new DateTime(2024, 1, 1).AddDays(i)).ToList();
         var primaryData = dates.Select(d => new CandleData(d, 1, 1, 1, 1, 1)).ToList();
-        
+
         // MSFT only has the first day
         var compData = new List<CandleData> { new(dates[0], 100, 100, 100, 100, 1) };
 
@@ -138,7 +138,7 @@ public class ComparisonDataAlignerTests
         // Arrange
         var dates = Enumerable.Range(0, 10).Select(i => new DateTime(2024, 1, 1).AddDays(i)).ToList();
         var primaryData = dates.Select(d => new CandleData(d, 1, 1, 1, 1, 1)).ToList();
-        
+
         // MSFT has only 1 day out of 10. (90% null, limit is 50%)
         var compData = new List<CandleData> { new(dates[9], 100, 100, 100, 100, 1) };
 
@@ -219,9 +219,9 @@ public class ComparisonDataAlignerTests
         // Arrange
         var ts1 = new DateTime(2024, 1, 1);
         var primaryData = new List<CandleData> { new(ts1, 1, 1, 1, 1, 1) };
-        
+
         // Duplicate timestamp ts1 for MSFT
-        var compData = new List<CandleData> { 
+        var compData = new List<CandleData> {
             new(ts1, 100, 100, 100, 100, 1),
             new(ts1, 101, 101, 101, 101, 1)
         };
@@ -232,7 +232,7 @@ public class ComparisonDataAlignerTests
         // Act & Assert
         // This should NOT throw ArgumentException even if duplicates exist
         var result = await _aligner.AlignAsync("AAPL", new[] { "MSFT" }, TimeFrame.D1, 1);
-        
+
         Assert.Equal(2, result.Series.Count); // MSFT + AAPL
         Assert.Equal(100m, result.Series["MSFT"][0]!.Value.Close); // Should take the first one or just not crash
     }

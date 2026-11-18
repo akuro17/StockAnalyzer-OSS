@@ -127,38 +127,38 @@ public class OrderFillEvaluatorFillPositionTests
         int checkedCases = 0;
 
         foreach (decimal low in grid)
-        foreach (decimal high in grid)
-        {
-            if (high < low) continue;
-            foreach (decimal open in grid)
-            foreach (decimal close in grid)
+            foreach (decimal high in grid)
             {
-                if (open < low || open > high || close < low || close > high) continue;
-                CandleData bar = Bar(open, high, low, close);
-
-                foreach (OrderSide side in new[] { OrderSide.Buy, OrderSide.Sell })
-                foreach (decimal stop in grid)
-                foreach (decimal limit in grid)
-                foreach (bool activated in new[] { false, true })
-                {
-                    BacktestOrder order = Order(side, OrderType.StopLimit, limit, stop, activated);
-                    decimal? fillPosition = OrderFillEvaluator.TryFindFillPosition(order, bar);
-                    OrderFillOutcome outcome = OrderFillEvaluator.Evaluate(order, bar, 0m, 0m, 0m);
-
-                    string context = $"{side} S={stop} L={limit} act={activated} O{open} H{high} L{low} C{close}";
-                    Assert.True(outcome.Filled == fillPosition.HasValue, context);
-                    if (fillPosition is { } position)
+                if (high < low) continue;
+                foreach (decimal open in grid)
+                    foreach (decimal close in grid)
                     {
-                        Assert.InRange(position, 0m, 3m);
-                        if (!activated)
-                        {
-                            Assert.True(OrderFillEvaluator.TryFindCandidatePosition(order, bar) <= position, context);
-                        }
+                        if (open < low || open > high || close < low || close > high) continue;
+                        CandleData bar = Bar(open, high, low, close);
+
+                        foreach (OrderSide side in new[] { OrderSide.Buy, OrderSide.Sell })
+                            foreach (decimal stop in grid)
+                                foreach (decimal limit in grid)
+                                    foreach (bool activated in new[] { false, true })
+                                    {
+                                        BacktestOrder order = Order(side, OrderType.StopLimit, limit, stop, activated);
+                                        decimal? fillPosition = OrderFillEvaluator.TryFindFillPosition(order, bar);
+                                        OrderFillOutcome outcome = OrderFillEvaluator.Evaluate(order, bar, 0m, 0m, 0m);
+
+                                        string context = $"{side} S={stop} L={limit} act={activated} O{open} H{high} L{low} C{close}";
+                                        Assert.True(outcome.Filled == fillPosition.HasValue, context);
+                                        if (fillPosition is { } position)
+                                        {
+                                            Assert.InRange(position, 0m, 3m);
+                                            if (!activated)
+                                            {
+                                                Assert.True(OrderFillEvaluator.TryFindCandidatePosition(order, bar) <= position, context);
+                                            }
+                                        }
+                                        checkedCases++;
+                                    }
                     }
-                    checkedCases++;
-                }
             }
-        }
 
         Assert.True(checkedCases > 100_000, $"grid unexpectedly small: {checkedCases}");
     }

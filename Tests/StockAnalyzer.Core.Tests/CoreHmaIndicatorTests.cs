@@ -34,7 +34,7 @@ namespace StockAnalyzer.Core.Tests
             var expected = new decimal?[] { null, null, null, null, 5m, 6m };
 
             Assert.Equal(expected.Length, indicator.Values.Count);
-            for(int i = 0; i < expected.Length; i++)
+            for (int i = 0; i < expected.Length; i++)
             {
                 if (expected[i] == null)
                     Assert.Null(indicator.Values[i]);
@@ -59,9 +59,9 @@ namespace StockAnalyzer.Core.Tests
 
             Assert.Equal(expected.Length, indicator.Values.Count);
             // Smoke test: verify nulls at start, non-nulls at end
-            for(int i = 0; i < 10; i++)
+            for (int i = 0; i < 10; i++)
                 Assert.Null(indicator.Values[i]);
-            for(int i = 10; i < expected.Length; i++)
+            for (int i = 10; i < expected.Length; i++)
                 Assert.NotNull(indicator.Values[i]);
         }
 

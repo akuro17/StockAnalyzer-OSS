@@ -113,7 +113,8 @@ public sealed partial class BacktestEngine
         {
             if (!_continuous) throw new InvalidOperationException("Fixed continuous control requires a T16 session.");
             var control = RlContinuousContract.Map(RlContinuousContract.BaselineSizeAction, RlContinuousContract.BaselineStopAction)
-                with { SizeRatio = RlContinuousContract.MaximumSizeRatio, StopDistance = RlContinuousContract.BaselineStopDistance };
+                with
+            { SizeRatio = RlContinuousContract.MaximumSizeRatio, StopDistance = RlContinuousContract.BaselineStopDistance };
             return StepCore(direction, control, cancellationToken);
         }
 
@@ -191,7 +192,7 @@ public sealed partial class BacktestEngine
                             fill?.Commission ?? 0m, order?.OrderId, outcome, rejection);
                     }
                     var result = new RlStepResult(snapshot, reward, snapshot.Terminated, false, action, outcome, rejection)
-                        { ActorAction = actor, EntryExecution = entry };
+                    { ActorAction = actor, EntryExecution = entry };
                     cancellationToken.ThrowIfCancellationRequested();
                     _snapshot = snapshot;
                     _status = status;
@@ -235,7 +236,8 @@ public sealed partial class BacktestEngine
             if (buy && actor is not null && ComputeEntryQuantity(_configuration, snapshot.EquityPoint.Equity, _input.Bars[anchor].Close, actor.SizeRatio) < 1m)
                 return RlActionOutcome.NoEntry;
             var request = new StrategyOrderRequest(buy ? SignalType.LongEntry : SignalType.LongExit, OrderType.Market,
-                null, null, new TimeInForce(true, -1), action.ToString()) { EntrySizeRatio = buy ? actor?.SizeRatio : null };
+                null, null, new TimeInForce(true, -1), action.ToString())
+            { EntrySizeRatio = buy ? actor?.SizeRatio : null };
             state.Signals.Add(new BacktestSignal(request.SignalType, anchor, _input.Bars[anchor].Timestamp, request.Reason));
             SubmitOrderFromSignal(state, anchor, _input.Bars[anchor], request, _configuration, snapshot.EquityPoint.Equity);
             if (buy && actor is not null && state.PendingEntryOrderIndex != -1) _retainedStopDistance = actor.StopDistance;
@@ -287,8 +289,12 @@ public sealed partial class BacktestEngine
             return new RlSessionSnapshot(anchor, _input.Bars[anchor].Timestamp, terminalBar, completed, remaining, equity,
                 state.Q, state.Q == 0m ? 0m : state.EntryPrice, unrealized, peak, drawdown, maximumDrawdown, heldBars,
                 pendingEntry, pendingExit, ended, reason, status, account, market)
-                { ActiveStopPrice = stopPrice, RetainedStopDistance = _retainedStopDistance, DeferredMarketExit = _deferredExit,
-                    RetainedEntrySizeRatio = _retainedEntrySizeRatio };
+            {
+                ActiveStopPrice = stopPrice,
+                RetainedStopDistance = _retainedStopDistance,
+                DeferredMarketExit = _deferredExit,
+                RetainedEntrySizeRatio = _retainedEntrySizeRatio
+            };
         }
 
         public BacktestResult GetResult()

@@ -42,7 +42,7 @@ public class GhostFeedObject : IChartObject
             ExtractCandles(Points[0], endPoint, candles);
         }
     }
-    
+
     private void ExtractCandles(ChartPoint start, ChartPoint end, IEnumerable<CoreCandleData>? candles)
     {
         Candles.Clear();
@@ -67,13 +67,13 @@ public class GhostFeedObject : IChartObject
         {
             long ticksOffset = data.Timestamp.Ticks - baseTime.Ticks;
 
-            Candles.Add(new GhostCandle 
-            { 
+            Candles.Add(new GhostCandle
+            {
                 TicksOffset = ticksOffset,
-                Open = data.Open - basePrice, 
-                High = data.High - basePrice, 
-                Low = data.Low - basePrice, 
-                Close = data.Close - basePrice 
+                Open = data.Open - basePrice,
+                High = data.High - basePrice,
+                Low = data.Low - basePrice,
+                Close = data.Close - basePrice
             });
         }
     }
@@ -99,10 +99,10 @@ public class GhostFeedObject : IChartObject
         {
             var p1 = transform.ChartToScreen(Points[0]);
             var p2 = transform.ChartToScreen(Points[1]);
-            
+
             var left = Math.Min(p1.X, p2.X);
             var right = Math.Max(p1.X, p2.X);
-            
+
             var rect = new SKRect((float)left, 0, (float)right, canvas.LocalClipBounds.Height);
             using var bandPaint = new SKPaint { Color = new SKColor(100, 100, 100, 50), Style = SKPaintStyle.Fill };
             canvas.DrawRect(rect, bandPaint);
@@ -114,10 +114,10 @@ public class GhostFeedObject : IChartObject
         var visualAnchor = GetVisualAnchor();
         DateTime baseTime = visualAnchor.Time;
         decimal basePrice = visualAnchor.Price;
-        
+
         using var paint = new SKPaint { Color = SkiaColor, Style = SKPaintStyle.Fill, IsAntialias = true };
         using var wickPaint = new SKPaint { Color = SkiaColor, StrokeWidth = 1, IsAntialias = true };
-        
+
         // Dynamic body width: derive from the time interval between adjacent ghost candles via the transform,
         // exactly like CandleStickRenderer. This ensures zoom-synchronized sizing.
         float bodyWidth = ChartConstants.BarPatternBodyWidth; // fallback
@@ -130,11 +130,11 @@ public class GhostFeedObject : IChartObject
             float candleWidth = (float)Math.Abs(sx1 - sx0);
             bodyWidth = Math.Max(1f, candleWidth * 0.8f);
         }
-        
+
         foreach (var c in Candles)
         {
             DateTime t = baseTime.AddTicks(c.TicksOffset);
-            
+
             decimal open = basePrice + c.Open;
             decimal close = basePrice + c.Close;
             decimal high = basePrice + c.High;
@@ -144,34 +144,34 @@ public class GhostFeedObject : IChartObject
             var pLow = transform.ChartToScreen(new ChartPoint(t, low));
             var pOpen = transform.ChartToScreen(new ChartPoint(t, open));
             var pClose = transform.ChartToScreen(new ChartPoint(t, close));
-            
+
             float x = (float)pHigh.X;
             float yHigh = (float)pHigh.Y;
             float yLow = (float)pLow.Y;
-            
+
             // Draw Wick
             canvas.DrawLine(x, yHigh, x, yLow, wickPaint);
-            
+
             // Draw Body
             float width = bodyWidth;
             float top = (float)Math.Min(pOpen.Y, pClose.Y);
             float bottom = (float)Math.Max(pOpen.Y, pClose.Y);
-            
-            var bodyRect = new SKRect(x - width/2, top, x + width/2, bottom);
-            
+
+            var bodyRect = new SKRect(x - width / 2, top, x + width / 2, bottom);
+
             paint.Color = (close >= open) ? new SKColor(0, 200, 0, 128) : new SKColor(200, 0, 0, 128);
             canvas.DrawRect(bodyRect, paint);
         }
-        
+
         if (IsSelected)
         {
-             // Draw a handle at each of the 2 real points (matching what ChartInteractionController's
-             // generic drag hit-test already grabs), not just the single synthesized visualAnchor, so
-             // that AnchorPointIndex cycling between 0 and 1 has a visible effect.
-             var handle0 = transform.ChartToScreen(Points[0]);
-             var handle1 = transform.ChartToScreen(Points[1]);
-             SelectionHandleRenderer.Draw(canvas, handle0, AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null);
-             SelectionHandleRenderer.Draw(canvas, handle1, AnchorPointIndex == 1 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null);
+            // Draw a handle at each of the 2 real points (matching what ChartInteractionController's
+            // generic drag hit-test already grabs), not just the single synthesized visualAnchor, so
+            // that AnchorPointIndex cycling between 0 and 1 has a visible effect.
+            var handle0 = transform.ChartToScreen(Points[0]);
+            var handle1 = transform.ChartToScreen(Points[1]);
+            SelectionHandleRenderer.Draw(canvas, handle0, AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null);
+            SelectionHandleRenderer.Draw(canvas, handle1, AnchorPointIndex == 1 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null);
         }
     }
 
@@ -211,7 +211,7 @@ public class GhostFeedObject : IChartObject
         if (Points.Count > 0)
         {
             Points[0] = new ChartPoint(Points[0].Time.Add(timeDelta), Points[0].Price + priceDelta);
-            if (Points.Count > 1) 
+            if (Points.Count > 1)
             {
                 Points[1] = new ChartPoint(Points[1].Time.Add(timeDelta), Points[1].Price + priceDelta);
             }

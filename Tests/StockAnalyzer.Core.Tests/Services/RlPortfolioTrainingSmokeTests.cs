@@ -72,8 +72,15 @@ public sealed class RlPortfolioTrainingSmokeTests : IDisposable
         var start = RlSourceFixture.FirstDay;
         var panel = await RlPanelSnapshotFactory.PrepareAsync(Symbols, start, start.AddDays(days), Path.Combine(_root, panelName), RlSourceFixture.Limits, settings, true,
             RlPanelEvaluationMode.ShortHistory, plan);
-        var costs = new BacktestConfiguration { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 100_000m,
-            SlippageRatio = 0.001m, CommissionFlat = 1m, CommissionPerUnit = 0.005m };
+        var costs = new BacktestConfiguration
+        {
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 1m,
+            InitialCapital = 100_000m,
+            SlippageRatio = 0.001m,
+            CommissionFlat = 1m,
+            CommissionPerUnit = 0.005m
+        };
         return (panel, settings, costs);
     }
 
@@ -217,7 +224,9 @@ public sealed class RlPortfolioTrainingSmokeTests : IDisposable
         }
         var scaler = RlPortfolioScaler.Load(v2.ModelPath, new System.Collections.Generic.Dictionary<string, string>
         {
-            ["scaler_ref"] = RlPortfolioScaler.SidecarName(v2.ModelPath), ["window_size"] = "64", ["channels"] = "7",
+            ["scaler_ref"] = RlPortfolioScaler.SidecarName(v2.ModelPath),
+            ["window_size"] = "64",
+            ["channels"] = "7",
             [RlPortfolioContract.MetadataContractHash] = layout.ContractHash,
         });
         Assert.Equal(7, scaler.Statistics.Length);

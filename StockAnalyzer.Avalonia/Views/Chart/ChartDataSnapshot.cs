@@ -31,13 +31,13 @@ public sealed class ChartDataSnapshot
     /// Read-only list of candle data.
     /// </summary>
     public IReadOnlyList<CoreCandleData> Candles { get; }
-    
+
     /// <summary>
     /// For special chart types: Full pre-converted candle list (unsliced).
     /// Used for referencing anchor points off-screen.
     /// </summary>
     public IReadOnlyList<CoreCandleData>? AllCandles { get; }
-    
+
     /// <summary>
     /// For Kagi charts: Pre-calculated mapping from segment index to column index.
     /// Eliminates O(N) loops in the renderer.
@@ -95,7 +95,7 @@ public sealed class ChartDataSnapshot
     /// Used for precise horizontal/vertical alignment.
     /// </summary>
     public decimal MinBrickSize { get; }
-    
+
     /// <summary>
     /// For Renko/P&F charts: Maximum expected brick/box size in price units.
     /// Used for precise horizontal/vertical alignment.
@@ -129,7 +129,7 @@ public sealed class ChartDataSnapshot
     /// Settings for displaying legends (Color, Name).
     /// </summary>
     public IReadOnlyList<CoreIndicatorSettings> IndicatorSettings { get; }
-    
+
     /// <summary>
     /// Pre-calculated P&F analysis result (signals and trendlines).
     /// </summary>
@@ -150,12 +150,12 @@ public sealed class ChartDataSnapshot
     /// </summary>
     public ChartType ChartType { get; }
 
-    
+
     /// <summary>
     /// Additional metadata for rendering (e.g., pre-formatted labels for ZeroAllocation).
     /// </summary>
     public IReadOnlyDictionary<string, string> RenderingMetadata { get; }
-    
+
     /// <summary>
     /// Vertical padding at the top of the chart (pixels).
     /// </summary>
@@ -189,12 +189,12 @@ public sealed class ChartDataSnapshot
     /// <param name="startIndex">Display start index (0-based index of the original collection).</param>
     /// <param name="count">Number of candles to display. If -1, displays from startIndex to the end.</param>
     public ChartDataSnapshot(
-        IEnumerable<Candle> candles, 
-        string symbol = "", 
-        string timeframe = "", 
+        IEnumerable<Candle> candles,
+        string symbol = "",
+        string timeframe = "",
         IReadOnlyDictionary<string, IIndicatorResult>? indicatorResults = null,
         IEnumerable<CoreIndicatorSettings>? indicatorSettings = null,
-        int startIndex = 0, 
+        int startIndex = 0,
         int count = -1,
         decimal paddingTopPx = 0,
         decimal paddingBottomPx = 0,
@@ -225,12 +225,12 @@ public sealed class ChartDataSnapshot
     }
 
     public ChartDataSnapshot(
-        IEnumerable<CoreCandleData> candles, 
-        string symbol = "", 
-        string timeframe = "", 
+        IEnumerable<CoreCandleData> candles,
+        string symbol = "",
+        string timeframe = "",
         IReadOnlyDictionary<string, IIndicatorResult>? indicatorResults = null,
         IEnumerable<CoreIndicatorSettings>? indicatorSettings = null,
-        int startIndex = 0, 
+        int startIndex = 0,
         int count = -1,
         decimal paddingTopPx = 0,
         decimal paddingBottomPx = 0,
@@ -284,7 +284,7 @@ public sealed class ChartDataSnapshot
         // Actually, Coordinator clamps it to (Total + Offset).
         // Let's just clamp to ensure it's not negative.
         // if (startIndex >= totalCount) startIndex = Math.Max(0, totalCount - 1); // REMOVED
-        
+
         int availableCount = Math.Max(0, totalCount - startIndex);
         int displayCount = (count < 0) ? availableCount : count; // Uses requested count potentially
 
@@ -300,7 +300,7 @@ public sealed class ChartDataSnapshot
             int actualSliceCount = Math.Min(displayCount, availableCount);
             slicedCandles = allCandles.GetRange(startIndex, actualSliceCount);
         }
-        
+
         // Use sliced data
         decimal maxPrice = decimal.MinValue;
         decimal minPrice = decimal.MaxValue;
@@ -317,12 +317,12 @@ public sealed class ChartDataSnapshot
 
         Candles = slicedCandles;
         StartIndex = startIndex;
-        
+
         int actualCount = slicedCandles.Count;
         int validEndIndex = startIndex + actualCount - 1;
         if (validEndIndex < startIndex) validEndIndex = startIndex - 1;
         EndIndex = validEndIndex;
-        
+
         // New Property to track the requested view width (including future empty space)
         VisibleCandleCount = count > 0 ? count : displayCount;
 
@@ -330,16 +330,16 @@ public sealed class ChartDataSnapshot
         Timeframe = timeframe;
         MinBrickSize = minBrickSize;
         MaxBrickSize = maxBrickSize;
-        
+
         // Slice and Convert Indicators
         Dictionary<string, IIndicatorResult>? indResults = null;
         Dictionary<string, IReadOnlyList<decimal?>>? indValues = null;
-        
+
         // For indicators, we want to allow slicing beyond the candle count IF the indicator has data (Future data).
         // The displayCount calculated above is clamped to availableCandles.
         // But for indicators, we should use the requested 'count' (VisibleCandleCount) if provided, 
         // clamped only to the indicator's own total count.
-        
+
         if (indicatorResults != null)
         {
             indResults = new Dictionary<string, IIndicatorResult>();
@@ -347,7 +347,7 @@ public sealed class ChartDataSnapshot
 
             var settingsMap = indicatorSettings?.ToDictionary(s => s.Id) ?? new Dictionary<string, CoreIndicatorSettings>();
 
-            foreach(var kvp in indicatorResults)
+            foreach (var kvp in indicatorResults)
             {
                 // We pass the requested 'count' (VisibleCandleCount) to SlicedIndicatorResult.
                 // SlicedIndicatorResult Logic:
@@ -359,12 +359,12 @@ public sealed class ChartDataSnapshot
                 // 950 + 100 = 1050 > 1026.
                 // It should return 76 values (up to 1026).
                 // The renderer will then draw 76 values.
-                
+
                 // If we pass 'displayCount' (which is clamped to candles), we lose future data.
                 // So we must pass 'count' (requested visible).
-                
+
                 int targetCount = (count > 0) ? count : displayCount;
-                
+
                 var slicedResult = new SlicedIndicatorResult(kvp.Value, startIndex, targetCount);
                 indResults[kvp.Key] = slicedResult;
                 indValues[kvp.Key] = slicedResult.MainValues;
@@ -372,35 +372,35 @@ public sealed class ChartDataSnapshot
                 // Update Min/Max for Overlays
                 if (settingsMap.TryGetValue(kvp.Key, out var setting) && setting.IsOverlay && setting.IsEnabled)
                 {
-                    foreach(var seriesName in slicedResult.SeriesNames)
+                    foreach (var seriesName in slicedResult.SeriesNames)
                     {
-                         // Skip non-price series from scaling logic
-                         if (seriesName == "IsUpTrend") continue;
-                         if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
-                         if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
+                        // Skip non-price series from scaling logic
+                        if (seriesName == "IsUpTrend") continue;
+                        if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
+                        if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
 
-                         var values = slicedResult.GetSeries(seriesName);
-                         if (values == null) continue;
-                         
-                         // WebAI Fix: Only consider indices that have actual candles to prevent scaling bugs
-                         // from future/padding data in indicators.
-                         int limit = Math.Min(values.Count, Candles.Count);
-                         for (int i = 0; i < limit; i++)
-                         {
-                             var v = values[i];
-                             if (v.HasValue)
-                             {
-                                 if (v.Value > maxPrice) maxPrice = v.Value;
-                                 if (priceScale == PriceScaleType.Log)
-                                 {
-                                     if (v.Value > 0m && v.Value < minPrice) minPrice = v.Value;
-                                 }
-                                 else
-                                 {
-                                     if (v.Value < minPrice) minPrice = v.Value;
-                                 }
-                             }
-                         }
+                        var values = slicedResult.GetSeries(seriesName);
+                        if (values == null) continue;
+
+                        // WebAI Fix: Only consider indices that have actual candles to prevent scaling bugs
+                        // from future/padding data in indicators.
+                        int limit = Math.Min(values.Count, Candles.Count);
+                        for (int i = 0; i < limit; i++)
+                        {
+                            var v = values[i];
+                            if (v.HasValue)
+                            {
+                                if (v.Value > maxPrice) maxPrice = v.Value;
+                                if (priceScale == PriceScaleType.Log)
+                                {
+                                    if (v.Value > 0m && v.Value < minPrice) minPrice = v.Value;
+                                }
+                                else
+                                {
+                                    if (v.Value < minPrice) minPrice = v.Value;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -415,7 +415,7 @@ public sealed class ChartDataSnapshot
         {
             MinPrice = overrideMinPrice.Value;
             MaxPrice = overrideMaxPrice.Value;
-            
+
             // Standard padding still applies to the forced range to clear the header/axis
             if (chartHeightPx > 0 && (paddingTopPx > 0 || paddingBottomPx > 0))
             {
@@ -437,7 +437,7 @@ public sealed class ChartDataSnapshot
                     decimal currentRange = MaxPrice - MinPrice;
                     if (currentRange == 0) currentRange = 1m;
                     decimal pricePerPixel = currentRange / Math.Max(1m, chartHeightPx);
-                    
+
                     MaxPrice += paddingTopPx * pricePerPixel;
                     MinPrice -= paddingBottomPx * pricePerPixel;
                 }
@@ -446,59 +446,59 @@ public sealed class ChartDataSnapshot
         else if (Candles.Count > 0)
         {
             // Ensure min < max
-             if (minPrice > maxPrice) 
-             {
-                  MaxPrice = 100m;
-                  MinPrice = priceScale == PriceScaleType.Log ? 1m : 0m;
-             }
-             else
-             {
-                 if (priceScale == PriceScaleType.Log)
-                 {
-                     if (minPrice <= 0m)
-                     {
-                         decimal posMin = decimal.MaxValue;
-                         foreach (var c in slicedCandles)
-                         {
-                             var (_, cLow) = priceCalc.GetPriceRange(c);
-                             if (cLow > 0m && cLow < posMin) posMin = cLow;
-                         }
-                         minPrice = posMin != decimal.MaxValue ? posMin : 1m;
-                     }
-                     if (maxPrice <= minPrice) maxPrice = minPrice + 1m;
+            if (minPrice > maxPrice)
+            {
+                MaxPrice = 100m;
+                MinPrice = priceScale == PriceScaleType.Log ? 1m : 0m;
+            }
+            else
+            {
+                if (priceScale == PriceScaleType.Log)
+                {
+                    if (minPrice <= 0m)
+                    {
+                        decimal posMin = decimal.MaxValue;
+                        foreach (var c in slicedCandles)
+                        {
+                            var (_, cLow) = priceCalc.GetPriceRange(c);
+                            if (cLow > 0m && cLow < posMin) posMin = cLow;
+                        }
+                        minPrice = posMin != decimal.MaxValue ? posMin : 1m;
+                    }
+                    if (maxPrice <= minPrice) maxPrice = minPrice + 1m;
 
-                     if (chartHeightPx > 0)
-                     {
-                         double logMin = Math.Log((double)minPrice);
-                         double logMax = Math.Log((double)maxPrice);
-                         double logRange = logMax - logMin;
-                         if (logRange <= 0) logRange = 1.0;
+                    if (chartHeightPx > 0)
+                    {
+                        double logMin = Math.Log((double)minPrice);
+                        double logMax = Math.Log((double)maxPrice);
+                        double logRange = logMax - logMin;
+                        if (logRange <= 0) logRange = 1.0;
 
-                         double logPerPixel = logRange / (double)Math.Max(1m, chartHeightPx);
-                         maxPrice = (decimal)Math.Exp(logMax + (double)paddingTopPx * logPerPixel);
-                         minPrice = (decimal)Math.Exp(logMin - (double)paddingBottomPx * logPerPixel);
-                     }
+                        double logPerPixel = logRange / (double)Math.Max(1m, chartHeightPx);
+                        maxPrice = (decimal)Math.Exp(logMax + (double)paddingTopPx * logPerPixel);
+                        minPrice = (decimal)Math.Exp(logMin - (double)paddingBottomPx * logPerPixel);
+                    }
 
-                     MaxPrice = maxPrice;
-                     MinPrice = minPrice;
-                 }
-                 else
-                 {
-                     var currentRange = maxPrice - minPrice;
-                     if (currentRange == 0) currentRange = 1m;
-                     
-                     // Apply TradingView-style price padding based on physical pixels
-                     if (chartHeightPx > 0)
-                     {
-                         decimal pricePerPixel = currentRange / Math.Max(1m, chartHeightPx);
-                         maxPrice += paddingTopPx * pricePerPixel;
-                         minPrice -= paddingBottomPx * pricePerPixel;
-                     }
-                     
-                     MaxPrice = maxPrice;
-                     MinPrice = minPrice;
-                 }
-             }
+                    MaxPrice = maxPrice;
+                    MinPrice = minPrice;
+                }
+                else
+                {
+                    var currentRange = maxPrice - minPrice;
+                    if (currentRange == 0) currentRange = 1m;
+
+                    // Apply TradingView-style price padding based on physical pixels
+                    if (chartHeightPx > 0)
+                    {
+                        decimal pricePerPixel = currentRange / Math.Max(1m, chartHeightPx);
+                        maxPrice += paddingTopPx * pricePerPixel;
+                        minPrice -= paddingBottomPx * pricePerPixel;
+                    }
+
+                    MaxPrice = maxPrice;
+                    MinPrice = minPrice;
+                }
+            }
         }
         else
         {
@@ -592,24 +592,24 @@ public sealed class ChartDataSnapshot
         AllCandles = allCandles != null ? new List<CoreCandleData>(allCandles) : null;
         ThreeLineBreakCount = threeLineBreakCount;
         int totalCount = coreCandles.Count;
-        
+
         // Validate range
         if (startIndex < 0) startIndex = 0;
         // RELAXED CLAMPING (Phase 4)
         // if (startIndex >= totalCount) startIndex = Math.Max(0, totalCount - 1); // REMOVED
-        
+
         int availableCount = Math.Max(0, totalCount - startIndex);
         int displayCount = (count < 0) ? availableCount : count;
 
         // Slice Candles (CoreCandleData is struct, lightweight)
         // We need to create a new list for the slice or just use Linq (but Linq is slower for indexed access during render)
         // Since we are creating a snapshot, let's materialize the slice.
-        
+
         // Optimization: simple array copy or loop
         // Handle empty slice
         int actualSliceCount = Math.Min(displayCount, availableCount);
         if (actualSliceCount < 0) actualSliceCount = 0; // Safety
-        
+
         var slicedCandles = new List<CoreCandleData>(actualSliceCount);
         decimal maxPrice = decimal.MinValue;
         decimal minPrice = decimal.MaxValue;
@@ -619,7 +619,7 @@ public sealed class ChartDataSnapshot
         {
             var c = coreCandles[startIndex + i];
             slicedCandles.Add(c);
-            
+
             var (cHigh, cLow) = priceCalc.GetPriceRange(c);
 
             if (cHigh > maxPrice) maxPrice = cHigh;
@@ -636,7 +636,7 @@ public sealed class ChartDataSnapshot
         int validEndIndex = startIndex + actualSliceCount - 1;
         if (validEndIndex < startIndex) validEndIndex = startIndex - 1; // Empty
         EndIndex = validEndIndex;
-        
+
         // New Property to track the requested view width (including future empty space)
         VisibleCandleCount = count > 0 ? count : displayCount;
 
@@ -662,38 +662,38 @@ public sealed class ChartDataSnapshot
                 indResults[kvp.Key] = slicedResult;
                 indValues[kvp.Key] = slicedResult.MainValues;
 
-                 // Update Min/Max for Overlays
+                // Update Min/Max for Overlays
                 if (settingsMap.TryGetValue(kvp.Key, out var setting) && setting.IsOverlay && setting.IsEnabled)
                 {
-                    foreach(var seriesName in slicedResult.SeriesNames)
+                    foreach (var seriesName in slicedResult.SeriesNames)
                     {
-                         // Skip non-price series from scaling logic
-                         if (seriesName == "IsUpTrend") continue;
-                         if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
-                         if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
+                        // Skip non-price series from scaling logic
+                        if (seriesName == "IsUpTrend") continue;
+                        if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
+                        if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
 
-                         var values = slicedResult.GetSeries(seriesName);
-                         if (values == null) continue;
-                         
-                         // WebAI Fix: Only consider indices that have actual candles to prevent scaling bugs
-                         // from future/padding data in indicators.
-                         int limit = Math.Min(values.Count, actualSliceCount);
-                         for (int i = 0; i < limit; i++)
-                         {
-                             var v = values[i];
-                             if (v.HasValue)
-                             {
-                                 if (v.Value > maxPrice) maxPrice = v.Value;
-                                 if (priceScale == PriceScaleType.Log)
-                                 {
-                                     if (v.Value > 0m && v.Value < minPrice) minPrice = v.Value;
-                                 }
-                                 else
-                                 {
-                                     if (v.Value < minPrice) minPrice = v.Value;
-                                 }
-                             }
-                         }
+                        var values = slicedResult.GetSeries(seriesName);
+                        if (values == null) continue;
+
+                        // WebAI Fix: Only consider indices that have actual candles to prevent scaling bugs
+                        // from future/padding data in indicators.
+                        int limit = Math.Min(values.Count, actualSliceCount);
+                        for (int i = 0; i < limit; i++)
+                        {
+                            var v = values[i];
+                            if (v.HasValue)
+                            {
+                                if (v.Value > maxPrice) maxPrice = v.Value;
+                                if (priceScale == PriceScaleType.Log)
+                                {
+                                    if (v.Value > 0m && v.Value < minPrice) minPrice = v.Value;
+                                }
+                                else
+                                {
+                                    if (v.Value < minPrice) minPrice = v.Value;
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -709,7 +709,7 @@ public sealed class ChartDataSnapshot
             foreach (var signal in multiWaveSignals)
             {
                 if (signal.IsInvalidated) continue;
-                
+
                 // Only consider signals that are visible in the current viewport
                 if (signal.TriggerIndex >= startIndex - 5 && signal.TriggerIndex < startIndex + count + 5)
                 {
@@ -724,7 +724,7 @@ public sealed class ChartDataSnapshot
         {
             MinPrice = overrideMinPrice.Value;
             MaxPrice = overrideMaxPrice.Value;
-            
+
             if (chartHeightPx > 0 && (paddingTopPx > 0 || paddingBottomPx > 0))
             {
                 if (priceScale == PriceScaleType.Log)
@@ -745,7 +745,7 @@ public sealed class ChartDataSnapshot
                     decimal currentRange = MaxPrice - MinPrice;
                     if (currentRange == 0) currentRange = 1m;
                     decimal pricePerPixel = currentRange / Math.Max(1m, chartHeightPx);
-                    
+
                     MaxPrice += paddingTopPx * pricePerPixel;
                     MinPrice -= paddingBottomPx * pricePerPixel;
                 }
@@ -753,59 +753,59 @@ public sealed class ChartDataSnapshot
         }
         else if (slicedCandles.Count > 0)
         {
-             if (minPrice > maxPrice) 
-             {
-                  MaxPrice = 100m;
-                  MinPrice = priceScale == PriceScaleType.Log ? 1m : 0m;
-             }
-             else
-             {
-                 if (priceScale == PriceScaleType.Log)
-                 {
-                     if (minPrice <= 0m)
-                     {
-                         decimal posMin = decimal.MaxValue;
-                         foreach (var c in slicedCandles)
-                         {
-                             var (_, cLow) = priceCalc.GetPriceRange(c);
-                             if (cLow > 0m && cLow < posMin) posMin = cLow;
-                         }
-                         minPrice = posMin != decimal.MaxValue ? posMin : 1m;
-                     }
-                     if (maxPrice <= minPrice) maxPrice = minPrice + 1m;
+            if (minPrice > maxPrice)
+            {
+                MaxPrice = 100m;
+                MinPrice = priceScale == PriceScaleType.Log ? 1m : 0m;
+            }
+            else
+            {
+                if (priceScale == PriceScaleType.Log)
+                {
+                    if (minPrice <= 0m)
+                    {
+                        decimal posMin = decimal.MaxValue;
+                        foreach (var c in slicedCandles)
+                        {
+                            var (_, cLow) = priceCalc.GetPriceRange(c);
+                            if (cLow > 0m && cLow < posMin) posMin = cLow;
+                        }
+                        minPrice = posMin != decimal.MaxValue ? posMin : 1m;
+                    }
+                    if (maxPrice <= minPrice) maxPrice = minPrice + 1m;
 
-                     if (chartHeightPx > 0)
-                     {
-                         double logMin = Math.Log((double)minPrice);
-                         double logMax = Math.Log((double)maxPrice);
-                         double logRange = logMax - logMin;
-                         if (logRange <= 0) logRange = 1.0;
+                    if (chartHeightPx > 0)
+                    {
+                        double logMin = Math.Log((double)minPrice);
+                        double logMax = Math.Log((double)maxPrice);
+                        double logRange = logMax - logMin;
+                        if (logRange <= 0) logRange = 1.0;
 
-                         double logPerPixel = logRange / (double)Math.Max(1m, chartHeightPx);
-                         maxPrice = (decimal)Math.Exp(logMax + (double)paddingTopPx * logPerPixel);
-                         minPrice = (decimal)Math.Exp(logMin - (double)paddingBottomPx * logPerPixel);
-                     }
+                        double logPerPixel = logRange / (double)Math.Max(1m, chartHeightPx);
+                        maxPrice = (decimal)Math.Exp(logMax + (double)paddingTopPx * logPerPixel);
+                        minPrice = (decimal)Math.Exp(logMin - (double)paddingBottomPx * logPerPixel);
+                    }
 
-                     MaxPrice = maxPrice;
-                     MinPrice = minPrice;
-                 }
-                 else
-                 {
-                     var currentRange = maxPrice - minPrice;
-                     if (currentRange == 0) currentRange = 1m;
-                     
-                     // Apply TradingView-style price padding based on physical pixels
-                     if (chartHeightPx > 0)
-                     {
-                         decimal pricePerPixel = currentRange / Math.Max(1m, chartHeightPx);
-                         maxPrice += paddingTopPx * pricePerPixel;
-                         minPrice -= paddingBottomPx * pricePerPixel;
-                     }
-                     
-                     MaxPrice = maxPrice;
-                     MinPrice = minPrice;
-                 }
-             }
+                    MaxPrice = maxPrice;
+                    MinPrice = minPrice;
+                }
+                else
+                {
+                    var currentRange = maxPrice - minPrice;
+                    if (currentRange == 0) currentRange = 1m;
+
+                    // Apply TradingView-style price padding based on physical pixels
+                    if (chartHeightPx > 0)
+                    {
+                        decimal pricePerPixel = currentRange / Math.Max(1m, chartHeightPx);
+                        maxPrice += paddingTopPx * pricePerPixel;
+                        minPrice -= paddingBottomPx * pricePerPixel;
+                    }
+
+                    MaxPrice = maxPrice;
+                    MinPrice = minPrice;
+                }
+            }
         }
         else
         {

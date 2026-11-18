@@ -296,7 +296,7 @@ public readonly record struct DrawingObjectRecord
         Panel = panel;
         CoordinateKind = coordinateKind;
         Points = points != null ? Array.AsReadOnly(points.ToArray()) : Array.Empty<DrawingStoredPoint>();
-        StyleAndParameters = styleAndParameters != null 
+        StyleAndParameters = styleAndParameters != null
             ? DeepCloneParameters(styleAndParameters)
             : new ReadOnlyDictionary<string, object?>(new Dictionary<string, object?>());
     }

@@ -14,11 +14,11 @@ public interface IChartLayoutProvider
     /// 指定された描画領域とインジケータ設定に基づいて、各領域のレイアウトコンテキストを計算します。
     /// </summary>
     ChartLayoutContext CreateLayout(
-        Rect bounds, 
+        Rect bounds,
         IEnumerable<CoreIndicatorSettings>? indicators = null,
         bool showIndicators = true,
         bool isMainWindowVisible = true,
-        float? customMarginTop = null, 
-        float? customMarginBottom = null, 
+        float? customMarginTop = null,
+        float? customMarginBottom = null,
         float? customMarginRight = null);
 }

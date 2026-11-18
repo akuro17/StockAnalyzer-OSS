@@ -81,9 +81,12 @@ internal static class VerificationScenarios
     {
         var script = new Dictionary<int, StrategyOrderRequest>
         {
-            [0] = Req(entrySignal), [1] = Req(exitSignal),
-            [3] = Req(entrySignal), [4] = Req(exitSignal),
-            [6] = Req(entrySignal), [7] = Req(exitSignal),
+            [0] = Req(entrySignal),
+            [1] = Req(exitSignal),
+            [3] = Req(entrySignal),
+            [4] = Req(exitSignal),
+            [6] = Req(entrySignal),
+            [7] = Req(exitSignal),
         };
         if (leaveFourthOpen) script[8] = Req(entrySignal);
         return Execute(MultiTradeBars, config, script);

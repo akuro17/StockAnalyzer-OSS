@@ -69,9 +69,12 @@ public sealed class RlLocalParquetReaderTests : IDisposable
     public void ExternalPreparedSourcesAndEscapingPathsAreRejected()
     {
         Assert.Throws<ArgumentException>(() => RlTrainingValidation.Freeze(new("NUMERIC_TEST", Start, Start.AddDays(1),
-            RlContract.CreateConfiguration(new() { InitialCapital = StockAnalyzer.Core.Models.Backtest.Engine.BacktestDefaults.InitialCapital,
+            RlContract.CreateConfiguration(new()
+            {
+                InitialCapital = StockAnalyzer.Core.Models.Backtest.Engine.BacktestDefaults.InitialCapital,
                 SizingModel = StockAnalyzer.Core.Models.Backtest.Engine.BacktestDefaults.SizingModel,
-                SizingParameter = StockAnalyzer.Core.Models.Backtest.Engine.BacktestDefaults.SizingParameter }), _root)));
+                SizingParameter = StockAnalyzer.Core.Models.Backtest.Engine.BacktestDefaults.SizingParameter
+            }), _root)));
         Assert.Throws<InvalidDataException>(() => RlLocalSourceFiles.ValidatePath(Path.Combine(_root, "Data", "Daily"), Path.Combine(_root, "external.parquet")));
     }
     public void Dispose() { if (Directory.Exists(_root)) Directory.Delete(_root, true); }

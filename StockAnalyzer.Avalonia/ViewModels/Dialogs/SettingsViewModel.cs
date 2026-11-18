@@ -73,7 +73,7 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
         else
         {
             _logger.LogDebug("Resolving settings page for key: {Key}", key);
-            
+
             // Resolve page via DI based on key
             cachedPage = key switch
             {
@@ -87,11 +87,11 @@ public partial class SettingsViewModel : ViewModelBase, IDisposable
                 SettingsConstants.Keys.BacktestMcpServer => _serviceProvider.GetRequiredService<McpServerSettingsViewModel>(),
                 SettingsConstants.Keys.TrainingWizard => _serviceProvider.GetRequiredService<TrainingResourceSettingsViewModel>(),
                 SettingsConstants.Keys.Tickers => _serviceProvider.GetRequiredService<TickersSettingsViewModel>(),
-                SettingsConstants.Keys.Notes =>_serviceProvider.GetRequiredService<NotesSettingsViewModel>(),
+                SettingsConstants.Keys.Notes => _serviceProvider.GetRequiredService<NotesSettingsViewModel>(),
                 SettingsConstants.Keys.SeasonalityChart => _serviceProvider.GetRequiredService<SeasonalitySettingsViewModel>(),
                 SettingsConstants.Keys.ScatterAnalysis => _serviceProvider.GetRequiredService<ScatterAnalysisSettingsViewModel>(),
                 SettingsConstants.Keys.Chart => _serviceProvider.GetRequiredService<ChartGeneralSettingsViewModel>(),
-                
+
                 // Chart Sub-categories
                 SettingsConstants.Keys.ChartDrawing => _serviceProvider.GetRequiredService<DrawingSettingsViewModel>(),
                 SettingsConstants.Keys.ChartCandlestick => _serviceProvider.GetRequiredService<CandlestickSettingsViewModel>(),

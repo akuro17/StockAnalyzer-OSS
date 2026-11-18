@@ -29,8 +29,8 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
     private readonly ILogger<AnalysisPipelineService> _logger;
 
     public AnalysisPipelineService(
-        IPythonService? pythonService = null, 
-        IIndicatorFactory? indicatorFactory = null, 
+        IPythonService? pythonService = null,
+        IIndicatorFactory? indicatorFactory = null,
         ISourceIndicatorService? sourceIndicatorService = null,
         ILogger<AnalysisPipelineService>? logger = null,
         IDynamicPeriodDriverService? dynamicPeriodDriverService = null,
@@ -49,9 +49,9 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
     /// Flexible constructor for DI if needed later.
     /// </summary>
     public AnalysisPipelineService(
-        IPythonService pythonService, 
-        IReverseWatchAnalysisService reverseWatchService, 
-        IIndicatorFactory? indicatorFactory = null, 
+        IPythonService pythonService,
+        IReverseWatchAnalysisService reverseWatchService,
+        IIndicatorFactory? indicatorFactory = null,
         ISourceIndicatorService? sourceIndicatorService = null,
         ILogger<AnalysisPipelineService>? logger = null,
         IDynamicPeriodDriverService? dynamicPeriodDriverService = null,
@@ -71,7 +71,7 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
     /// Safely handles circular dependencies without infinite loops or dropping items.
     /// </summary>
     public static List<CoreIndicatorSettings> SortSettingsByDependency(
-        IEnumerable<CoreIndicatorSettings> settings, 
+        IEnumerable<CoreIndicatorSettings> settings,
         ILogger? logger = null)
     {
         var settingsList = settings.ToList();
@@ -650,8 +650,8 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
     }
 
     public ReverseWatchCurveData? CalculateReverseWatch(
-        IReadOnlyList<CoreCandleData> candles, 
-        int period, 
+        IReadOnlyList<CoreCandleData> candles,
+        int period,
         string symbol,
         bool isMaBased = true,
         bool isLogScaleVolume = false,
@@ -662,8 +662,8 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
         var candleList = new List<CandleData>(candles.Count);
         for (int i = 0; i < candles.Count; i++)
         {
-             var c = candles[i];
-             candleList.Add(new CandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
+            var c = candles[i];
+            candleList.Add(new CandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
         }
 
         if (candleList.Count == 0) return null;
@@ -682,7 +682,7 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
     public decimal CalculateAtr(IReadOnlyList<CoreCandleData> candles, int period)
     {
         if (candles == null) return 0m;
-        
+
         var candleList = candles.Select(c => new CandleData(
              c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume));
 

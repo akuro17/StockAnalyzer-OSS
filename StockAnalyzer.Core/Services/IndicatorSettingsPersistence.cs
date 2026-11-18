@@ -100,7 +100,7 @@ namespace StockAnalyzer.Core.Services
                 return new IndicatorSettingsContainer();
             }
         }
-        
+
         private void RotateBackups(string filePath, string? directory)
         {
             string baseBackupPath = filePath + ".bak";

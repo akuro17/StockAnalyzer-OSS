@@ -17,7 +17,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
 
         private readonly List<decimal?> _bosLines = new();
         private readonly List<decimal?> _chochLines = new();
-        
+
         private decimal _zigzagThreshold = 5.0m;
 
         public override void Configure(CoreIndicatorParameterBase parameters)

@@ -76,7 +76,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                     .SetBasePath(AppContext.BaseDirectory)
                     .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
                     .Build();
-                
+
                 var localePath = config["Localization:ResourcePath"];
                 LocalizationManager.Instance.Initialize("en", localePath);
 
@@ -103,7 +103,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                     services.AddViewModels();
                     services.AddSingleton<IThemeVariantDispatcher>(this);
                     Services = services.BuildServiceProvider();
-                    
+
                     StockAnalyzer.Avalonia.ViewModels.Watchlist.WatchlistItemViewModel.DispatcherService = Services.GetRequiredService<StockAnalyzer.Core.Services.IDispatcherService>();
                     StockAnalyzer.Core.Services.UserStrategyMetadataRepository.MarketDataProvider =
                         Services.GetRequiredService<StockAnalyzer.Core.Services.IMarketDataProvider>() as StockAnalyzer.Core.Services.ParquetMarketDataProvider;
@@ -151,9 +151,9 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                             var textPrimaryBrush = Application.Current!.FindResource("Brush.Text.Primary") as IBrush ?? Brushes.White;
                             var borderPrimaryBrush = Application.Current!.FindResource("Brush.Border.Primary") as IBrush ?? Brushes.DarkGray;
 
-                            _pythonProgressTextBlock = new TextBlock 
-                            { 
-                                Text = "Initializing...", 
+                            _pythonProgressTextBlock = new TextBlock
+                            {
+                                Text = "Initializing...",
                                 TextWrapping = TextWrapping.Wrap,
                                 Foreground = textPrimaryBrush,
                                 FontSize = 14,
@@ -243,7 +243,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                 };
 
                 var mainViewModel = Services.GetRequiredService<MainWindowViewModel>();
-                
+
                 // Initialize Theme and Chart Settings
                 var themeManager = Services.GetRequiredService<IThemeManager>();
                 var chartSettingsManager = Services.GetRequiredService<StockAnalyzer.Core.Services.IChartSettingsManager>();
@@ -268,7 +268,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                     }
                 };
 
-                _ = themeManager.LoadAsync().ContinueWith(_ => 
+                _ = themeManager.LoadAsync().ContinueWith(_ =>
                 {
                     SyncThemeResources(themeManager.CurrentTheme);
                 }, TaskScheduler.FromCurrentSynchronizationContext());
@@ -358,8 +358,10 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
                     Title = "Startup Error",
                     Width = 800,
                     Height = 600,
-                    Content = new ScrollViewer {
-                        Content = new TextBlock {
+                    Content = new ScrollViewer
+                    {
+                        Content = new TextBlock
+                        {
                             Text = StockAnalyzer.Core.Common.ExceptionSanitizer.FormatStartupException(ex),
                             Margin = new Thickness(20),
                             TextWrapping = global::Avalonia.Media.TextWrapping.Wrap,
@@ -510,7 +512,7 @@ public partial class App : Application, IDisposable, IThemeVariantDispatcher
         }
 
         // Helper to convert IndicatorColor to Avalonia Color
-        static global::Avalonia.Media.Color ToAvColor(IndicatorColor c) => 
+        static global::Avalonia.Media.Color ToAvColor(IndicatorColor c) =>
             global::Avalonia.Media.Color.FromArgb(c.A, c.R, c.G, c.B);
 
         void SetOrUpdateBrush(string key, global::Avalonia.Media.Color color)

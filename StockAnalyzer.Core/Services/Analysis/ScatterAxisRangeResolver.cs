@@ -37,6 +37,8 @@ public static class ScatterAxisRangeResolver
         (IndicatorType.IFFTInstantaneousPhase, "PhaseAngle"),
         (IndicatorType.IFFTInstantaneousPhase, "PhaseDelta"),
         (IndicatorType.IFFTInstantaneousPhase, "PhaseStability"),
+        (IndicatorType.JarqueBera, "JBStatistic"),
+        (IndicatorType.LjungBoxQ, "QStatistic"),
         (IndicatorType.PolarPhase, "PhaseStability"),
         (IndicatorType.PolarPhase, "PolarPhaseAngle"),
         (IndicatorType.SSAAnomaly, "ZScore"),

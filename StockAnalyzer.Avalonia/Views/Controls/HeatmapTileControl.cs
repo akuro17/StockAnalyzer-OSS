@@ -356,7 +356,7 @@ public class HeatmapTileControl : Control
             {
                 // Recursive call for next level (vertical)
                 LayoutHierarchical(slice, g.SubGroups, !horizontal, tiles, groupBorders, hitMap);
-                
+
                 // Draw Region boundary
                 if (!string.IsNullOrEmpty(g.Title))
                 {

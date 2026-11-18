@@ -16,7 +16,7 @@ public class CorePrimeNumberBandsIndicatorTests
     public void Calculate_NullOrEmptyCandles_ReturnsEmptyResult()
     {
         var indicator = new CorePrimeNumberBandsIndicator();
-        
+
         // Null candles
         var nullResult = indicator.Calculate(null!);
         Assert.False(nullResult.IsSuccessful);

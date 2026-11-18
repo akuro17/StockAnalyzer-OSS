@@ -37,32 +37,49 @@ public class ReverseWatchRenderer : IChartRenderer
     private SKPoint[] _screenPoints = Array.Empty<SKPoint>();
 
     // --- Cached Skia Objects (ZeroAllocation Optimization) ---
-    private readonly SKPaint _gridPaint = new SKPaint { 
-        Color = SKColors.Gray.WithAlpha(128), StrokeWidth = 1, IsAntialias = true,
+    private readonly SKPaint _gridPaint = new SKPaint
+    {
+        Color = SKColors.Gray.WithAlpha(128),
+        StrokeWidth = 1,
+        IsAntialias = true,
         PathEffect = SKPathEffect.CreateDash(new float[] { 5, 5 }, 0)
     };
-    private readonly SKPaint _textPaint = new SKPaint {
-        Color = SKColors.Black, TextSize = 14, IsAntialias = true,
+    private readonly SKPaint _textPaint = new SKPaint
+    {
+        Color = SKColors.Black,
+        TextSize = 14,
+        IsAntialias = true,
         Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold)
     };
     private readonly SKPaint _linePaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
-    private readonly SKPaint _markerTextPaint = new SKPaint {
-        TextSize = 14, IsAntialias = true, TextAlign = SKTextAlign.Center,
+    private readonly SKPaint _markerTextPaint = new SKPaint
+    {
+        TextSize = 14,
+        IsAntialias = true,
+        TextAlign = SKTextAlign.Center,
         Typeface = SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold)
     };
-    private readonly SKPaint _arrowOutlinePaint = new SKPaint {
-        Color = new SKColor(255, 255, 255, 210), Style = SKPaintStyle.Stroke, IsAntialias = true,
-        StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round
+    private readonly SKPaint _arrowOutlinePaint = new SKPaint
+    {
+        Color = new SKColor(255, 255, 255, 210),
+        Style = SKPaintStyle.Stroke,
+        IsAntialias = true,
+        StrokeCap = SKStrokeCap.Round,
+        StrokeJoin = SKStrokeJoin.Round
     };
-    private readonly SKPaint _arrowPaint = new SKPaint {
-        Color = SKColors.Red, Style = SKPaintStyle.Stroke, IsAntialias = true,
-        StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round
+    private readonly SKPaint _arrowPaint = new SKPaint
+    {
+        Color = SKColors.Red,
+        Style = SKPaintStyle.Stroke,
+        IsAntialias = true,
+        StrokeCap = SKStrokeCap.Round,
+        StrokeJoin = SKStrokeJoin.Round
     };
     private readonly SKPaint _fillPaint = new SKPaint { Color = SKColors.White, Style = SKPaintStyle.Fill, IsAntialias = true };
     private readonly SKPaint _strokePaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = 2f, IsAntialias = true };
-    
+
     private static readonly SKPath _arrowPath;
-    
+
     static ReverseWatchRenderer()
     {
         _arrowPath = new SKPath();
@@ -81,11 +98,11 @@ public class ReverseWatchRenderer : IChartRenderer
         if (config.ReverseWatchData != null && config.Transform != null)
         {
             Render(
-                canvas, 
-                chartArea, 
-                config.ReverseWatchData, 
-                config.ShowReverseWatchGrid, 
-                config.MousePosition, 
+                canvas,
+                chartArea,
+                config.ReverseWatchData,
+                config.ShowReverseWatchGrid,
+                config.MousePosition,
                 config.Transform,
                 config.ReverseWatchLineThickness,
                 config);
@@ -110,7 +127,7 @@ public class ReverseWatchRenderer : IChartRenderer
         // Calculate Center based on Data Bounds (Fixed relative to data)
         var centerVol = bounds.MinVolume + volumeRange / 2m;
         var centerPrice = bounds.MinPrice + priceRange / 2m;
-        
+
         // Store volume in Ticks (workaround)
         var centerPoint = transform.NumericToScreen((double)centerVol, (double)centerPrice);
         float centerX = (float)centerPoint.X;
@@ -156,7 +173,7 @@ public class ReverseWatchRenderer : IChartRenderer
         ReverseWatchCurvePoint? bestPoint = null;
         SKPoint bestScreenPoint = default;
         double minDistSq = double.MaxValue;
-        
+
         float mouseX = (float)mousePosition.X;
         float mouseY = (float)mousePosition.Y;
 
@@ -186,7 +203,7 @@ public class ReverseWatchRenderer : IChartRenderer
                 bestScreenPoint = new SKPoint((float)sp.X, (float)sp.Y + chartAreaY);
             }
         }
-        
+
         // If mouse is too far from any point (>50px), show header for last point but no hover circle
         if (minDistSq > 50 * 50)
         {
@@ -214,7 +231,7 @@ public class ReverseWatchRenderer : IChartRenderer
         // Draw PhaseBoundaryCount (8) Boundary Lines radiating from center to edges/corners
         float halfW = width / 2;
         float halfH = height / 2;
-        
+
         // Lines extend beyond chart area to ensure they cover corners
         double len = Math.Max(width, height) * 1.5;
 
@@ -222,19 +239,19 @@ public class ReverseWatchRenderer : IChartRenderer
         {
             double thetaDeg = PhaseBoundaryStartDegrees + i * PhaseBoundaryStepDegrees;
             double thetaRad = thetaDeg * MathConstants.DegToRad;
-            
+
             // Standard Math Vector
             double lx = Math.Cos(thetaRad);
             double ly = Math.Sin(thetaRad);
-            
+
             // Project to Screen Vector (Stretch to Aspect Ratio)
             // ScreenX = lx * halfW
             // ScreenY = -ly * halfH (Y is flipped)
             double sx = lx * halfW;
-            double sy = -ly * halfH; 
-            
+            double sy = -ly * halfH;
+
             // Normalize
-            double mag = Math.Sqrt(sx*sx + sy*sy);
+            double mag = Math.Sqrt(sx * sx + sy * sy);
             if (mag > 0)
             {
                 sx /= mag;
@@ -246,7 +263,7 @@ public class ReverseWatchRenderer : IChartRenderer
 
 
     private void DrawCurve(SKCanvas canvas, ICoordinateTransform transform,
-        ReverseWatchCurveData data, 
+        ReverseWatchCurveData data,
         float centerX, float centerY, float width, float height,
         float lineThickness, float chartAreaY, IChartRenderConfig baseConfig)
     {
@@ -285,13 +302,13 @@ public class ReverseWatchRenderer : IChartRenderer
         // iterate segments
         for (int i = startIndex + 1; i < pointCount; i++)
         {
-             var p1 = screenPoints[i - 1];
-             var p2 = screenPoints[i];
-             
-             // Fade-out effect removed to ensure line remains visible and unbroken
-             byte alpha = 255;
-             
-             DrawSegmentSplitByPhases(canvas, p1, p2, centerX, centerY, halfW, halfH, _linePaint, baseConfig, alpha);
+            var p1 = screenPoints[i - 1];
+            var p2 = screenPoints[i];
+
+            // Fade-out effect removed to ensure line remains visible and unbroken
+            byte alpha = 255;
+
+            DrawSegmentSplitByPhases(canvas, p1, p2, centerX, centerY, halfW, halfH, _linePaint, baseConfig, alpha);
         }
 
         // Draw Start/End Markers
@@ -310,7 +327,7 @@ public class ReverseWatchRenderer : IChartRenderer
         {
             var pLast = screenPoints[pointCount - 1];
             var pPrev = screenPoints[pointCount - 2];
-            
+
             float dx = pLast.X - pPrev.X;
             float dy = pLast.Y - pPrev.Y;
             float angle = (float)(Math.Atan2(dy, dx) * MathConstants.RadToDeg);
@@ -321,17 +338,17 @@ public class ReverseWatchRenderer : IChartRenderer
             canvas.Save();
             canvas.Translate(pLast.X, pLast.Y);
             canvas.RotateDegrees(angle);
-            
+
             // Draw white halo first
             canvas.DrawPath(_arrowPath, _arrowOutlinePaint);
             // Draw red arrow on top
             canvas.DrawPath(_arrowPath, _arrowPaint);
-            
+
             canvas.Restore();
         }
     }
 
-    private void DrawSegmentSplitByPhases(SKCanvas canvas, SKPoint p1, SKPoint p2, 
+    private void DrawSegmentSplitByPhases(SKCanvas canvas, SKPoint p1, SKPoint p2,
         float centerX, float centerY, float halfW, float halfH,
         SKPaint paint, IChartRenderConfig baseConfig, byte alpha = 255)
     {
@@ -353,7 +370,7 @@ public class ReverseWatchRenderer : IChartRenderer
 
             double lx = Math.Cos(thetaRad);
             double ly = Math.Sin(thetaRad); // Math Y (Up)
-            
+
             // Screen Vector (from center)
             // Screen X = lx * halfW
             // Screen Y = -ly * halfH (Y is flipped)
@@ -369,12 +386,12 @@ public class ReverseWatchRenderer : IChartRenderer
             //
             // [ dx   -rx ] [ t ] = [ Cx - P1x ]
             // [ dy   -ry ] [ u ]   [ Cy - P1y ]
-            
+
             double A1 = dx, B1 = -rayDirX, C1 = centerX - p1.X;
             double A2 = dy, B2 = -rayDirY, C2 = centerY - p1.Y;
-            
+
             double det = A1 * B2 - A2 * B1;
-            
+
             if (Math.Abs(det) < 1e-6) continue; // Parallel
 
             double t = (C1 * B2 - C2 * B1) / det;
@@ -411,35 +428,35 @@ public class ReverseWatchRenderer : IChartRenderer
         for (int k = 0; k < pointCount - 1; k++)
         {
             var sp = pointsToDraw[k];
-            var ep = pointsToDraw[k+1];
-            
+            var ep = pointsToDraw[k + 1];
+
             // Determine phase at the midpoint of the sub-segment
-            var mp = new SKPoint((sp.X + ep.X)/2, (sp.Y + ep.Y)/2);
+            var mp = new SKPoint((sp.X + ep.X) / 2, (sp.Y + ep.Y) / 2);
             var phase = GetPhaseAtPoint(mp, centerX, centerY, halfW, halfH);
 
             var phaseColor = config.GetPhaseColor(phase).ToSkColor();
             paint.Color = new SKColor(phaseColor.Red, phaseColor.Green, phaseColor.Blue, alpha);
-            
+
             canvas.DrawLine(sp, ep, paint);
         }
     }
 
     private ReverseWatchPhase GetPhaseAtPoint(SKPoint p, float cx, float cy, float halfW, float halfH)
     {
-         // Project back to Normalized Unit Circle (Math Coordinates)
-         // sx = lx * halfW  => lx = sx / halfW
-         // sy = -ly * halfH => ly = -sy / halfH
-         
-         double sx = p.X - cx;
-         double sy = p.Y - cy;
-         
-         double lx = sx / halfW;
-         double ly = -sy / halfH; // Flip Y back to standard math Y (Up is positive)
-         
-         double angleRad = Math.Atan2(ly, lx);
-         double angleDeg = angleRad * MathConstants.RadToDeg;
+        // Project back to Normalized Unit Circle (Math Coordinates)
+        // sx = lx * halfW  => lx = sx / halfW
+        // sy = -ly * halfH => ly = -sy / halfH
 
-         return ReverseWatchSectors.PhaseAtAngle(angleDeg);
+        double sx = p.X - cx;
+        double sy = p.Y - cy;
+
+        double lx = sx / halfW;
+        double ly = -sy / halfH; // Flip Y back to standard math Y (Up is positive)
+
+        double angleRad = Math.Atan2(ly, lx);
+        double angleDeg = angleRad * MathConstants.RadToDeg;
+
+        return ReverseWatchSectors.PhaseAtAngle(angleDeg);
     }
 }
 

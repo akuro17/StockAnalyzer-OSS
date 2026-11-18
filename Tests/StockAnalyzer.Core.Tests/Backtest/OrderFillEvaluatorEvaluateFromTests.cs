@@ -33,33 +33,33 @@ public class OrderFillEvaluatorEvaluateFromTests
         int compared = 0;
 
         foreach (decimal low in grid)
-        foreach (decimal high in grid)
-        {
-            if (high < low) continue;
-            foreach (decimal open in grid)
-            foreach (decimal close in grid)
+            foreach (decimal high in grid)
             {
-                if (open < low || open > high || close < low || close > high) continue;
-                CandleData bar = Bar(open, high, low, close);
-                PathPoint origin = FillPathScanner.OpenPoint(open);
-
-                foreach (OrderSide side in new[] { OrderSide.Buy, OrderSide.Sell })
-                {
-                    Compare(Order(side, OrderType.Market), bar, origin);
-                    foreach (decimal price in grid)
+                if (high < low) continue;
+                foreach (decimal open in grid)
+                    foreach (decimal close in grid)
                     {
-                        Compare(Order(side, OrderType.Limit, limit: price), bar, origin);
-                        Compare(Order(side, OrderType.Stop, stop: price), bar, origin);
-                        foreach (decimal limit in grid)
-                        foreach (bool activated in new[] { false, true })
+                        if (open < low || open > high || close < low || close > high) continue;
+                        CandleData bar = Bar(open, high, low, close);
+                        PathPoint origin = FillPathScanner.OpenPoint(open);
+
+                        foreach (OrderSide side in new[] { OrderSide.Buy, OrderSide.Sell })
                         {
-                            Compare(Order(side, OrderType.StopLimit, limit: limit, stop: price, stopActivated: activated), bar, origin);
-                            compared++;
+                            Compare(Order(side, OrderType.Market), bar, origin);
+                            foreach (decimal price in grid)
+                            {
+                                Compare(Order(side, OrderType.Limit, limit: price), bar, origin);
+                                Compare(Order(side, OrderType.Stop, stop: price), bar, origin);
+                                foreach (decimal limit in grid)
+                                    foreach (bool activated in new[] { false, true })
+                                    {
+                                        Compare(Order(side, OrderType.StopLimit, limit: limit, stop: price, stopActivated: activated), bar, origin);
+                                        compared++;
+                                    }
+                            }
                         }
                     }
-                }
             }
-        }
 
         Assert.True(compared > 50_000, $"grid unexpectedly small: {compared}");
 

@@ -449,7 +449,7 @@ internal sealed class ScreenerConditionBinder
 
             if (offset > _settings.ScreenerMaxConditionOffset)
             {
-                throw TreeLimit($"The offset {offset} is above the maximum {_settings.ScreenerMaxConditionOffset}.", $"{path}.offset", ScreenerSettingsValidator.MaxConditionOffsetKey,_settings.ScreenerMaxConditionOffset);
+                throw TreeLimit($"The offset {offset} is above the maximum {_settings.ScreenerMaxConditionOffset}.", $"{path}.offset", ScreenerSettingsValidator.MaxConditionOffsetKey, _settings.ScreenerMaxConditionOffset);
             }
         }
 
@@ -466,52 +466,52 @@ internal sealed class ScreenerConditionBinder
                 return (BindIndicator(side, name, offset, path, state), false);
 
             case "price":
-            {
-                ScreenerCatalogItem item = _screenerCatalog.FindPrice(name)
-                    ?? throw UnknownName("price", name, $"{path}.price");
-                return (new ScreenerIndicatorSideConfig
                 {
-                    IndicatorType = IndicatorType.Price,
-                    OutputName = item.ShortName,
-                    CustomDisplayName = item.DisplayName,
-                    CategoryType = ScreenerItemCategoryType.Indicator,
-                    TimeFrame = TimeFrame.D1,
-                    Offset = offset,
-                }, false);
-            }
+                    ScreenerCatalogItem item = _screenerCatalog.FindPrice(name)
+                        ?? throw UnknownName("price", name, $"{path}.price");
+                    return (new ScreenerIndicatorSideConfig
+                    {
+                        IndicatorType = IndicatorType.Price,
+                        OutputName = item.ShortName,
+                        CustomDisplayName = item.DisplayName,
+                        CategoryType = ScreenerItemCategoryType.Indicator,
+                        TimeFrame = TimeFrame.D1,
+                        Offset = offset,
+                    }, false);
+                }
 
             case "column":
-            {
-                ScreenerCatalogItem item = _screenerCatalog.FindColumn(name)
-                    ?? throw UnknownName("column", name, $"{path}.column");
-                if (!_screenerCatalog.IsEvaluable(item))
                 {
-                    throw new ToolException(
-                        ToolErrorCodes.InvalidArgument,
-                        $"Column '{item.ShortName}' cannot be evaluated by the screener.",
-                        $"{path}.column",
-                        "It holds descriptive text or a value the screener cannot read reliably; sa_get_capabilities with includeScreenerCatalog true lists the usable columns and unavailableColumns.");
-                }
+                    ScreenerCatalogItem item = _screenerCatalog.FindColumn(name)
+                        ?? throw UnknownName("column", name, $"{path}.column");
+                    if (!_screenerCatalog.IsEvaluable(item))
+                    {
+                        throw new ToolException(
+                            ToolErrorCodes.InvalidArgument,
+                            $"Column '{item.ShortName}' cannot be evaluated by the screener.",
+                            $"{path}.column",
+                            "It holds descriptive text or a value the screener cannot read reliably; sa_get_capabilities with includeScreenerCatalog true lists the usable columns and unavailableColumns.");
+                    }
 
-                ScreenerIndicatorSideConfig columnSide = ScreenerCatalog.ColumnSide(item, offset);
-                if (offset > 0 && ScreenerRsRatingInspector.IsRsRatingColumn(columnSide))
-                {
-                    throw new ToolException(
-                        ToolErrorCodes.InvalidArgument,
-                        $"Column '{item.ShortName}' is a current daily snapshot metric and does not support offset > 0.",
-                        $"{path}.offset",
-                        "Omit offset or set offset to 0 when referencing RS Rating.");
-                }
+                    ScreenerIndicatorSideConfig columnSide = ScreenerCatalog.ColumnSide(item, offset);
+                    if (offset > 0 && ScreenerRsRatingInspector.IsRsRatingColumn(columnSide))
+                    {
+                        throw new ToolException(
+                            ToolErrorCodes.InvalidArgument,
+                            $"Column '{item.ShortName}' is a current daily snapshot metric and does not support offset > 0.",
+                            $"{path}.offset",
+                            "Omit offset or set offset to 0 when referencing RS Rating.");
+                    }
 
-                return (columnSide, ScreenerCatalog.IsTextColumn(item.ShortName));
-            }
+                    return (columnSide, ScreenerCatalog.IsTextColumn(item.ShortName));
+                }
 
             default:
-            {
-                ScreenerCatalogItem item = _screenerCatalog.FindCriteria(name)
-                    ?? throw UnknownName("criteria", name, $"{path}.criteria");
-                return (CriteriaSide(item, offset), false);
-            }
+                {
+                    ScreenerCatalogItem item = _screenerCatalog.FindCriteria(name)
+                        ?? throw UnknownName("criteria", name, $"{path}.criteria");
+                    return (CriteriaSide(item, offset), false);
+                }
         }
     }
 
@@ -589,7 +589,7 @@ internal sealed class ScreenerConditionBinder
             Nodes++;
             if (Nodes > settings.ScreenerMaxFilterTreeNodes)
             {
-                throw TreeLimit($"The condition tree has more than {settings.ScreenerMaxFilterTreeNodes} nodes (groups and comparisons).", path, ScreenerSettingsValidator.MaxFilterTreeNodesKey,settings.ScreenerMaxFilterTreeNodes);
+                throw TreeLimit($"The condition tree has more than {settings.ScreenerMaxFilterTreeNodes} nodes (groups and comparisons).", path, ScreenerSettingsValidator.MaxFilterTreeNodesKey, settings.ScreenerMaxFilterTreeNodes);
             }
         }
     }

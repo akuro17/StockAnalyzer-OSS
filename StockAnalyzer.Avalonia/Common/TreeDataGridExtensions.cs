@@ -188,7 +188,7 @@ public static class TreeDataGridExtensions
         // Initialize source with WatchlistItemViewModel (Project specific specialized grid)
         var source = new FlatTreeDataGridSource<WatchlistItemViewModel>(items.Cast<WatchlistItemViewModel>());
         grid.Source = source;
-        
+
         // Setup bi-directional selection sync
         var selected = GetSelectedItem(grid) as WatchlistItemViewModel;
         if (selected != null)
@@ -199,7 +199,7 @@ public static class TreeDataGridExtensions
 
         if (source.RowSelection != null)
         {
-            source.RowSelection.PropertyChanged += (s, args) => 
+            source.RowSelection.PropertyChanged += (s, args) =>
             {
                 if (args.PropertyName == nameof(source.RowSelection.SelectedItem))
                 {
@@ -226,9 +226,9 @@ public static class TreeDataGridExtensions
                             {
                                 if (args.PropertyName == "SortDirection")
                                 {
-                                    var dir = colSender.SortDirection == System.ComponentModel.ListSortDirection.Ascending ? 1 : 
+                                    var dir = colSender.SortDirection == System.ComponentModel.ListSortDirection.Ascending ? 1 :
                                               colSender.SortDirection == System.ComponentModel.ListSortDirection.Descending ? 2 : 0;
-                                    
+
                                     // Only update the VM if it actually differs, to prevent circular updates
                                     if (dir != 0)
                                     {
@@ -245,37 +245,37 @@ public static class TreeDataGridExtensions
                                         }
                                     }
                                 }
-                                 else if (args.PropertyName == "Width" || args.PropertyName == "ActualWidth")
-                                 {
-                                     var metadata = GetDynamicColumns(grid);
-                                     if (metadata is IList<WatchlistColumnMetadata> metaList)
-                                     {
-                                         for (int i = 0; i < metaList.Count; i++)
-                                         {
-                                             if (string.Equals(metaList[i].MemberName, colId, StringComparison.OrdinalIgnoreCase))
-                                             {
-                                                 double wVal = colSender.Width.IsAbsolute ? colSender.Width.Value : 0;
-                                                 if (wVal > 0)
-                                                 {
-                                                     string widthStr = Math.Round(wVal).ToString(System.Globalization.CultureInfo.InvariantCulture);
-                                                     if (metaList[i].Width != widthStr)
-                                                     {
-                                                         try
-                                                         {
-                                                             SetIsUpdatingColumns(grid, true);
-                                                             metaList[i] = metaList[i] with { Width = widthStr };
-                                                         }
-                                                         finally
-                                                         {
-                                                             SetIsUpdatingColumns(grid, false);
-                                                         }
-                                                     }
-                                                 }
-                                                 break;
-                                             }
-                                         }
-                                     }
-                                 }
+                                else if (args.PropertyName == "Width" || args.PropertyName == "ActualWidth")
+                                {
+                                    var metadata = GetDynamicColumns(grid);
+                                    if (metadata is IList<WatchlistColumnMetadata> metaList)
+                                    {
+                                        for (int i = 0; i < metaList.Count; i++)
+                                        {
+                                            if (string.Equals(metaList[i].MemberName, colId, StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                double wVal = colSender.Width.IsAbsolute ? colSender.Width.Value : 0;
+                                                if (wVal > 0)
+                                                {
+                                                    string widthStr = Math.Round(wVal).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                                    if (metaList[i].Width != widthStr)
+                                                    {
+                                                        try
+                                                        {
+                                                            SetIsUpdatingColumns(grid, true);
+                                                            metaList[i] = metaList[i] with { Width = widthStr };
+                                                        }
+                                                        finally
+                                                        {
+                                                            SetIsUpdatingColumns(grid, false);
+                                                        }
+                                                    }
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     };
@@ -351,9 +351,9 @@ public static class TreeDataGridExtensions
     private static void UpdateColumns(TreeDataGrid grid)
     {
         // Use Post to ensure we're on the UI thread and let any pending layout finish
-        global::Avalonia.Threading.Dispatcher.UIThread.Post(() => 
+        global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            try 
+            try
             {
                 SetIsUpdatingColumns(grid, true);
 
@@ -391,8 +391,8 @@ public static class TreeDataGridExtensions
                     {
                         var app = Application.Current as StockAnalyzer.Avalonia.App;
                         var localizationService = app?.Services?.GetService<ILocalizationService>();
-                        var header = meta.MemberName.StartsWith("Indicator_") 
-                            ? meta.HeaderKey 
+                        var header = meta.MemberName.StartsWith("Indicator_")
+                            ? meta.HeaderKey
                             : (localizationService?.GetString(meta.HeaderKey) ?? meta.HeaderKey);
                         double pxWidth = double.TryParse(WatchlistConstants.WidthDefault, NumberStyles.Float, CultureInfo.InvariantCulture, out var defW) ? defW : 80;
                         if (!string.IsNullOrEmpty(meta.Width) && meta.Width != "Auto" && double.TryParse(meta.Width, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedW))
@@ -408,7 +408,7 @@ public static class TreeDataGridExtensions
                             else if (meta.MemberName == "Notes" && double.TryParse(WatchlistConstants.WidthNotes, NumberStyles.Float, CultureInfo.InvariantCulture, out var wNotes)) pxWidth = wNotes;
                         }
                         var width = new GridLength(pxWidth, GridUnitType.Pixel);
-                        
+
                         var newCol = CreateColumn(grid, header, meta.MemberName, width);
                         if (newCol != null)
                         {
@@ -419,7 +419,7 @@ public static class TreeDataGridExtensions
                 }
 
                 // No manual Source resetting is needed; TreeDataGrid tracks Columns' CollectionChanged events.
-                
+
                 // 3. Apply sorting (Pending or Property-bound)
                 string? sortCol = _pendingSortColumn ?? GetSortMember(grid);
                 int sortDirInt = _pendingSortColumn != null ? _pendingSortDirection : GetSortDirection(grid);
@@ -434,8 +434,8 @@ public static class TreeDataGridExtensions
                         var colId = GetColumnId(col);
                         if (colId == sortCol)
                         {
-                            var sortDir = sortDirInt == 1 
-                                ? System.ComponentModel.ListSortDirection.Ascending 
+                            var sortDir = sortDirInt == 1
+                                ? System.ComponentModel.ListSortDirection.Ascending
                                 : System.ComponentModel.ListSortDirection.Descending;
                             source.SortBy(col, sortDir);
                             applied = true;
@@ -482,7 +482,7 @@ public static class TreeDataGridExtensions
                             Margin = new global::Avalonia.Thickness(0)
                         };
                         cb.Bind(global::Avalonia.Controls.CheckBox.IsCheckedProperty, new global::Avalonia.Data.Binding(nameof(WatchlistItemViewModel.IsChecked)) { Mode = global::Avalonia.Data.BindingMode.TwoWay });
-                        
+
                         var cellContainer = new global::Avalonia.Controls.Grid
                         {
                             HorizontalAlignment = global::Avalonia.Layout.HorizontalAlignment.Stretch,
@@ -506,7 +506,7 @@ public static class TreeDataGridExtensions
             case "Name":
                 return CreateTextColumn(header, nameof(WatchlistItemViewModel.Name), width, true);
             case "Change":
-                return CreateColoredColumn(header, nameof(WatchlistItemViewModel.DisplayChange), nameof(WatchlistItemViewModel.Change), width, 
+                return CreateColoredColumn(header, nameof(WatchlistItemViewModel.DisplayChange), nameof(WatchlistItemViewModel.Change), width,
                     new global::Avalonia.Controls.Models.TreeDataGrid.TemplateColumnOptions<WatchlistItemViewModel>
                     {
                         CanUserResizeColumn = true,
@@ -617,10 +617,10 @@ public static class TreeDataGridExtensions
                 {
                     return CreateColoredColumn(header, memberName, width);
                 }
-                bool isText = memberName == "LongBusinessSummary" || 
-                              memberName == "Region" || 
-                              memberName == "QuoteType" || 
-                              memberName == "ExchangeTimezoneName" || 
+                bool isText = memberName == "LongBusinessSummary" ||
+                              memberName == "Region" ||
+                              memberName == "QuoteType" ||
+                              memberName == "ExchangeTimezoneName" ||
                               memberName == "RecommendationKey" ||
                               memberName == "Sector" ||
                               memberName == "Industry";
@@ -940,9 +940,9 @@ public static class TreeDataGridExtensions
             "ReturnOnEquity" or "ReturnOnAssets" or "GrossMargins" or "OperatingMargins" or "ProfitMargins" or
             "Ebitda" or "FreeCashflow" or "OperatingCashflow" or "RevenueGrowth" or "EarningsGrowth" or
             "EarningsYield" or "FcfYield" or "FcfMargin" or "EbitdaMargins" or "OperatingCashFlowYield" or "NetCashRatio" or
-            "TrailingPE" or "ForwardPE" or "TrailingEps" or "ForwardEps" or "Beta" or "PegRatio" or 
-            "EnterpriseToEbitda" or "PriceToCashFlowRatio" or "BookValue" or "GmtOffSetMilliseconds" or 
-            "TargetHighPrice" or "TargetLowPrice" or "TargetMeanPrice" or "TargetMedianPrice" or 
+            "TrailingPE" or "ForwardPE" or "TrailingEps" or "ForwardEps" or "Beta" or "PegRatio" or
+            "EnterpriseToEbitda" or "PriceToCashFlowRatio" or "BookValue" or "GmtOffSetMilliseconds" or
+            "TargetHighPrice" or "TargetLowPrice" or "TargetMeanPrice" or "TargetMedianPrice" or
             "RecommendationMean" or "NumberOfAnalystOpinions" => true,
             _ => false
         };
@@ -974,24 +974,24 @@ public static class TreeDataGridExtensions
         // Initial binding
         if (grid.DataContext != null)
         {
-            cb.Bind(global::Avalonia.Controls.CheckBox.IsCheckedProperty, 
-                new global::Avalonia.Data.Binding("SelectAll") 
-                { 
-                    Source = grid.DataContext, 
-                    Mode = global::Avalonia.Data.BindingMode.TwoWay 
+            cb.Bind(global::Avalonia.Controls.CheckBox.IsCheckedProperty,
+                new global::Avalonia.Data.Binding("SelectAll")
+                {
+                    Source = grid.DataContext,
+                    Mode = global::Avalonia.Data.BindingMode.TwoWay
                 });
         }
 
         // Re-bind when DataContext changes to ensure SelectAll remains synced
-        grid.GetObservable(Control.DataContextProperty).Subscribe(dc => 
+        grid.GetObservable(Control.DataContextProperty).Subscribe(dc =>
         {
             if (dc != null)
             {
-                cb.Bind(global::Avalonia.Controls.CheckBox.IsCheckedProperty, 
-                    new global::Avalonia.Data.Binding("SelectAll") 
-                    { 
-                        Source = dc, 
-                        Mode = global::Avalonia.Data.BindingMode.TwoWay 
+                cb.Bind(global::Avalonia.Controls.CheckBox.IsCheckedProperty,
+                    new global::Avalonia.Data.Binding("SelectAll")
+                    {
+                        Source = dc,
+                        Mode = global::Avalonia.Data.BindingMode.TwoWay
                     });
             }
         });
@@ -1051,7 +1051,7 @@ public static class TreeDataGridExtensions
                     VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
                     Margin = DefaultCellMargin
                 };
-                tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, 
+                tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty,
                     new global::Avalonia.Data.Binding(textProperty));
                 tb.Bind(global::Avalonia.Controls.TextBlock.HorizontalAlignmentProperty,
                     new global::Avalonia.Data.Binding(textProperty) { Converter = AlignmentConverter.RightInstance });
@@ -1069,19 +1069,19 @@ public static class TreeDataGridExtensions
                     if (a == null && b == null) return 0;
                     if (a == null) return -1;
                     if (b == null) return 1;
-                    
+
                     var valA = a.GetRawValue(memberName);
                     var valB = b.GetRawValue(memberName);
-                    
+
                     if (valA == null && valB == null) return 0;
                     if (valA == null) return -1;
                     if (valB == null) return 1;
-                    
+
                     if (valA.GetType() == valB.GetType())
                     {
                         return ((IComparable)valA).CompareTo(valB);
                     }
-                    
+
                     try
                     {
                         double numA = Convert.ToDouble(valA);
@@ -1093,24 +1093,24 @@ public static class TreeDataGridExtensions
                         return string.Compare(valA.ToString(), valB.ToString(), StringComparison.OrdinalIgnoreCase);
                     }
                 },
-                CompareDescending = (a, b) => 
+                CompareDescending = (a, b) =>
                 {
                     if (a == null && b == null) return 0;
                     if (a == null) return 1;
                     if (b == null) return -1;
-                    
+
                     var valA = a.GetRawValue(memberName);
                     var valB = b.GetRawValue(memberName);
-                    
+
                     if (valA == null && valB == null) return 0;
                     if (valA == null) return 1;
                     if (valB == null) return -1;
-                    
+
                     if (valA.GetType() == valB.GetType())
                     {
                         return ((IComparable)valB).CompareTo(valA);
                     }
-                    
+
                     try
                     {
                         double numA = Convert.ToDouble(valA);
@@ -1142,7 +1142,7 @@ public static class TreeDataGridExtensions
                     VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
                     Margin = DefaultCellMargin
                 };
-                tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, 
+                tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty,
                     new global::Avalonia.Data.Binding(textProperty));
                 tb.Bind(global::Avalonia.Controls.TextBlock.HorizontalAlignmentProperty,
                     new global::Avalonia.Data.Binding(textProperty) { Converter = AlignmentConverter.RightInstance });
@@ -1321,7 +1321,7 @@ public static class TreeDataGridExtensions
                     VerticalAlignment = global::Avalonia.Layout.VerticalAlignment.Center,
                     Margin = DefaultCellMargin
                 };
-                tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty, 
+                tb.Bind(global::Avalonia.Controls.TextBlock.TextProperty,
                     new global::Avalonia.Data.Binding(propertyName));
                 tb.Bind(global::Avalonia.Controls.TextBlock.HorizontalAlignmentProperty,
                     new global::Avalonia.Data.Binding(propertyName) { Converter = leftAlign ? AlignmentConverter.LeftInstance : AlignmentConverter.RightInstance });
@@ -1332,67 +1332,67 @@ public static class TreeDataGridExtensions
             width: width,
             options: new global::Avalonia.Controls.Models.TreeDataGrid.TemplateColumnOptions<WatchlistItemViewModel>
             {
-                 CanUserResizeColumn = true,
-                 MinWidth = new GridLength(WatchlistConstants.DefaultColumnMinWidth, GridUnitType.Pixel),
-                 MaxWidth = new GridLength(WatchlistConstants.DefaultColumnMaxWidth, GridUnitType.Pixel),
-                 CompareAscending = (a, b) => 
-                 {
-                     if (a == null && b == null) return 0;
-                     if (a == null) return -1;
-                     if (b == null) return 1;
-                     
-                     var valA = a.GetRawValue(rawMemberName);
-                     var valB = b.GetRawValue(rawMemberName);
-                     
-                     if (valA == null && valB == null) return 0;
-                     if (valA == null) return -1;
-                     if (valB == null) return 1;
-                     
-                     if (valA.GetType() == valB.GetType())
-                     {
-                         return ((IComparable)valA).CompareTo(valB);
-                     }
-                     
-                     try
-                     {
-                         double numA = Convert.ToDouble(valA);
-                         double numB = Convert.ToDouble(valB);
-                         return numA.CompareTo(numB);
-                     }
-                     catch
-                     {
-                         return string.Compare(valA.ToString(), valB.ToString(), StringComparison.OrdinalIgnoreCase);
-                     }
-                 },
-                 CompareDescending = (a, b) => 
-                 {
-                     if (a == null && b == null) return 0;
-                     if (a == null) return 1;
-                     if (b == null) return -1;
-                     
-                     var valA = a.GetRawValue(rawMemberName);
-                     var valB = b.GetRawValue(rawMemberName);
-                     
-                     if (valA == null && valB == null) return 0;
-                     if (valA == null) return 1;
-                     if (valB == null) return -1;
-                     
-                     if (valA.GetType() == valB.GetType())
-                     {
-                         return ((IComparable)valB).CompareTo(valA);
-                     }
-                     
-                     try
-                     {
-                         double numA = Convert.ToDouble(valA);
-                         double numB = Convert.ToDouble(valB);
-                         return numB.CompareTo(numA);
-                     }
-                     catch
-                     {
-                         return string.Compare(valB.ToString(), valA.ToString(), StringComparison.OrdinalIgnoreCase);
-                     }
-                 }
+                CanUserResizeColumn = true,
+                MinWidth = new GridLength(WatchlistConstants.DefaultColumnMinWidth, GridUnitType.Pixel),
+                MaxWidth = new GridLength(WatchlistConstants.DefaultColumnMaxWidth, GridUnitType.Pixel),
+                CompareAscending = (a, b) =>
+                {
+                    if (a == null && b == null) return 0;
+                    if (a == null) return -1;
+                    if (b == null) return 1;
+
+                    var valA = a.GetRawValue(rawMemberName);
+                    var valB = b.GetRawValue(rawMemberName);
+
+                    if (valA == null && valB == null) return 0;
+                    if (valA == null) return -1;
+                    if (valB == null) return 1;
+
+                    if (valA.GetType() == valB.GetType())
+                    {
+                        return ((IComparable)valA).CompareTo(valB);
+                    }
+
+                    try
+                    {
+                        double numA = Convert.ToDouble(valA);
+                        double numB = Convert.ToDouble(valB);
+                        return numA.CompareTo(numB);
+                    }
+                    catch
+                    {
+                        return string.Compare(valA.ToString(), valB.ToString(), StringComparison.OrdinalIgnoreCase);
+                    }
+                },
+                CompareDescending = (a, b) =>
+                {
+                    if (a == null && b == null) return 0;
+                    if (a == null) return 1;
+                    if (b == null) return -1;
+
+                    var valA = a.GetRawValue(rawMemberName);
+                    var valB = b.GetRawValue(rawMemberName);
+
+                    if (valA == null && valB == null) return 0;
+                    if (valA == null) return 1;
+                    if (valB == null) return -1;
+
+                    if (valA.GetType() == valB.GetType())
+                    {
+                        return ((IComparable)valB).CompareTo(valA);
+                    }
+
+                    try
+                    {
+                        double numA = Convert.ToDouble(valA);
+                        double numB = Convert.ToDouble(valB);
+                        return numB.CompareTo(numA);
+                    }
+                    catch
+                    {
+                        return string.Compare(valB.ToString(), valA.ToString(), StringComparison.OrdinalIgnoreCase);
+                    }
+                }
             });
     }
 

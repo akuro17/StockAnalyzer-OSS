@@ -66,7 +66,7 @@ public class ChartDataCoordinator
         Transform = new GenericCoordinateTransform(
             ChartAxisMode.Time,
             1000, 500);
-            
+
         // The injected service when one is given (tests); otherwise the coordinator's own default instance.
         _analysisService = analysisService ?? new Core.Services.Analysis.AnalysisPipelineService(pythonService);
     }
@@ -82,7 +82,7 @@ public class ChartDataCoordinator
     private int _startIndex;
     private int _visibleCandleCount = 100;
     private int _convertedCandleCount; // Actual candle count for special chart types
-    
+
     // Phase 1 Zero Allocation Fix: Reusable buffers for special charts
     private readonly List<CoreCandleData> _renkoBuffer = new();
     private readonly List<CoreCandleData> _heikinAshiBuffer = new();
@@ -92,7 +92,7 @@ public class ChartDataCoordinator
     private readonly List<ElementDates> _kagiDatesBuffer = new(InitialKagiBufferCapacity); // parallel to _kagiBuffer
     private ImmutableArray<ElementDates> _kagiDatesShared; // the immutable copy the last Kagi snapshot holds
     private readonly List<CoreCandleData> _tlbBuffer = new();
-    
+
     // Phase 5 Zero Allocation: Caching for index-based conversions
     private int _lastTlbLineCount = -1;
     private decimal _lastTlbMinMove = -1m;
@@ -147,19 +147,19 @@ public class ChartDataCoordinator
     private bool _lastKagiShowMultiWave;
     private bool _lastKagiShowGhost;
     private IReadOnlyList<MultiWaveSignal>? _lastKagiMwSignals;
-    
+
     // Phase 1 Zero Allocation Fix: Reusable buffers for special charts
     private readonly List<CoreCandleData> _pnfBuffer = new();
     private readonly List<ElementDates> _pnfDatesBuffer = new(); // parallel to _pnfBuffer
     private ImmutableArray<ElementDates> _pnfDatesShared; // the immutable copy the last Point and Figure snapshot holds
     private readonly List<CoreCandleData> _standardCandleBuffer = new(5000);
-    
+
     // Phase 2 Zero Allocation Fix: Intermediate buffers for converters returning specialized types
     private readonly List<KagiCandleData> _kagiIntermediateBuffer = new();
     private readonly List<ThreeLineBreakBlock> _tlbBlockBuffer = new();
     private readonly List<PnfSignal> _pnfSignalsBuffer = new(32);
     private readonly List<PnfTrendline> _pnfActiveLinesBuffer = new(32);
-    
+
 
     private ChartDataSnapshot _currentSnapshot = ChartDataSnapshot.Empty;
     private ChartType _currentChartType = ChartType.Candlestick;
@@ -251,10 +251,10 @@ public class ChartDataCoordinator
 
     private DateTime? _adaptationStartTime;
     private DateTime? _adaptationEndTime;
-    
+
     // WebAI Fix: Item-Count based Zoom Memory (Coordinate Family Invariant)
     private double _lastVisibleItemCount = 100;
-    
+
     // Cached engine for Zero-Allocation scanning
     private readonly MultiWavePatternEngine _mwEngine = new();
 
@@ -262,29 +262,29 @@ public class ChartDataCoordinator
     private DateTime GetInterpolatedTime(double index, IReadOnlyList<CoreCandleData> candles)
     {
         if (candles == null || candles.Count == 0) return DateTime.MinValue;
-        
+
         // WebAI Fix: Prevent massive time extrapolation (e.g. Year 3600) when index-based charts
         // have huge empty margins due to 1:1 aspect ratio locks (like P&F).
         // By clamping to the actual data indices, transitioning back to Time-Based charts will
         // safely anchor to the first or last available data point.
         index = Math.Clamp(index, 0, candles.Count - 1);
-        
+
         int idxFlow = (int)Math.Floor(index);
         int idxCeil = (int)Math.Ceiling(index);
-        
+
         if (idxFlow == idxCeil) return candles[idxFlow].Timestamp;
-        
+
         long t1 = candles[idxFlow].Timestamp.Ticks;
         long t2 = candles[idxCeil].Timestamp.Ticks;
-        
+
         double fraction = index - idxFlow;
         long tInterp = t1 + (long)((t2 - t1) * fraction);
-        
+
         return new DateTime(Math.Max(DateTime.MinValue.Ticks, Math.Min(DateTime.MaxValue.Ticks, tInterp)));
     }
 
-    private bool IsStandardChart(ChartType type) => 
-        type == ChartType.Candlestick || type == ChartType.OHLCBar || 
+    private bool IsStandardChart(ChartType type) =>
+        type == ChartType.Candlestick || type == ChartType.OHLCBar ||
         type == ChartType.Line || type == ChartType.Area || type == ChartType.Dot || type == ChartType.HeikinAshi ||
         type == ChartType.RelativePerformance;
 
@@ -303,337 +303,337 @@ public class ChartDataCoordinator
 
 
 
-        // Relative Performance: Hide if no comparison targets added
-        // Removed: Early return for RP with 0 targets. 
-        // We now allow rendering the primary ticker even without comparison targets
-        // to provide a baseline and correct percentage scaling.
-        
-        bool isInitialLoad = _currentSnapshot.Candles == null || _currentSnapshot.Candles.Count == 0;
+            // Relative Performance: Hide if no comparison targets added
+            // Removed: Early return for RP with 0 targets. 
+            // We now allow rendering the primary ticker even without comparison targets
+            // to provide a baseline and correct percentage scaling.
 
-        // WebAI Fix (Redock): On initial data load, always trigger view adaptation to ensure
-        // ForceVisibleRange is called. Without this, redocked tabs get a blank chart because
-        // the new ChartDataCoordinator never establishes an initial viewport range.
-        if (isInitialLoad)
-        {
-            _needsViewAdaptation = true;
-        }
+            bool isInitialLoad = _currentSnapshot.Candles == null || _currentSnapshot.Candles.Count == 0;
 
-        // WebAI Fix: Capture structural zoom memory as a "Count of Items" instead of raw Units.
-        var oldFamily = GetChartFamily(_currentChartType);
-        var newFamily = GetChartFamily(viewModel.ChartType);
-        bool isFamilyTransition = (oldFamily != newFamily) && !isInitialLoad;
-        
-        // WebAI Fix (Step 3): Refined reset detection. 
-        // Always force a full-range fill reset when moving TO an IndexSeries (e.g., Renko, P&F) 
-        // to ensure they always fill the screen correctly despite different brick/column counts.
-        // WebAI Fix (Regression): Only reset if the ACTUAL type changed, otherwise we break manual zoom.
-        bool forceReset = isFamilyTransition || (newFamily == ChartFamily.IndexSeries && _currentChartType != viewModel.ChartType);
-
-        // WebAI Fix (Step 3): Persistent Zoom Memory Isolation
-        // 1. Capture the current view state into the old family's slot before any changes
-        if (!isInitialLoad)
-        {
-            // WebAI Fix: Capture structural zoom memory as a "Count of Items".
-            // CRITICAL (V3): Use the *nominal* interval of the OLD snapshot (CurrentSnapshot) 
-            // to correctly translate the OLD duration into an invariant ItemCount.
-            var snapshotInterval = GetTimeIntervalFromSnapshot(_currentSnapshot);
-            double preSwitchDuration = Viewport.VisibleEndUnit - Viewport.VisibleStartUnit;
-            
-            _familyZoomStore[oldFamily] = new ZoomSlot
+            // WebAI Fix (Redock): On initial data load, always trigger view adaptation to ensure
+            // ForceVisibleRange is called. Without this, redocked tabs get a blank chart because
+            // the new ChartDataCoordinator never establishes an initial viewport range.
+            if (isInitialLoad)
             {
-                StartTime = (oldFamily == ChartFamily.TimeSeries) ? Viewport.VisibleStartTime : GetInterpolatedTime(Viewport.VisibleStartUnit, viewModel.Candles),
-                EndTime = (oldFamily == ChartFamily.TimeSeries) ? Viewport.VisibleEndTime : GetInterpolatedTime(Viewport.VisibleEndUnit, viewModel.Candles),
-                StartUnit = Viewport.VisibleStartUnit,
-                EndUnit = Viewport.VisibleEndUnit,
-                ItemCount = (oldFamily == ChartFamily.TimeSeries) ? (preSwitchDuration / (double)snapshotInterval.Ticks) : preSwitchDuration
-            };
-        }
+                _needsViewAdaptation = true;
+            }
 
-        // Update state EARLY but keep the transition variables for downstream logic if needed
-        var previousType = _currentChartType;
-        _currentChartType = viewModel.ChartType;
+            // WebAI Fix: Capture structural zoom memory as a "Count of Items" instead of raw Units.
+            var oldFamily = GetChartFamily(_currentChartType);
+            var newFamily = GetChartFamily(viewModel.ChartType);
+            bool isFamilyTransition = (oldFamily != newFamily) && !isInitialLoad;
 
-        // 0. Calculate Indicators EARLY to determine future offset requirement
-        var indicatorValues = viewModel.IndicatorResults;
-        
-        int maxDataCount = viewModel.Candles.Count;
-        if (indicatorValues != null)
-        {
-            foreach (var result in indicatorValues.Values)
+            // WebAI Fix (Step 3): Refined reset detection. 
+            // Always force a full-range fill reset when moving TO an IndexSeries (e.g., Renko, P&F) 
+            // to ensure they always fill the screen correctly despite different brick/column counts.
+            // WebAI Fix (Regression): Only reset if the ACTUAL type changed, otherwise we break manual zoom.
+            bool forceReset = isFamilyTransition || (newFamily == ChartFamily.IndexSeries && _currentChartType != viewModel.ChartType);
+
+            // WebAI Fix (Step 3): Persistent Zoom Memory Isolation
+            // 1. Capture the current view state into the old family's slot before any changes
+            if (!isInitialLoad)
             {
-                if (result.IsSuccessful)
+                // WebAI Fix: Capture structural zoom memory as a "Count of Items".
+                // CRITICAL (V3): Use the *nominal* interval of the OLD snapshot (CurrentSnapshot) 
+                // to correctly translate the OLD duration into an invariant ItemCount.
+                var snapshotInterval = GetTimeIntervalFromSnapshot(_currentSnapshot);
+                double preSwitchDuration = Viewport.VisibleEndUnit - Viewport.VisibleStartUnit;
+
+                _familyZoomStore[oldFamily] = new ZoomSlot
                 {
-                    foreach (var seriesName in result.SeriesNames)
+                    StartTime = (oldFamily == ChartFamily.TimeSeries) ? Viewport.VisibleStartTime : GetInterpolatedTime(Viewport.VisibleStartUnit, viewModel.Candles),
+                    EndTime = (oldFamily == ChartFamily.TimeSeries) ? Viewport.VisibleEndTime : GetInterpolatedTime(Viewport.VisibleEndUnit, viewModel.Candles),
+                    StartUnit = Viewport.VisibleStartUnit,
+                    EndUnit = Viewport.VisibleEndUnit,
+                    ItemCount = (oldFamily == ChartFamily.TimeSeries) ? (preSwitchDuration / (double)snapshotInterval.Ticks) : preSwitchDuration
+                };
+            }
+
+            // Update state EARLY but keep the transition variables for downstream logic if needed
+            var previousType = _currentChartType;
+            _currentChartType = viewModel.ChartType;
+
+            // 0. Calculate Indicators EARLY to determine future offset requirement
+            var indicatorValues = viewModel.IndicatorResults;
+
+            int maxDataCount = viewModel.Candles.Count;
+            if (indicatorValues != null)
+            {
+                foreach (var result in indicatorValues.Values)
+                {
+                    if (result.IsSuccessful)
                     {
-                        var series = result.GetSeries(seriesName);
-                        // Indicators like Ichimoku might extend beyond candles
-                        if (series.Count > maxDataCount) maxDataCount = series.Count;
+                        foreach (var seriesName in result.SeriesNames)
+                        {
+                            var series = result.GetSeries(seriesName);
+                            // Indicators like Ichimoku might extend beyond candles
+                            if (series.Count > maxDataCount) maxDataCount = series.Count;
+                        }
                     }
                 }
             }
-        }
 
-        // 1. Update Viewport Bounds and Limits
-        // CRITICAL: Layout and ScreenBounds MUST be computed BEFORE the adaptation block,
-        // because ResetScale() → ForceVisibleRange() needs _screenBounds.Width > 0 to
-        // compute a valid _pixelsPerUnit. Previously this was after the adaptation block,
-        // causing ForceVisibleRange to silently skip PixelsPerUnit computation on redock.
-        var profile = ChartTypeProfileRegistry.Get(viewModel.ChartType);
-        var layout = profile.LayoutProvider.CreateLayout(bounds, viewModel.Indicators, 
-            viewModel.EffectiveIsSubWindowVisible,
-            viewModel.IsMainWindowVisible,
-            viewModel.ChartMarginTop, viewModel.ChartMarginBottom, viewModel.ChartMarginRight);
-        
-        // WebAI Fix: Sync ScreenBounds IMMEDIATELY so any subsequent PixelsPerUnit or 
-        // ForceVisibleRange calls use the correct physical width for the NEW layout.
-        bool layoutBecameAvailable = layout.ChartArea.Width > 0 && Viewport.ScreenBounds.Width <= 0;
-        Viewport.ScreenBounds = layout.ChartArea;
-        if (layoutBecameAvailable)
-        {
-            _needsViewAdaptation = true;
-        }
+            // 1. Update Viewport Bounds and Limits
+            // CRITICAL: Layout and ScreenBounds MUST be computed BEFORE the adaptation block,
+            // because ResetScale() → ForceVisibleRange() needs _screenBounds.Width > 0 to
+            // compute a valid _pixelsPerUnit. Previously this was after the adaptation block,
+            // causing ForceVisibleRange to silently skip PixelsPerUnit computation on redock.
+            var profile = ChartTypeProfileRegistry.Get(viewModel.ChartType);
+            var layout = profile.LayoutProvider.CreateLayout(bounds, viewModel.Indicators,
+                viewModel.EffectiveIsSubWindowVisible,
+                viewModel.IsMainWindowVisible,
+                viewModel.ChartMarginTop, viewModel.ChartMarginBottom, viewModel.ChartMarginRight);
 
-        // WebAI: Decouple from event-ordering by forcing adaptation on Family Switch or Internal Index Switch
-        if (_needsViewAdaptation || forceReset)
-        {
-            // 2. Retrieve or initialize the adaptation state based on the Hybrid Zoom Policy:
-            // - Within the same coordinate family (e.g. Candle <-> HeikinAshi): Restore Zoom exactly.
-            // - Between different families (e.g. Candle <-> Renko): Reset to Full Range for stability.
-            
-            if (!forceReset && _familyZoomStore.TryGetValue(newFamily, out var savedSlot))
+            // WebAI Fix: Sync ScreenBounds IMMEDIATELY so any subsequent PixelsPerUnit or 
+            // ForceVisibleRange calls use the correct physical width for the NEW layout.
+            bool layoutBecameAvailable = layout.ChartArea.Width > 0 && Viewport.ScreenBounds.Width <= 0;
+            Viewport.ScreenBounds = layout.ChartArea;
+            if (layoutBecameAvailable)
             {
-                _adaptationStartTime = savedSlot.StartTime;
-                _adaptationEndTime = savedSlot.EndTime;
-                _lastVisibleItemCount = savedSlot.ItemCount;
+                _needsViewAdaptation = true;
             }
-            else
-            {
-                // Inter-family transition or first time: Perform a clean reset.
-                _adaptationStartTime = null;
-                _adaptationEndTime = null;
-                _lastVisibleItemCount = 0; 
-                
-                // Reset scale flag to 0.0001 to trigger auto-calculation when ScreenBounds is next assigned
-                Viewport.ResetScale();
 
-                // WebAI Fix (Step 6): Use ForceVisibleRange to set logical units (Bypass "Width > 0" Gate in ResetView)
-                if (newFamily == ChartFamily.TimeSeries)
+            // WebAI: Decouple from event-ordering by forcing adaptation on Family Switch or Internal Index Switch
+            if (_needsViewAdaptation || forceReset)
+            {
+                // 2. Retrieve or initialize the adaptation state based on the Hybrid Zoom Policy:
+                // - Within the same coordinate family (e.g. Candle <-> HeikinAshi): Restore Zoom exactly.
+                // - Between different families (e.g. Candle <-> Renko): Reset to Full Range for stability.
+
+                if (!forceReset && _familyZoomStore.TryGetValue(newFamily, out var savedSlot))
                 {
-                    var interval = GetTimeInterval(viewModel.SelectedTimeFrame);
-                    int count = Math.Max(200, viewModel.MaxCandleCount); // Default view
-                    if (count > viewModel.Candles.Count) count = viewModel.Candles.Count;
-                    
-                    double end = viewModel.Candles.Last().Timestamp.Ticks;
-                    double duration = interval.Ticks * count;
-                    Viewport.ForceVisibleRange(end - duration, end);
-                    _visibleCandleCount = count; // SYNC BACK
+                    _adaptationStartTime = savedSlot.StartTime;
+                    _adaptationEndTime = savedSlot.EndTime;
+                    _lastVisibleItemCount = savedSlot.ItemCount;
                 }
-                else if (newFamily == ChartFamily.IndexSeries)
+                else
                 {
-                    // For IndexSeries, we delay range initialization until AFTER conversion 
-                    // (inside AdjustSpecialChartView) to use the correct brick/column count.
-                    _visibleCandleCount = 0; 
-                }
-                else if (newFamily == ChartFamily.Comparison)
-                {
+                    // Inter-family transition or first time: Perform a clean reset.
+                    _adaptationStartTime = null;
                     _adaptationEndTime = null;
                     _lastVisibleItemCount = 0;
 
+                    // Reset scale flag to 0.0001 to trigger auto-calculation when ScreenBounds is next assigned
+                    Viewport.ResetScale();
+
+                    // WebAI Fix (Step 6): Use ForceVisibleRange to set logical units (Bypass "Width > 0" Gate in ResetView)
+                    if (newFamily == ChartFamily.TimeSeries)
+                    {
+                        var interval = GetTimeInterval(viewModel.SelectedTimeFrame);
+                        int count = Math.Max(200, viewModel.MaxCandleCount); // Default view
+                        if (count > viewModel.Candles.Count) count = viewModel.Candles.Count;
+
+                        double end = viewModel.Candles.Last().Timestamp.Ticks;
+                        double duration = interval.Ticks * count;
+                        Viewport.ForceVisibleRange(end - duration, end);
+                        _visibleCandleCount = count; // SYNC BACK
+                    }
+                    else if (newFamily == ChartFamily.IndexSeries)
+                    {
+                        // For IndexSeries, we delay range initialization until AFTER conversion 
+                        // (inside AdjustSpecialChartView) to use the correct brick/column count.
+                        _visibleCandleCount = 0;
+                    }
+                    else if (newFamily == ChartFamily.Comparison)
+                    {
+                        _adaptationEndTime = null;
+                        _lastVisibleItemCount = 0;
+
+                    }
                 }
             }
-        }
-        
-        // WebAI Fix: Clamp future offset to prevent excessive margins (especially on daily charts with weekend gaps).
-        int requiredExtension = Math.Max(0, maxDataCount - viewModel.Candles.Count);
-        int effectiveOffsetCount = Math.Min(100, Math.Max(1, Math.Max(viewModel.RequiredFutureOffset, requiredExtension)));
-        
-        // Comparison charts don't need future projection space (no indicators/ghost projections)
-        if (viewModel.ChartType == ChartType.RelativePerformance)
-        {
-            effectiveOffsetCount = 0;
-        }
-        
-        _currentFutureOffset = effectiveOffsetCount; // Update EARLY so AdjustSpecialChartView uses the latest value
 
-        if (viewModel.ChartType.IsTimeBased())
-        {
-            var firstCandle = viewModel.Candles.First();
-            var lastCandle = viewModel.Candles.Last();
-            Viewport.SetDataBounds(firstCandle.Timestamp, lastCandle.Timestamp);
-            
-            // WebAI Fix (V3): Use strict nominal interval based on timeframe to prevent zoom crawl/drift.
-            TimeSpan interval = GetTimeInterval(viewModel.SelectedTimeFrame);
-            
-            var futureOffset = TimeSpan.FromTicks(interval.Ticks * effectiveOffsetCount);
-            _logger?.LogDebug("[FutureOffset] Interval={Interval:F2}d, OffsetCount={OffsetCount}, FutureOffset={FutureOffset:F2}d", interval.TotalDays, effectiveOffsetCount, futureOffset.TotalDays);
-            Viewport.SetFutureOffset(futureOffset);
-            Viewport.SetDataInterval(interval);
+            // WebAI Fix: Clamp future offset to prevent excessive margins (especially on daily charts with weekend gaps).
+            int requiredExtension = Math.Max(0, maxDataCount - viewModel.Candles.Count);
+            int effectiveOffsetCount = Math.Min(100, Math.Max(1, Math.Max(viewModel.RequiredFutureOffset, requiredExtension)));
 
-            // WebAI Fix: IsRightPinned MUST be set AFTER SetDataBounds and SetFutureOffset.
-            // The setter triggers UpdateVisibleRange() which uses _futureEndUnit to clamp the viewport.
-            // If set before data bounds exist, _futureEndUnit holds stale values from the previous chart type,
-            // causing the viewport to show incorrect range on initial transition.
-            Viewport.IsRightPinned = (viewModel.ChartType == ChartType.RelativePerformance);
-
-            // 2. Finalize adaptation if the flag is set (Symbol change) or we just switched families
-            if (_needsViewAdaptation || isFamilyTransition)
+            // Comparison charts don't need future projection space (no indicators/ghost projections)
+            if (viewModel.ChartType == ChartType.RelativePerformance)
             {
-                // WebAI Fix: Comparison chart ALWAYS gets full range in adaptation block.
-                // ForceVisibleRange property changes trigger re-entry via _needsViewAdaptation,
-                // and without this guard, the `else if (_adaptationEndTime.HasValue)` path
-                // restores a stale zoom state from the previous chart type.
-                if (isInitialLoad || newFamily == ChartFamily.Comparison || !_adaptationEndTime.HasValue)
+                effectiveOffsetCount = 0;
+            }
+
+            _currentFutureOffset = effectiveOffsetCount; // Update EARLY so AdjustSpecialChartView uses the latest value
+
+            if (viewModel.ChartType.IsTimeBased())
+            {
+                var firstCandle = viewModel.Candles.First();
+                var lastCandle = viewModel.Candles.Last();
+                Viewport.SetDataBounds(firstCandle.Timestamp, lastCandle.Timestamp);
+
+                // WebAI Fix (V3): Use strict nominal interval based on timeframe to prevent zoom crawl/drift.
+                TimeSpan interval = GetTimeInterval(viewModel.SelectedTimeFrame);
+
+                var futureOffset = TimeSpan.FromTicks(interval.Ticks * effectiveOffsetCount);
+                _logger?.LogDebug("[FutureOffset] Interval={Interval:F2}d, OffsetCount={OffsetCount}, FutureOffset={FutureOffset:F2}d", interval.TotalDays, effectiveOffsetCount, futureOffset.TotalDays);
+                Viewport.SetFutureOffset(futureOffset);
+                Viewport.SetDataInterval(interval);
+
+                // WebAI Fix: IsRightPinned MUST be set AFTER SetDataBounds and SetFutureOffset.
+                // The setter triggers UpdateVisibleRange() which uses _futureEndUnit to clamp the viewport.
+                // If set before data bounds exist, _futureEndUnit holds stale values from the previous chart type,
+                // causing the viewport to show incorrect range on initial transition.
+                Viewport.IsRightPinned = (viewModel.ChartType == ChartType.RelativePerformance);
+
+                // 2. Finalize adaptation if the flag is set (Symbol change) or we just switched families
+                if (_needsViewAdaptation || isFamilyTransition)
                 {
-                    // WebAI Fix: To show the FULL initial range, we must calculate the duration spanning from EXACTLY
-                    // the first candle to the last. Due to weekends/holidays (GaplessTime), simply multiplying candle count 
-                    // by interval grossly underestimates the calendar duration and cuts off the older half of the dataset. 
-                    double start = firstCandle.Timestamp.Ticks - interval.Ticks;
-                    double end = viewModel.Candles.Last().Timestamp.Ticks;
-                    double offsetDuration = interval.Ticks * _currentFutureOffset;
-                    
-                    Viewport.ForceVisibleRange(start, end + offsetDuration);
+                    // WebAI Fix: Comparison chart ALWAYS gets full range in adaptation block.
+                    // ForceVisibleRange property changes trigger re-entry via _needsViewAdaptation,
+                    // and without this guard, the `else if (_adaptationEndTime.HasValue)` path
+                    // restores a stale zoom state from the previous chart type.
+                    if (isInitialLoad || newFamily == ChartFamily.Comparison || !_adaptationEndTime.HasValue)
+                    {
+                        // WebAI Fix: To show the FULL initial range, we must calculate the duration spanning from EXACTLY
+                        // the first candle to the last. Due to weekends/holidays (GaplessTime), simply multiplying candle count 
+                        // by interval grossly underestimates the calendar duration and cuts off the older half of the dataset. 
+                        double start = firstCandle.Timestamp.Ticks - interval.Ticks;
+                        double end = viewModel.Candles.Last().Timestamp.Ticks;
+                        double offsetDuration = interval.Ticks * _currentFutureOffset;
+
+                        Viewport.ForceVisibleRange(start, end + offsetDuration);
+                    }
+                    else if (_adaptationEndTime.HasValue)
+                    {
+                        // If we have a saved slot count, restore it perfectly
+                        double restoredItemCount = (_lastVisibleItemCount > 0) ? _lastVisibleItemCount : 100;
+
+                        // WebAI Fix (V3): Use NEW nominal interval to restore consistent bar count.
+                        double preferredVisibleUnits = restoredItemCount * interval.Ticks;
+
+                        // WebAI Fix: Ensure a sane minimum duration (at least 20 candles)
+                        long minTicks = interval.Ticks * 20;
+                        if (preferredVisibleUnits < minTicks) preferredVisibleUnits = minTicks;
+
+                        // WebAI Fix: Prevent insane maximum durations
+                        long maxTicks = interval.Ticks * Math.Max(500, viewModel.Candles.Count * 2);
+                        if (preferredVisibleUnits > maxTicks) preferredVisibleUnits = maxTicks;
+
+                        long targetEndTicks = _adaptationEndTime.Value.Ticks + (interval.Ticks / 2);
+                        long targetStartTicks = targetEndTicks - (long)preferredVisibleUnits;
+
+                        Viewport.ForceVisibleRange(targetStartTicks, targetEndTicks);
+
+                    }
+                    // Only clear the adaptation flag if the viewport was actually initialized
+                    // with a valid scale. If ScreenBounds.Width was 0 (e.g., control not yet laid out),
+                    // ForceVisibleRange silently skips PixelsPerUnit computation, leaving it at sentinel 0.0001.
+                    // In that case, we MUST keep the flag set so the next pass (with valid bounds) retries.
+                    if (Viewport.PixelsPerUnit > 0 && Viewport.PixelsPerUnit != 0.0001)
+                    {
+                        _needsViewAdaptation = false;
+                    }
                 }
-                else if (_adaptationEndTime.HasValue)
+
+                // Dynamic comparison chart rebase (WebAI/User Enhancement)
+                // Comparison chart always renders ALL data points (full range rebase).
+                // We force startIndex=0 and visibleCount=ALL regardless of viewport state.
+                // The actual X-axis scaling is handled separately in the transform override below.
+                // Removed: Forced startIndex=0 for RelativePerformance. 
+                // Standard viewport-based indexing now applies, enabling dynamic 0% baseline re-basing to the leftmost visible candle.
+            }
+            else
+            {
+                // Index-based charts (Renko/P&F/Kagi/TLB)
+                // Actual scaling is delayed until CreateChartTypeSnapshot finishes conversion.
+                // We only set temporary interval here so Viewport isn't left fully uninitialized.
+                Viewport.IsRightPinned = false; // Index charts never use right-pinning
+                Viewport.SetDataIntervalUnits(1);
+
+                if (!_needsViewAdaptation)
                 {
-                    // If we have a saved slot count, restore it perfectly
-                    double restoredItemCount = (_lastVisibleItemCount > 0) ? _lastVisibleItemCount : 100;
-                    
-                    // WebAI Fix (V3): Use NEW nominal interval to restore consistent bar count.
-                    double preferredVisibleUnits = restoredItemCount * interval.Ticks;
-                    
-                    // WebAI Fix: Ensure a sane minimum duration (at least 20 candles)
-                    long minTicks = interval.Ticks * 20;
-                    if (preferredVisibleUnits < minTicks) preferredVisibleUnits = minTicks;
-                    
-                    // WebAI Fix: Prevent insane maximum durations
-                    long maxTicks = interval.Ticks * Math.Max(500, viewModel.Candles.Count * 2);
-                    if (preferredVisibleUnits > maxTicks) preferredVisibleUnits = maxTicks;
-                    
-                    long targetEndTicks = _adaptationEndTime.Value.Ticks + (interval.Ticks / 2);
-                    long targetStartTicks = targetEndTicks - (long)preferredVisibleUnits;
-                    
-                    Viewport.ForceVisibleRange(targetStartTicks, targetEndTicks);
-
+                    // Only pull from Viewport if not adapting from a time-based chart
+                    _startIndex = (int)Math.Floor(Viewport.VisibleStartUnit);
+                    _visibleCandleCount = (int)Math.Ceiling(Viewport.VisibleEndUnit - Viewport.VisibleStartUnit) + 1;
                 }
-                // Only clear the adaptation flag if the viewport was actually initialized
-                // with a valid scale. If ScreenBounds.Width was 0 (e.g., control not yet laid out),
-                // ForceVisibleRange silently skips PixelsPerUnit computation, leaving it at sentinel 0.0001.
-                // In that case, we MUST keep the flag set so the next pass (with valid bounds) retries.
-                if (Viewport.PixelsPerUnit > 0 && Viewport.PixelsPerUnit != 0.0001)
+            }
+
+            // 1. Calculate Effective Indices from Viewport Time for Time-Based Charts
+            if (viewModel.ChartType.IsTimeBased())
+            {
+                var firstCandle = viewModel.Candles.First();
+                var lastCandle = viewModel.Candles.Last();
+                TimeSpan interval = GetTimeInterval(viewModel.SelectedTimeFrame);
+
+                int newStartIndex = FindClosestIndex(viewModel.Candles, Viewport.VisibleStartTime);
+
+                if (Viewport.VisibleStartTime < firstCandle.Timestamp)
                 {
-                    _needsViewAdaptation = false;
+                    double diffTicks = (Viewport.VisibleStartTime - firstCandle.Timestamp).Ticks;
+                    newStartIndex = (int)(diffTicks / interval.Ticks);
+                }
+                else if (Viewport.VisibleStartTime > lastCandle.Timestamp)
+                {
+                    double diffTicks = (Viewport.VisibleStartTime - lastCandle.Timestamp).Ticks;
+                    newStartIndex = (int)(diffTicks / interval.Ticks) + (viewModel.Candles.Count - 1);
+                }
+
+                long visibleTicks = (long)(Viewport.VisibleEndUnit - Viewport.VisibleStartUnit);
+                int newVisibleCount = (int)Math.Ceiling((double)visibleTicks / interval.Ticks) + 2;
+                if (newVisibleCount < 5) newVisibleCount = 5;
+                _startIndex = newStartIndex;
+                _visibleCandleCount = newVisibleCount;
+            }
+
+            // 3. Create Snapshot (using pre-calculated indicators)
+            // WebAI Fix (Step 3): Pass unified forceReset signal to ensure consistent zoom policy
+            _currentSnapshot = CreateChartTypeSnapshot(viewModel, indicatorValues!, _visibleCandleCount, layout, forceReset);
+
+            // P&F Viewport constraint (Data bounds clamping)
+            // WebAI Fix (FR-PNF-04): Previously this snapped only VisibleEndUnit to an
+            // integer (maxUnits) once the overshoot exceeded 1 unit, which abruptly changed
+            // the visible duration (width) and produced a jitter/jump at the right edge.
+            // Now we shift BOTH edges by the same overshoot amount, preserving the current
+            // zoom width and keeping fractional (sub-pixel) positions intact for smooth scroll.
+            if (viewModel.ChartType == ChartType.PointAndFigure)
+            {
+                double total = _convertedCandleCount > 0 ? _convertedCandleCount : viewModel.Candles.Count;
+                double maxUnits = total + effectiveOffsetCount;
+                double overshoot = Viewport.VisibleEndUnit - maxUnits;
+                if (overshoot > 0)
+                {
+                    Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.VisibleEndUnit - overshoot);
                 }
             }
-            
-            // Dynamic comparison chart rebase (WebAI/User Enhancement)
-            // Comparison chart always renders ALL data points (full range rebase).
-            // We force startIndex=0 and visibleCount=ALL regardless of viewport state.
-            // The actual X-axis scaling is handled separately in the transform override below.
-            // Removed: Forced startIndex=0 for RelativePerformance. 
-            // Standard viewport-based indexing now applies, enabling dynamic 0% baseline re-basing to the leftmost visible candle.
-        }
-        else
-        {
-            // Index-based charts (Renko/P&F/Kagi/TLB)
-            // Actual scaling is delayed until CreateChartTypeSnapshot finishes conversion.
-            // We only set temporary interval here so Viewport isn't left fully uninitialized.
-            Viewport.IsRightPinned = false; // Index charts never use right-pinning
-            Viewport.SetDataIntervalUnits(1);
-            
-            if (!_needsViewAdaptation)
+
+            // 4. Update Transform BEFORE propagating Snapshot to ViewModel
+            // This ensures the renderer sees the correct price range (percentages) for the new snapshot
+            var finalCandle = viewModel.Candles.LastOrDefault();
+            if (finalCandle != null)
             {
-                // Only pull from Viewport if not adapting from a time-based chart
-                _startIndex = (int)Math.Floor(Viewport.VisibleStartUnit);
-                _visibleCandleCount = (int)Math.Ceiling(Viewport.VisibleEndUnit - Viewport.VisibleStartUnit) + 1;
+                UpdateCoordinateTransform(layout, Transform, viewModel.Candles, finalCandle.Timestamp,
+                    viewModel.Candles.Count > 1 ? (finalCandle.Timestamp - viewModel.Candles[viewModel.Candles.Count - 2].Timestamp) : TimeSpan.FromDays(1),
+                    viewModel.Candles.Count, viewModel.ChartType,
+                    viewModel.EffectiveIsSubWindowVisible,
+                    viewModel.IsMainWindowVisible,
+                    viewModel.PriceScale,
+                    _currentSnapshot.MinPrice, _currentSnapshot.MaxPrice);
             }
-        }
 
-        // 1. Calculate Effective Indices from Viewport Time for Time-Based Charts
-        if (viewModel.ChartType.IsTimeBased())
-        {
-            var firstCandle = viewModel.Candles.First();
-            var lastCandle = viewModel.Candles.Last();
-            TimeSpan interval = GetTimeInterval(viewModel.SelectedTimeFrame);
+            viewModel.PeriodLegendLeft = layout.ChartArea.Left + Core.Models.Training.ModelAnalysisContract.LegendInset;
+            viewModel.PeriodLegendTop = layout.ChartArea.Top + Core.Models.Training.ModelAnalysisContract.LegendInset;
+            viewModel.AttentionHeatmap.SetLegendPosition(viewModel.PeriodLegendLeft, viewModel.PeriodLegendTop + Core.Models.Training.AttentionContract.LegendRowOffset);
 
-            int newStartIndex = FindClosestIndex(viewModel.Candles, Viewport.VisibleStartTime);
-            
-            if (Viewport.VisibleStartTime < firstCandle.Timestamp)
+            // Propagate to ViewModel for UI access (DataWindow, Tooltip)
+            // Now renderers will get the Snapshot and have a Transform already synced with its range
+            viewModel.VisibleStartIndex = _startIndex;
+            viewModel.VisibleCandleCount = _visibleCandleCount;
+            viewModel.IndicatorResults = indicatorValues;
+            viewModel.CurrentSnapshot = _currentSnapshot;
+
+            // Notify subscribers that a new snapshot is available (Zero-Allocation Trigger)
+            if (!suppressMessages)
             {
-                 double diffTicks = (Viewport.VisibleStartTime - firstCandle.Timestamp).Ticks;
-                 newStartIndex = (int)(diffTicks / interval.Ticks);
+                SnapshotUpdated?.Invoke();
             }
-            else if (Viewport.VisibleStartTime > lastCandle.Timestamp)
-            {
-                 double diffTicks = (Viewport.VisibleStartTime - lastCandle.Timestamp).Ticks;
-                 newStartIndex = (int)(diffTicks / interval.Ticks) + (viewModel.Candles.Count - 1);
-            }
-            
-            long visibleTicks = (long)(Viewport.VisibleEndUnit - Viewport.VisibleStartUnit);
-            int newVisibleCount = (int)Math.Ceiling((double)visibleTicks / interval.Ticks) + 2;
-            if (newVisibleCount < 5) newVisibleCount = 5;
-            _startIndex = newStartIndex;
-            _visibleCandleCount = newVisibleCount;
-        }
 
-        // 3. Create Snapshot (using pre-calculated indicators)
-        // WebAI Fix (Step 3): Pass unified forceReset signal to ensure consistent zoom policy
-        _currentSnapshot = CreateChartTypeSnapshot(viewModel, indicatorValues!, _visibleCandleCount, layout, forceReset);
+            // DataBounds and FutureOffset for Index charts are now fully managed inside AdjustSpecialChartView 
+            // (called during CreateChartTypeSnapshot if forceReset is true).
+            // Standard TimeBased bounds are managed at the beginning of UpdateSnapshot.
+            // Thus, the redundant SetDataBounds call here is removed to prevent extra layout cycles.
 
-        // P&F Viewport constraint (Data bounds clamping)
-        // WebAI Fix (FR-PNF-04): Previously this snapped only VisibleEndUnit to an
-        // integer (maxUnits) once the overshoot exceeded 1 unit, which abruptly changed
-        // the visible duration (width) and produced a jitter/jump at the right edge.
-        // Now we shift BOTH edges by the same overshoot amount, preserving the current
-        // zoom width and keeping fractional (sub-pixel) positions intact for smooth scroll.
-        if (viewModel.ChartType == ChartType.PointAndFigure)
-        {
-            double total = _convertedCandleCount > 0 ? _convertedCandleCount : viewModel.Candles.Count;
-            double maxUnits = total + effectiveOffsetCount;
-            double overshoot = Viewport.VisibleEndUnit - maxUnits;
-            if (overshoot > 0)
-            {
-Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.VisibleEndUnit - overshoot);
-            }
-        }
-        
-        // 4. Update Transform BEFORE propagating Snapshot to ViewModel
-        // This ensures the renderer sees the correct price range (percentages) for the new snapshot
-        var finalCandle = viewModel.Candles.LastOrDefault();
-        if (finalCandle != null)
-        {
-            UpdateCoordinateTransform(layout, Transform, viewModel.Candles, finalCandle.Timestamp, 
-                viewModel.Candles.Count > 1 ? (finalCandle.Timestamp - viewModel.Candles[viewModel.Candles.Count-2].Timestamp) : TimeSpan.FromDays(1), 
-                viewModel.Candles.Count, viewModel.ChartType, 
-                viewModel.EffectiveIsSubWindowVisible,
-                viewModel.IsMainWindowVisible,
-                viewModel.PriceScale,
-                _currentSnapshot.MinPrice, _currentSnapshot.MaxPrice);
-        }
-
-        viewModel.PeriodLegendLeft = layout.ChartArea.Left + Core.Models.Training.ModelAnalysisContract.LegendInset;
-        viewModel.PeriodLegendTop = layout.ChartArea.Top + Core.Models.Training.ModelAnalysisContract.LegendInset;
-        viewModel.AttentionHeatmap.SetLegendPosition(viewModel.PeriodLegendLeft, viewModel.PeriodLegendTop + Core.Models.Training.AttentionContract.LegendRowOffset);
-
-        // Propagate to ViewModel for UI access (DataWindow, Tooltip)
-        // Now renderers will get the Snapshot and have a Transform already synced with its range
-        viewModel.VisibleStartIndex = _startIndex;
-        viewModel.VisibleCandleCount = _visibleCandleCount;
-        viewModel.IndicatorResults = indicatorValues;
-        viewModel.CurrentSnapshot = _currentSnapshot;
-
-        // Notify subscribers that a new snapshot is available (Zero-Allocation Trigger)
-        if (!suppressMessages)
-        {
-            SnapshotUpdated?.Invoke();
-        }
-
-        // DataBounds and FutureOffset for Index charts are now fully managed inside AdjustSpecialChartView 
-        // (called during CreateChartTypeSnapshot if forceReset is true).
-        // Standard TimeBased bounds are managed at the beginning of UpdateSnapshot.
-        // Thus, the redundant SetDataBounds call here is removed to prevent extra layout cycles.
-
-        // Update comparison data if applicable
-        _comparisonData = viewModel.ComparisonData;
+            // Update comparison data if applicable
+            _comparisonData = viewModel.ComparisonData;
         }
         catch (Exception ex)
         {
@@ -641,7 +641,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             throw;
         }
     }
-    
+
     private int FindClosestIndex(IEnumerable<CoreCandleData> candles, DateTime targetTime)
     {
         var list = candles as IList<CoreCandleData> ?? candles.ToList();
@@ -657,10 +657,10 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
         double chartWidth = Viewport.ScreenBounds.Width;
         if (chartWidth <= 0) return;
-        
+
         double screenX = Viewport.ScreenBounds.X + mouseRelX * chartWidth;
         double zoomFactor = deltaY > 0 ? 1.1 : 0.9;
-        
+
         Viewport.Zoom(zoomFactor, screenX);
     }
 
@@ -721,7 +721,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.ReverseWatchIsMaBased,
             viewModel.ReverseWatchIsLogScaleVolume,
             viewModel.ReverseWatchDataCount);
-            
+
         // Reset viewport to default to enable auto-scaling on the next render
         _reverseWatchViewport = default;
     }
@@ -735,7 +735,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     public int GetCandleIndexAt(double relativeX, Rect controlBounds)
     {
         if (_currentSnapshot.Candles == null || _currentSnapshot.Candles.Count == 0) return -1;
-        
+
         // Handle ReverseWatch (No candle index concept essentially, returns -1)
         if (IsReverseWatchOutput()) return -1;
 
@@ -745,7 +745,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         // Use Transform to map Screen X -> Logical X
         // Transform is configured for the Chart Area dimensions (during UpdateCoordinateTransform)
         // relativeX should be 0..ChartWidth
-        
+
         // Determine mode from Transform
         bool isIndexMode = false;
         if (Transform is GenericCoordinateTransform gct)
@@ -754,109 +754,109 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         }
         else
         {
-             // Fallback for legacy transforms
-             isIndexMode = IsIndexBasedOutput(_currentChartType);
+            // Fallback for legacy transforms
+            isIndexMode = IsIndexBasedOutput(_currentChartType);
         }
 
         if (isIndexMode)
         {
-             // Index Mode: the logical column index is read from the numeric axis. The chart point cannot carry it: an index chart has a time map, so its
-             // Time is the interpolated real date of the pointer, and the ticks of a date are not a column index.
-             double pointerColumn = Transform is GenericCoordinateTransform numericAxis
-                 ? numericAxis.ScreenToNumeric(new global::Avalonia.Point(relativeX, 0)).x
-                 : (double)Transform.ScreenToChart(new global::Avalonia.Point(relativeX, 0)).Time.Ticks;
-             int absoluteIdx;
-             if (_currentChartType == ChartType.Renko || _currentChartType == ChartType.ThreeLineBreak)
-             {
-                 // Drawn from the left edge of the slot: the column k covers [k, k + 1).
-                 absoluteIdx = (int)Math.Floor(pointerColumn);
-             }
-             else
-             {
-                 // Point and Figure and Kagi are drawn around the centre of the slot: the column k covers [k - 0.5, k + 0.5).
-                 absoluteIdx = (int)Math.Floor(pointerColumn + ChartConstants.IndexSlotHalfWidth);
-             }
+            // Index Mode: the logical column index is read from the numeric axis. The chart point cannot carry it: an index chart has a time map, so its
+            // Time is the interpolated real date of the pointer, and the ticks of a date are not a column index.
+            double pointerColumn = Transform is GenericCoordinateTransform numericAxis
+                ? numericAxis.ScreenToNumeric(new global::Avalonia.Point(relativeX, 0)).x
+                : (double)Transform.ScreenToChart(new global::Avalonia.Point(relativeX, 0)).Time.Ticks;
+            int absoluteIdx;
+            if (_currentChartType == ChartType.Renko || _currentChartType == ChartType.ThreeLineBreak)
+            {
+                // Drawn from the left edge of the slot: the column k covers [k, k + 1).
+                absoluteIdx = (int)Math.Floor(pointerColumn);
+            }
+            else
+            {
+                // Point and Figure and Kagi are drawn around the centre of the slot: the column k covers [k - 0.5, k + 0.5).
+                absoluteIdx = (int)Math.Floor(pointerColumn + ChartConstants.IndexSlotHalfWidth);
+            }
 
-             int localIdx = 0;
-             var kagiColumnMap = _currentSnapshot.KagiColumnMap;
-             if (_currentChartType == ChartType.Kagi && kagiColumnMap != null && kagiColumnMap.Count == _currentSnapshot.Candles.Count)
-             {
-                 // Kagi: the column of every segment is the one the renderer draws it in (CreateKagiSnapshot builds the map from KagiColumns, and every Kagi
-                 // snapshot carries it). The last segment at or before the target column is returned.
-                 int low = 0;
-                 int high = kagiColumnMap.Count - 1;
-                 int bestMatch = 0;
-                 while (low <= high)
-                 {
-                     int mid = low + (high - low) / 2;
-                     if (kagiColumnMap[mid] <= absoluteIdx)
-                     {
-                         bestMatch = mid;
-                         low = mid + 1;
-                     }
-                     else
-                     {
-                         high = mid - 1;
-                     }
-                 }
-                 localIdx = bestMatch;
-             }
-             else if (_currentChartType != ChartType.Kagi)
-             {
-                 // Renko, P&F, TLB: 1-to-1 mapping between snapshot index and column offset
-                 localIdx = absoluteIdx - _currentSnapshot.StartIndex;
-             }
-             
-             // Clamp to valid local range
-             if (localIdx < 0) localIdx = 0;
-             if (localIdx >= _currentSnapshot.Candles.Count) localIdx = _currentSnapshot.Candles.Count - 1;
-             
-             return localIdx;
+            int localIdx = 0;
+            var kagiColumnMap = _currentSnapshot.KagiColumnMap;
+            if (_currentChartType == ChartType.Kagi && kagiColumnMap != null && kagiColumnMap.Count == _currentSnapshot.Candles.Count)
+            {
+                // Kagi: the column of every segment is the one the renderer draws it in (CreateKagiSnapshot builds the map from KagiColumns, and every Kagi
+                // snapshot carries it). The last segment at or before the target column is returned.
+                int low = 0;
+                int high = kagiColumnMap.Count - 1;
+                int bestMatch = 0;
+                while (low <= high)
+                {
+                    int mid = low + (high - low) / 2;
+                    if (kagiColumnMap[mid] <= absoluteIdx)
+                    {
+                        bestMatch = mid;
+                        low = mid + 1;
+                    }
+                    else
+                    {
+                        high = mid - 1;
+                    }
+                }
+                localIdx = bestMatch;
+            }
+            else if (_currentChartType != ChartType.Kagi)
+            {
+                // Renko, P&F, TLB: 1-to-1 mapping between snapshot index and column offset
+                localIdx = absoluteIdx - _currentSnapshot.StartIndex;
+            }
+
+            // Clamp to valid local range
+            if (localIdx < 0) localIdx = 0;
+            if (localIdx >= _currentSnapshot.Candles.Count) localIdx = _currentSnapshot.Candles.Count - 1;
+
+            return localIdx;
         }
-        
+
         // Time Mode
         var point = Transform.ScreenToChart(new global::Avalonia.Point(relativeX, 0));
         return FindClosestIndex(_currentSnapshot.Candles, point.Time);
     }
-    
+
     // Helper for binary search - Modified to use Round logic (absolute closest) 
     // This perfectly centers the selection zone around the visual candlestick, 
     // switching halfway in the empty gap between candlesticks.
     private int FindClosestIndex(IList<CoreCandleData> candles, DateTime targetTime)
     {
         if (candles == null || candles.Count == 0) return -1;
-        
+
         // Binary search
         int min = 0;
         int max = candles.Count - 1;
-        
+
         if (targetTime < candles[min].Timestamp) return min;
         if (targetTime > candles[max].Timestamp) return max;
-        
+
         while (min <= max)
         {
             int mid = (min + max) / 2;
             DateTime midTime = candles[mid].Timestamp;
-            
+
             if (midTime == targetTime) return mid;
             if (midTime < targetTime) min = mid + 1;
             else max = mid - 1;
         }
-        
+
         // min is now the first index strictly greater than targetTime.
         // min - 1 is the largest index less than targetTime.
         if (min >= candles.Count) return candles.Count - 1;
         if (min <= 0) return 0;
-        
+
         DateTime t1 = candles[min - 1].Timestamp;
         DateTime t2 = candles[min].Timestamp;
-        
+
         // Compare absolute time distances to perform mathematical Rounding
         if ((targetTime - t1) <= (t2 - targetTime))
         {
             return min - 1;
         }
-        
+
         return min;
     }
 
@@ -867,7 +867,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     public ReverseWatchCurvePoint? GetNearestReverseWatchPoint(double chartX, double chartY, Rect bounds)
     {
         if (_reverseWatchData == null || _reverseWatchData.Points.Count == 0 || Transform == null) return null;
-        
+
         var transform = Transform;
         double minDistSq = double.MaxValue;
         ReverseWatchCurvePoint? bestPoint = null;
@@ -878,20 +878,20 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
         for (int i = startIndex; i < pointCount; i++)
         {
-             var point = _reverseWatchData.Points[i];
-             var sp = transform.NumericToScreen((double)point.VolumeAverage, (double)point.PriceAverage);
-             // chartX and chartY are already relative to ChartArea
-             double dx = chartX - sp.X;
-             double dy = chartY - sp.Y;
-             double distSq = dx * dx + dy * dy;
+            var point = _reverseWatchData.Points[i];
+            var sp = transform.NumericToScreen((double)point.VolumeAverage, (double)point.PriceAverage);
+            // chartX and chartY are already relative to ChartArea
+            double dx = chartX - sp.X;
+            double dy = chartY - sp.Y;
+            double distSq = dx * dx + dy * dy;
 
-             if (distSq < minDistSq)
-             {
-                 minDistSq = distSq;
-                 bestPoint = point;
-             }
+            if (distSq < minDistSq)
+            {
+                minDistSq = distSq;
+                bestPoint = point;
+            }
         }
-        
+
         if (minDistSq > 50 * 50) return _reverseWatchData.Points.LastOrDefault();
         return bestPoint ?? _reverseWatchData.Points.LastOrDefault();
     }
@@ -903,7 +903,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     public void SyncEffectiveValues(ChartViewModel? viewModel)
     {
         if (viewModel == null || viewModel.Candles == null || !viewModel.Candles.Any()) return;
-        
+
         // Renko
         if (viewModel.RenkoSizingMode == ChartSizingMode.Fixed)
         {
@@ -916,12 +916,12 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         }
         else if (viewModel.RenkoSizingMode == ChartSizingMode.AutoAtr)
         {
-             // Calculate ATR
-             decimal atr = _analysisService.CalculateAtr(viewModel.Candles, viewModel.RenkoAtrPeriod);
-             viewModel.EffectiveRenkoBrickSize = atr * viewModel.RenkoAtrMultiplier;
-             if (viewModel.EffectiveRenkoBrickSize <= 0) viewModel.EffectiveRenkoBrickSize = 1m; // Safety
+            // Calculate ATR
+            decimal atr = _analysisService.CalculateAtr(viewModel.Candles, viewModel.RenkoAtrPeriod);
+            viewModel.EffectiveRenkoBrickSize = atr * viewModel.RenkoAtrMultiplier;
+            if (viewModel.EffectiveRenkoBrickSize <= 0) viewModel.EffectiveRenkoBrickSize = 1m; // Safety
         }
-        
+
         // P&F (SSoT AutoBoxSizeCalculator)
         viewModel.EffectivePnfBoxSize = AutoBoxSizeCalculator.Calculate(
             viewModel.PnfSizingMode,
@@ -933,7 +933,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             (AutoFallbackMode)viewModel.PnfFallbackMode,
             viewModel.Candles.LastOrDefault()?.Close ?? 100m,
             viewModel.PnfBoxPercent);
-        
+
         // Kagi
         if (viewModel.KagiReversalMode == ChartSizingMode.Fixed)
         {
@@ -947,9 +947,9 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         }
         else if (viewModel.KagiReversalMode == ChartSizingMode.AutoAtr)
         {
-             decimal atr = _analysisService.CalculateAtr(viewModel.Candles, viewModel.KagiAtrPeriod);
-             viewModel.EffectiveKagiReversalAmount = atr * viewModel.KagiAtrMultiplier;
-             if (viewModel.EffectiveKagiReversalAmount <= 0) viewModel.EffectiveKagiReversalAmount = 1m;
+            decimal atr = _analysisService.CalculateAtr(viewModel.Candles, viewModel.KagiAtrPeriod);
+            viewModel.EffectiveKagiReversalAmount = atr * viewModel.KagiAtrMultiplier;
+            if (viewModel.EffectiveKagiReversalAmount <= 0) viewModel.EffectiveKagiReversalAmount = 1m;
         }
     }
 
@@ -973,7 +973,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             _lastSourceIndicatorResults = null;
             SyncEffectiveValues(viewModel); // Fix: Determine effective values (ATR, etc.) for new data
             viewModel.RecalculateFutureOffset(); // Ensure future scroll offset is set for all charts
-            
+
             // Only reset view adaptation when symbol or timeframe ACTUALLY changes.
             // Background data refreshes (same symbol/timeframe) should preserve user zoom/pan state.
             string currentSymbol = viewModel.Symbol ?? "";
@@ -989,7 +989,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             {
 
             }
-            
+
             CalculateReverseWatch(viewModel);
             return ChartUpdateAction.FullRefresh;
         }
@@ -999,7 +999,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
         if (propertyName == nameof(ChartViewModel.IndicatorResults))
         {
-            viewModel.RecalculateFutureOffset(); 
+            viewModel.RecalculateFutureOffset();
             action |= ChartUpdateAction.UpdateSnapshot;
         }
 
@@ -1009,7 +1009,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             _lastAlignedResults = null;
             _lastSourceIndicatorResults = null;
             SyncEffectiveValues(viewModel);
-            
+
             // For Index-based charts (Renko, P&F, Kagi), changing parameters (Brick Size, ATR)
             // REQUIRES a full data recalculation (FullRefresh), not just a Snapshot update.
             // Snapshot update only re-slices existing converted data, but we need to RE-CONVERT.
@@ -1022,44 +1022,44 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             {
                 action |= ChartUpdateAction.UpdateSnapshot;
             }
-            
+
             if (viewModel.ChartType == ChartType.ReverseWatch)
             {
                 CalculateReverseWatch(viewModel);
                 action = ChartUpdateAction.FullRefresh; // Reverse Watch also needs full recalc
             }
         }
-        
+
         // Other properties that require snapshot update
         if (propertyName == nameof(ChartViewModel.ChartType))
         {
-             _lastAlignedResults = null;
-             _lastSourceIndicatorResults = null;
-             SyncEffectiveValues(viewModel); 
-             
-             // WebAI Fix: Prevent forced time-synchronization (which snaps floating-point zoom to integers)
-             // when switching between chart types that share the exact same 1:1 index array.
-             bool Is1To1Mapped(ChartType type) => 
-                 type == ChartType.Candlestick || type == ChartType.OHLCBar || 
-                 type == ChartType.Line || type == ChartType.Area || type == ChartType.Dot || type == ChartType.HeikinAshi;
-             
-             if (Is1To1Mapped(_currentChartType) && Is1To1Mapped(viewModel.ChartType))
-             {
-                 _needsViewAdaptation = false;
-             }
-             else
-             {
-                 _needsViewAdaptation = true; // Trigger view adaptation when crossing data structures (e.g. into Renko)
-             }
-             
-             action |= ChartUpdateAction.UpdateSnapshot;
-             
-             if (viewModel.ChartType == ChartType.ReverseWatch)
-             {
-                 CalculateReverseWatch(viewModel);
-             }
+            _lastAlignedResults = null;
+            _lastSourceIndicatorResults = null;
+            SyncEffectiveValues(viewModel);
+
+            // WebAI Fix: Prevent forced time-synchronization (which snaps floating-point zoom to integers)
+            // when switching between chart types that share the exact same 1:1 index array.
+            bool Is1To1Mapped(ChartType type) =>
+                type == ChartType.Candlestick || type == ChartType.OHLCBar ||
+                type == ChartType.Line || type == ChartType.Area || type == ChartType.Dot || type == ChartType.HeikinAshi;
+
+            if (Is1To1Mapped(_currentChartType) && Is1To1Mapped(viewModel.ChartType))
+            {
+                _needsViewAdaptation = false;
+            }
+            else
+            {
+                _needsViewAdaptation = true; // Trigger view adaptation when crossing data structures (e.g. into Renko)
+            }
+
+            action |= ChartUpdateAction.UpdateSnapshot;
+
+            if (viewModel.ChartType == ChartType.ReverseWatch)
+            {
+                CalculateReverseWatch(viewModel);
+            }
         }
-        
+
         // Specific ReverseWatch params
         if (propertyName == nameof(ChartViewModel.ReverseWatchPeriod) ||
             propertyName == nameof(ChartViewModel.ReverseWatchDataCount) ||
@@ -1070,7 +1070,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             {
                 CalculateReverseWatch(viewModel);
             }
-            action |= ChartUpdateAction.UpdateSnapshot; 
+            action |= ChartUpdateAction.UpdateSnapshot;
         }
 
         if (propertyName == nameof(ChartViewModel.ChartMarginTop) ||
@@ -1097,7 +1097,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     private bool IsEffectiveValueProperty(string? prop)
     {
         if (string.IsNullOrEmpty(prop)) return false;
-        
+
         switch (prop)
         {
             // Renko
@@ -1210,20 +1210,20 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.Indicators,
             _startIndex,
             effectiveVisibleCount,
-            paddingTopPx: StandardPricePaddingPx, 
-            paddingBottomPx: StandardPricePaddingPx, 
+            paddingTopPx: StandardPricePaddingPx,
+            paddingBottomPx: StandardPricePaddingPx,
             chartHeightPx: (decimal)layout.ChartArea.Height,
             chartType: ChartType.HeikinAshi,
             allCandles: _heikinAshiBuffer, // FIX: Use correct parameter name for IReadOnlyList ctor
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.HeikinAshi).PriceRangeCalculator,
             priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot);
     }
-    
+
     private void AdaptViewToTimeRange(ChartViewModel viewModel, IReadOnlyList<CoreCandleData> transformedCandles, DateTime endTime)
     {
         // Smoothly translates views when switching chart types by anchoring the RIGHT edge to the true time
         // while perfectly maintaining the exact Zoom Scale (VisibleUnits) to prevent UI distortion (zoom in/out bugs).
-        
+
         if (transformedCandles.Count == 0 || endTime == DateTime.MaxValue)
         {
             _visibleCandleCount = 1;
@@ -1241,20 +1241,20 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 break;
             }
         }
-        
+
         if (anchorIdx == -1) anchorIdx = 0;
 
         // Restore the exact mathematical zoom level using ITEM COUNT (invariant to coordinate families)
         double preferredVisibleUnits = _lastVisibleItemCount;
         if (IsStandardChart(_currentChartType))
         {
-             preferredVisibleUnits *= GetTimeInterval(viewModel.SelectedTimeFrame).Ticks;
+            preferredVisibleUnits *= GetTimeInterval(viewModel.SelectedTimeFrame).Ticks;
         }
 
         // WebAI Fix: Prevent astronomical zoom-outs (coordinate extrapolation bugs)
         // For Ticks (Standard), cap to 2x total data time. 
         // For Index (Special), cap to a tighter ratio (1.5x) to maintain visual clarity on transitions.
-        double maxDurationUnits = IsStandardChart(_currentChartType) 
+        double maxDurationUnits = IsStandardChart(_currentChartType)
             ? Math.Max(TimeSpan.FromDays(30).Ticks, (long)transformedCandles.Count * GetTimeInterval(viewModel.SelectedTimeFrame).Ticks * 2)
             : Math.Max(50, (double)transformedCandles.Count * 1.5);
 
@@ -1276,7 +1276,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         {
             targetEndUnit = anchorIdx + 0.5;
         }
-        
+
         double targetStartUnit = targetEndUnit - preferredVisibleUnits;
 
         // Removed soft left clamp. We want to preserve the right-aligned anchor (targetEndUnit).
@@ -1289,14 +1289,14 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         // Update standard integer bounds for Snapshot slice generation
         _startIndex = Math.Max(0, (int)Math.Floor(targetStartUnit));
         _visibleCandleCount = (int)Math.Ceiling(preferredVisibleUnits + (targetStartUnit - _startIndex)) + 1;
-        
+
         if (_startIndex + _visibleCandleCount > transformedCandles.Count)
         {
-             _startIndex = Math.Max(0, transformedCandles.Count - Math.Max(1, _visibleCandleCount));
-             if (_startIndex + _visibleCandleCount > transformedCandles.Count)
-             {
-                 _visibleCandleCount = transformedCandles.Count - _startIndex;
-             }
+            _startIndex = Math.Max(0, transformedCandles.Count - Math.Max(1, _visibleCandleCount));
+            if (_startIndex + _visibleCandleCount > transformedCandles.Count)
+            {
+                _visibleCandleCount = transformedCandles.Count - _startIndex;
+            }
         }
     }
 
@@ -1316,7 +1316,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         if (_needsViewAdaptation || isTransition)
         {
             var newFamily = GetChartFamily(viewModel.ChartType);
-            
+
             // WebAI Fix: Use "Full Range" for Index-Series on ACTUAL coordinate transitions (chart family switch)
             // ReverseWatch (Excluded) is an XY plot that NEVER supports zoom, so it MUST ALWAYS be forced to Full Range 
             // to ensure its PriceRangeCalculator sees all data points.
@@ -1324,7 +1324,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             {
                 _startIndex = 0;
                 _visibleCandleCount = transformedCandles.Count;
-                
+
                 // Force viewport to cover the entire data set
                 // WebAI Fix: Disable pinning to allow the chart to fill the screen from index 0 
                 // without being shifted by the future offset margin.
@@ -1332,10 +1332,10 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 {
                     Viewport.IsRightPinned = false;
                 }
-                
+
                 double targetEnd = Math.Max(1, transformedCandles.Count);
                 Viewport.ForceVisibleRange(0, targetEnd);
-                
+
 
             }
             else if (_adaptationEndTime.HasValue && newFamily != ChartFamily.IndexSeries)
@@ -1349,7 +1349,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 // Very first load: Use naturally initialized Viewport bounds (Index Mode - default 100 items)
                 _startIndex = Math.Max(0, (int)Math.Floor(Viewport.VisibleStartUnit));
                 _visibleCandleCount = (int)Math.Ceiling(Viewport.VisibleEndUnit - Viewport.VisibleStartUnit) + 1;
-                
+
                 if (_startIndex + _visibleCandleCount > transformedCandles.Count)
                 {
                     _startIndex = Math.Max(0, transformedCandles.Count - Math.Max(1, _visibleCandleCount));
@@ -1358,11 +1358,11 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                         _visibleCandleCount = transformedCandles.Count - _startIndex;
                     }
                 }
-                
+
                 // Sync the actual viewport to our clamped values
                 Viewport.ForceVisibleRange(_startIndex, _startIndex + _visibleCandleCount - 1);
             }
-            
+
             _needsViewAdaptation = false;
         }
         else
@@ -1383,7 +1383,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 // Validate _startIndex and _visibleCandleCount against effective bounds
                 // but DO NOT force Viewport back to integer indices during normal operation.
                 // This preserves sub-unit panning precision and eliminates jitter.
-                
+
                 double visibleDuration = Viewport.VisibleEndUnit - Viewport.VisibleStartUnit;
                 if (visibleDuration > effectiveTotalCount) visibleDuration = effectiveTotalCount;
                 if (visibleDuration < 2) visibleDuration = 2;
@@ -1398,21 +1398,21 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 // Update internal indices for SNAPSHOT creation (integer based)
                 _startIndex = (int)Math.Floor(currentStart);
                 _visibleCandleCount = (int)Math.Ceiling(visibleDuration + (currentStart - _startIndex)) + 1;
-                
+
                 // Ensure we don't pick more than available
                 if (_startIndex + _visibleCandleCount > transformedCandles.Count)
                 {
-                     // Snapshot indices don't include future offset (renderer handles that via Transform)
-                     // but they can go up to Count.
-                     if (_startIndex >= transformedCandles.Count)
-                     {
-                          _startIndex = Math.Max(0, transformedCandles.Count - 1);
-                          _visibleCandleCount = 1;
-                     }
-                     else if (_startIndex + _visibleCandleCount > transformedCandles.Count)
-                     {
-                          _visibleCandleCount = transformedCandles.Count - _startIndex;
-                     }
+                    // Snapshot indices don't include future offset (renderer handles that via Transform)
+                    // but they can go up to Count.
+                    if (_startIndex >= transformedCandles.Count)
+                    {
+                        _startIndex = Math.Max(0, transformedCandles.Count - 1);
+                        _visibleCandleCount = 1;
+                    }
+                    else if (_startIndex + _visibleCandleCount > transformedCandles.Count)
+                    {
+                        _visibleCandleCount = transformedCandles.Count - _startIndex;
+                    }
                 }
             }
         }
@@ -1442,7 +1442,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         if (needsReconvert)
         {
             _renkoBuffer.Clear();
-            
+
             if (viewModel.RenkoDataAdapter != null)
             {
                 int count = viewModel.RenkoDataAdapter.Count;
@@ -1452,11 +1452,11 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 var lows = viewModel.RenkoDataAdapter.Lows.Span;
                 var closes = viewModel.RenkoDataAdapter.Closes.Span;
                 var vols = viewModel.RenkoDataAdapter.Volumes.Span;
-                
+
                 // Pre-allocate capacity if needed
                 if (_renkoBuffer.Capacity < count) _renkoBuffer.Capacity = count;
-                
-                for(int i = 0; i < count; i++)
+
+                for (int i = 0; i < count; i++)
                 {
                     _renkoBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
                 }
@@ -1490,7 +1490,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         }
 
         _convertedCandleCount = _renkoBuffer.Count;
-        
+
         // Adapt or clamp view
         AdjustSpecialChartView(viewModel, _renkoBuffer, isTransition);
         effectiveVisibleCount = _visibleCandleCount;
@@ -1503,8 +1503,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.Indicators,
             startIndex: _startIndex,
             count: effectiveVisibleCount,
-            paddingTopPx: StandardPricePaddingPx, 
-            paddingBottomPx: StandardPricePaddingPx, 
+            paddingTopPx: StandardPricePaddingPx,
+            paddingBottomPx: StandardPricePaddingPx,
             chartHeightPx: (decimal)layout.ChartArea.Height,
             minBrickSize: viewModel.EffectiveRenkoBrickSize,
             pnfAnalysis: null,
@@ -1556,7 +1556,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         {
             _pnfBuffer.Clear();
             _pnfDatesBuffer.Clear();
-            
+
             if (viewModel.PnfDataAdapter != null)
             {
                 int count = viewModel.PnfDataAdapter.Count;
@@ -1566,10 +1566,10 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 var lows = viewModel.PnfDataAdapter.Lows.Span;
                 var closes = viewModel.PnfDataAdapter.Closes.Span;
                 var vols = viewModel.PnfDataAdapter.Volumes.Span;
-                
+
                 if (_pnfBuffer.Capacity < count) _pnfBuffer.Capacity = count;
-                
-                for(int i = 0; i < count; i++)
+
+                for (int i = 0; i < count; i++)
                 {
                     _pnfBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
                 }
@@ -1639,8 +1639,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.Indicators,
             startIndex: _startIndex,
             count: effectiveVisibleCount,
-            paddingTopPx: StandardPricePaddingPx, 
-            paddingBottomPx: StandardPricePaddingPx, 
+            paddingTopPx: StandardPricePaddingPx,
+            paddingBottomPx: StandardPricePaddingPx,
             chartHeightPx: (decimal)layout.ChartArea.Height,
             minBrickSize: viewModel.EffectivePnfBoxSize,
             maxBrickSize: viewModel.EffectivePnfBoxSize,
@@ -1713,10 +1713,10 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 var lows = viewModel.KagiDataAdapter.Lows.Span;
                 var closes = viewModel.KagiDataAdapter.Closes.Span;
                 var vols = viewModel.KagiDataAdapter.Volumes.Span;
-                
+
                 if (_kagiBuffer.Capacity < count) _kagiBuffer.Capacity = count;
-                
-                for(int i = 0; i < count; i++)
+
+                for (int i = 0; i < count; i++)
                 {
                     _kagiBuffer.Add(new CoreCandleData(times[i], opens[i], highs[i], lows[i], closes[i], vols[i]));
                 }
@@ -1733,10 +1733,10 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 };
 
                 KagiConverter.Convert(
-                    viewModel.Candles, 
-                    viewModel.KagiReversalAmount, 
-                    kagiType, 
-                    viewModel.KagiAtrPeriod, 
+                    viewModel.Candles,
+                    viewModel.KagiReversalAmount,
+                    kagiType,
+                    viewModel.KagiAtrPeriod,
                     viewModel.KagiAtrMultiplier,
                     (ChartRoundingMode)viewModel.KagiRoundingMode,
                     (AutoFallbackMode)viewModel.KagiFallbackMode,
@@ -1755,7 +1755,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
             _convertedCandleCount = _kagiBuffer.Count;
             viewModel.ConvertedKagiCandles = _kagiBuffer;
-            
+
             // Calculate total Columns for viewport adjustment & build ColumnMap
             _kagiColumnMapBuffer.Clear();
             KagiColumns.BuildColumnMap(_kagiBuffer, viewModel.KagiInitialColumn, _kagiColumnMapBuffer);
@@ -2006,7 +2006,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         ChartLayoutContext layout,
         bool isTransition)
     {
-        bool needsReconvert = _tlbBuffer.Count == 0 || 
+        bool needsReconvert = _tlbBuffer.Count == 0 ||
                              viewModel.Symbol != _lastSymbol ||
                              viewModel.SelectedTimeFrame.ToString() != _lastTimeFrame ||
                              viewModel.Candles.Count != _lastSourceCandleCount ||
@@ -2016,20 +2016,20 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         if (needsReconvert)
         {
             ThreeLineBreakConverter.ConvertToCoreCandleData(viewModel.Candles, _tlbBuffer, _tlbBlockBuffer, viewModel.ThreeLineBreakLineCount, viewModel.ThreeLineBreakMinMove);
-            
+
             _lastSymbol = viewModel.Symbol;
             _lastTimeFrame = viewModel.SelectedTimeFrame.ToString();
             _lastSourceCandleCount = viewModel.Candles.Count;
             _lastTlbLineCount = viewModel.ThreeLineBreakLineCount;
             _lastTlbMinMove = viewModel.ThreeLineBreakMinMove;
-            
+
             // Invalidate indicator cache if blocks changed
             _lastAlignedResults = null;
             _lastSourceIndicatorResults = null;
         }
 
         _convertedCandleCount = _tlbBuffer.Count;
-        
+
         // Adapt or clamp view
         AdjustSpecialChartView(viewModel, _tlbBuffer, isTransition);
         effectiveVisibleCount = _visibleCandleCount;
@@ -2060,8 +2060,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.Indicators,
             startIndex: _startIndex,
             count: effectiveVisibleCount,
-            paddingTopPx: StandardPricePaddingPx, 
-            paddingBottomPx: StandardPricePaddingPx, 
+            paddingTopPx: StandardPricePaddingPx,
+            paddingBottomPx: StandardPricePaddingPx,
             chartHeightPx: (decimal)layout.ChartArea.Height,
             pnfAnalysis: null,
             multiWaveSignals: mwSignals,
@@ -2074,7 +2074,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     private int[] CalculateIndexMapping(IReadOnlyList<CoreCandleData> targetBlocks, IReadOnlyList<CoreCandleData> originalCandles)
     {
         if (targetBlocks.Count == 0 || originalCandles.Count == 0) return Array.Empty<int>();
-        
+
         int[] mapping = new int[targetBlocks.Count];
         int candleIdx = 0;
         for (int i = 0; i < targetBlocks.Count; i++)
@@ -2122,7 +2122,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         public string? ErrorMessage => _original.ErrorMessage;
         public IReadOnlyList<decimal?> MainValues => GetSeries("Main");
         public bool HasSeries(string name) => _original.HasSeries(name);
-        public IReadOnlyList<decimal?> GetSeries(string name) 
+        public IReadOnlyList<decimal?> GetSeries(string name)
         {
             if (_listCache.TryGetValue(name, out var cached)) return cached;
 
@@ -2156,7 +2156,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 _indexMapping = indexMapping;
             }
 
-            public decimal? this[int index] => (index >= 0 && index < _indexMapping.Length) 
+            public decimal? this[int index] => (index >= 0 && index < _indexMapping.Length)
                 ? (_indexMapping[index] < _original.Count ? _original[_indexMapping[index]] : null)
                 : null;
 
@@ -2187,11 +2187,11 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     public int GetThreeLineBreakCount(int index)
     {
         if (_tlbBuffer == null || index < 0 || index >= _tlbBuffer.Count) return 0;
-        
+
         var targetBlock = _tlbBuffer[index];
         bool isUp = targetBlock.Close >= targetBlock.Open;
         int count = 0;
-        
+
         // Count consecutive blocks of the same color backwards from the current index
         for (int i = index; i >= 0; i--)
         {
@@ -2224,8 +2224,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
         // ReverseWatch: XY plot (not time-series)
         _reverseWatchData = _analysisService.CalculateReverseWatch(
-            viewModel.Candles, 
-            viewModel.ReverseWatchPeriod, 
+            viewModel.Candles,
+            viewModel.ReverseWatchPeriod,
             viewModel.Symbol,
             viewModel.ReverseWatchIsMaBased,
             viewModel.ReverseWatchIsLogScaleVolume,
@@ -2240,8 +2240,8 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             viewModel.Indicators,
             _startIndex,
             effectiveVisibleCount,
-            paddingTopPx: 0, 
-            paddingBottomPx: 0, 
+            paddingTopPx: 0,
+            paddingBottomPx: 0,
             chartHeightPx: (decimal)layout.ChartArea.Height,
             chartType: ChartType.ReverseWatch,
             priceRangeCalculator: ChartTypeProfileRegistry.Get(ChartType.ReverseWatch).PriceRangeCalculator,
@@ -2249,17 +2249,17 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
             overrideMaxPrice: _reverseWatchData?.Bounds.MaxPrice,
             priceScale: viewModel.PriceScale, modelAnalysis: viewModel.ModelAnalysis, attention: viewModel.AttentionSnapshot)
         {
-             // Populate ReverseWatch specific data in Snapshot (Requires Snapshot update or RenderContext update)
-             // The Snapshot doesn't strictly have a RWData field, but ChartRenderContext DOES.
-             // We need to ensure ChartBaseControl puts this _reverseWatchData into the context.
-             // ChartDataCoordinator exposes _reverseWatchData via property ReverseWatchData.
-             // ChartBaseControl reads coordinator.ReverseWatchData when creating context.
-             // So this method just needs to ensure _reverseWatchData is updated (which it does above).
+            // Populate ReverseWatch specific data in Snapshot (Requires Snapshot update or RenderContext update)
+            // The Snapshot doesn't strictly have a RWData field, but ChartRenderContext DOES.
+            // We need to ensure ChartBaseControl puts this _reverseWatchData into the context.
+            // ChartDataCoordinator exposes _reverseWatchData via property ReverseWatchData.
+            // ChartBaseControl reads coordinator.ReverseWatchData when creating context.
+            // So this method just needs to ensure _reverseWatchData is updated (which it does above).
         };
     }
 
     private void UpdateCoordinateTransform(
-        ChartLayoutContext layout, 
+        ChartLayoutContext layout,
         ICoordinateTransform coordinateTransform,
         IReadOnlyList<StockAnalyzer.Core.Models.CoreCandleData> allCandles,
         DateTime lastKnownTime,
@@ -2280,7 +2280,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
                 gct.PriceScale = priceScale;
 
                 // Pass BOTH the total canvas size and the inner ChartArea for scaling
-                gct.UpdateCanvasSize(layout.TotalBounds.Width, layout.TotalBounds.Height, 
+                gct.UpdateCanvasSize(layout.TotalBounds.Width, layout.TotalBounds.Height,
                     layout.ChartArea.X, layout.ChartArea.Y, layout.ChartArea.Width, layout.ChartArea.Height);
 
                 // Sync Metadata
@@ -2320,9 +2320,9 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
 
     private bool IsReverseWatchOutput()
     {
-        return _currentChartType == ChartType.ReverseWatch; 
+        return _currentChartType == ChartType.ReverseWatch;
     }
-    
+
     private bool IsIndexBasedOutput(ChartType type)
     {
         return type.IsIndexBased();
@@ -2331,19 +2331,19 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     private void ConfigureReverseWatchTransform(GenericCoordinateTransform gct, decimal? overrideMinPrice = null, decimal? overrideMaxPrice = null)
     {
         if (_reverseWatchData == null) return;
-        
+
         // Use Viewport if set, otherwise full bounds
         if (_reverseWatchViewport == default)
         {
-              var b = _reverseWatchData.Bounds;
-              gct.SetVolumeRange(b.MinVolume, b.MaxVolume);
-              gct.SetPriceRange(overrideMinPrice ?? b.MinPrice, overrideMaxPrice ?? b.MaxPrice);
+            var b = _reverseWatchData.Bounds;
+            gct.SetVolumeRange(b.MinVolume, b.MaxVolume);
+            gct.SetPriceRange(overrideMinPrice ?? b.MinPrice, overrideMaxPrice ?? b.MaxPrice);
         }
-         else
-         {
-              gct.SetVolumeRange((decimal)_reverseWatchViewport.X, (decimal)(_reverseWatchViewport.X + _reverseWatchViewport.Width));
-              gct.SetPriceRange(overrideMinPrice ?? (decimal)_reverseWatchViewport.Y, overrideMaxPrice ?? (decimal)(_reverseWatchViewport.Y + _reverseWatchViewport.Height));
-         }
+        else
+        {
+            gct.SetVolumeRange((decimal)_reverseWatchViewport.X, (decimal)(_reverseWatchViewport.X + _reverseWatchViewport.Width));
+            gct.SetPriceRange(overrideMinPrice ?? (decimal)_reverseWatchViewport.Y, overrideMaxPrice ?? (decimal)(_reverseWatchViewport.Y + _reverseWatchViewport.Height));
+        }
     }
 
     private void ConfigureIndexTransform(GenericCoordinateTransform gct, ChartType chartType, ChartLayoutContext layout, decimal? overrideMinPrice = null, decimal? overrideMaxPrice = null)
@@ -2351,7 +2351,7 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         // Use Viewport units (Absolute Index)
         // Pad by half a slot to align with bar centering logic
         gct.SetIndexRange(Viewport.VisibleStartUnit - ChartConstants.IndexSlotHalfWidth, Viewport.VisibleEndUnit + ChartConstants.IndexSlotHalfWidth);
-        
+
         // Price Range from Snapshot
         decimal min = overrideMinPrice ?? _currentSnapshot.MinPrice;
         decimal max = overrideMaxPrice ?? _currentSnapshot.MaxPrice;
@@ -2365,14 +2365,14 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         // Use Viewport units (Absolute Ticks)
         long startTicks = (long)Viewport.VisibleStartUnit;
         long endTicks = (long)Viewport.VisibleEndUnit;
-        
+
         var halfIntervalTicks = approxInterval.Ticks / 2;
 
         long safeStartTicks = Math.Max(DateTime.MinValue.Ticks, Math.Min(DateTime.MaxValue.Ticks, startTicks - halfIntervalTicks));
         long safeEndTicks = Math.Max(DateTime.MinValue.Ticks, Math.Min(DateTime.MaxValue.Ticks, endTicks + halfIntervalTicks));
-        
+
         gct.SetTimeRange(new DateTime(safeStartTicks), new DateTime(safeEndTicks));
-        gct.SetPriceRange(overrideMinPrice ?? _currentSnapshot.MinPrice, overrideMaxPrice ?? _currentSnapshot.MaxPrice);    
+        gct.SetPriceRange(overrideMinPrice ?? _currentSnapshot.MinPrice, overrideMaxPrice ?? _currentSnapshot.MaxPrice);
     }
 
     // Moved to AnalysisPipelineService
@@ -2416,16 +2416,16 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
     {
         return type switch
         {
-            ChartType.Candlestick or ChartType.HeikinAshi or ChartType.Line or 
+            ChartType.Candlestick or ChartType.HeikinAshi or ChartType.Line or
             ChartType.Area or ChartType.Dot or ChartType.OHLCBar => ChartFamily.TimeSeries,
-            
-            ChartType.Renko or ChartType.Kagi or ChartType.PointAndFigure or 
+
+            ChartType.Renko or ChartType.Kagi or ChartType.PointAndFigure or
             ChartType.ThreeLineBreak => ChartFamily.IndexSeries,
-            
+
             ChartType.RelativePerformance => ChartFamily.Comparison,
-            
+
             ChartType.ReverseWatch => ChartFamily.Excluded,
-            
+
             _ => ChartFamily.Excluded
         };
     }
@@ -2448,13 +2448,13 @@ Viewport.ForceVisibleRange(Viewport.VisibleStartUnit - overshoot, Viewport.Visib
         _standardCandleBuffer.Clear();
         _kagiIntermediateBuffer.Clear();
         _tlbBlockBuffer.Clear();
-        
+
         _lastAlignedResults = null;
         _lastSourceIndicatorResults = null;
         _currentSnapshot = ChartDataSnapshot.Empty;
         _reverseWatchData = null;
         _comparisonData = null;
-        
+
         _lastSymbol = null;
         _lastSourceCandleCount = -1;
 

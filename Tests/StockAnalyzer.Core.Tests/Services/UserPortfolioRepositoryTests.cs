@@ -51,7 +51,7 @@ public sealed class UserPortfolioRepositoryTests : IDisposable
     {
         // Arrange
         using var repository = new UserPortfolioRepository(_customFilePath);
-        
+
         var portfolio = new Portfolio(
             50000m,
             new Dictionary<string, Position> { { "AAPL", new Position("AAPL", 50, 180m) } }
@@ -64,7 +64,7 @@ public sealed class UserPortfolioRepositoryTests : IDisposable
 
         // Assert
         await Task.WhenAll(task1, task2, task3);
-        
+
         var loaded = await repository.LoadPortfolioAsync();
         Assert.NotNull(loaded);
         Assert.Equal(50000m, loaded.CashBalance);

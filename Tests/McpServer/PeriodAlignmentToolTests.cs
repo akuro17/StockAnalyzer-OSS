@@ -28,8 +28,8 @@ public sealed class PeriodAlignmentToolTests : IDisposable
 
     public PeriodAlignmentToolTests()
     {
-        ParquetFixtureBuilder.SeedDailyOhlcvFromDatedCloses(_fixture.DailyDirectory, Open, Weekdays(includeHoliday: true, price: i => 100m + 0.9m * i + (i * i % 7)));
-        ParquetFixtureBuilder.SeedDailyOhlcvFromDatedCloses(_fixture.DailyDirectory, HolidayOnMonday, Weekdays(includeHoliday: false, price: i => 60m + 0.5m * i + (i * 5 % 9)));
+        ParquetFixtureBuilder.SeedDailyOhlcvFromDatedCloses(_fixture.DailyDirectory, Open, McpTestSupport.WeekdayCloses(FirstDay, LastDay, i => 100m + 0.9m * i + (i * i % 7)));
+        ParquetFixtureBuilder.SeedDailyOhlcvFromDatedCloses(_fixture.DailyDirectory, HolidayOnMonday, McpTestSupport.WeekdayCloses(FirstDay, LastDay, i => 60m + 0.5m * i + (i * 5 % 9), Holiday));
         File.WriteAllText(_fixture.TickerListPath, JsonSerializer.Serialize(new[] { Open, HolidayOnMonday }));
     }
 
@@ -41,28 +41,6 @@ public sealed class PeriodAlignmentToolTests : IDisposable
         }
 
         _fixture.Dispose();
-    }
-
-    private static List<(DateTime Date, decimal Close)> Weekdays(bool includeHoliday, Func<int, decimal> price)
-    {
-        var bars = new List<(DateTime, decimal)>();
-        int i = 0;
-        for (DateTime day = FirstDay; day <= LastDay; day = day.AddDays(1))
-        {
-            if (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
-            {
-                continue;
-            }
-
-            if (day != Holiday || includeHoliday)
-            {
-                bars.Add((day, price(i)));
-            }
-
-            i++;
-        }
-
-        return bars;
     }
 
     private async Task<JsonElement> CallAsync(string tool, string arguments)

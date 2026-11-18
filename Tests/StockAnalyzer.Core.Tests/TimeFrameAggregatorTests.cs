@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // the legacy first-trading-day aggregation (TimeFrameAggregator.Aggregate, AggregateDailyToWeekly/Monthly) is what this file verifies
+
 using Xunit;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Services;

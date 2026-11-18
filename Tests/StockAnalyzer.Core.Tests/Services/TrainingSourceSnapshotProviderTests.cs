@@ -184,10 +184,13 @@ public sealed class TrainingSourceSnapshotProviderTests
                     new CandleData(new DateTime(2024, 1, 1), 1m, 1m, 1m, 1m, 1),
                 }),
             });
-        var spec = new FeatureSpec { Channels = new[]
+        var spec = new FeatureSpec
+        {
+            Channels = new[]
         {
             new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.ZigZag },
-        } };
+        }
+        };
         var exporter = new IndicatorChannelExporter(new Mock<IMarketDataProvider>().Object, IndicatorFactory.Default);
         await Assert.ThrowsAsync<InvalidOperationException>(() => exporter.ExportPreparedAsync(spec, input));
     }
@@ -265,28 +268,44 @@ public sealed class TrainingSourceSnapshotProviderTests
                 if (mutation == "future") evidence[0] = new { date = dates[0].ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), period_start_utc = JobStart.AddDays(1), period_end_utc = JobStart.AddDays(2), available_at_utc = JobStart.AddDays(3), is_final = true };
                 if (mutation == "overlap") evidence[1] = new { date = dates[1].ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), period_start_utc = new DateTimeOffset(dates[0].AddDays(1), TimeSpan.Zero), period_end_utc = new DateTimeOffset(dates[1].AddDays(days), TimeSpan.Zero), available_at_utc = new DateTimeOffset(dates[1].AddDays(days + 1), TimeSpan.Zero), is_final = true };
                 var hash = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
-                entries.Add(new { symbol, path = mutation == "traversal" ? "../outside.parquet"
+                entries.Add(new
+                {
+                    symbol,
+                    path = mutation == "traversal" ? "../outside.parquet"
                         : nestedDirectory is not null ? nestedDirectory + "/" + symbol + ".parquet" : symbol + ".parquet",
                     sha256 = mutation == "hash" ? new string('0', 64) : hash,
-                    row_count = dates.Length, bar_evidence = evidence });
+                    row_count = dates.Length,
+                    bar_evidence = evidence
+                });
             }
             var manifestPath = Path.Combine(_root, "manifest.json");
             var manifestJson = JsonSerializer.Serialize(new
             {
-                schema_version = 1, provider_id = "fixture", dataset_revision = "rev-1",
-                as_of_utc = JobStart.AddDays(-1), timeframe = timeframe.ToString().ToLowerInvariant(), symbols = entries,
+                schema_version = 1,
+                provider_id = "fixture",
+                dataset_revision = "rev-1",
+                as_of_utc = JobStart.AddDays(-1),
+                timeframe = timeframe.ToString().ToLowerInvariant(),
+                symbols = entries,
             });
             if (mutation == "offset_missing") manifestJson = manifestJson.Replace("+00:00", "");
             File.WriteAllText(manifestPath, manifestJson);
             Config = new TrainingJobConfig
             {
-                Symbols = symbols, Architecture = "lstm", WindowSize = 5, Horizon = 1,
-                Timeframe = timeframe, FeatureMode = PredictionFeatureMode.ComposedFeatures,
-                FeatureSpec = new FeatureSpec { Channels = new[]
+                Symbols = symbols,
+                Architecture = "lstm",
+                WindowSize = 5,
+                Horizon = 1,
+                Timeframe = timeframe,
+                FeatureMode = PredictionFeatureMode.ComposedFeatures,
+                FeatureSpec = new FeatureSpec
+                {
+                    Channels = new[]
                 {
                     new FeatureChannel { Kind = FeatureChannelKind.Price, Price = PriceType.Close },
                     new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.SMA },
-                } },
+                }
+                },
                 SourceManifestPath = manifestPath,
             };
         }

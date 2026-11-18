@@ -37,9 +37,9 @@ namespace StockAnalyzer.Core.Tests.ZeroAllocation
             //     - Visually leaves the 110-120 vertical space empty, rendering 110-100 adjacent to 110-120's bottom edge.
             //   - Continuation Brick 3: currentHigh=110, currentLow=100. closePrice=90 is <= 100-10=90.
             //     - Brick 3: Starts at currentLow 100 downwards to 90.
-            
+
             Assert.Equal(3, adapter.Count);
-            
+
             var opens = adapter.Opens.Span;
             var closes = adapter.Closes.Span;
 

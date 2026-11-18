@@ -26,24 +26,24 @@ public class CoreCoppockCurveIndicator : CoreIndicatorBase
 
         // Coppock = WMA[10] of (ROC[14] + ROC[11])
         int maxRoc = Math.Max(LongRocPeriod, ShortRocPeriod);
-        
+
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         var rocSum = new List<decimal>();
 
         for (int i = 0; i < candles.Count; i++)
         {
-           if (i < maxRoc)
-           {
-               rocSum.Add(0); // Placeholder
-               continue;
-           }
+            if (i < maxRoc)
+            {
+                rocSum.Add(0); // Placeholder
+                continue;
+            }
 
-           decimal longBase = priceSeries[i - LongRocPeriod] ?? 0m;
-           decimal shortBase = priceSeries[i - ShortRocPeriod] ?? 0m;
-           decimal current = priceSeries[i] ?? 0m;
-           decimal rocLong = longBase == 0m ? 0m : (current - longBase) / longBase * 100m;
-           decimal rocShort = shortBase == 0m ? 0m : (current - shortBase) / shortBase * 100m;
-           rocSum.Add(rocLong + rocShort);
+            decimal longBase = priceSeries[i - LongRocPeriod] ?? 0m;
+            decimal shortBase = priceSeries[i - ShortRocPeriod] ?? 0m;
+            decimal current = priceSeries[i] ?? 0m;
+            decimal rocLong = longBase == 0m ? 0m : (current - longBase) / longBase * 100m;
+            decimal rocShort = shortBase == 0m ? 0m : (current - shortBase) / shortBase * 100m;
+            rocSum.Add(rocLong + rocShort);
         }
 
         // Apply WMA to rocSum
@@ -51,7 +51,7 @@ public class CoreCoppockCurveIndicator : CoreIndicatorBase
         // For simplicity, reusing CoreWma logic would be best, but implementing inline here for now
         // Or better: use helper if available. 
         // Implementing standard WMA loop for now.
-        
+
         for (int i = 0; i < candles.Count; i++)
         {
             if (i < maxRoc + WmaPeriod - 1)

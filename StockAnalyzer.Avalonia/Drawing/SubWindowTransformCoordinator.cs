@@ -45,45 +45,45 @@ public class SubWindowTransformCoordinator
     {
         lock (_gate)
         {
-        if (mainTransform == null || layout.PanelAreas == null || layout.PanelAreas.Count == 0
-            || snapshot.IndicatorSettings == null || !isSubWindowVisible)
-        {
-            _transforms.Clear();
-            _yTransforms.Clear();
-            _maxConfiguredPanelIndex = -1;
-            return;
-        }
-
-        _panelCountThisPass = 0;
-
-        PanelLayoutEnumerator.ForEachPanel(
-            snapshot.IndicatorSettings,
-            isSubWindowVisible,
-            _seenGroups,
-            _groupBuffer,
-            (Coord: this, Layout: layout, Snapshot: snapshot, Main: mainTransform),
-            static (int panelIndex, CoreIndicatorSettings primary, IReadOnlyList<CoreIndicatorSettings>? group,
-                    (SubWindowTransformCoordinator Coord, ChartLayoutContext Layout, ChartDataSnapshot Snapshot, ICoordinateTransform Main) st) =>
+            if (mainTransform == null || layout.PanelAreas == null || layout.PanelAreas.Count == 0
+                || snapshot.IndicatorSettings == null || !isSubWindowVisible)
             {
-                if (panelIndex >= st.Layout.PanelAreas.Count) return;
+                _transforms.Clear();
+                _yTransforms.Clear();
+                _maxConfiguredPanelIndex = -1;
+                return;
+            }
 
-                var (minVal, maxVal) = group != null
-                    ? PanelValueRangeCalculator.CalculateGroup(st.Snapshot, group)
-                    : PanelValueRangeCalculator.Calculate(st.Snapshot, primary);
+            _panelCountThisPass = 0;
 
-                st.Coord.ConfigurePanelTransform(panelIndex, st.Layout.PanelAreas[panelIndex], minVal, maxVal, st.Main, st.Snapshot);
-                st.Coord._panelCountThisPass = panelIndex + 1;
-            });
+            PanelLayoutEnumerator.ForEachPanel(
+                snapshot.IndicatorSettings,
+                isSubWindowVisible,
+                _seenGroups,
+                _groupBuffer,
+                (Coord: this, Layout: layout, Snapshot: snapshot, Main: mainTransform),
+                static (int panelIndex, CoreIndicatorSettings primary, IReadOnlyList<CoreIndicatorSettings>? group,
+                        (SubWindowTransformCoordinator Coord, ChartLayoutContext Layout, ChartDataSnapshot Snapshot, ICoordinateTransform Main) st) =>
+                {
+                    if (panelIndex >= st.Layout.PanelAreas.Count) return;
 
-        // Prune transforms for panels that no longer exist. Panel indices are always the
-        // contiguous range [0, _panelCountThisPass); anything above, up to the previous high-water
-        // mark, is stale. Fixed-range loop => zero allocation.
-        for (int k = _panelCountThisPass; k <= _maxConfiguredPanelIndex; k++)
-        {
-            _transforms.Remove(k);
-            _yTransforms.Remove(k);
-        }
-        _maxConfiguredPanelIndex = _panelCountThisPass - 1;
+                    var (minVal, maxVal) = group != null
+                        ? PanelValueRangeCalculator.CalculateGroup(st.Snapshot, group)
+                        : PanelValueRangeCalculator.Calculate(st.Snapshot, primary);
+
+                    st.Coord.ConfigurePanelTransform(panelIndex, st.Layout.PanelAreas[panelIndex], minVal, maxVal, st.Main, st.Snapshot);
+                    st.Coord._panelCountThisPass = panelIndex + 1;
+                });
+
+            // Prune transforms for panels that no longer exist. Panel indices are always the
+            // contiguous range [0, _panelCountThisPass); anything above, up to the previous high-water
+            // mark, is stale. Fixed-range loop => zero allocation.
+            for (int k = _panelCountThisPass; k <= _maxConfiguredPanelIndex; k++)
+            {
+                _transforms.Remove(k);
+                _yTransforms.Remove(k);
+            }
+            _maxConfiguredPanelIndex = _panelCountThisPass - 1;
         }
     }
 

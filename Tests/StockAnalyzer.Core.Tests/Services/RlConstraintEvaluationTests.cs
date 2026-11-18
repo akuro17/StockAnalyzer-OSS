@@ -25,12 +25,20 @@ public sealed class RlConstraintEvaluationTests
         return new(bars, "R04_HAND", TimeFrame.D1, BacktestInput.CurrentDataVersion, Start, Start.AddDays(bars.Length), 0, RlContract.WindowLength - 1);
     }
     private static BacktestConfiguration Costs(decimal capital = 1000m, decimal flat = 2m, decimal unit = .5m, decimal slip = 0m)
-        => RlContract.CreateConfiguration(new BacktestConfiguration { InitialCapital = capital, CommissionFlat = flat,
-            CommissionPerUnit = unit, SlippageRatio = slip, SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter });
+        => RlContract.CreateConfiguration(new BacktestConfiguration
+        {
+            InitialCapital = capital,
+            CommissionFlat = flat,
+            CommissionPerUnit = unit,
+            SlippageRatio = slip,
+            SizingModel = BacktestDefaults.SizingModel,
+            SizingParameter = BacktestDefaults.SizingParameter
+        });
     private static IRlContinuousTradingSession Session(BacktestInput input, BacktestConfiguration costs)
         => new BacktestEngine(IndicatorFactory.Default).CreateRlContinuousSession(input, costs);
 
-    [Fact] public void CoreEntryEvidenceCapturesActualGapFillAndRetainedControls()
+    [Fact]
+    public void CoreEntryEvidenceCapturesActualGapFillAndRetainedControls()
     {
         using var session = Session(Input(400m, 400m), Costs()); session.Reset();
         var step = session.Step(RlAction.Buy, 1f, 1f); var entry = step.EntryExecution!;
@@ -45,7 +53,8 @@ public sealed class RlConstraintEvaluationTests
         Assert.Null(closed.Snapshot.RetainedEntrySizeRatio);
     }
 
-    [Fact] public void ZeroCapFundsAndHoldAreDifferentEvidenceAndNoRejectionRateThresholdExists()
+    [Fact]
+    public void ZeroCapFundsAndHoldAreDifferentEvidenceAndNoRejectionRateThresholdExists()
     {
         using var zero = Session(Input(), Costs()); zero.Reset();
         var noEntry = zero.Step(RlAction.Buy, -1f, 0f).EntryExecution!;
@@ -67,7 +76,8 @@ public sealed class RlConstraintEvaluationTests
         Assert.Equal(RlEntryConstraintStatus.NotApplicable, RlConstraintEvaluation.Summarize(Array.Empty<RlEntryExecution>()).Status);
     }
 
-    [Fact] public void ExitSensitivityHasFixedHandAnswerAndDoesNotInventFillsOrChangeTheMarkScore()
+    [Fact]
+    public void ExitSensitivityHasFixedHandAnswerAndDoesNotInventFillsOrChangeTheMarkScore()
     {
         var fixedAnswer = RlConstraintEvaluation.ExitSensitivity(2m, 100m, 1000m, Costs(slip: .01m));
         Assert.Equal(99m, fixedAnswer.SyntheticExitPrice); Assert.Equal(3m, fixedAnswer.AdditionalCommission);
@@ -86,10 +96,12 @@ public sealed class RlConstraintEvaluationTests
         Assert.Equal(-.003m, RlEvaluation.Parse(RlEvaluation.Finish(new("fixture", "validation", 0, RlContract.SupportLength), state, result, 0, 0).TerminalReturn));
     }
 
-    [Fact] public void SensitivityOverflowIsAnExplicitFailure()
+    [Fact]
+    public void SensitivityOverflowIsAnExplicitFailure()
         => Assert.Throws<OverflowException>(() => RlConstraintEvaluation.ExitSensitivity(3m, decimal.MaxValue, 1000m, Costs(slip: .5m)));
 
-    [Fact] public void FixedBaselineUsesItsOwnControlWhileActorProposalAndHeldEntryRemainDistinct()
+    [Fact]
+    public void FixedBaselineUsesItsOwnControlWhileActorProposalAndHeldEntryRemainDistinct()
     {
         var costs = Costs(); using var session = Session(Input(), costs); var state = session.Reset();
         var proposal = RlContinuousContract.Map(0f, 0f);

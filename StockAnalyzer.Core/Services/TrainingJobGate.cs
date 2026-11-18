@@ -42,8 +42,12 @@ public sealed class TrainingJobGate
     {
         var stable = config with
         {
-            RunId = null, ResourceLimits = null, RemainingRunBudgetSeconds = null,
-            ParentModelHash = null, IndicatorChannelExportPaths = null, PreparedInputDir = null,
+            RunId = null,
+            ResourceLimits = null,
+            RemainingRunBudgetSeconds = null,
+            ParentModelHash = null,
+            IndicatorChannelExportPaths = null,
+            PreparedInputDir = null,
             Hyperparameters = config.Hyperparameters.OrderBy(p => p.Key, StringComparer.Ordinal)
                 .ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
         };

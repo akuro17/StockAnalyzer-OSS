@@ -19,7 +19,7 @@ public class DispatcherService : IDispatcherService
         // Use the stateful overload to avoid closure allocations.
         // We use a static lambda to ensure no capture of 'this' or local variables.
         // The only remaining allocation is the boxing of the state tuple.
-        global::Avalonia.Threading.Dispatcher.UIThread.Post(static s => 
+        global::Avalonia.Threading.Dispatcher.UIThread.Post(static s =>
         {
             var tuple = ((Action<T>, T))s!;
             tuple.Item1(tuple.Item2);

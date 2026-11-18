@@ -68,7 +68,7 @@ internal sealed class GetModelAttentionTool : IMcpTool
     public string Description =>
         "Computes attention weights of the prediction over historical bars for a registered model generation. " +
         "The bars are read in the model's own time frame (D1, W1 or MN1) and, as on the chart, a running last week or month is included; " +
-        "a W1 or MN1 bar is dated by its first trading day. Requires --enable-execution. Zero-mutation; results are not persisted.";
+        "a W1 or MN1 bar is dated by the start of its period (the Monday, the 1st). Requires --enable-execution. Zero-mutation; results are not persisted.";
 
     public bool IsHeavy => false;
 

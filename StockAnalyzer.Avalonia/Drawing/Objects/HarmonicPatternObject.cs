@@ -25,7 +25,7 @@ public class HarmonicPatternObject : IChartObject, IDisposable, IDrawingCalculat
     private bool _disposed;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.HarmonicPattern;
-    
+
     public List<ChartPoint> Points { get; } = new(2);
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
@@ -54,7 +54,7 @@ public class HarmonicPatternObject : IChartObject, IDisposable, IDrawingCalculat
     /// -1 means no label is hovered (show all patterns).
     /// </summary>
     public int HoveredResultIndex { get; set; } = -1;
-    
+
     public SkiaSharp.SKColor SkiaColor => new(Color.R, Color.G, Color.B, Color.A);
     public SkiaSharp.SKColor SkiaFillColor => new(FillColor.R, FillColor.G, FillColor.B, FillColor.A);
 
@@ -74,7 +74,7 @@ public class HarmonicPatternObject : IChartObject, IDisposable, IDrawingCalculat
     [DisplayName("Pivot Mode")]
     [Category("Detection")]
     public HarmonicPivotMode PivotMode { get; set; } = HarmonicPivotMode.Legacy;
-    
+
     /// <summary>
     /// Cached detection results within the defined window.
     /// The renderer reads this to draw the patterns.
@@ -229,7 +229,7 @@ public class HarmonicPatternObject : IChartObject, IDisposable, IDrawingCalculat
             var c = new PivotPoint(r.C.Index + startIndex, r.C.Time, r.C.Price, r.C.IsHigh);
             var d = new PivotPoint(r.D.Index + startIndex, r.D.Time, r.D.Price, r.D.IsHigh);
             int? confirmedAtIndex = r.ConfirmedAtIndex.HasValue ? r.ConfirmedAtIndex.Value + startIndex : (int?)null;
-            
+
             adjustedResults.Add(new HarmonicPatternResult(
                 r.PatternType, x, a, b, c, d, r.ConfidenceScore, r.PrzLow, r.PrzHigh, r.IsBullish, confirmedAtIndex));
         }

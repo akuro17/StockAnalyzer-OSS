@@ -21,7 +21,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
                 SlowLimit = p.SlowLimit;
             }
         }
-        
+
         // This list will hold the calculated FAMA values. The base class holds values for MAMA.
         public List<decimal?> Fama { get; } = new();
 

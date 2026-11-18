@@ -27,7 +27,7 @@ public interface IStockAnalyzerSettings
     // Chart Colors (Hex)
     string RenkoUpColor { get; }
     string RenkoDownColor { get; }
-    
+
     string KagiUpColor { get; }
     string KagiDownColor { get; }
 

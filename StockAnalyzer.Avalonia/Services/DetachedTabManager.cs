@@ -134,9 +134,9 @@ namespace StockAnalyzer.Avalonia.Services
                         {
                             cvm.IsSyncEnabled = det.IsSyncEnabled;
                             cvm.Symbol = det.Symbol ?? StockAnalyzer.Core.ChartConstants.DefaultSymbol;
-                            if (!string.IsNullOrEmpty(det.Timeframe) && Enum.TryParse<StockAnalyzer.Core.Models.TimeframeType>(det.Timeframe, out var tf)) 
+                            if (!string.IsNullOrEmpty(det.Timeframe) && Enum.TryParse<StockAnalyzer.Core.Models.TimeframeType>(det.Timeframe, out var tf))
                                 cvm.SelectedTimeFrame = tf;
-                            if (det.MaxCandleCount > 0) 
+                            if (det.MaxCandleCount > 0)
                                 cvm.MaxCandleCount = det.MaxCandleCount;
 
                             // Restore indicators EARLY to ensure layout calculates correctly
@@ -172,9 +172,9 @@ namespace StockAnalyzer.Avalonia.Services
                             if (!cvm.IsSyncEnabled)
                             {
                                 cvm.Symbol = det.Symbol ?? StockAnalyzer.Core.ChartConstants.DefaultSymbol;
-                                if (!string.IsNullOrEmpty(det.Timeframe) && Enum.TryParse<StockAnalyzer.Core.Models.TimeframeType>(det.Timeframe, out var tf)) 
+                                if (!string.IsNullOrEmpty(det.Timeframe) && Enum.TryParse<StockAnalyzer.Core.Models.TimeframeType>(det.Timeframe, out var tf))
                                     cvm.SelectedTimeFrame = tf;
-                                if (det.MaxCandleCount > 0) 
+                                if (det.MaxCandleCount > 0)
                                     cvm.MaxCandleCount = det.MaxCandleCount;
 
                                 if (!string.IsNullOrEmpty(det.ChartType) && Enum.TryParse<ChartType>(det.ChartType, out var ct))
@@ -328,8 +328,8 @@ namespace StockAnalyzer.Avalonia.Services
                         info.IsSubWindowVisible = cvm.IsSubWindowVisible;
 
                         // Deep clone indicators with sync fallback
-                        var sourceIndicators = cvm.Indicators.Count > 0 
-                            ? (IReadOnlyList<CoreIndicatorSettings>)cvm.Indicators 
+                        var sourceIndicators = cvm.Indicators.Count > 0
+                            ? (IReadOnlyList<CoreIndicatorSettings>)cvm.Indicators
                             : (cvm.IsSyncEnabled && fallbackIndicators != null ? fallbackIndicators : (IReadOnlyList<CoreIndicatorSettings>)cvm.Indicators);
 
                         info.Indicators = new List<CoreIndicatorSettings>(sourceIndicators.Count);

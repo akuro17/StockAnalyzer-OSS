@@ -92,7 +92,7 @@ public class CoreBocpdIndicator : CoreIndicatorBase
             return CreateMultiSeriesResult();
         }
 
-        var returnWindow = new LogReturnWindow(PriceDataHelper.ExtractPriceSeries(candles, PriceSource));
+        var returnWindow = ReturnSeriesWindow.FromPrices(PriceDataHelper.ExtractPriceSeries(candles, PriceSource), useLogReturn: true);
         BocpdMath.Compute(
             returnWindow.Returns,
             returnWindow.IsValid,

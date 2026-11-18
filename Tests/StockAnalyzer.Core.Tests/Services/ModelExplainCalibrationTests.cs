@@ -356,11 +356,11 @@ public sealed class ModelExplainCalibrationTests : IDisposable
         Assert.InRange(explanation.Records.Length, 1, 3 * ModelExplanationContract.RepresentativePerClass
             + ModelExplanationContract.RepresentativeLatest);
         foreach (var record in explanation.Records)
-        foreach (var output in record.Outputs)
-        {
-            Assert.Equal(output.Prediction, output.BaseValue + output.Contributions.Sum(c => c.Value), 9);
-            Assert.True(output.Top().Length <= ModelExplanationContract.TopCount);
-        }
+            foreach (var output in record.Outputs)
+            {
+                Assert.Equal(output.Prediction, output.BaseValue + output.Contributions.Sum(c => c.Value), 9);
+                Assert.True(output.Top().Length <= ModelExplanationContract.TopCount);
+            }
         Assert.Equal(explanation.BaseChannels.Length, explanation.Pdp!.Channels.Length);
     }
 
@@ -397,7 +397,7 @@ public sealed class ModelExplainCalibrationTests : IDisposable
             {
                 record!.AsObject().Remove("stability_half_delta");
                 foreach (var output in record["outputs"]!.AsArray())
-                foreach (var contribution in output!["contributions"]!.AsArray()) contribution!.AsObject().Remove("standard_error");
+                    foreach (var contribution in output!["contributions"]!.AsArray()) contribution!.AsObject().Remove("standard_error");
             }
             foreach (var channel in root["pdp"]!["channels"]!.AsArray()) channel!.AsObject().Remove("out_of_support_rate");
         });
@@ -606,7 +606,8 @@ public sealed class ModelExplainCalibrationTests : IDisposable
         var failed = Source(".explain.json");
         Edit(failed + ".metrics.json", node => node[ModelExplanationContract.MetricsKey] = new JsonObject
         {
-            ["status"] = ModelExplanationContract.GenerationFailedStatus, ["error"] = "ValueError",
+            ["status"] = ModelExplanationContract.GenerationFailedStatus,
+            ["error"] = "ValueError",
         });
         var (registry, manifest) = await RegisterAsync(failed);
         using (registry)
@@ -963,8 +964,12 @@ public sealed class ModelExplainCalibrationTests : IDisposable
 
     private static TrainingJobConfig Config(bool calibration, TargetType target = TargetType.Classification) => new()
     {
-        Symbols = new[] { "AAA" }, Architecture = "lstm", WindowSize = 30, Horizon = 5,
-        Calibration = calibration, TargetType = target,
+        Symbols = new[] { "AAA" },
+        Architecture = "lstm",
+        WindowSize = 30,
+        Horizon = 5,
+        Calibration = calibration,
+        TargetType = target,
     };
 
     [Fact]

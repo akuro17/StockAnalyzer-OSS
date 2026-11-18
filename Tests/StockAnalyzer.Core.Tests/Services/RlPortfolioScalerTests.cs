@@ -93,7 +93,9 @@ public sealed class RlPortfolioScalerTests : IDisposable
 
     private static Dictionary<string, string> Metadata() => new()
     {
-        ["scaler_ref"] = "policy.onnx.scaler.json", ["window_size"] = "64", ["channels"] = "5",
+        ["scaler_ref"] = "policy.onnx.scaler.json",
+        ["window_size"] = "64",
+        ["channels"] = "5",
     };
 
     [Theory]

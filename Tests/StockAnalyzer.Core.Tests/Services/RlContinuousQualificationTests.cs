@@ -88,7 +88,8 @@ public sealed class RlContinuousQualificationTests
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(result, RlFiles.Json));
     }
 
-    [ContinuousQualification] public void QualifiedInferenceMeasurement()
+    [ContinuousQualification]
+    public void QualifiedInferenceMeasurement()
     {
         string directory = Environment.GetEnvironmentVariable(ActorDirectoryVariable) ?? throw new InvalidOperationException("Qualified actor directory required.");
         using var actor = new RlQModel(Path.Combine(directory, RlFiles.Model), continuous: true);
@@ -104,12 +105,19 @@ public sealed class RlContinuousQualificationTests
         Assert.Equal(RlContinuousContract.ActionCount, last!.Length);
         File.WriteAllText(Path.Combine(Path.GetTempPath(), "sa_T16_LocalData_inference_measurement_20261004.json"), JsonSerializer.Serialize(new
         {
-            provider = "CPUExecutionProvider", runtime = Microsoft.ML.OnnxRuntime.OrtEnv.Instance().GetVersionString(),
-            input_shape = new[] { 1, RlContract.ObservationLength }, output_shape = new[] { 1, RlContinuousContract.ActionCount },
-            threads = RlContract.CpuThreads, warmup_calls = RlContract.InferenceWarmupCalls, measured_calls = RlContract.InferenceMeasuredCalls,
-            managed_allocated_bytes = managed, process_private_before_bytes = beforePrivate, process_private_after_bytes = process.PrivateMemorySize64,
+            provider = "CPUExecutionProvider",
+            runtime = Microsoft.ML.OnnxRuntime.OrtEnv.Instance().GetVersionString(),
+            input_shape = new[] { 1, RlContract.ObservationLength },
+            output_shape = new[] { 1, RlContinuousContract.ActionCount },
+            threads = RlContract.CpuThreads,
+            warmup_calls = RlContract.InferenceWarmupCalls,
+            measured_calls = RlContract.InferenceMeasuredCalls,
+            managed_allocated_bytes = managed,
+            process_private_before_bytes = beforePrivate,
+            process_private_after_bytes = process.PrivateMemorySize64,
             native_measurement_limit = "Process private memory is a process-wide proxy, not isolated native allocator accounting.",
-            measured_elapsed_ms = elapsed * 1000d / Stopwatch.Frequency, model_sha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.Model))
+            measured_elapsed_ms = elapsed * 1000d / Stopwatch.Frequency,
+            model_sha256 = ContentHash.OfFile(Path.Combine(directory, RlFiles.Model))
         }, RlFiles.Json));
     }
 }

@@ -20,7 +20,7 @@ public class RectangleObject : RelativeGeometricRenderer, IFillableChartObject
     private const float GeometryEpsilon = 1e-4f;
 
     public override ChartObjectType Type => ChartObjectType.Rectangle;
-    
+
     // Properties for Fill, Gradient, and Blending
     [Category("Fill Style")]
     [DisplayName("Is Filled")]
@@ -177,7 +177,7 @@ public class RectangleObject : RelativeGeometricRenderer, IFillableChartObject
 
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
-        
+
         double left = Math.Min(p1.X, p2.X);
         double top = Math.Min(p1.Y, p2.Y);
         double right = Math.Max(p1.X, p2.X);

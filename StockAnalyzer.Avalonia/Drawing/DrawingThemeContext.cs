@@ -102,8 +102,8 @@ public static class DrawingThemeContext
     }
 
     public static void Initialize(
-        IThemeManager themeManager, 
-        IFontSettingsManager fontSettingsManager, 
+        IThemeManager themeManager,
+        IFontSettingsManager fontSettingsManager,
         StockAnalyzer.Core.Services.IChartSettingsManager? chartSettingsManager = null,
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null)
     {

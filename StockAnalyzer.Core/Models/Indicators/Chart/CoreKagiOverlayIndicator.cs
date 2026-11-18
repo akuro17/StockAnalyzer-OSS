@@ -25,7 +25,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
 
             bool isUp = true;
 
-            for(int i = 1; i < candles.Count; i++)
+            for (int i = 1; i < candles.Count; i++)
             {
                 var currentPrice = candles[i].Close;
                 var lastLine = kagiLines.Last();

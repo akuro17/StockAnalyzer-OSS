@@ -354,7 +354,7 @@ public sealed class SandboxedExecutionGatewayTests : IDisposable
     public async Task Failure_AnErrorOfTheOrchestratorAfterItStartedIsTrainingFailedWithTheMessageCut()
     {
         string longMessage = new('x', 500);
-        SandboxedExecutionGateway gateway = Create(new ScriptedOrchestrator { Run = async (_, _, _) => { await Task.Yield(); throw new IOException(longMessage); } });
+        SandboxedExecutionGateway gateway = Create(new ScriptedOrchestrator { Run = async (_, _, _) => { await Task.Run(() => { }).ConfigureAwait(false); throw new IOException(longMessage); } });
 
         TrainingJobTicket ticket = await gateway.StartTrainingAsync(Request(), CancellationToken.None);
         TrainingJobStatus status = await WaitForAsync(gateway, ticket.JobId, TrainingJobState.Failed);
@@ -902,7 +902,7 @@ public sealed class SandboxedExecutionGatewayTests : IDisposable
         Assert.False(configured.Feasible);                             // the settings reach the runner
     }
 
-    private static string GoodModel =>Path.Combine(AppContext.BaseDirectory, "Assets", "trend_predictor_goodmeta.onnx");
+    private static string GoodModel => Path.Combine(AppContext.BaseDirectory, "Assets", "trend_predictor_goodmeta.onnx");
 
     private static EphemeralTrainingRequest Request() => new()
     {

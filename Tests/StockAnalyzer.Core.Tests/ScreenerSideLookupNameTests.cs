@@ -13,12 +13,12 @@ public class ScreenerSideLookupNameTests
 {
     private static ScreenerIndicatorSideConfig Side(string custom, string output, IndicatorType type = IndicatorType.SMA,
         ScreenerItemCategoryType category = ScreenerItemCategoryType.Column) => new()
-    {
-        CustomDisplayName = custom,
-        OutputName = output,
-        IndicatorType = type,
-        CategoryType = category
-    };
+        {
+            CustomDisplayName = custom,
+            OutputName = output,
+            IndicatorType = type,
+            CategoryType = category
+        };
 
     [Theory]
     [InlineData("P/B (Live)", "PBR", "P/B (Live)")]      // the catalog description wins
@@ -46,16 +46,16 @@ public class ScreenerSideLookupNameTests
     {
         string[] names = { "", " ", "SMA", "Main", "Granville's Law Buy Signal", "Trailing PE" };
         foreach (string custom in names)
-        foreach (string output in names)
-        foreach (var type in new[] { IndicatorType.SMA, IndicatorType.RSI })
-        foreach (var category in new[] { ScreenerItemCategoryType.Indicator, ScreenerItemCategoryType.Column, ScreenerItemCategoryType.Criteria })
-        {
-            var side = Side(custom, output, type, category);
-            string? former = new[] { side.CustomDisplayName, side.OutputName, side.DisplayName }
-                .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main");
+            foreach (string output in names)
+                foreach (var type in new[] { IndicatorType.SMA, IndicatorType.RSI })
+                    foreach (var category in new[] { ScreenerItemCategoryType.Indicator, ScreenerItemCategoryType.Column, ScreenerItemCategoryType.Criteria })
+                    {
+                        var side = Side(custom, output, type, category);
+                        string? former = new[] { side.CustomDisplayName, side.OutputName, side.DisplayName }
+                            .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s) && s != "SMA" && s != "Main");
 
-            Assert.Equal(former ?? "", side.ResolveLookupName() ?? "");
-            Assert.Equal(former ?? side.DisplayName, side.ResolveLookupName() ?? side.DisplayName);
-        }
+                        Assert.Equal(former ?? "", side.ResolveLookupName() ?? "");
+                        Assert.Equal(former ?? side.DisplayName, side.ResolveLookupName() ?? side.DisplayName);
+                    }
     }
 }

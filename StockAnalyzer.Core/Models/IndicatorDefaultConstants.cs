@@ -289,6 +289,99 @@ public static class IndicatorDefaultConstants
     public const decimal HurstMaxValue = UnitIntervalMaxValue;
     public static readonly IndicatorColor HurstModifiedColor = new(255, 0, 114, 178); // Okabe-Ito Blue #0072B2
 
+    // === Statistical tests of a window of returns (statistical functions, docs/indicators_formulas.md, records indicators_formulas_0596 and indicators_formulas_0597) ===
+    // Significance level of the p-value tests (Jarque-Bera, Ljung-Box): the constant reference line is drawn at this level.
+    public const double TestSignificanceDefault = 0.05;
+    public const double TestSignificanceMin = 0.001;
+    public const double TestSignificanceMax = 0.20;
+
+    // Skewness / Excess Kurtosis (unit: dimensionless; sample-adjusted G1 and G2 of the last Period returns)
+    public const int SkewnessKurtosisDefaultPeriod = 30;
+    public const int SkewnessKurtosisMinPeriod = 10;
+    public const int SkewnessKurtosisMaxPeriod = 500;
+    public const bool SkewnessKurtosisDefaultUseLogReturn = true;
+    public static readonly IndicatorColor SkewnessKurtosisKurtosisColor = new(255, 230, 159, 0); // Okabe-Ito Orange #E69F00
+
+    // Jarque-Bera normality test (unit: p-value in [0, 1] on a fixed 0..1 axis; the statistic itself is chart-suppressed)
+    public const int JarqueBeraDefaultPeriod = 60;
+    public const int JarqueBeraMinPeriod = 10;
+    public const int JarqueBeraMaxPeriod = 1000;
+    public const bool JarqueBeraDefaultUseLogReturn = true;
+
+    // Ljung-Box autocorrelation test on log returns (unit: p-value in [0, 1] on a fixed 0..1 axis; the Q statistic is chart-suppressed)
+    public const int LjungBoxDefaultPeriod = 60;
+    public const int LjungBoxMinPeriod = 20;
+    public const int LjungBoxMaxPeriod = 500;
+    public const int LjungBoxDefaultMaxLag = 10;
+    public const int LjungBoxMinMaxLag = 1;
+    public const int LjungBoxMaxMaxLag = 30;
+
+    // The reference line of a test panel (significance level of a p-value test, critical value of the ADF statistic, random-walk level of the variance ratio).
+    public static readonly IndicatorColor TestSignificanceLineColor = Gray;
+
+    // ADF Stationarity (augmented Dickey-Fuller tau with a constant on the last Period prices; unit: dimensionless statistic, the 5 % critical value is the reference line)
+    public const int AdfStationarityDefaultPeriod = 60;
+    public const int AdfStationarityMinPeriod = 20;
+    public const int AdfStationarityMaxPeriod = 500;
+    public const int AdfStationarityDefaultLagOrder = 1;
+    public const int AdfStationarityMinLagOrder = 0;
+    public const int AdfStationarityMaxLagOrder = StockAnalyzer.Core.MathUtils.StationarityTestMath.MaxLagOrder; // the capacity of the kernel
+    public const bool AdfStationarityDefaultUseLogPrice = true;
+
+    // Variance Ratio (Lo-MacKinlay VR(q) of the last Period log returns; unit: dimensionless, 1 = random walk, drawn as a constant reference line; the Z* statistic and its p-value are chart-suppressed)
+    public const int VarianceRatioDefaultPeriod = 60;
+    public const int VarianceRatioMinPeriod = 20;
+    public const int VarianceRatioMaxPeriod = 500;
+    public const int VarianceRatioDefaultAggregationHorizon = 5;
+    public const int VarianceRatioMinAggregationHorizon = 2;
+    public const int VarianceRatioMaxAggregationHorizon = 30;
+    public const decimal VarianceRatioRandomWalkLevel = 1m;
+
+    // Quantile Bands (type 7 quantiles of the last Period prices, unit: price; the median is the middle line)
+    public const int QuantileBandsDefaultPeriod = 20;
+    public const int QuantileBandsMinPeriod = 5;
+    public const int QuantileBandsMaxPeriod = 500;
+    public const double QuantileBandsDefaultUpperQuantile = 0.75;
+    public const double QuantileBandsMinUpperQuantile = 0.51;
+    public const double QuantileBandsMaxUpperQuantile = 0.99;
+    public const double QuantileBandsDefaultLowerQuantile = 0.25;
+    public const double QuantileBandsMinLowerQuantile = 0.01;
+    public const double QuantileBandsMaxLowerQuantile = 0.49;
+
+    // Theil-Sen / Siegel regression (robust line of the last Period prices, unit: price; the window limit is the measured bound of the kernel)
+    public const int TheilSenDefaultPeriod = 20;
+    public const int TheilSenMinPeriod = 5;
+    public const int TheilSenMaxPeriod = StockAnalyzer.Core.MathUtils.RobustRegressionMath.MaxWindowLength;
+    public const double TheilSenDefaultBandMultiplier = 2.0;
+    public const double TheilSenMinBandMultiplier = 0.0;
+    public const double TheilSenMaxBandMultiplier = 10.0;
+    public const bool TheilSenDefaultUseSiegelMedian = false;
+
+    // Cornish-Fisher VaR (one-bar lower-tail return quantile of the last Period simple returns; unit: ratio, a loss is negative; the confidence range is the one of the kernel)
+    public const int CornishFisherVarDefaultPeriod = 30;
+    public const int CornishFisherVarMinPeriod = 10;
+    public const int CornishFisherVarMaxPeriod = 500;
+    public const double CornishFisherVarDefaultConfidenceLevel = 0.95;
+    public const double CornishFisherVarMinConfidenceLevel = StockAnalyzer.Core.MathUtils.NormalityAndTailMath.MinConfidenceLevel;
+    public const double CornishFisherVarMaxConfidenceLevel = StockAnalyzer.Core.MathUtils.NormalityAndTailMath.MaxConfidenceLevel;
+    public static readonly IndicatorColor CornishFisherGaussianColor = new(255, 204, 121, 167); // Okabe-Ito Reddish purple #CC79A7
+
+    // Downside Deviation (unit: ratio per bar; sigma- and sigma+ of the last Period simple returns against the target return)
+    public const int DownsideDeviationDefaultPeriod = 20;
+    public const int DownsideDeviationMinPeriod = 5;
+    public const int DownsideDeviationMaxPeriod = 250;
+    public const double DownsideDeviationDefaultTargetReturn = 0.0;
+    public const double DownsideDeviationMinTargetReturn = -0.10;
+    public const double DownsideDeviationMaxTargetReturn = 0.10;
+    public static readonly IndicatorColor DownsideDeviationUpsideColor = new(255, 0, 158, 115); // Okabe-Ito Bluish green #009E73
+
+    // Bipower Variation (unit: log-return standard deviation per bar, a ratio; the jump ratio J / RV is a dimensionless value in [0, 1])
+    public const int BipowerVariationDefaultPeriod = 20;
+    public const int BipowerVariationMinPeriod = 5;
+    public const int BipowerVariationMaxPeriod = 250;
+    public static readonly IndicatorColor BipowerVariationTotalColor = new(255, 86, 180, 233); // Okabe-Ito Sky blue #56B4E9
+    public static readonly IndicatorColor BipowerVariationJumpColor = new(255, 213, 94, 0);    // Okabe-Ito Vermillion #D55E00
+
     // === Shannon entropy of the log returns (equal-width bins, normalised by ln(BinCount); unit: dimensionless in [0, 1]) ===
     public const int EntropyDefaultPeriod = 30;
     public const int EntropyMinPeriod = 5;

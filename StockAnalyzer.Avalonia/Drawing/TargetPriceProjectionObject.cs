@@ -180,7 +180,7 @@ public class TargetPriceProjectionObject : IChartObject, IDisposable, IDrawingCa
         {
             var target = targets[i];
             var anchorScreen = transform.ChartToScreen(target.Anchor);
-            
+
             // Create a virtual chart point at the target price to get the screen Y
             var targetChartPoint = new ChartPoint(target.Anchor.Time, target.Price);
             var targetScreen = transform.ChartToScreen(targetChartPoint);

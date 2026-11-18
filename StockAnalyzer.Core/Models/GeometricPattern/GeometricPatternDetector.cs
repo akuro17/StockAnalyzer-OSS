@@ -156,7 +156,7 @@ public static class GeometricPatternDetector
                 if (bestFormation != null)
                 {
                     allFormations.Add(bestFormation);
-                    
+
                     int nextPivotIdx = bestEndIndex;
                     while (nextPivotIdx < pivots.Count && pivots[nextPivotIdx].Index < bestFormation.EndIndex)
                     {
@@ -179,10 +179,10 @@ public static class GeometricPatternDetector
         if (formations.Count <= 1) return formations;
 
         // Score based on size, fit, and recency
-        var scoredFormations = formations.Select(f => 
+        var scoredFormations = formations.Select(f =>
         {
             double length = f.EndIndex - f.StartIndex + 1;
-            double sizeScore = Math.Pow(length, 1.2); 
+            double sizeScore = Math.Pow(length, 1.2);
             double recentness = 1.0 + (f.EndIndex / (double)totalCandles) * 0.5;
             double score = sizeScore * f.ConfidenceScore * recentness;
             return (Formation: f, Score: score);
@@ -203,7 +203,7 @@ public static class GeometricPatternDetector
                     int overlapLength = overlapEnd - overlapStart + 1;
                     int itemLength = item.Formation.EndIndex - item.Formation.StartIndex + 1;
                     int selLength = sel.EndIndex - sel.StartIndex + 1;
-                    
+
                     if (overlapLength > itemLength * 0.1 || overlapLength > selLength * 0.1)
                     {
                         overlaps = true;
@@ -346,7 +346,7 @@ public static class GeometricPatternDetector
             decimal candleHigh = candles[i].High;
             decimal candleLow = candles[i].Low;
             decimal candleClose = candles[i].Close;
-            
+
             // X-axis is the relative index from the formation start
             double relativeIndex = i - startIndex;
 
@@ -476,13 +476,13 @@ public static class GeometricPatternDetector
         {
             if (upperFlat && lowerFlat)
                 return GeometricFormationType.HorizontalBox;
-            
+
             // Both slopes are same sign and roughly parallel
             if (upperRising || lowerRising)
                 return GeometricFormationType.AscendingChannel;
             if (upperFalling || lowerFalling)
                 return GeometricFormationType.DescendingChannel;
-                
+
             return GeometricFormationType.HorizontalBox; // Fallback for very slight parallel slopes
         }
         else if (isDiverging)
@@ -495,36 +495,36 @@ public static class GeometricPatternDetector
                 double startWidth = Math.Abs(upperIntercept - lowerIntercept);
                 int length = endIndex - startIndex;
                 double endWidth = Math.Abs((upperSlope * length + upperIntercept) - (lowerSlope * length + lowerIntercept));
-                
+
                 // Protect against divide-by-zero if lines cross exactly at startIndex
                 if (startWidth > 0 && (endWidth / startWidth) >= 1.3)
                 {
                     return GeometricFormationType.Megaphone;
                 }
             }
-            
+
             // If it diverges but doesn't meet strict criteria (e.g., upper is flat and lower is falling rapidly),
             // it's not a valid recognizable pattern. We do not fallback for diverging shapes.
             return null;
         }
         else if (isConverging)
         {
-             if (upperRising && lowerRising)
-             {
-                 return normLowerSlope > normUpperSlope ? GeometricFormationType.RisingWedge : GeometricFormationType.AscendingChannel;
-             }
-             if (upperFalling && lowerFalling)
-             {
-                 return normUpperSlope < normLowerSlope ? GeometricFormationType.FallingWedge : GeometricFormationType.DescendingChannel;
-             }
-             
-             if (upperFlat && lowerRising)
+            if (upperRising && lowerRising)
+            {
+                return normLowerSlope > normUpperSlope ? GeometricFormationType.RisingWedge : GeometricFormationType.AscendingChannel;
+            }
+            if (upperFalling && lowerFalling)
+            {
+                return normUpperSlope < normLowerSlope ? GeometricFormationType.FallingWedge : GeometricFormationType.DescendingChannel;
+            }
+
+            if (upperFlat && lowerRising)
                 return GeometricFormationType.AscendingTriangle;
-             if (lowerFlat && upperFalling)
+            if (lowerFlat && upperFalling)
                 return GeometricFormationType.DescendingTriangle;
-                
-             // Slopes are opposite signs
-             return GeometricFormationType.SymmetricalTriangle;
+
+            // Slopes are opposite signs
+            return GeometricFormationType.SymmetricalTriangle;
         }
 
         return null;
@@ -548,7 +548,7 @@ public static class GeometricPatternDetector
                     // Downgrade to channel
                     if (Math.Abs(upperSlope) < dynamicFlatThreshold && Math.Abs(lowerSlope) < dynamicFlatThreshold)
                         return GeometricFormationType.HorizontalBox;
-                        
+
                     return isUpwardTrend ? GeometricFormationType.AscendingChannel : GeometricFormationType.DescendingChannel;
                 }
                 return baseType;
@@ -561,7 +561,7 @@ public static class GeometricPatternDetector
                         return GeometricFormationType.AscendingTriangle;
                     if (Math.Abs(lowerSlope) < dynamicFlatThreshold)
                         return GeometricFormationType.DescendingTriangle;
-                        
+
                     return GeometricFormationType.SymmetricalTriangle;
                 }
                 return baseType;
@@ -844,23 +844,23 @@ public static class GeometricPatternDetector
     internal static double ComputeATR(IReadOnlyList<CandleData> candles, int startIndex, int endIndex)
     {
         if (endIndex <= startIndex) return 0;
-        
+
         double trSum = 0;
         int count = 0;
-        
+
         for (int i = startIndex; i <= endIndex && i < candles.Count; i++)
         {
             if (i < 1) continue; // Need previous close to calculate TR
-            
+
             double high = (double)candles[i].High;
             double low = (double)candles[i].Low;
             double prevClose = (double)candles[i - 1].Close;
-            
+
             double tr = Math.Max(high - low, Math.Max(Math.Abs(high - prevClose), Math.Abs(low - prevClose)));
             trSum += tr;
             count++;
         }
-        
+
         return count > 0 ? trSum / count : 0;
     }
 
@@ -872,7 +872,7 @@ public static class GeometricPatternDetector
     {
         double atr = ComputeATR(candles, startIndex, endIndex);
         if (atr < 1e-9) return 0;
-        
+
         // Slope is price change per 1 candle.
         // We divide by ATR to get how many ATRs the price changes per candle.
         return rawSlope / atr;
@@ -886,7 +886,7 @@ public static class GeometricPatternDetector
     {
         double slopeDiff = upperSlope - lowerSlope;
         if (Math.Abs(slopeDiff) < 1e-10) return double.PositiveInfinity; // Parallel lines never intersect
-        
+
         // Eq: upperSlope * x + upperIntercept = lowerSlope * x + lowerIntercept
         // x(upperSlope - lowerSlope) = lowerIntercept - upperIntercept
         return (lowerIntercept - upperIntercept) / slopeDiff;
@@ -903,7 +903,7 @@ public static class GeometricPatternDetector
         {
             double expectedPrice = slope * (pivot.Index - originIndex) + intercept;
             if (expectedPrice == 0) continue;
-            
+
             double diffPercent = Math.Abs((double)pivot.Price - expectedPrice) / expectedPrice;
             if (diffPercent <= touchTolerancePercent)
             {

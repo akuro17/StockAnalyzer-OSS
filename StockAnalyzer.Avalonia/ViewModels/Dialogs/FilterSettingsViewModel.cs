@@ -114,7 +114,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
 
             AvailableFields = fields
                 .OrderBy(f => (int)f.Category)
-                .ThenBy(f => {
+                .ThenBy(f =>
+                {
                     var col = filtered.First(c => c.MemberName == f.MemberName);
                     return col.Priority;
                 })
@@ -124,7 +125,8 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
 
             AvailableGroups = AvailableFields
                 .GroupBy(f => f.Category)
-                .Select(g => {
+                .Select(g =>
+                {
                     var categoryName = g.Key.GetLocalizedName(localizationService);
                     var sortedItems = g.OrderBy(f => f.LocalizedHeader, StringComparer.CurrentCultureIgnoreCase).ToList().AsReadOnly();
                     return new FilterColumnGroup(categoryName, sortedItems);

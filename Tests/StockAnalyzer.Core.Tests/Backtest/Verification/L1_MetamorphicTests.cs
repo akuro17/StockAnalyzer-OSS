@@ -55,15 +55,21 @@ public class L1_MetamorphicTests
         BacktestConfiguration config = VerificationScenarios.FreeConfig();
         var longScript = new System.Collections.Generic.Dictionary<int, StrategyOrderRequest>
         {
-            [0] = VerificationHarness.Req(SignalType.LongEntry), [1] = VerificationHarness.Req(SignalType.LongExit),
-            [3] = VerificationHarness.Req(SignalType.LongEntry), [4] = VerificationHarness.Req(SignalType.LongExit),
-            [6] = VerificationHarness.Req(SignalType.LongEntry), [7] = VerificationHarness.Req(SignalType.LongExit),
+            [0] = VerificationHarness.Req(SignalType.LongEntry),
+            [1] = VerificationHarness.Req(SignalType.LongExit),
+            [3] = VerificationHarness.Req(SignalType.LongEntry),
+            [4] = VerificationHarness.Req(SignalType.LongExit),
+            [6] = VerificationHarness.Req(SignalType.LongEntry),
+            [7] = VerificationHarness.Req(SignalType.LongExit),
         };
         var shortScript = new System.Collections.Generic.Dictionary<int, StrategyOrderRequest>
         {
-            [0] = VerificationHarness.Req(SignalType.ShortEntry), [1] = VerificationHarness.Req(SignalType.ShortExit),
-            [3] = VerificationHarness.Req(SignalType.ShortEntry), [4] = VerificationHarness.Req(SignalType.ShortExit),
-            [6] = VerificationHarness.Req(SignalType.ShortEntry), [7] = VerificationHarness.Req(SignalType.ShortExit),
+            [0] = VerificationHarness.Req(SignalType.ShortEntry),
+            [1] = VerificationHarness.Req(SignalType.ShortExit),
+            [3] = VerificationHarness.Req(SignalType.ShortEntry),
+            [4] = VerificationHarness.Req(SignalType.ShortExit),
+            [6] = VerificationHarness.Req(SignalType.ShortEntry),
+            [7] = VerificationHarness.Req(SignalType.ShortExit),
         };
 
         BacktestResult longResult = VerificationHarness.Run(VerificationHarness.MakeInput(original), config, new ScriptedStrategy(longScript));
@@ -88,8 +94,10 @@ public class L1_MetamorphicTests
         BacktestConfiguration config = VerificationHarness.MakeConfig(slippageRatio: 0.01m, initialCapital: 100_000_000m);
         var script = new System.Collections.Generic.Dictionary<int, StrategyOrderRequest>
         {
-            [0] = VerificationHarness.Req(SignalType.LongEntry), [1] = VerificationHarness.Req(SignalType.LongExit),
-            [3] = VerificationHarness.Req(SignalType.LongEntry), [4] = VerificationHarness.Req(SignalType.LongExit),
+            [0] = VerificationHarness.Req(SignalType.LongEntry),
+            [1] = VerificationHarness.Req(SignalType.LongExit),
+            [3] = VerificationHarness.Req(SignalType.LongEntry),
+            [4] = VerificationHarness.Req(SignalType.LongExit),
         };
 
         BacktestResult a = VerificationHarness.Run(VerificationHarness.MakeInput(baseBars), config, new ScriptedStrategy(script));

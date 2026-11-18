@@ -294,7 +294,7 @@ public class ChartDrawingRepository : IChartDrawingRepository
             {
                 File.Move(tempPath, path, overwrite: true);
             }
-    }
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to save chart drawings payload for {Ticker}/{Timeframe}", ticker, timeframe);

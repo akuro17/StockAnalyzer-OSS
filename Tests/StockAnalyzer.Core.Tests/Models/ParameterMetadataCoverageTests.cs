@@ -38,7 +38,7 @@ public class ParameterMetadataCoverageTests
     {
         var instance = Activator.CreateInstance(parameterType) as CoreIndicatorParameterBase;
         Assert.NotNull(instance);
-        
+
         // Ensure GetDisplayName and Validate run without crashing on defaults
         var displayName = instance.GetDisplayName("Test");
         Assert.False(string.IsNullOrWhiteSpace(displayName));

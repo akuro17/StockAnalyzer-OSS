@@ -19,7 +19,7 @@ namespace StockAnalyzer.Core.Tests.Services;
 public sealed class RlPortfolioAblationProtocolTests
 {
     private static BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
-        { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
+    { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
 
     private static RlPortfolioCellReport Cell(string partition, RlPanelSymbolGroup group, params decimal[] returns)
         => new(partition, group, ImmutableArray.Create("AAA", "BBB"), returns.Length, 1, returns.Length >= 1,

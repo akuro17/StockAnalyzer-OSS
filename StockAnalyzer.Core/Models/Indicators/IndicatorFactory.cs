@@ -99,7 +99,7 @@ public sealed class IndicatorFactory : IIndicatorFactory
     public static bool IsRegisteredStatic(IndicatorType type) => Default.IsRegistered(type);
     public static IEnumerable<IndicatorType> GetRegisteredTypesStatic() => Default.GetRegisteredTypes();
     public static ICoreIndicator? CreateStatic(IndicatorType type, CoreIndicatorParameterBase? parameters = null) => Default.Create(type, parameters);
-    
+
     // Kept for existing test compatibility 
     public static void InitializeStatic() { /* No-op, constructor handles it */ }
 

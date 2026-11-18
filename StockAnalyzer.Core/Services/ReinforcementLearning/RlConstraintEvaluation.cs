@@ -27,7 +27,7 @@ public static class RlConstraintEvaluation
             ? "Delayed" : account.Quantity > 0m ? "Filled" : eligible ? "Planned" : "Ignored";
         return new(proposal, quantity, eligible && quantity >= 1m && quantity <= RlContract.MaxPositionQuantity
             ? account.MarketWindow[^1].Close * (1m - control!.StopDistance) : null, account.ActiveStopPrice, state, directionId)
-            { SelectedPolicyControl = control, PolicyAction = policyAction };
+        { SelectedPolicyControl = control, PolicyAction = policyAction };
     }
     public static JsonElement ToWire<T>(T value) => JsonSerializer.SerializeToElement(value, RlFinancialParityContract.TraceJson);
     public static RlEntryConstraintSummary Summarize(IEnumerable<RlEntryExecution> attempts)

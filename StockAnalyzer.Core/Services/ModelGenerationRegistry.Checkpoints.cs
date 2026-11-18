@@ -51,9 +51,12 @@ public sealed partial class ModelGenerationRegistry
     }
     internal JsonElement ReadCheckpointJob(RlCheckpointReview reviewed)
     {
-        lock (_gate) { using var transaction = EnterStore(); ValidateCheckpointReview(reviewed);
+        lock (_gate)
+        {
+            using var transaction = EnterStore(); ValidateCheckpointReview(reviewed);
             RlCheckpointStore.Verify(reviewed.RunDirectory, reviewed.CheckpointId);
-            return RlCheckpointStore.Read<JsonElement>(Path.Combine(reviewed.RunDirectory, RlFiles.Job)); }
+            return RlCheckpointStore.Read<JsonElement>(Path.Combine(reviewed.RunDirectory, RlFiles.Job));
+        }
     }
     private bool HasResumableCheckpoint(string directory, out string? direction)
     {

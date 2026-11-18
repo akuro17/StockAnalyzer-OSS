@@ -32,7 +32,7 @@ public static class VolumeAnalysis
 
         decimal minPrice = candleList.Min(c => c.Low);
         decimal maxPrice = candleList.Max(c => c.High);
-        
+
         if (minPrice == maxPrice) return new List<VolumeBin>();
 
         decimal priceRange = maxPrice - minPrice;
@@ -44,11 +44,11 @@ public static class VolumeAnalysis
         {
             var lower = minPrice + (i * binSize);
             var upper = minPrice + ((i + 1) * binSize);
-            bins.Add(new VolumeBin 
-            { 
-                LowerBound = lower, 
-                UpperBound = upper, 
-                Price = (lower + upper) / 2 
+            bins.Add(new VolumeBin
+            {
+                LowerBound = lower,
+                UpperBound = upper,
+                Price = (lower + upper) / 2
             });
         }
 
@@ -62,7 +62,7 @@ public static class VolumeAnalysis
             if (touchedBins.Any())
             {
                 long volToDistribute = volume;
-                
+
                 if (mode == VolumeDistributionMode.Proportional)
                 {
                     // Even split (naive proportional)
@@ -77,7 +77,7 @@ public static class VolumeAnalysis
                 // Let's implement documented behavior:
                 // Proportional: Split volume.
                 // Full: Add full volume to each touched bin (heatmap style).
-                
+
                 // F12 fix: `long` accumulation is unchecked by default in this project, so a
                 // pathological but not-otherwise-invalid input (e.g. many candles with volume near
                 // long.MaxValue, amplified by Full mode's per-bin duplication) could silently wrap

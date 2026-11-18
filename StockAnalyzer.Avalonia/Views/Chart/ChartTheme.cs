@@ -6,33 +6,33 @@ namespace StockAnalyzer.Avalonia.Views.Chart;
 public static class ChartTheme
 {
     #region Layout Margins
-    
+
     /// <summary>
     /// Left margin for chart area.
     /// </summary>
     public static readonly float MarginLeft = StockAnalyzer.Core.ChartConstants.MarginLeft;
-    
+
     /// <summary>
     /// Right margin for chart area (wide enough for Y-axis price labels).
     /// </summary>
     public static readonly float MarginRight = StockAnalyzer.Core.ChartConstants.MarginRight;
-    
+
     /// <summary>
     /// Horizontal margin (legacy: used as left margin in some places).
     /// Prefer MarginLeft/MarginRight for new code.
     /// </summary>
     public static readonly float MarginHorizontal = StockAnalyzer.Core.ChartConstants.MarginHorizontal;
-    
+
     /// <summary>
     /// Top margin for chart area.
     /// </summary>
     public static readonly float MarginTop = StockAnalyzer.Core.ChartConstants.MarginTop;
-    
+
     /// <summary>
     /// Bottom margin for chart area.
     /// </summary>
     public static readonly float MarginBottom = StockAnalyzer.Core.ChartConstants.MarginBottom;
-    
+
     #endregion
 
     #region Crosshair Settings

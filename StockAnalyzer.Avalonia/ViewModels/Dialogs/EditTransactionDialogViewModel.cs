@@ -33,7 +33,7 @@ public partial class EditTransactionDialogViewModel : ViewModelBase, IDisposable
         _type = value;
         _selectedTypeMenuItem = TransactionTypeItems?.Find(t => t.Type == value);
         IsCurrencySelectionEnabled = (value != TransactionType.ExitLong && value != TransactionType.ExitShort);
-        
+
         OnPropertyChanged(nameof(Type));
         OnPropertyChanged(nameof(SelectedTypeMenuItem));
         OnPropertyChanged(nameof(IsBuyOrSell));
@@ -93,7 +93,7 @@ public partial class EditTransactionDialogViewModel : ViewModelBase, IDisposable
         }
     }
 
-    
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private string _ticker = string.Empty;
@@ -252,7 +252,7 @@ public partial class EditTransactionDialogViewModel : ViewModelBase, IDisposable
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _searchCts = new CancellationTokenSource();
-        
+
         if (string.IsNullOrWhiteSpace(value))
         {
             Suggestions.Clear();

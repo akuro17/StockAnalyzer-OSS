@@ -115,8 +115,12 @@ public sealed class FixedScalerSidecarLimitTests : IDisposable
 
     private static Dictionary<string, string> OhlcvMetadata(string modelFileName) => new()
     {
-        ["feature_mode"] = "ohlcv_minmax", ["window_size"] = "2", ["channels"] = "5",
-        ["normalization"] = "fixed_zscore", ["lags"] = "[]", ["clip_sigma"] = "",
+        ["feature_mode"] = "ohlcv_minmax",
+        ["window_size"] = "2",
+        ["channels"] = "5",
+        ["normalization"] = "fixed_zscore",
+        ["lags"] = "[]",
+        ["clip_sigma"] = "",
         ["scaler_ref"] = modelFileName + ".scaler.json",
     };
 

@@ -26,7 +26,7 @@ public sealed class RlEnvironmentProbeTests : IDisposable
     /// <summary>The scripted runner never starts it; the probe only asks whether the file exists, so the name carries no platform.</summary>
     private const string InterpreterStubFileName = "interpreter.stub";
 
-    private static readonly RlProbeRun Imported =new(TimedOut: false, 0, string.Empty);
+    private static readonly RlProbeRun Imported = new(TimedOut: false, 0, string.Empty);
     private static readonly RlProbeRun GymnasiumMissing = new(TimedOut: false, 1, "Traceback (most recent call last):\nModuleNotFoundError: No module named 'gymnasium'\n");
 
     private readonly string _folder = Path.Combine(Path.GetTempPath(), "sa_rl_probe_" + Guid.NewGuid().ToString("N"));

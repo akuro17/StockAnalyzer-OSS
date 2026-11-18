@@ -13,7 +13,7 @@ namespace StockAnalyzer.Core.Strategies
 
         public ChartStrategyResult Calculate(IEnumerable<CoreCandleData> candles, ChartStrategyParameters parameters)
         {
-             if (candles == null || !candles.Any())
+            if (candles == null || !candles.Any())
             {
                 return null!;
             }

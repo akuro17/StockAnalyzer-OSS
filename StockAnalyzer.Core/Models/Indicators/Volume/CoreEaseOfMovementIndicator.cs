@@ -8,7 +8,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
     public class CoreEaseOfMovementIndicator : CoreIndicatorBase
     {
         public override bool IsOverlay => false; // EMV oscillates around 0, should be in sub-chart
-        
+
         public int Period { get; set; } = 14;
         public override string Name => $"EMV ({Period})";
 

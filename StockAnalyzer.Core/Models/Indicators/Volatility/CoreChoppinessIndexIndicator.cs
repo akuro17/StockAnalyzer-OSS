@@ -25,7 +25,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
             if (candles.Count < 2) return IndicatorResult.Success(_values);
-            for(int i = 0; i < candles.Count; i++)
+            for (int i = 0; i < candles.Count; i++)
             {
                 if (i < Period) { _values.Add(null); continue; }
 

@@ -76,30 +76,30 @@ public class ThemeManager : IThemeManager
         _colorsCache[ThemeColorKey.TrainingPeriodValidation] = _currentTheme.TrainingPeriodValidation;
         _colorsCache[ThemeColorKey.TrainingPeriodOos] = _currentTheme.TrainingPeriodOos;
         _colorsCache[ThemeColorKey.AttentionHeat] = _currentTheme.AttentionHeat;
-        _colorsCache[ThemeColorKey.Background]  = _currentTheme.ChartBackground;
-        _colorsCache[ThemeColorKey.Grid]        = _currentTheme.GridLine;
-        _colorsCache[ThemeColorKey.Axis]        = _currentTheme.AxisText;
-        _colorsCache[ThemeColorKey.Crosshair]   = _currentTheme.Crosshair;
-        _colorsCache[ThemeColorKey.Bullish]     = _currentTheme.Bullish;
-        _colorsCache[ThemeColorKey.Bearish]     = _currentTheme.Bearish;
-        _colorsCache[ThemeColorKey.Neutral]     = _currentTheme.Neutral;
-        _colorsCache[ThemeColorKey.VolumeUp]    = _currentTheme.VolumeUp;
-        _colorsCache[ThemeColorKey.VolumeDown]  = _currentTheme.VolumeDown;
-        _colorsCache[ThemeColorKey.RulerFill]   = _currentTheme.RulerFill;
+        _colorsCache[ThemeColorKey.Background] = _currentTheme.ChartBackground;
+        _colorsCache[ThemeColorKey.Grid] = _currentTheme.GridLine;
+        _colorsCache[ThemeColorKey.Axis] = _currentTheme.AxisText;
+        _colorsCache[ThemeColorKey.Crosshair] = _currentTheme.Crosshair;
+        _colorsCache[ThemeColorKey.Bullish] = _currentTheme.Bullish;
+        _colorsCache[ThemeColorKey.Bearish] = _currentTheme.Bearish;
+        _colorsCache[ThemeColorKey.Neutral] = _currentTheme.Neutral;
+        _colorsCache[ThemeColorKey.VolumeUp] = _currentTheme.VolumeUp;
+        _colorsCache[ThemeColorKey.VolumeDown] = _currentTheme.VolumeDown;
+        _colorsCache[ThemeColorKey.RulerFill] = _currentTheme.RulerFill;
         _colorsCache[ThemeColorKey.RulerStroke] = _currentTheme.RulerStroke;
         _colorsCache[ThemeColorKey.ShellBackground] = _currentTheme.ShellBackground;
-        _colorsCache[ThemeColorKey.ShellText]       = _currentTheme.ShellText;
+        _colorsCache[ThemeColorKey.ShellText] = _currentTheme.ShellText;
         _colorsCache[ThemeColorKey.ShellSecondaryText] = _currentTheme.ShellSecondaryText;
         _colorsCache[ThemeColorKey.ShellWarningText] = _currentTheme.ShellWarningText;
-        _colorsCache[ThemeColorKey.ShellAccent]     = _currentTheme.ShellAccent;
-        _colorsCache[ThemeColorKey.ShellBorder]     = _currentTheme.ShellBorder;
-        _colorsCache[ThemeColorKey.SemanticPlus]    = _currentTheme.SemanticPlus;
-        _colorsCache[ThemeColorKey.SemanticMinus]   = _currentTheme.SemanticMinus;
+        _colorsCache[ThemeColorKey.ShellAccent] = _currentTheme.ShellAccent;
+        _colorsCache[ThemeColorKey.ShellBorder] = _currentTheme.ShellBorder;
+        _colorsCache[ThemeColorKey.SemanticPlus] = _currentTheme.SemanticPlus;
+        _colorsCache[ThemeColorKey.SemanticMinus] = _currentTheme.SemanticMinus;
         _colorsCache[ThemeColorKey.SemanticNeutral] = _currentTheme.SemanticNeutral;
         _colorsCache[ThemeColorKey.ButtonBackground] = _currentTheme.ButtonBackground;
-        _colorsCache[ThemeColorKey.ButtonText]       = _currentTheme.ButtonText;
-        _colorsCache[ThemeColorKey.ButtonHover]      = _currentTheme.ButtonHover;
-        _colorsCache[ThemeColorKey.ButtonPressed]    = _currentTheme.ButtonPressed;
+        _colorsCache[ThemeColorKey.ButtonText] = _currentTheme.ButtonText;
+        _colorsCache[ThemeColorKey.ButtonHover] = _currentTheme.ButtonHover;
+        _colorsCache[ThemeColorKey.ButtonPressed] = _currentTheme.ButtonPressed;
     }
 
     public void ChangeTheme(ThemeColors newTheme)
@@ -116,30 +116,30 @@ public class ThemeManager : IThemeManager
             ThemeColorKey.TrainingPeriodValidation => CurrentTheme with { TrainingPeriodValidation = color },
             ThemeColorKey.TrainingPeriodOos => CurrentTheme with { TrainingPeriodOos = color },
             ThemeColorKey.AttentionHeat => CurrentTheme with { AttentionHeat = color },
-            ThemeColorKey.Background  => CurrentTheme with { ChartBackground = color },
-            ThemeColorKey.Grid        => CurrentTheme with { GridLine = color },
-            ThemeColorKey.Axis        => CurrentTheme with { AxisText = color },
-            ThemeColorKey.Crosshair   => CurrentTheme.WithDerivedCrosshair(color),
-            ThemeColorKey.Bullish     => CurrentTheme with { Bullish = color, BullishWick = color },
-            ThemeColorKey.Bearish     => CurrentTheme with { Bearish = color, BearishWick = color },
-            ThemeColorKey.Neutral     => CurrentTheme with { Neutral = color },
-            ThemeColorKey.VolumeUp    => CurrentTheme with { VolumeUp = color },
-            ThemeColorKey.VolumeDown  => CurrentTheme with { VolumeDown = color },
-            ThemeColorKey.RulerFill   => CurrentTheme with { RulerFill = color },
+            ThemeColorKey.Background => CurrentTheme with { ChartBackground = color },
+            ThemeColorKey.Grid => CurrentTheme with { GridLine = color },
+            ThemeColorKey.Axis => CurrentTheme with { AxisText = color },
+            ThemeColorKey.Crosshair => CurrentTheme.WithDerivedCrosshair(color),
+            ThemeColorKey.Bullish => CurrentTheme with { Bullish = color, BullishWick = color },
+            ThemeColorKey.Bearish => CurrentTheme with { Bearish = color, BearishWick = color },
+            ThemeColorKey.Neutral => CurrentTheme with { Neutral = color },
+            ThemeColorKey.VolumeUp => CurrentTheme with { VolumeUp = color },
+            ThemeColorKey.VolumeDown => CurrentTheme with { VolumeDown = color },
+            ThemeColorKey.RulerFill => CurrentTheme with { RulerFill = color },
             ThemeColorKey.RulerStroke => CurrentTheme with { RulerStroke = color },
             ThemeColorKey.ShellBackground => CurrentTheme with { ShellBackground = color },
-            ThemeColorKey.ShellText       => CurrentTheme with { ShellText = color },
+            ThemeColorKey.ShellText => CurrentTheme with { ShellText = color },
             ThemeColorKey.ShellSecondaryText => CurrentTheme with { ShellSecondaryText = color },
             ThemeColorKey.ShellWarningText => CurrentTheme with { ShellWarningText = color },
-            ThemeColorKey.ShellAccent     => CurrentTheme with { ShellAccent = color },
-            ThemeColorKey.ShellBorder     => CurrentTheme with { ShellBorder = color },
-            ThemeColorKey.SemanticPlus    => CurrentTheme with { SemanticPlus = color },
-            ThemeColorKey.SemanticMinus   => CurrentTheme with { SemanticMinus = color },
+            ThemeColorKey.ShellAccent => CurrentTheme with { ShellAccent = color },
+            ThemeColorKey.ShellBorder => CurrentTheme with { ShellBorder = color },
+            ThemeColorKey.SemanticPlus => CurrentTheme with { SemanticPlus = color },
+            ThemeColorKey.SemanticMinus => CurrentTheme with { SemanticMinus = color },
             ThemeColorKey.SemanticNeutral => CurrentTheme with { SemanticNeutral = color },
             ThemeColorKey.ButtonBackground => CurrentTheme with { ButtonBackground = color },
-            ThemeColorKey.ButtonText       => CurrentTheme with { ButtonText = color },
-            ThemeColorKey.ButtonHover      => CurrentTheme with { ButtonHover = color },
-            ThemeColorKey.ButtonPressed    => CurrentTheme with { ButtonPressed = color },
+            ThemeColorKey.ButtonText => CurrentTheme with { ButtonText = color },
+            ThemeColorKey.ButtonHover => CurrentTheme with { ButtonHover = color },
+            ThemeColorKey.ButtonPressed => CurrentTheme with { ButtonPressed = color },
             _ => CurrentTheme
         };
 
@@ -223,7 +223,7 @@ public class ThemeManager : IThemeManager
             {
                 CurrentMode = data.Mode;
                 CurrentTheme = data.Colors ?? ThemeColors.Dark;
-                
+
                 // Trigger initial apply (without saving again)
                 _dispatcher?.ApplyTheme(CurrentMode);
             }

@@ -26,7 +26,7 @@ using StockAnalyzer.Avalonia.ViewModels.Notes;
 
 namespace StockAnalyzer.Avalonia.ViewModels;
 
-public partial class MainWindowViewModel : ViewModelBase, 
+public partial class MainWindowViewModel : ViewModelBase,
     IWorkspaceLayoutTarget,
     IRecipient<IndicatorSettingsChangedMessage>,
     IRecipient<SingleIndicatorSettingsChangedMessage>,
@@ -273,20 +273,20 @@ public partial class MainWindowViewModel : ViewModelBase,
 
         _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
         _themeManager = themeManager ?? throw new ArgumentNullException(nameof(themeManager));
-        
+
         ArgumentNullException.ThrowIfNull(coreServices);
         _pythonService = coreServices.PythonService;
         _settings = coreServices.Settings;
         _watchlistManager = coreServices.WatchlistManager;
         _marketDataProvider = coreServices.MarketDataProvider;
-        
+
         _dispatcherService = dispatcherService ?? throw new ArgumentNullException(nameof(dispatcherService));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _chartViewModelFactory = chartViewModelFactory ?? throw new ArgumentNullException(nameof(chartViewModelFactory));
-        
+
         ChartViewModel = _chartViewModelFactory() ?? throw new InvalidOperationException("Failed to resolve ChartViewModel from factory.");
         ChartViewModel.DialogService = _dialogService;
-        
+
         ArgumentNullException.ThrowIfNull(workspaceViewModels);
         DataWindowViewModel = workspaceViewModels.DataWindow;
         TickerListViewModel = workspaceViewModels.TickerList;
@@ -330,11 +330,11 @@ public partial class MainWindowViewModel : ViewModelBase,
 
     private void OnTickerListPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (!_isApplyingSettings && (e.PropertyName == nameof(TickerListViewModel.SidebarGridWidth) || 
+        if (!_isApplyingSettings && (e.PropertyName == nameof(TickerListViewModel.SidebarGridWidth) ||
                                      e.PropertyName == nameof(TickerListViewModel.SelectedWatchlist) ||
                                      e.PropertyName == "ColumnSortChanged"))
         {
-            _logger.LogInformation("UI Interaction: Ticker list property '{PropertyName}' changed. Selected Watchlist: {WatchlistName}.", 
+            _logger.LogInformation("UI Interaction: Ticker list property '{PropertyName}' changed. Selected Watchlist: {WatchlistName}.",
                 e.PropertyName, TickerListViewModel.SelectedWatchlist?.Name ?? "(none)");
             _layoutSaveScheduler.RequestSave(LayoutChangeReason.SelectionChanged);
         }
@@ -359,14 +359,14 @@ public partial class MainWindowViewModel : ViewModelBase,
     private void AddPanelChartInternal()
     {
         // FR-70-11-c: Open as an independent (detached) empty window container
-        _dispatcherService.Post(() => 
+        _dispatcherService.Post(() =>
         {
             var owner = _dialogService.GetMainWindowOwner();
             if (owner != null)
             {
                 var window = _windowFactory.CreateWindow(owner);
                 _windowFactory.ShowWindow(window); // No owner => not always-on-top
-                
+
                 _logger.LogInformation("Spawned new empty independent Tab Window.");
             }
         });
@@ -377,41 +377,41 @@ public partial class MainWindowViewModel : ViewModelBase,
     private void InitializePanelTabs()
     {
         // Initial setup for default tabs is now handled by PanelTabFactory in ApplyPanelTabs fallback
-         if (LeftPanelTabs.Count == 0)
-         {
-             var item = _panelTabFactory.CreateTab("TickerList");
-             if (item != null)
-             {
-                 BindTabToActiveChart(item);
-                 LeftPanelTabs.Add(item);
-             }
-             _stateStore.LeftPanel.IsVisible = true;
-             _stateStore.LeftPanel.WidthOrHeight = LayoutConstants.DefaultLeftWidth;
-         }
- 
-         if (RightPanelTabs.Count == 0)
-         {
-             var item = _panelTabFactory.CreateTab("DataWindow");
-             if (item != null)
-             {
-                 BindTabToActiveChart(item);
-                 RightPanelTabs.Add(item);
-             }
-             _stateStore.RightPanel.IsVisible = true;
-             _stateStore.RightPanel.WidthOrHeight = LayoutConstants.DefaultRightWidth;
-         }
+        if (LeftPanelTabs.Count == 0)
+        {
+            var item = _panelTabFactory.CreateTab("TickerList");
+            if (item != null)
+            {
+                BindTabToActiveChart(item);
+                LeftPanelTabs.Add(item);
+            }
+            _stateStore.LeftPanel.IsVisible = true;
+            _stateStore.LeftPanel.WidthOrHeight = LayoutConstants.DefaultLeftWidth;
+        }
 
-         if (BottomPanelTabs.Count == 0)
-         {
-             var item = _panelTabFactory.CreateTab("PortfolioSummary");
-             if (item != null)
-             {
-                 BindTabToActiveChart(item);
-                 BottomPanelTabs.Add(item);
-             }
-             _stateStore.BottomPanel.IsVisible = true;
-             _stateStore.BottomPanel.WidthOrHeight = LayoutConstants.DefaultBottomHeight;
-         }
+        if (RightPanelTabs.Count == 0)
+        {
+            var item = _panelTabFactory.CreateTab("DataWindow");
+            if (item != null)
+            {
+                BindTabToActiveChart(item);
+                RightPanelTabs.Add(item);
+            }
+            _stateStore.RightPanel.IsVisible = true;
+            _stateStore.RightPanel.WidthOrHeight = LayoutConstants.DefaultRightWidth;
+        }
+
+        if (BottomPanelTabs.Count == 0)
+        {
+            var item = _panelTabFactory.CreateTab("PortfolioSummary");
+            if (item != null)
+            {
+                BindTabToActiveChart(item);
+                BottomPanelTabs.Add(item);
+            }
+            _stateStore.BottomPanel.IsVisible = true;
+            _stateStore.BottomPanel.WidthOrHeight = LayoutConstants.DefaultBottomHeight;
+        }
     }
 
 
@@ -749,7 +749,7 @@ public partial class MainWindowViewModel : ViewModelBase,
                     _logger.LogInformation("Tab [{TabId}] removed and disposed.", item.Id);
                 }
             }
-            
+
             _layoutSaveScheduler.RequestSave(LayoutChangeReason.TabMoved);
         }
     }
@@ -789,7 +789,7 @@ public partial class MainWindowViewModel : ViewModelBase,
         }
 
         ReadOnlySpan<char> input = panelAndIndices.AsSpan();
-        
+
         int firstColon = input.IndexOf(':');
         if (firstColon <= 0 || firstColon == input.Length - 1)
         {
@@ -1137,11 +1137,11 @@ public partial class MainWindowViewModel : ViewModelBase,
                 var existing = ChartViewModel.Indicators.FirstOrDefault(i => i.Id == message.Value.Id);
                 if (existing != null)
                 {
-                    bool isMathChange = message.Value.MathematicalVersion > 0 
-                        || message.Value.PriceSource != existing.PriceSource 
-                        || message.Value.SourceIndicatorId != existing.SourceIndicatorId 
+                    bool isMathChange = message.Value.MathematicalVersion > 0
+                        || message.Value.PriceSource != existing.PriceSource
+                        || message.Value.SourceIndicatorId != existing.SourceIndicatorId
                         || message.Value.DynamicPeriodIndicatorId != existing.DynamicPeriodIndicatorId;
-                    
+
                     if (isMathChange)
                     {
                         // MATH PARAMETER CHANGE: Instance replacement triggers full recalculation
@@ -1168,7 +1168,7 @@ public partial class MainWindowViewModel : ViewModelBase,
                         existing.OverlayPanelId = src.OverlayPanelId;
                         existing.ShowCrossMarkers = src.ShowCrossMarkers;
                         existing.ShowAxisLabel = src.ShowAxisLabel;
-                        
+
                         // Copy series colors - NON-DESTRUCTIVE SYNC (FR-18-02)
                         foreach (var srcColor in src.SeriesColors)
                         {
@@ -1187,7 +1187,7 @@ public partial class MainWindowViewModel : ViewModelBase,
                         // Remove orphaned colors
                         var orphans = existing.SeriesColors.Where(c => !src.SeriesColors.Any(s => s.Name == c.Name)).ToList();
                         foreach (var o in orphans) existing.SeriesColors.Remove(o);
-                        
+
                         // Directly trigger redraw without going through CalculateIndicatorsAsync
                         ChartViewModel.RenderTrigger++;
                     }
@@ -1259,26 +1259,26 @@ public partial class MainWindowViewModel : ViewModelBase,
 
         // Capture layout
         settings.IsLeftPanelVisible = _stateStore.LeftPanel.IsVisible;
-        settings.LeftPanelWidth = _stateStore.LeftPanel.IsVisible 
-            ? (_stateStore.LeftPanel.WidthOrHeight > 0 ? _stateStore.LeftPanel.WidthOrHeight : LayoutConstants.DefaultLeftWidth) 
+        settings.LeftPanelWidth = _stateStore.LeftPanel.IsVisible
+            ? (_stateStore.LeftPanel.WidthOrHeight > 0 ? _stateStore.LeftPanel.WidthOrHeight : LayoutConstants.DefaultLeftWidth)
             : _stateStore.LeftPanel.LastSize;
         settings.IsLeftPanelPinned = _stateStore.LeftPanel.IsPinned;
 
         settings.IsRightPanelVisible = _stateStore.RightPanel.IsVisible;
-        settings.RightPanelWidth = _stateStore.RightPanel.IsVisible 
-            ? (_stateStore.RightPanel.WidthOrHeight > 0 ? _stateStore.RightPanel.WidthOrHeight : LayoutConstants.DefaultRightWidth) 
+        settings.RightPanelWidth = _stateStore.RightPanel.IsVisible
+            ? (_stateStore.RightPanel.WidthOrHeight > 0 ? _stateStore.RightPanel.WidthOrHeight : LayoutConstants.DefaultRightWidth)
             : _stateStore.RightPanel.LastSize;
         settings.IsRightPanelPinned = _stateStore.RightPanel.IsPinned;
 
         settings.IsTopPanelVisible = _stateStore.TopPanel.IsVisible;
-        settings.TopPanelHeight = _stateStore.TopPanel.IsVisible 
-            ? (_stateStore.TopPanel.WidthOrHeight > 0 ? _stateStore.TopPanel.WidthOrHeight : LayoutConstants.DefaultTopHeight) 
+        settings.TopPanelHeight = _stateStore.TopPanel.IsVisible
+            ? (_stateStore.TopPanel.WidthOrHeight > 0 ? _stateStore.TopPanel.WidthOrHeight : LayoutConstants.DefaultTopHeight)
             : _stateStore.TopPanel.LastSize;
         settings.IsTopPanelPinned = _stateStore.TopPanel.IsPinned;
 
         settings.IsBottomPanelVisible = _stateStore.BottomPanel.IsVisible;
-        settings.BottomPanelHeight = _stateStore.BottomPanel.IsVisible 
-            ? (_stateStore.BottomPanel.WidthOrHeight > 0 ? _stateStore.BottomPanel.WidthOrHeight : LayoutConstants.DefaultBottomHeight) 
+        settings.BottomPanelHeight = _stateStore.BottomPanel.IsVisible
+            ? (_stateStore.BottomPanel.WidthOrHeight > 0 ? _stateStore.BottomPanel.WidthOrHeight : LayoutConstants.DefaultBottomHeight)
             : _stateStore.BottomPanel.LastSize;
         settings.IsBottomPanelPinned = _stateStore.BottomPanel.IsPinned;
 
@@ -1346,7 +1346,7 @@ public partial class MainWindowViewModel : ViewModelBase,
                                          .Concat(TopPanelTabs)
                                          .Concat(BottomPanelTabs)
                                          .ToList();
-                                         
+
         foreach (var item in allPanelCharts)
         {
             if (item != null && item.ViewModel is ChartViewModel cvm)
@@ -1362,8 +1362,8 @@ public partial class MainWindowViewModel : ViewModelBase,
                     IsMainWindowVisible = cvm.IsMainWindowVisible,
                     IsSubWindowVisible = cvm.IsSubWindowVisible,
                     // Apply indicator fallback for internal panel charts too
-                    Indicators = (cvm.Indicators.Count > 0 || !cvm.IsSyncEnabled) 
-                        ? cvm.Indicators.Select(i => i.Clone()).ToList() 
+                    Indicators = (cvm.Indicators.Count > 0 || !cvm.IsSyncEnabled)
+                        ? cvm.Indicators.Select(i => i.Clone()).ToList()
                         : ChartViewModel.Indicators.Select(i => i.Clone()).ToList()
                 };
                 settings.PanelCharts.Add(chartSettings);
@@ -1384,7 +1384,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     {
         if (settings == null) return;
 
-        if (!string.IsNullOrEmpty(settings.ChartType) && 
+        if (!string.IsNullOrEmpty(settings.ChartType) &&
             Enum.TryParse<ChartType>(settings.ChartType, out var type))
         {
             ChartViewModel.ChartType = type;
@@ -1401,7 +1401,7 @@ public partial class MainWindowViewModel : ViewModelBase,
         TickerListViewModel.IsAutoSyncEnabled = settings.IsAutoSyncEnabled;
         TickerListViewModel.IsFullHistoryEnabled = settings.IsFullHistoryEnabled;
         TickerListViewModel.IsForcePeriodDownloadEnabled = settings.IsForcePeriodDownloadEnabled;
-        
+
         if (settings.SyncDelayMinSeconds >= 3.0m && settings.SyncDelayMinSeconds <= 60.0m)
         {
             TickerListViewModel.SyncDelayMinSeconds = settings.SyncDelayMinSeconds;
@@ -1499,16 +1499,16 @@ public partial class MainWindowViewModel : ViewModelBase,
                             if (!cvm.IsSyncEnabled)
                             {
                                 cvm.Symbol = chartSettings.Symbol ?? ChartViewModel.Symbol;
-                                if (!string.IsNullOrEmpty(chartSettings.Timeframe) && Enum.TryParse<StockAnalyzer.Core.Models.TimeframeType>(chartSettings.Timeframe, out var tf)) 
+                                if (!string.IsNullOrEmpty(chartSettings.Timeframe) && Enum.TryParse<StockAnalyzer.Core.Models.TimeframeType>(chartSettings.Timeframe, out var tf))
                                     cvm.SelectedTimeFrame = tf;
-                                if (chartSettings.MaxCandleCount > 0) 
+                                if (chartSettings.MaxCandleCount > 0)
                                     cvm.MaxCandleCount = chartSettings.MaxCandleCount;
 
                                 if (!string.IsNullOrEmpty(chartSettings.ChartType) && Enum.TryParse<ChartType>(chartSettings.ChartType, out var ct))
                                     cvm.ChartType = ct;
                                 cvm.IsMainWindowVisible = chartSettings.IsMainWindowVisible;
                                 cvm.IsSubWindowVisible = chartSettings.IsSubWindowVisible;
-                                    
+
                                 _ = cvm.LoadDataCommand.ExecuteAsync(null);
                             }
 
@@ -1573,8 +1573,8 @@ public partial class MainWindowViewModel : ViewModelBase,
     public void Receive(TickerSelectedMessage message)
     {
         if (_isApplyingSettings) return; // Guard during startup/reloading
-        
-        _dispatcherService.Post(() => 
+
+        _dispatcherService.Post(() =>
         {
             // Sync the local property so CaptureWorkspaceSettings picks it up
             _selectedTicker = message.Value;
@@ -1830,7 +1830,7 @@ public partial class MainWindowViewModel : ViewModelBase,
 
     public void Receive(TearOffRequestMessage message)
     {
-        if (message.Item == null) 
+        if (message.Item == null)
         {
             message.Reply(false);
             return;
@@ -1860,14 +1860,14 @@ public partial class MainWindowViewModel : ViewModelBase,
             message.Item.IsDetached = true;
             message.Item.OriginalPanelName = panelName;
             _detachedTabManager.RegisterActiveDetachedTab(message.Item);
-            
+
             if (_isLoaded && !_isApplyingSettings)
             {
                 _logger.LogInformation("[TabTearOff] Removed from panel {Panel}: Tab={TabId}", panelName, message.Item.Id);
                 _ = SaveLayoutAsync();
             }
         }
-        
+
         message.Reply(removed);
     }
 
@@ -1918,7 +1918,7 @@ public partial class MainWindowViewModel : ViewModelBase,
                 // Independent windows are just removed from the collection and disposed
                 _detachedTabManager.RemoveActiveDetachedTab(message.Value);
                 (message.Value.ViewModel as IDisposable)?.Dispose();
-                
+
                 if (_isLoaded && !_isApplyingSettings)
                 {
                     _ = SaveLayoutAsync();
@@ -1928,7 +1928,7 @@ public partial class MainWindowViewModel : ViewModelBase,
 
             message.Value.IsDetached = false;
             string panelName = message.Value.OriginalPanelName ?? "Bottom";
-            
+
             ObservableCollection<WorkspaceViewItem> targetCollection = panelName switch
             {
                 "Left" => LeftPanelTabs,
@@ -1951,7 +1951,7 @@ public partial class MainWindowViewModel : ViewModelBase,
 
             targetCollection.Add(message.Value);
             _detachedTabManager.RemoveActiveDetachedTab(message.Value);
-            
+
             // Update selection
             if (panelName == "Left") LeftSelectedTabIndex = LeftPanelTabs.Count - 1;
             else if (panelName == "Right") RightSelectedTabIndex = RightPanelTabs.Count - 1;
@@ -1963,7 +1963,7 @@ public partial class MainWindowViewModel : ViewModelBase,
             else if (panelName == "Right") _stateStore.RightPanel.IsVisible = true;
             else if (panelName == "Top") _stateStore.TopPanel.IsVisible = true;
             else _stateStore.BottomPanel.IsVisible = true;
-            
+
             _logger.LogInformation("[TabTearOff] Restored to {Panel} panel: Tab={TabId}", panelName, message.Value.Id);
             if (_isLoaded && !_isApplyingSettings)
             {
@@ -1971,7 +1971,7 @@ public partial class MainWindowViewModel : ViewModelBase,
             }
         });
     }
-    
+
     private void EnqueueOverflowRehost(WorkspaceViewItem item, string panelName)
     {
         _overflowRehostQueue.Add((item, panelName));
@@ -2115,7 +2115,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     public void PrepareExit()
     {
         _isExiting = true;
-        
+
         // Cancel any pending debounced saves to ensure the final Flush is atomic
         _layoutSaveScheduler.Cancel();
 
@@ -2214,7 +2214,7 @@ public partial class MainWindowViewModel : ViewModelBase,
     public static void InitializeChartInstanceCounter(int maxExistingId)
     {
         if (maxExistingId < 0) throw new ArgumentOutOfRangeException(nameof(maxExistingId), "maxExistingId must be non-negative.");
-        
+
         if (Interlocked.CompareExchange(ref _isCounterInitialized, 1, 0) == 0)
         {
             Interlocked.Exchange(ref _chartInstanceCounter, maxExistingId);
@@ -2310,7 +2310,7 @@ public partial class MainWindowViewModel : ViewModelBase,
         }
 
         _watchlistManager.WatchlistsChanged -= OnWatchlistsChanged;
-        
+
         if (TickerListViewModel != null)
         {
             TickerListViewModel.PropertyChanged -= OnTickerListPropertyChanged;

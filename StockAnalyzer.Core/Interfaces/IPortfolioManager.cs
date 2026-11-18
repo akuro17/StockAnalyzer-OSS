@@ -25,7 +25,7 @@ public interface IPortfolioManager
     /// Evaluates the portfolio's current value and performance based on the provided latest prices and exchange rates.
     /// </summary>
     PortfolioEvaluationResult Evaluate(
-        Portfolio portfolio, 
+        Portfolio portfolio,
         IReadOnlyDictionary<string, decimal> latestPrices,
         IReadOnlyDictionary<CurrencyCode, ExchangeRate> latestRates,
         CurrencyCode targetBaseCurrency);
@@ -39,7 +39,7 @@ public interface IPortfolioManager
     /// Calculates aggregate metrics in a target base currency using the provided exchange rates.
     /// </summary>
     PortfolioMetrics GetMetrics(
-        Portfolio portfolio, 
+        Portfolio portfolio,
         IReadOnlyDictionary<string, decimal> latestPrices,
         IReadOnlyDictionary<CurrencyCode, ExchangeRate> latestRates,
         CurrencyCode targetBaseCurrency);
@@ -48,8 +48,8 @@ public interface IPortfolioManager
     /// Calculates sector and asset allocations using the Largest Remainder Method for precise weighting.
     /// </summary>
     Task<AllocationResult> GetAllocationAsync(
-        Portfolio portfolio, 
-        IReadOnlyDictionary<string, decimal> latestPrices, 
+        Portfolio portfolio,
+        IReadOnlyDictionary<string, decimal> latestPrices,
         StockAnalyzer.Core.Services.IMarketDataProvider marketDataProvider);
 
     /// <summary>

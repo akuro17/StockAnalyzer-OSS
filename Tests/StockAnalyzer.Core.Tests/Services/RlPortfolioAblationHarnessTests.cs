@@ -89,8 +89,13 @@ public sealed class RlPortfolioAblationHarnessTests
             var watch = System.Diagnostics.Stopwatch.StartNew();
             var result = await runner.RunAsync(new RlPortfolioTrainingRequest(panelDirectory, costs, settings, SmokeOnly: smoke, Mode: RlPanelEvaluationMode.ShortHistory,
                 Plan: plan, Layout: layout, SeedOffset: RlPortfolioAblationContract.SeedOffset(run)));
-            timings.Add(new { arm = layout.SpecificationId, run, seconds = Math.Round(watch.Elapsed.TotalSeconds, 1),
-                observation_length = RlPortfolioResources.ObservationLength(panel.SymbolCount, layout) });
+            timings.Add(new
+            {
+                arm = layout.SpecificationId,
+                run,
+                seconds = Math.Round(watch.Elapsed.TotalSeconds, 1),
+                observation_length = RlPortfolioResources.ObservationLength(panel.SymbolCount, layout)
+            });
             return result;
         }
 
@@ -120,8 +125,16 @@ public sealed class RlPortfolioAblationHarnessTests
         }).ToArray();
         await WriteAtomicAsync(Path.Combine(output, "ablation_result.json"), JsonSerializer.Serialize(new
         {
-            panel = panelDirectory, plan = plan is null ? "ratio rule" : $"{plan.Requirement.TrainBlocks}/{plan.Requirement.ValidationBlocks}/{plan.Requirement.TestBlocks} blocks",
-            smoke, control_runs = controlRuns, arm_runs = armRuns, timings, control_spread = controlSpread, control_contract = RlPortfolioContract.ContractHash, arm_contract = RlPortfolioV2Contract.ContractHash, result,
+            panel = panelDirectory,
+            plan = plan is null ? "ratio rule" : $"{plan.Requirement.TrainBlocks}/{plan.Requirement.ValidationBlocks}/{plan.Requirement.TestBlocks} blocks",
+            smoke,
+            control_runs = controlRuns,
+            arm_runs = armRuns,
+            timings,
+            control_spread = controlSpread,
+            control_contract = RlPortfolioContract.ContractHash,
+            arm_contract = RlPortfolioV2Contract.ContractHash,
+            result,
         }, new JsonSerializerOptions(RlFiles.Json) { WriteIndented = true }));
         var text = new StringBuilder().AppendLine($"# Observation ablation v2-a against v1: {result.Verdict}")
             .AppendLine($"Panel: {panelDirectory}").AppendLine($"Runs per arm: {result.RunsPerArm} (protocol: {RlPortfolioAblationContract.RunsPerArm}); passed {result.PassedRuns}, failed {result.FailedRuns}, not evaluable {result.NotEvaluableRuns}")

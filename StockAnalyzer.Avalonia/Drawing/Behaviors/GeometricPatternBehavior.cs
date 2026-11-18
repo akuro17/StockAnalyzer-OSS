@@ -19,11 +19,11 @@ public sealed class GeometricPatternBehavior : IDrawingToolBehavior
     // We will make it a 2-point step to define a rough start/end anchor OR snap to the detected patterns.
     // Actually, pattern detection usually acts globally or over an extracted segment.
     // Let's implement it like DtwProjectionBehavior which is click-based.
-    
+
     // Instead of drawing, a single click will calculate and instantiate the object.
-    
+
     // 1 step: click to calculate and place the tool.
-    public int RequiredSteps => 1; 
+    public int RequiredSteps => 1;
 
     // Finishes on the click down (not drag release).
     public bool FinishesOnRelease => false;
@@ -41,11 +41,11 @@ public sealed class GeometricPatternBehavior : IDrawingToolBehavior
                     .Where(c => c.Timestamp >= chartPoint.Time)
                     .Select(c => new CandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume))
                     .ToList();
-                
+
                 // Detect patterns using multi-scale thresholds. patternObj.ZigZagThreshold is ignored for detection
                 // as the detector now automatically extracts and merges macro and micro patterns.
                 var formations = GeometricPatternDetector.Detect(candleDataList, null);
-                
+
                 if (formations != null && formations.Count > 0)
                 {
                     patternObj.Formations = formations;

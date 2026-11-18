@@ -337,7 +337,8 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         Assert.Equal(candidate.ModelId, registry.ActiveId);
     }
 
-    [Fact] public async Task R07_IndependentInstancesRefreshSupervisedCatalogAndConfirmationContext()
+    [Fact]
+    public async Task R07_IndependentInstancesRefreshSupervisedCatalogAndConfirmationContext()
     {
         string root = Path.Combine(_root, "registry");
         using var first = new ModelGenerationRegistry(root); using var second = new ModelGenerationRegistry(root);
@@ -559,8 +560,12 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         var id = LegacyModelId(modelPath, sidecars, contractHash);
         var invalid = original with
         {
-            SchemaVersion = 1, ModelId = id, ModelHash = modelHash,
-            RequiredSidecars = sidecars, ContractHash = contractHash, ClassOrder = classOrder,
+            SchemaVersion = 1,
+            ModelId = id,
+            ModelHash = modelHash,
+            RequiredSidecars = sidecars,
+            ContractHash = contractHash,
+            ClassOrder = classOrder,
         };
         var movedDirectory = Path.Combine(registryRoot, id);
         TestDirectory.Move(directory, movedDirectory);
@@ -681,8 +686,10 @@ public sealed class ModelGenerationRegistryTests : IDisposable
             normalization = metadata.GetValueOrDefault("normalization") ?? "",
             priceAdjustment = metadata.GetValueOrDefault("price_adjustment") ?? "",
             scalerRef = metadata.GetValueOrDefault(PredictionModelMetadata.ScalerReferenceKey) ?? "",
-            target = manifest.TargetType, horizon = manifest.Horizon,
-            timeframe = manifest.Timeframe, classOrder = manifest.ClassOrder,
+            target = manifest.TargetType,
+            horizon = manifest.Horizon,
+            timeframe = manifest.Timeframe,
+            classOrder = manifest.ClassOrder,
         });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(contract))).ToLowerInvariant();
     }
@@ -1051,7 +1058,9 @@ public sealed class ModelGenerationRegistryTests : IDisposable
         counts[36] = 70; counts[40] = 20; counts[55] = 10;   // 100 held-out windows, 10 of them at or above 0.5
         report[ModelConfidenceReach.Key] = new JsonObject
         {
-            ["bins"] = 100, ["n"] = 100, ["max_probability_histogram"] = new JsonArray(counts.Select(c => (JsonNode?)JsonValue.Create(c)).ToArray()),
+            ["bins"] = 100,
+            ["n"] = 100,
+            ["max_probability_histogram"] = new JsonArray(counts.Select(c => (JsonNode?)JsonValue.Create(c)).ToArray()),
         };
         File.WriteAllText(source + ".metrics.json", report.ToJsonString());
         var root = Path.Combine(_root, "registry_reach");

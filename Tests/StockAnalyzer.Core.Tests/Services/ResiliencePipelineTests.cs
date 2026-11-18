@@ -224,7 +224,7 @@ public class ResiliencePipelineTests
         Assert.Equal(CircuitState.Open, mock.Object.CurrentState);
 
         // Raise event through mock
-        mock.Raise(p => p.StateChanged += null, 
+        mock.Raise(p => p.StateChanged += null,
             new CircuitStateChangedEventArgs(CircuitState.Closed, CircuitState.Open, new IOException("test")));
 
         Assert.NotNull(receivedArgs);

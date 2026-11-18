@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Avalonia.Drawing.Objects;
 

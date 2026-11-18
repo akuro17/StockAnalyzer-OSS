@@ -13,7 +13,7 @@ public class CoreAtrIndicator : CoreIndicatorBase
     {
         if (parameters is CoreAtrParameter p)
         {
-            Period = p.Period; 
+            Period = p.Period;
         }
     }
 

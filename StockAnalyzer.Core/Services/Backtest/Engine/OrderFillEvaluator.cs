@@ -75,29 +75,29 @@ public static class OrderFillEvaluator
             case OrderType.MarketOnClose:
                 return null;
             case OrderType.Limit:
-            {
-                decimal limitPrice = order.LimitPrice ?? throw new ArgumentException("Limit orders require LimitPrice.", nameof(order));
-                TouchDirection direction = order.Side == OrderSide.Buy ? TouchDirection.Downward : TouchDirection.Upward;
-                return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, limitPrice, direction, pathMode, heldPositionSide);
-            }
-            case OrderType.Stop:
-            {
-                decimal stopPrice = order.StopPrice ?? throw new ArgumentException("Stop orders require StopPrice.", nameof(order));
-                TouchDirection direction = order.Side == OrderSide.Buy ? TouchDirection.Upward : TouchDirection.Downward;
-                return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, stopPrice, direction, pathMode, heldPositionSide);
-            }
-            case OrderType.StopLimit:
-            {
-                decimal stopPrice = order.StopPrice ?? throw new ArgumentException("StopLimit orders require StopPrice.", nameof(order));
-                decimal limitPrice = order.LimitPrice ?? throw new ArgumentException("StopLimit orders require LimitPrice.", nameof(order));
-                if (!order.StopActivated)
                 {
-                    TouchDirection triggerDirection = order.Side == OrderSide.Buy ? TouchDirection.Upward : TouchDirection.Downward;
-                    return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, stopPrice, triggerDirection, pathMode, heldPositionSide);
+                    decimal limitPrice = order.LimitPrice ?? throw new ArgumentException("Limit orders require LimitPrice.", nameof(order));
+                    TouchDirection direction = order.Side == OrderSide.Buy ? TouchDirection.Downward : TouchDirection.Upward;
+                    return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, limitPrice, direction, pathMode, heldPositionSide);
                 }
-                TouchDirection limitDirection = order.Side == OrderSide.Buy ? TouchDirection.Downward : TouchDirection.Upward;
-                return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, limitPrice, limitDirection, pathMode, heldPositionSide);
-            }
+            case OrderType.Stop:
+                {
+                    decimal stopPrice = order.StopPrice ?? throw new ArgumentException("Stop orders require StopPrice.", nameof(order));
+                    TouchDirection direction = order.Side == OrderSide.Buy ? TouchDirection.Upward : TouchDirection.Downward;
+                    return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, stopPrice, direction, pathMode, heldPositionSide);
+                }
+            case OrderType.StopLimit:
+                {
+                    decimal stopPrice = order.StopPrice ?? throw new ArgumentException("StopLimit orders require StopPrice.", nameof(order));
+                    decimal limitPrice = order.LimitPrice ?? throw new ArgumentException("StopLimit orders require LimitPrice.", nameof(order));
+                    if (!order.StopActivated)
+                    {
+                        TouchDirection triggerDirection = order.Side == OrderSide.Buy ? TouchDirection.Upward : TouchDirection.Downward;
+                        return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, stopPrice, triggerDirection, pathMode, heldPositionSide);
+                    }
+                    TouchDirection limitDirection = order.Side == OrderSide.Buy ? TouchDirection.Downward : TouchDirection.Upward;
+                    return FillPathScanner.TryFindTouchPosition(bar.Open, bar.High, bar.Low, bar.Close, limitPrice, limitDirection, pathMode, heldPositionSide);
+                }
             default:
                 throw new ArgumentOutOfRangeException(nameof(order), order.Type, "Unknown OrderType.");
         }
@@ -155,22 +155,22 @@ public static class OrderFillEvaluator
                     ? ResidualFill.None(OrderFillOutcome.NoFill)
                     : Filled(FillPathScanner.OpenPoint(bar.Open), order, slippageRatio, commissionFlat, commissionPerUnit, clampLimit: null, stopActivated: false, fillQuantity: fillQuantity);
             case OrderType.Limit:
-            {
-                decimal limitPrice = order.LimitPrice ?? throw new ArgumentException("Limit orders require LimitPrice.", nameof(order));
-                PathPoint? touch = Touch(bar, limitPrice, order.Side == OrderSide.Buy ? TouchDirection.Downward : TouchDirection.Upward, start, pathMode, heldPositionSide, lowFirst);
-                return touch is { } point
-                    ? Filled(point, order, slippageRatio, commissionFlat, commissionPerUnit, clampLimit: limitPrice, stopActivated: false, fillQuantity: fillQuantity)
-                    : ResidualFill.None(OrderFillOutcome.NoFill);
-            }
+                {
+                    decimal limitPrice = order.LimitPrice ?? throw new ArgumentException("Limit orders require LimitPrice.", nameof(order));
+                    PathPoint? touch = Touch(bar, limitPrice, order.Side == OrderSide.Buy ? TouchDirection.Downward : TouchDirection.Upward, start, pathMode, heldPositionSide, lowFirst);
+                    return touch is { } point
+                        ? Filled(point, order, slippageRatio, commissionFlat, commissionPerUnit, clampLimit: limitPrice, stopActivated: false, fillQuantity: fillQuantity)
+                        : ResidualFill.None(OrderFillOutcome.NoFill);
+                }
             case OrderType.Stop:
-            {
-                decimal stopPrice = order.StopPrice ?? throw new ArgumentException("Stop orders require StopPrice.", nameof(order));
-                PathPoint? touch = Touch(bar, stopPrice, order.Side == OrderSide.Buy ? TouchDirection.Upward : TouchDirection.Downward, start, pathMode, heldPositionSide, lowFirst);
-                // Once triggered, a Stop order becomes an unprotected Market fill - no clamp.
-                return touch is { } point
-                    ? Filled(point, order, slippageRatio, commissionFlat, commissionPerUnit, clampLimit: null, stopActivated: false, fillQuantity: fillQuantity)
-                    : ResidualFill.None(OrderFillOutcome.NoFill);
-            }
+                {
+                    decimal stopPrice = order.StopPrice ?? throw new ArgumentException("Stop orders require StopPrice.", nameof(order));
+                    PathPoint? touch = Touch(bar, stopPrice, order.Side == OrderSide.Buy ? TouchDirection.Upward : TouchDirection.Downward, start, pathMode, heldPositionSide, lowFirst);
+                    // Once triggered, a Stop order becomes an unprotected Market fill - no clamp.
+                    return touch is { } point
+                        ? Filled(point, order, slippageRatio, commissionFlat, commissionPerUnit, clampLimit: null, stopActivated: false, fillQuantity: fillQuantity)
+                        : ResidualFill.None(OrderFillOutcome.NoFill);
+                }
             case OrderType.StopLimit:
                 return EvaluateStopLimitFrom(order, bar, start, slippageRatio, commissionFlat, commissionPerUnit, fillQuantity, pathMode, heldPositionSide, lowFirst);
             case OrderType.MarketOnClose:

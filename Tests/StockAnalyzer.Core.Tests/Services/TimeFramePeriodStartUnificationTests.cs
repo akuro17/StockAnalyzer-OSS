@@ -1,3 +1,5 @@
+#pragma warning disable CS0618 // the legacy first-trading-day aggregation (TimeFrameAggregator.Aggregate, AggregateDailyToWeekly/Monthly) is what this file verifies
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;

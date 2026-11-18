@@ -357,9 +357,9 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     public static readonly Guid AllTickersId = TickerGroupIds.AllTickers;
     public static readonly Guid WatchlistsCategoryId = TickerGroupIds.Watchlists;
     public static readonly Guid PortfoliosCategoryId = TickerGroupIds.Portfolios;
-    
+
     public BulkObservableCollection<string> AvailableTickers { get; } = new();
-    
+
     public ObservableCollection<TickerGroupNode> Groups { get; } = new();
 
     IEnumerable<TickerGroupNode> ITickerStateStore.Groups => Groups;
@@ -604,15 +604,15 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         }
     }
 
-    public IEnumerable<WatchlistProfile> OtherWatchlists => 
+    public IEnumerable<WatchlistProfile> OtherWatchlists =>
         (_watchlistManager.GetAllProfiles() ?? Enumerable.Empty<WatchlistProfile>())
             .Where(p => !p.IsPortfolio && p.Id != (SelectedWatchlist?.Id ?? Guid.Empty));
 
-    public IEnumerable<WatchlistProfile> AllPortfolios => 
+    public IEnumerable<WatchlistProfile> AllPortfolios =>
         (_watchlistManager.GetAllProfiles() ?? Enumerable.Empty<WatchlistProfile>())
             .Where(p => p.IsPortfolio);
 
-    public IEnumerable<TickerGroupNode> PortfolioNodes => 
+    public IEnumerable<TickerGroupNode> PortfolioNodes =>
         Groups.FirstOrDefault(n => n.Id == PortfoliosCategoryId)?.Children ?? Enumerable.Empty<TickerGroupNode>();
 
     public BulkObservableCollection<WatchlistItemViewModel> DisplayItems { get; } = new();
@@ -621,7 +621,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
     public ObservableCollection<string> ExistingTags { get; } = new();
 
-    private readonly IReadOnlyList<WatchlistColumnMetadata> _allColumns = 
+    private readonly IReadOnlyList<WatchlistColumnMetadata> _allColumns =
         WatchlistColumnRegistry.AllColumns.Concat(BacktestMetricColumnRegistry.AllColumns).ToList();
 
     private void InitializeColumns()
@@ -647,7 +647,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         if (names.Count == 0) return;
 
         ActiveColumns.Clear();
-        
+
         // Ensure Symbol is present
         if (!names.Contains("Symbol", StringComparer.OrdinalIgnoreCase))
         {
@@ -1167,11 +1167,11 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     }
 
     public TickerListViewModel(
-        IMarketDataProvider marketDataProvider, 
+        IMarketDataProvider marketDataProvider,
         IPythonService pythonService,
-        IMessenger messenger, 
-        IDispatcherService dispatcherService, 
-        IWatchlistManager watchlistManager, 
+        IMessenger messenger,
+        IDispatcherService dispatcherService,
+        IWatchlistManager watchlistManager,
         IPortfolioManager portfolioManager,
         IDialogService dialogService,
         ITickerImportService tickerImportService,
@@ -1204,7 +1204,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         ToastService = toastService;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<TickerListViewModel>.Instance;
 
-        try 
+        try
         {
             _dataService = dataService;
             _backtestEngine = backtestEngine;
@@ -1258,12 +1258,12 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                 getExistingTags: () => ExistingTags);
 
             _refreshNodesDelegate = RefreshNodes;
-            
+
             _logger.LogInformation("TickerListViewModel startup initiated.");
 
             InitializeColumns();
 
-            
+
             _logger.LogInformation("Columns initialized.");
 
             _messenger.Register<TickerSelectedMessage>(this);
@@ -1633,7 +1633,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         }
 
         var items = DisplayItems.Where(x => x.IsChecked).ToList();
-        
+
         // Use selected item as fallback if no checkboxes are active
         if (items.Count == 0 && SelectedItem != null)
         {
@@ -1691,7 +1691,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     private async Task BulkRemove()
     {
         var items = DisplayItems.Where(x => x.IsChecked).ToList();
-        
+
         // Use selected item as fallback if no checkboxes are active
         if (items.Count == 0 && SelectedItem != null)
         {
@@ -1734,7 +1734,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
         var profileId = SelectedWatchlist.Id;
 
-        await Task.Run(() => 
+        await Task.Run(() =>
         {
             _watchlistManager.RemoveTickersFromProfile(profileId, items.Select(x => x.Symbol));
         });
@@ -1768,16 +1768,16 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         var title = LocalizationManager.Instance["TickerList_BulkImport_Title"];
         var filter = new[] { "txt", "csv" };
         var filePath = await _dialogService.ShowOpenFileDialogAsync(title, filter);
-        
+
         if (string.IsNullOrEmpty(filePath)) return;
 
         StatusMessage = LocalizationManager.Instance["TickerList_Importing"];
-        IsSyncing = true; 
+        IsSyncing = true;
 
         try
         {
             _logger.LogInformation("Starting bulk import from {Path}", filePath);
-            
+
             _importCts?.Cancel();
             _importCts?.Dispose();
             _importCts = new CancellationTokenSource();
@@ -1787,26 +1787,26 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             {
                 tickers = await _tickerImportService.ImportTickersAsync(stream, _importCts.Token);
             }
-            
+
             if (tickers.Count == 0)
             {
-                 _logger.LogWarning("No tickers found in {Path}", filePath);
-                 await _dialogService.ShowAlertAsync(title, LocalizationManager.Instance["TickerList_NoTickersFound"]);
-                 return;
+                _logger.LogWarning("No tickers found in {Path}", filePath);
+                await _dialogService.ShowAlertAsync(title, LocalizationManager.Instance["TickerList_NoTickersFound"]);
+                return;
             }
 
             _logger.LogDebug("Extracted {Count} tickers. Adding to registry...", tickers.Count);
 
             // 1. Add to master registry
             await _marketDataProvider.AddTickersAsync(tickers);
-            
+
             // 2. Add to target profiles (multi-selection) or fallback to active profile
             Guid? syncTargetId = null;
             if (targetProfileIds != null && targetProfileIds.Count > 0)
             {
                 var validTarget = targetProfileIds.FirstOrDefault(id => id != AllTickersId);
                 syncTargetId = validTarget != Guid.Empty ? validTarget : null;
-                await Task.Run(() => 
+                await Task.Run(() =>
                 {
                     foreach (var profileId in targetProfileIds)
                     {
@@ -1825,7 +1825,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                 {
                     syncTargetId = currentProfile.Id;
                     _logger.LogDebug("Adding {Count} tickers to active profile {ProfileId}", tickers.Count, currentProfile.Id);
-                    await Task.Run(() => 
+                    await Task.Run(() =>
                     {
                         _watchlistManager.AddTickersToProfile(currentProfile.Id, tickers);
                     });
@@ -1895,7 +1895,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
             var successMsg = LocalizationManager.Instance["TickerList_ImportSuccess"];
             StatusMessage = string.Format(successMsg, tickers.Count);
-            
+
             // 4. Reload tickers, refresh sidebar nodes, select target profile and refresh grid
             RefreshNodes();
             if (syncTargetId.HasValue)
@@ -1904,7 +1904,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             }
             await InitializeTickersAsync();
             ApplyFilter();
-            
+
             // 5. Auto-trigger sync for the new tickers to fetch data/metadata (non-blocking)
             _logger.LogDebug("Triggering background sync for {Count} imported tickers", tickers.Count);
             _syncCts?.Cancel();
@@ -1925,7 +1925,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             _statusCts?.Dispose();
             _statusCts = new CancellationTokenSource();
             var ct = _statusCts.Token;
-            _ = Task.Delay(SettingsConstants.UI_StatusMessageDurationMs, ct).ContinueWith(t => 
+            _ = Task.Delay(SettingsConstants.UI_StatusMessageDurationMs, ct).ContinueWith(t =>
             {
                 if (!t.IsCanceled)
                 {
@@ -1950,7 +1950,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         if (items.Count == 0) return;
 
         var profileId = targetProfile.Id;
-        await Task.Run(() => 
+        await Task.Run(() =>
         {
             _watchlistManager.AddTickersToProfile(profileId, items.Select(x => x.Symbol));
         });
@@ -1976,7 +1976,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         if (items.Count == 0) return;
 
         var profileId = targetProfile.Id;
-        await Task.Run(() => 
+        await Task.Run(() =>
         {
             _watchlistManager.AddTickersToProfile(profileId, items.Select(x => x.Symbol));
         });
@@ -2216,7 +2216,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             };
 
             await _chartSettingsManager.UpdateAsync(updatedSettings);
-            _logger.LogInformation("Overwrote Relative Performance targets with {Count} tickers: {Tickers}", 
+            _logger.LogInformation("Overwrote Relative Performance targets with {Count} tickers: {Tickers}",
                 checkedTickers.Count, string.Join(", ", checkedTickers));
         }
     }
@@ -2245,9 +2245,9 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     private async Task AddTickerToMaster()
     {
         var targetProfileId = SelectedWatchlist?.Id ?? AllTickersId;
-        
+
         var result = await _dialogService.ShowAddTickerDialogAsync(targetProfileId);
-        
+
         if (result.RequestBulkImport)
         {
             await BulkImportAsync(result.TargetProfileIds, result.ImportTags);
@@ -2261,17 +2261,17 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         try
         {
             _logger.LogInformation("Adding ticker {Symbol} to master list and profile {ProfileId}", symbol, targetProfileId);
-            
+
             // 1. Add to master registry
             await _marketDataProvider.AddTickerAsync(symbol);
-            
+
             // 2. Add to target profiles (multi-selection) or fallback to active profile
             Guid? syncTargetId = null;
             if (result.TargetProfileIds != null && result.TargetProfileIds.Count > 0)
             {
                 var validTarget = result.TargetProfileIds.FirstOrDefault(id => id != AllTickersId);
                 syncTargetId = validTarget != Guid.Empty ? validTarget : (targetProfileId != AllTickersId ? targetProfileId : null);
-                await Task.Run(() => 
+                await Task.Run(() =>
                 {
                     foreach (var profileId in result.TargetProfileIds)
                     {
@@ -2286,7 +2286,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             else if (targetProfileId != AllTickersId)
             {
                 syncTargetId = targetProfileId;
-                await Task.Run(() => 
+                await Task.Run(() =>
                 {
                     _watchlistManager.AddTickersToProfile(targetProfileId, new[] { symbol });
                 });
@@ -2437,7 +2437,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
 
         Action stopHandler = () => { try { sessionCts.Cancel(); } catch { } };
         Action closeHandler = () => { try { sessionCts.Cancel(); } catch { } };
-        Action startHandler = () => 
+        Action startHandler = () =>
         {
             lock (loopLock)
             {
@@ -2510,94 +2510,94 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             if (sessionCts.Token.IsCancellationRequested) break;
             var model = new SyncItemModel(symbol, "D1");
             var itemVm = new SyncItemViewModel(model);
-            
+
             // Reusable progress reporter allocated once per ticker item
             var progress = new SyncProgressReporter(model, itemVm, _dispatcherService);
             itemVm.ProgressReporter = progress;
-            
-            itemVm.RequestRetry += async (ivm, retryCt) => 
+
+            itemVm.RequestRetry += async (ivm, retryCt) =>
             {
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(sessionCts.Token, retryCt);
-  
-                 try 
-                 {
-                     model.MarkSyncing();
-                     _dispatcherService.Post(static i => i.UpdateFromModel(), ivm);
-                     
-                     var currentConfig = new SyncSessionConfig(
-                         IsTimeSeriesSyncEnabled: vm.IsTimeSeriesSyncEnabled,
-                         IsMetadataSyncEnabled: vm.IsMetadataSyncEnabled,
-                         IsAutoSyncEnabled: vm.IsAutoSyncEnabled,
-                         IsFullHistoryEnabled: vm.IsFullHistoryEnabled,
-                         DelayMinSeconds: vm.DelayMinSeconds,
-                         DelayMaxSeconds: vm.DelayMaxSeconds,
-                         StartSyncPeriodYears: vm.StartSyncPeriodYears,
-                         IsForcePeriodDownloadEnabled: vm.IsForcePeriodDownloadEnabled,
-                         IsImputeMissingMetadataEnabled: vm.IsImputeMissingMetadataEnabled
-                     );
 
-                     if (vm.DeleteLatestBarsCount > 0)
-                     {
-                         await _marketDataProvider.DeleteLatestTickerDataAsync(symbol, vm.DeleteLatestBarsCount);
-                         _marketDataProvider.InvalidateMetadataCache(symbol);
-                         _timeFrameManager?.InvalidateCache(symbol);
-                         _marketBreadthSeriesProvider?.ClearCache();
-                     }
+                try
+                {
+                    model.MarkSyncing();
+                    _dispatcherService.Post(static i => i.UpdateFromModel(), ivm);
 
-                     await _pythonService.RunUpdatePipelineAsync(symbol, currentConfig, ivm.ProgressReporter, linkedCts.Token);
-                     
-                     // Invalidate cache and reload fresh metadata and candles from disk
-                     _marketDataProvider.InvalidateMetadataCache(symbol);
-                     _timeFrameManager?.InvalidateCache(symbol);
-                     _marketBreadthSeriesProvider?.ClearCache();
-                     var freshMeta = await _marketDataProvider.GetMetadataAsync(symbol);
-                     IReadOnlyList<Core.Models.CandleData>? freshCandles = null;
-                     try
-                     {
-                         freshCandles = await _marketDataProvider.GetTickersDataAsync(symbol, Core.Models.TimeFrame.D1);
-                     }
-                     catch (Exception ex)
-                     {
-                         _logger.LogWarning(ex, "Failed to load fresh candle data for {Symbol} post-sync", symbol);
-                     }
+                    var currentConfig = new SyncSessionConfig(
+                        IsTimeSeriesSyncEnabled: vm.IsTimeSeriesSyncEnabled,
+                        IsMetadataSyncEnabled: vm.IsMetadataSyncEnabled,
+                        IsAutoSyncEnabled: vm.IsAutoSyncEnabled,
+                        IsFullHistoryEnabled: vm.IsFullHistoryEnabled,
+                        DelayMinSeconds: vm.DelayMinSeconds,
+                        DelayMaxSeconds: vm.DelayMaxSeconds,
+                        StartSyncPeriodYears: vm.StartSyncPeriodYears,
+                        IsForcePeriodDownloadEnabled: vm.IsForcePeriodDownloadEnabled,
+                        IsImputeMissingMetadataEnabled: vm.IsImputeMissingMetadataEnabled
+                    );
 
-                     DateTimeOffset? lastUpdated = null;
-                     try
-                     {
-                         lastUpdated = await _marketDataProvider.GetTimeSeriesLastUpdatedAsync(symbol);
-                     }
-                     catch (Exception ex)
-                     {
-                         _logger.LogWarning(ex, "Failed to load time series last updated timestamp for {Symbol} post-sync", symbol);
-                     }
+                    if (vm.DeleteLatestBarsCount > 0)
+                    {
+                        await _marketDataProvider.DeleteLatestTickerDataAsync(symbol, vm.DeleteLatestBarsCount);
+                        _marketDataProvider.InvalidateMetadataCache(symbol);
+                        _timeFrameManager?.InvalidateCache(symbol);
+                        _marketBreadthSeriesProvider?.ClearCache();
+                    }
 
-                     _dispatcherService.Post(static state =>
-                     {
-                         state.vm.ApplyMetadataToItem(state.symbol, state.freshMeta);
-                         if (state.freshCandles != null && state.freshCandles.Count > 0)
-                         {
-                             state.vm.ApplyTimeSeriesDataToItem(state.symbol, state.freshCandles);
-                             var item = state.vm.DisplayItems.FirstOrDefault(i => i.Symbol == state.symbol);
-                             if (item != null)
-                             {
-                                 item.LastUpdatedUtc = state.lastUpdated;
-                             }
-                         }
-                         // Always notify ChartViewModel and listeners to refresh when sync completes for this symbol
-                         state.messenger.Send(new TickerDataRefreshedMessage(state.symbol));
-                     }, (vm: this, symbol, freshMeta, freshCandles, lastUpdated, messenger: _messenger));
-                     
-                     model.MarkComplete();
-                     _dispatcherService.Post(static i => i.UpdateFromModel(), ivm);
-                 }
-                 catch (Exception ex)
-                 {
-                     if (linkedCts.Token.IsCancellationRequested)
-                     {
-                         model.MarkCanceled();
-                     }
-                     else
-                     {
+                    await _pythonService.RunUpdatePipelineAsync(symbol, currentConfig, ivm.ProgressReporter, linkedCts.Token);
+
+                    // Invalidate cache and reload fresh metadata and candles from disk
+                    _marketDataProvider.InvalidateMetadataCache(symbol);
+                    _timeFrameManager?.InvalidateCache(symbol);
+                    _marketBreadthSeriesProvider?.ClearCache();
+                    var freshMeta = await _marketDataProvider.GetMetadataAsync(symbol);
+                    IReadOnlyList<Core.Models.CandleData>? freshCandles = null;
+                    try
+                    {
+                        freshCandles = await _marketDataProvider.GetTickersDataAsync(symbol, Core.Models.TimeFrame.D1);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to load fresh candle data for {Symbol} post-sync", symbol);
+                    }
+
+                    DateTimeOffset? lastUpdated = null;
+                    try
+                    {
+                        lastUpdated = await _marketDataProvider.GetTimeSeriesLastUpdatedAsync(symbol);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to load time series last updated timestamp for {Symbol} post-sync", symbol);
+                    }
+
+                    _dispatcherService.Post(static state =>
+                    {
+                        state.vm.ApplyMetadataToItem(state.symbol, state.freshMeta);
+                        if (state.freshCandles != null && state.freshCandles.Count > 0)
+                        {
+                            state.vm.ApplyTimeSeriesDataToItem(state.symbol, state.freshCandles);
+                            var item = state.vm.DisplayItems.FirstOrDefault(i => i.Symbol == state.symbol);
+                            if (item != null)
+                            {
+                                item.LastUpdatedUtc = state.lastUpdated;
+                            }
+                        }
+                        // Always notify ChartViewModel and listeners to refresh when sync completes for this symbol
+                        state.messenger.Send(new TickerDataRefreshedMessage(state.symbol));
+                    }, (vm: this, symbol, freshMeta, freshCandles, lastUpdated, messenger: _messenger));
+
+                    model.MarkComplete();
+                    _dispatcherService.Post(static i => i.UpdateFromModel(), ivm);
+                }
+                catch (Exception ex)
+                {
+                    if (linkedCts.Token.IsCancellationRequested)
+                    {
+                        model.MarkCanceled();
+                    }
+                    else
+                    {
                         _logger.LogError(ex, "Sync failed for {Symbol}: {Message}", symbol, ex.Message);
                         model.MarkError(ex.Message);
 
@@ -2618,9 +2618,9 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                                 _logger.LogError(rollbackEx, "Failed to rollback ticker {Symbol} on sync failure", symbol);
                             }
                         }
-                     }
-                     _dispatcherService.Post(static i => i.UpdateFromModel(), ivm);
-                 }
+                    }
+                    _dispatcherService.Post(static i => i.UpdateFromModel(), ivm);
+                }
             };
 
             vm.AddItem(itemVm);
@@ -2664,21 +2664,21 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             isPortfolio = IsUnderCategory(SelectedNode, PortfoliosCategoryId);
         }
 
-        var title = isPortfolio 
-            ? LocalizationManager.Instance["TickerList_CreatePortfolio_Title"] 
+        var title = isPortfolio
+            ? LocalizationManager.Instance["TickerList_CreatePortfolio_Title"]
             : LocalizationManager.Instance["TickerList_CreateWatchlist_Title"];
-            
-        var defaultName = isPortfolio 
-            ? LocalizationManager.Instance["TickerList_DefaultPortfolioName"] 
+
+        var defaultName = isPortfolio
+            ? LocalizationManager.Instance["TickerList_DefaultPortfolioName"]
             : LocalizationManager.Instance["TickerList_DefaultWatchlistName"];
 
         var name = await _dialogService.ShowInputAsync(
-            title, 
-            LocalizationManager.Instance["TickerList_EnterName"], 
+            title,
+            LocalizationManager.Instance["TickerList_EnterName"],
             defaultName);
         if (string.IsNullOrWhiteSpace(name)) return;
 
-        await Task.Run(() => 
+        await Task.Run(() =>
         {
             if (isPortfolio)
             {
@@ -2695,7 +2695,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     {
         if (node == null) return false;
         if (node.Id == categoryId) return true;
-        
+
         // Check if parent is category
         return Groups.Any(g => g.Id == categoryId && g.Children != null && g.Children.Any(c => c.Id == node.Id));
     }
@@ -2731,8 +2731,8 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         if (profile != null)
         {
             if (profile.Id == AllTickersId) return;
-            var typeName = profile.IsPortfolio 
-                ? LocalizationManager.Instance["TickerList_TypeName_Portfolio"] 
+            var typeName = profile.IsPortfolio
+                ? LocalizationManager.Instance["TickerList_TypeName_Portfolio"]
                 : LocalizationManager.Instance["TickerList_TypeName_Watchlist"];
 
             var title = string.Format(LocalizationManager.Instance["TickerList_DeleteConfirm_Title"], typeName);
@@ -3104,10 +3104,10 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     public void RefreshNodes()
     {
         _isInternalChange = true;
-        try 
+        try
         {
             var currentSelectionId = SelectedNode?.Id;
-            
+
             // 1. Ensure Categories exist (Zero-Allocation Diff)
             SyncCategory(AllTickersId, LocalizationManager.Instance["TickerList_Category_AllTickers"], null);
             var wlCategory = SyncCategory(WatchlistsCategoryId, LocalizationManager.Instance["TickerList_Category_Watchlists"], null);
@@ -3153,7 +3153,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             {
                 SelectedNode = FindNodeById(Groups, currentSelectionId.Value);
             }
-            
+
             if (SelectedNode == null)
             {
                 SelectedNode = Groups.FirstOrDefault(n => n.Id == AllTickersId);
@@ -3201,7 +3201,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     private void SyncChildren(TickerGroupNode parent, List<TickerGroupNode> newChildren)
     {
         var currentChildren = parent.Children!;
-        
+
         // 1. Remove gone (Manual reverse loop to avoid allocations and collection modification issues)
         for (int i = currentChildren.Count - 1; i >= 0; i--)
         {
@@ -3215,7 +3215,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                     break;
                 }
             }
-            
+
             if (!existsInNew)
             {
                 currentChildren.RemoveAt(i);
@@ -3227,7 +3227,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         {
             var newNode = newChildren[i];
             TickerGroupNode? existing = null;
-            
+
             // Find existing node
             for (int j = 0; j < currentChildren.Count; j++)
             {
@@ -3249,7 +3249,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                 {
                     existing.DisplayName = newNode.DisplayName;
                 }
-                
+
                 // Sync data profiles
                 if (existing is WatchlistNode existingW && newNode is WatchlistNode newW)
                 {
@@ -3306,7 +3306,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         {
             var tickers = await _marketDataProvider.GetAvailableTickersAsync();
             var sortedTickers = tickers.OrderBy(t => t).ToList();
-            
+
             // Optimization: Only update if the list has changed or is empty
             if (AvailableTickers.Count > 0 && AvailableTickers.SequenceEqual(sortedTickers))
             {
@@ -3433,7 +3433,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     {
         TrackAutoPlayListTransition(value);
         if (_isInternalChange) return;
-        
+
 
         OnPropertyChanged(nameof(SelectedWatchlist));
         OnPropertyChanged(nameof(OtherWatchlists));
@@ -3631,7 +3631,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
                     toRemove.Add(kvp.Key);
                 }
             }
-            
+
             _logger.LogInformation("Pruning Ticker ViewModel Cache. Removing {Count} items.", toRemove.Count);
             foreach (var key in toRemove)
             {
@@ -4067,7 +4067,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
     {
         var tagsList = ExistingTags.ToList();
         var result = await _dialogService.ShowBulkTagEditDialogAsync(tagsList);
-        
+
         if (result == null || string.IsNullOrWhiteSpace(result.Tags)) return;
 
         var selectedItems = DisplayItems.Where(x => x.IsChecked).ToList();
@@ -4153,16 +4153,16 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         if (item == null) return;
 
         IsSyncing = true;
-        
+
         await _syncSemaphore.WaitAsync();
         try
         {
             _dispatcherService.Post(static i => i.MarkLoading(), item);
             var meta = await _marketDataProvider.FetchMetadataFromPythonAsync(symbol);
-            
+
             // Note: Closure here is acceptable for complex multi-parameter updates 
             // but we use the stateful Post where possible.
-            _dispatcherService.Post(static state => 
+            _dispatcherService.Post(static state =>
             {
                 var (vm, s, m, i) = state;
                 vm.ApplyMetadataToItem(s, m);
@@ -4532,7 +4532,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             {
                 item.Tag = row.Tag;
             }
-            
+
             item.ReturnOnEquity = row.ReturnOnEquity;
             item.ReturnOnAssets = row.ReturnOnAssets;
             item.GrossMargins = row.GrossMargins;
@@ -4595,7 +4595,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             item.FiftyTwoWeekRangePosition = row.FiftyTwoWeekRangePosition;
             item.AverageTurnoverRate = row.AverageTurnoverRate;
             item.AverageFloatTurnover = row.AverageFloatTurnover;
-            
+
             item.Region = row.Region;
             item.QuoteType = row.QuoteType;
             item.ExchangeTimezoneName = row.ExchangeTimezoneName;
@@ -4734,13 +4734,13 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         _isDisposed = true;
 
         _logger.LogInformation("Disposing TickerListViewModel.");
-        
+
         foreach (var item in _viewModelCache.Values)
         {
             item.PropertyChanged -= OnItemPropertyChanged;
         }
         _viewModelCache.Clear();
-        
+
         _watchlistManager.WatchlistsChanged -= OnWatchlistsChanged;
         StockAnalyzer.Core.Services.UserStrategyMetadataRepository.Instance.StrategyChanged -= OnStrategyChanged;
         _screenerTemplateFilterCts?.Cancel();
@@ -4761,7 +4761,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
             _backtestCts?.Dispose();
             _backtestCts = null;
         }
-        
+
         try
         {
             _hydrationCts?.Cancel();
@@ -4776,7 +4776,7 @@ public partial class TickerListViewModel : ViewModelBase, IRecipient<TickerSelec
         catch (ObjectDisposedException) { }
 
         _syncSemaphore.Dispose();
-        
+
         GC.SuppressFinalize(this);
     }
 }

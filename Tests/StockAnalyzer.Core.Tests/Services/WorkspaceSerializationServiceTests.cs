@@ -109,9 +109,9 @@ public class WorkspaceSerializationServiceTests : IDisposable
         // Arrange
         var rsiParam = new CoreSmaParameter() { Period = 14 };
         var macdParam = new CoreMacdParameter() { ShortPeriod = 12, LongPeriod = 26, SignalPeriod = 9 };
-        
+
         var original = new WorkspaceSettings();
-        
+
         var rsiSetting = new CoreIndicatorSettings
         {
             Id = "ind-1",
@@ -120,7 +120,7 @@ public class WorkspaceSerializationServiceTests : IDisposable
             ParameterObject = rsiParam,
             IsOverlay = false
         };
-        
+
         var macdSetting = new CoreIndicatorSettings
         {
             Id = "ind-2",
@@ -167,15 +167,15 @@ public class WorkspaceSerializationServiceTests : IDisposable
         var original = new WorkspaceSettings();
         original.WatchlistProfiles.Clear();
         var profile = new StockAnalyzer.Core.Models.Watchlist.WatchlistProfile(
-            Guid.NewGuid(), 
-            "Test Watchlist", 
+            Guid.NewGuid(),
+            "Test Watchlist",
             IndicatorColor.Bullish,
             false,
             new List<StockAnalyzer.Core.Models.Watchlist.WatchlistItem>
             {
                 new StockAnalyzer.Core.Models.Watchlist.WatchlistItem("AAPL", DateTimeOffset.UtcNow.ToUniversalTime())
             });
-        
+
         original.WatchlistProfiles.Add(profile);
 
         // Act

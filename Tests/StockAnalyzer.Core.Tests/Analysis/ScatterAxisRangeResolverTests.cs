@@ -94,7 +94,8 @@ public class ScatterAxisRangeResolverTests
     [Fact]
     public void TheOutputsOutsideTheirRange_GetAnAutomaticAxis()
     {
-        Assert.Equal(12, ScatterAxisRangeResolver.OutputsOutsideTheirRange.Count);
+        // 12 + JarqueBera.JBStatistic + LjungBoxQ.QStatistic (statistical functions plan R3; both leave their fixed 0..1 p-value axis on the audit series, see the audit tests below).
+        Assert.Equal(14, ScatterAxisRangeResolver.OutputsOutsideTheirRange.Count);
         foreach ((IndicatorType type, string output) in ScatterAxisRangeResolver.OutputsOutsideTheirRange)
         {
             var metric = ScatterMetricTestKit.Indicator(type, 0, output);
@@ -130,7 +131,7 @@ public class ScatterAxisRangeResolverTests
     private static List<CoreCandleData> DailyAuditSeries() => ToCore(ScatterMetricTestKit.Bars(AuditBarCount, AuditSeed));
 
     /// <summary>The same walk aggregated to weeks (about 1,700 bars): <c>IFFTInstantaneousPhase.PhaseStability</c> leaves [-1,1] on it, not on the daily series.</summary>
-    private static List<CoreCandleData> WeeklyAuditSeries() => ToCore(TimeFrameAggregator.AggregateDailyToWeekly(ScatterMetricTestKit.Bars(LongAuditBarCount, AuditSeed)));
+    private static List<CoreCandleData> WeeklyAuditSeries() => ToCore(TimeFrameAggregator.AggregateToPeriodStart(ScatterMetricTestKit.Bars(LongAuditBarCount, AuditSeed), TimeFrame.W1));
 
     /// <summary>
     /// A flat price with a tiny deterministic noise that steps up by <see cref="StepSize"/> for the last bars: the residual of <c>SSAAnomaly</c> is then a few
@@ -281,8 +282,8 @@ public class ScatterAxisRangeResolverTests
         List<CandleData> days = ScatterMetricTestKit.Bars(LongAuditBarCount, AuditSeed);
         var series = new (string Name, List<CoreCandleData> Candles)[]
         {
-            ("weekly (aggregated 12,000 days)", ToCore(TimeFrameAggregator.AggregateDailyToWeekly(days))),
-            ("monthly (aggregated 12,000 days)", ToCore(TimeFrameAggregator.AggregateDailyToMonthly(days))),
+            ("weekly (aggregated 12,000 days)", ToCore(TimeFrameAggregator.AggregateToPeriodStart(days, TimeFrame.W1))),
+            ("monthly (aggregated 12,000 days)", ToCore(TimeFrameAggregator.AggregateToPeriodStart(days, TimeFrame.MN1))),
         };
 
         foreach ((string name, List<CoreCandleData> candles) in series)

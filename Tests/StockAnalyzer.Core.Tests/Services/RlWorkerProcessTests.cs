@@ -55,8 +55,11 @@ public sealed class RlWorkerProcessTests : IDisposable
     {
         var job = new Dictionary<string, object?>
         {
-            ["parent_pid"] = Environment.ProcessId, ["defaults"] = RlContract.ToWireDefaults(), ["artifact_directory"] = _root,
-            ["files"] = new Dictionary<string, string> { ["dependencies"] = RlFiles.Dependencies }, ["strict_dependencies"] = false,
+            ["parent_pid"] = Environment.ProcessId,
+            ["defaults"] = RlContract.ToWireDefaults(),
+            ["artifact_directory"] = _root,
+            ["files"] = new Dictionary<string, string> { ["dependencies"] = RlFiles.Dependencies },
+            ["strict_dependencies"] = false,
         };
         if (!valid) job.Remove("parent_pid");                 // the worker fails before it does any work
         string path = Path.Combine(_root, RlFiles.Job);
@@ -114,7 +117,8 @@ public sealed class RlWorkerProcessTests : IDisposable
         {
             Thread.Sleep(delay);
             try { source.Cancel(); } catch (ObjectDisposedException) { }   // the test already ended and disposed the source
-        }) { IsBackground = true }.Start();
+        })
+        { IsBackground = true }.Start();
 
     // ---- the shared pump itself, driven with the managed interpreter and small inline scripts ----
 
@@ -122,7 +126,11 @@ public sealed class RlWorkerProcessTests : IDisposable
     {
         var start = new ProcessStartInfo(RlWorkerProcess.ResolveInterpreter(RlFiles.DependenciesScript).Python)
         {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
         };
         start.ArgumentList.Add("-u"); start.ArgumentList.Add("-c"); start.ArgumentList.Add(code);
         return start;

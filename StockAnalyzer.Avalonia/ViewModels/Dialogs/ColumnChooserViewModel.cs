@@ -43,8 +43,8 @@ public partial class ColumnChooserViewModel : ColumnPickerViewModelBase<ColumnIt
     public ObservableCollection<string> SelectedTemplateColumnNames { get; } = new();
 
     public ColumnChooserViewModel(
-        IEnumerable<WatchlistColumnMetadata> allColumns, 
-        IEnumerable<string> activeColumnNames, 
+        IEnumerable<WatchlistColumnMetadata> allColumns,
+        IEnumerable<string> activeColumnNames,
         IMessenger? messenger = null,
         ITemplateService? templateService = null,
         ILogger<ColumnChooserViewModel>? logger = null)
@@ -58,7 +58,7 @@ public partial class ColumnChooserViewModel : ColumnPickerViewModelBase<ColumnIt
 
         var activeList = activeColumnNames.ToList();
         var activeSet = new HashSet<string>(activeList, StringComparer.OrdinalIgnoreCase);
-        
+
         // 1. Add active columns in their current customized order
         foreach (var name in activeList)
         {
@@ -168,7 +168,7 @@ public partial class ColumnChooserViewModel : ColumnPickerViewModelBase<ColumnIt
     {
         // If in Active or All category, select all in AllItems (except symbol)
         var targetItems = (SelectedCategory == ColumnCategory.Active || SelectedCategory == ColumnCategory.All)
-            ? AllItems 
+            ? AllItems
             : AllItems.Where(item => item.Category == SelectedCategory);
 
         foreach (var item in targetItems)
@@ -187,7 +187,7 @@ public partial class ColumnChooserViewModel : ColumnPickerViewModelBase<ColumnIt
     private void ClearAll()
     {
         var targetItems = (SelectedCategory == ColumnCategory.Active || SelectedCategory == ColumnCategory.All)
-            ? AllItems 
+            ? AllItems
             : AllItems.Where(item => item.Category == SelectedCategory);
 
         foreach (var item in targetItems)

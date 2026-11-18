@@ -56,13 +56,13 @@ public partial class IndicatorParameterViewModel : ObservableObject
         try
         {
             var underlying = Nullable.GetUnderlyingType(ParameterType) ?? ParameterType;
-            
+
             if (IsNumericType(underlying))
             {
                 var stringVal = Value?.ToString();
                 if (string.IsNullOrWhiteSpace(stringVal))
                 {
-                     return true;
+                    return true;
                 }
 
                 if (underlying == typeof(decimal))
@@ -76,11 +76,11 @@ public partial class IndicatorParameterViewModel : ObservableObject
 
                     if (MinValue != null)
                     {
-                         var minVal = Convert.ToDecimal(MinValue, CultureInfo.InvariantCulture);
-                         if (decVal < minVal)
-                         {
-                             ValidationError = $"Minimum: {MinValue}"; return false;
-                         }
+                        var minVal = Convert.ToDecimal(MinValue, CultureInfo.InvariantCulture);
+                        if (decVal < minVal)
+                        {
+                            ValidationError = $"Minimum: {MinValue}"; return false;
+                        }
                     }
                     if (MaxValue != null)
                     {
@@ -98,8 +98,8 @@ public partial class IndicatorParameterViewModel : ObservableObject
                     if (!double.TryParse(stringVal, NumberStyles.Any, CultureInfo.CurrentCulture, out var dVal) &&
                         !double.TryParse(stringVal, NumberStyles.Any, CultureInfo.InvariantCulture, out dVal))
                     {
-                         ValidationError = "Please enter a numeric value";
-                         return false;
+                        ValidationError = "Please enter a numeric value";
+                        return false;
                     }
 
                     if (MinValue != null)
@@ -118,7 +118,7 @@ public partial class IndicatorParameterViewModel : ObservableObject
                             ValidationError = $"Maximum: {MaxValue}"; return false;
                         }
                     }
-                     // Update value to the parsed double to ensure consistency
+                    // Update value to the parsed double to ensure consistency
                     if (Value is string) Value = Convert.ChangeType(dVal, underlying);
                 }
             }

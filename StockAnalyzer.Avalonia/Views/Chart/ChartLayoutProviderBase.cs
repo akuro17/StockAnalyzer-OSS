@@ -21,12 +21,12 @@ public abstract class ChartLayoutProviderBase : IChartLayoutProvider
     protected abstract bool SupportsIndicators { get; }
 
     public ChartLayoutContext CreateLayout(
-        Rect bounds, 
+        Rect bounds,
         IEnumerable<CoreIndicatorSettings>? indicators = null,
         bool showIndicators = true,
         bool isMainWindowVisible = true,
-        float? customMarginTop = null, 
-        float? customMarginBottom = null, 
+        float? customMarginTop = null,
+        float? customMarginBottom = null,
         float? customMarginRight = null)
     {
         // FIX: Calculate actual physical margins based on custom values if provided.
@@ -39,7 +39,7 @@ public abstract class ChartLayoutProviderBase : IChartLayoutProvider
 
         var layoutBaseHeight = Math.Max(0, bounds.Height - actualMarginTop - actualMarginBottom);
         var chartWidth = Math.Max(0, bounds.Width - marginLeft - marginRight);
-        
+
         // Count panels using SSoT PanelLayoutEnumerator
         int panelCount = 0;
         if (indicators != null && SupportsIndicators && showIndicators)
@@ -50,21 +50,21 @@ public abstract class ChartLayoutProviderBase : IChartLayoutProvider
 
         // Calculate heights
         double panelHeight = layoutBaseHeight * ChartTheme.PanelHeightPercentage;
-        
+
         // If main window is hidden, indicators expand to take available space
         if (!isMainWindowVisible && panelCount > 0)
         {
-             panelHeight = layoutBaseHeight / panelCount;
+            panelHeight = layoutBaseHeight / panelCount;
         }
 
         double totalPanelHeight = panelCount * panelHeight;
         double totalGapHeight = (panelCount > 0) ? (panelCount * ChartTheme.PanelGap) : 0;
-        
+
         if (isMainWindowVisible && totalPanelHeight + totalGapHeight > layoutBaseHeight * ChartTheme.MaxPanelHeightRatio)
         {
             double maxTotalPanelSpace = (layoutBaseHeight * ChartTheme.MaxPanelHeightRatio) - totalGapHeight;
-            if (maxTotalPanelSpace < 0) maxTotalPanelSpace = 0; 
-            
+            if (maxTotalPanelSpace < 0) maxTotalPanelSpace = 0;
+
             panelHeight = maxTotalPanelSpace / panelCount;
             totalPanelHeight = panelCount * panelHeight;
         }
@@ -72,7 +72,7 @@ public abstract class ChartLayoutProviderBase : IChartLayoutProvider
         // Step 68-1-4: Explicit Layout Collapse
         // Total available height excluding panels and their gaps
         double remainingHeight = Math.Max(0, layoutBaseHeight - totalPanelHeight - totalGapHeight);
-        
+
         double standardMainHeight;
         double volumeHeight;
 
@@ -89,7 +89,7 @@ public abstract class ChartLayoutProviderBase : IChartLayoutProvider
         var volumeArea = new Rect(bounds.X + marginLeft, volumeY, chartWidth, volumeHeight);
 
         var panelAreas = new List<Rect>();
-        double currentY = volumeY + volumeHeight + (panelCount > 0 ? ChartTheme.PanelGap : 0); 
+        double currentY = volumeY + volumeHeight + (panelCount > 0 ? ChartTheme.PanelGap : 0);
 
         for (int i = 0; i < panelCount; i++)
         {
@@ -98,12 +98,12 @@ public abstract class ChartLayoutProviderBase : IChartLayoutProvider
         }
 
         return new ChartLayoutContext(
-            bounds, 
-            chartArea, 
-            volumeArea, 
+            bounds,
+            chartArea,
+            volumeArea,
             panelAreas,
-            actualMarginTop, 
-            actualMarginBottom, 
+            actualMarginTop,
+            actualMarginBottom,
             marginLeft,
             marginRight);
     }

@@ -256,9 +256,14 @@ public sealed partial class ModelGenerationRegistry
         long used = checked(InspectArtifactTree(RlRoot, RlRoot).Bytes + InspectArtifactTree(_artifactRunRoot!, _artifactRunRoot!).Bytes
             + InspectArtifactTree(ArtifactTrashRoot, ArtifactTrashRoot).Bytes);
         long free = ArtifactFreeSpace(_artifactRunRoot!);
-        string context = ContentHash.OfText(JsonSerializer.Serialize(new { policy, _root, _artifactRunRoot,
+        string context = ContentHash.OfText(JsonSerializer.Serialize(new
+        {
+            policy,
+            _root,
+            _artifactRunRoot,
             pointers = new[] { FileIdentity(RlPointerPath(RlFiles.Target)), FileIdentity(RlPointerPath(RlContinuousContract.Target)),
-                FileIdentity(RlPointerPath(RlFiles.Target) + Coordination.BackupSuffix), FileIdentity(RlPointerPath(RlContinuousContract.Target) + Coordination.BackupSuffix) } }, RlArtifactSettings.Options));
+                FileIdentity(RlPointerPath(RlFiles.Target) + Coordination.BackupSuffix), FileIdentity(RlPointerPath(RlContinuousContract.Target) + Coordination.BackupSuffix) }
+        }, RlArtifactSettings.Options));
         return new(policy, context, used, free, entries.OrderBy(e => Enum.Parse<RlArtifactKind>(e.Kind)).ThenBy(e => e.CreatedUtc).ThenBy(e => e.Id, StringComparer.Ordinal).ToImmutableArray());
     }
     public async Task<RlArtifactRunLease?> BeginRlArtifactRunAsync(Guid runId, string dataRoot, CancellationToken ct = default)

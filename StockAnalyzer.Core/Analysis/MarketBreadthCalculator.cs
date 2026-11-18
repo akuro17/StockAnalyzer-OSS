@@ -57,8 +57,8 @@ public sealed class MarketBreadthParameters
 
     /// <summary>
     /// Time frame of the bars. D1 (default) puts bars of different symbols on the same date axis by their exact date. For W1 and MN1 the axis is the
-    /// calendar period start (<see cref="Services.TimeFrameAggregator.PeriodStart"/>), so that bars dated by different first trading days of the same period
-    /// fall on one axis point instead of splitting into two.
+    /// calendar period start (<see cref="Services.TimeFrameAggregator.PeriodStart"/>), so that bars of the same period fall on one axis point instead of
+    /// splitting into two, also when a source dates a bar by its first trading day.
     /// </summary>
     public TimeFrame TimeFrame { get; init; } = TimeFrame.D1;
 

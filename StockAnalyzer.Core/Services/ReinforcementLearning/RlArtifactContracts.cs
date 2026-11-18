@@ -7,9 +7,12 @@ namespace StockAnalyzer.Core.Services.ReinforcementLearning;
 
 public enum RlArtifactRunState { Running, Completed, Failed, Cancelled }
 public enum RlArtifactKind { FailedRun, CompletedRun, Generation, PendingDeletion, UnknownRun, UnknownGeneration, Checkpoint }
-public enum RlArtifactRetentionReason { Active, Rollback, Backup, Dependency, Lease, Newest, NotExpired,
+public enum RlArtifactRetentionReason
+{
+    Active, Rollback, Backup, Dependency, Lease, Newest, NotExpired,
     SettingsIncomplete, UnverifiedPointers, UnknownOwner, Interrupted, UnregisteredResult, CompletedCopy, ExpiredFailure, ExpiredGeneration, RetryDeletion,
-    Resumable, SurplusCheckpoint, WorkFolderPresent }
+    Resumable, SurplusCheckpoint, WorkFolderPresent
+}
 public sealed record RlArtifactEntry(string Id, string Kind, string Path, long Bytes, DateTimeOffset CreatedUtc,
     string Identity, ImmutableArray<string> Reasons, bool Candidate);
 public sealed record RlArtifactPreview(RlArtifactPolicy Policy, string Context, long UsedBytes, long FreeBytes,

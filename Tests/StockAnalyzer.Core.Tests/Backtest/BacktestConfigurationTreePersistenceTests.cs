@@ -60,21 +60,21 @@ public class BacktestConfigurationTreePersistenceTests : IDisposable
         int schemaVersion,
         IEnumerable<BacktestConditionEntryDto>? entries = null,
         BacktestConditionTreeDto? tree = null) => new()
-    {
-        SchemaVersion = schemaVersion,
-        Symbol = "AAPL",
-        Frame = TimeFrame.D1,
-        EvaluationStartUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-        EvaluationEndUtc = new DateTime(2021, 1, 1, 0, 0, 0, DateTimeKind.Utc),
-        InitialCapital = 1_000_000m,
-        SizingModel = PositionSizingModel.FixedQuantity,
-        SizingParameter = 1m,
-        InitialMarginRatio = 0.30m,
-        MaintenanceMarginRatio = 0.20m,
-        LiquidationPenaltyRatio = 0.005m,
-        ConditionEntries = entries?.ToList() ?? new List<BacktestConditionEntryDto>(),
-        ConditionTree = tree,
-    };
+        {
+            SchemaVersion = schemaVersion,
+            Symbol = "AAPL",
+            Frame = TimeFrame.D1,
+            EvaluationStartUtc = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            EvaluationEndUtc = new DateTime(2021, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            InitialCapital = 1_000_000m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 1m,
+            InitialMarginRatio = 0.30m,
+            MaintenanceMarginRatio = 0.20m,
+            LiquidationPenaltyRatio = 0.005m,
+            ConditionEntries = entries?.ToList() ?? new List<BacktestConditionEntryDto>(),
+            ConditionTree = tree,
+        };
 
     private static BacktestConfigurationDto V2(BacktestConditionTreeDto tree)
         => Config(BacktestConfigurationDto.ConditionTreeSchemaVersion, tree: tree);

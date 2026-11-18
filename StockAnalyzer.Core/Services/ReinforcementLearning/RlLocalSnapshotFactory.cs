@@ -57,14 +57,23 @@ internal static class RlLocalSnapshotFactory
             RlSourceContract.FinalityPolicy, capturedDate, startDate, endDateExclusive,
             RlSourceContract.Acquisition.ToDictionary(p => p.Key, p => JsonSerializer.SerializeToElement(p.Value)))
         {
-            InstrumentType = type, MappedSymbol = bytes.MappedSymbol, SourcePathIdentity = bytes.SourceIdentity,
-            SourceFileSha256 = bytes.SourceSha256, MetadataPathIdentity = bytes.MetadataIdentity,
-            MetadataFileSha256 = bytes.MetadataSha256, SourceRows = ingress.SourceRows,
-            EvidencePolicy = RlSourceContract.EvidencePolicy, OriginalAcquisitionStatus = RlSourceContract.Unverified,
-            CorporateActionCoverageStatus = RlSourceContract.Unverified, CurrentHistoryRevision = false,
+            InstrumentType = type,
+            MappedSymbol = bytes.MappedSymbol,
+            SourcePathIdentity = bytes.SourceIdentity,
+            SourceFileSha256 = bytes.SourceSha256,
+            MetadataPathIdentity = bytes.MetadataIdentity,
+            MetadataFileSha256 = bytes.MetadataSha256,
+            SourceRows = ingress.SourceRows,
+            EvidencePolicy = RlSourceContract.EvidencePolicy,
+            OriginalAcquisitionStatus = RlSourceContract.Unverified,
+            CorporateActionCoverageStatus = RlSourceContract.Unverified,
+            CurrentHistoryRevision = false,
             DateLabelSemantics = RlSourceContract.DateLabelSemantics,
-            FirstDate = DateOnly.FromDateTime(ingress.Bars[0].Timestamp), LastDate = DateOnly.FromDateTime(ingress.Bars[^1].Timestamp),
-            ActionsPeriodStart = null, ActionsPeriodEnd = null, KnownImputedDates = ImmutableArray<DateOnly>.Empty,
+            FirstDate = DateOnly.FromDateTime(ingress.Bars[0].Timestamp),
+            LastDate = DateOnly.FromDateTime(ingress.Bars[^1].Timestamp),
+            ActionsPeriodStart = null,
+            ActionsPeriodEnd = null,
+            KnownImputedDates = ImmutableArray<DateOnly>.Empty,
         };
         await WriteAsync(Path.Combine(directory, RlFiles.SourceManifest), manifest, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();

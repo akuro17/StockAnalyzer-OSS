@@ -82,7 +82,7 @@ public interface IDialogService
 
     object? GetMainWindowOwner();
     Task ShowLogViewerAsync();
-    
+
     // File dialogs
     Task<string?> ShowOpenFileDialogAsync(string title, string[]? filters = null);
 

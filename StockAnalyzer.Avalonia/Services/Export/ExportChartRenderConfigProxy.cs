@@ -12,7 +12,7 @@ namespace StockAnalyzer.Avalonia.Services.Export;
 /// Proxy wrapping any IChartRenderConfig to substitute the ThemeManager during export.
 /// Implements all chart-specific config interfaces to preserve renderer compatibility.
 /// </summary>
-public sealed class ExportChartRenderConfigProxy : 
+public sealed class ExportChartRenderConfigProxy :
     ICandlestickRenderConfig,
     IHeikinAshiRenderConfig,
     IRenkoRenderConfig,

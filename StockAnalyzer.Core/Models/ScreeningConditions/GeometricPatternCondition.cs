@@ -37,11 +37,11 @@ public class GeometricPatternCondition : IScreeningCondition
     /// </summary>
     public bool IsMet(IReadOnlyList<CandleData> candles)
     {
-        if (candles == null || candles.Count < ChartConstants.GeometricMinPivotCount * 2) 
+        if (candles == null || candles.Count < ChartConstants.GeometricMinPivotCount * 2)
             return false;
 
         var latest = GeometricPatternDetector.DetectLatest(candles, _zigzagThreshold);
-        if (latest == null) 
+        if (latest == null)
             return false;
 
         return latest.Type == _targetType;

@@ -82,7 +82,7 @@ public sealed class CrossMarkerRenderer : IDisposable
 
             // Get X from the transform using absolute index (CrossIndex)
             float x = GetX(signal.CrossIndex, targetRect, candles, interval, transform, candleWidth);
-            
+
             // Skip rendering if the point is outside the current viewport
             if (x < -MarkerHalfSize || x > (float)targetRect.Width + MarkerHalfSize) continue;
 

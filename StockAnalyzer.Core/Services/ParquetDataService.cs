@@ -95,7 +95,10 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource, I
     /// </summary>
     private static FileStreamOptions ProducerSharedRead => new()
     {
-        Mode = FileMode.Open, Access = FileAccess.Read, Share = FileShare.ReadWrite | FileShare.Delete, Options = FileOptions.Asynchronous
+        Mode = FileMode.Open,
+        Access = FileAccess.Read,
+        Share = FileShare.ReadWrite | FileShare.Delete,
+        Options = FileOptions.Asynchronous
     };
 
     /// <summary>
@@ -202,14 +205,16 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource, I
                     File.Delete(path);
                     _logger.LogInformation("Removed a stale attestation working copy {Path}.", path);
                 }
-                catch (IOException) { } catch (UnauthorizedAccessException) { }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
             }
         }
-        catch (IOException) { } catch (UnauthorizedAccessException) { }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     public ParquetDataService(
-        DuckDBConnectionManager dbManager, 
+        DuckDBConnectionManager dbManager,
         IOptions<MarketDataSettings> settings,
         ILogger<ParquetDataService>? logger = null,
         TimeProvider? timeProvider = null,

@@ -25,8 +25,12 @@ public sealed class FixedScalerParityTests
         var root = fixture.RootElement;
         var metadata = new Dictionary<string, string>
         {
-            ["feature_mode"] = "ohlcv_minmax", ["window_size"] = "2", ["channels"] = "10",
-            ["normalization"] = "fixed_zscore", ["lags"] = "[1]", ["clip_sigma"] = "3.0",
+            ["feature_mode"] = "ohlcv_minmax",
+            ["window_size"] = "2",
+            ["channels"] = "10",
+            ["normalization"] = "fixed_zscore",
+            ["lags"] = "[1]",
+            ["clip_sigma"] = "3.0",
         };
         var scaler = JsonSerializer.Deserialize<FixedScaler>(root.GetProperty("scaler").GetRawText(),
             new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower })! with

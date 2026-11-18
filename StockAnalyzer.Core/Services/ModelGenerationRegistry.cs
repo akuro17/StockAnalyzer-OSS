@@ -386,7 +386,7 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
             var id = ComputeModelId(stagedModel, sidecars, contractHash);
             var manifest = new ModelGenerationManifest(SchemaVersion, id, modelName, modelHash,
                 Array.AsReadOnly(sidecars.ToArray()), contractHash, revision, target, timeframe, horizon, classOrder, score)
-                { TrainingLineage = lineage };
+            { TrainingLineage = lineage };
             File.WriteAllText(Path.Combine(stage, ManifestName), JsonSerializer.Serialize(manifest, JsonOptions));
             if (!Verify(manifest, stage)) throw new InvalidDataException("Staged generation verification failed.");
             if (!publish) return manifest; // the staging directory is removed below; nothing becomes known or visible
@@ -754,7 +754,8 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException
             or JsonException or KeyNotFoundException or OnnxRuntimeException or InvalidOperationException
-            or FormatException or OverflowException or InvalidDataException) { return false; }
+            or FormatException or OverflowException or InvalidDataException)
+        { return false; }
     }
 
     private void ValidateConfiguredPredictionContract(ModelGenerationManifest candidate)
@@ -866,7 +867,10 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
             normalization = metadata.GetValueOrDefault(PredictionModelMetadata.NormalizationKey) ?? "",
             priceAdjustment = metadata.GetValueOrDefault(PredictionModelMetadata.PriceAdjustmentKey) ?? "",
             scalerRef = metadata.GetValueOrDefault(PredictionModelMetadata.ScalerReferenceKey) ?? "",
-            target, horizon, timeframe, classOrder,
+            target,
+            horizon,
+            timeframe,
+            classOrder,
         });
         var legacyHash = HashText(contract);
         return schemaVersion == LegacySchemaVersion ? legacyHash

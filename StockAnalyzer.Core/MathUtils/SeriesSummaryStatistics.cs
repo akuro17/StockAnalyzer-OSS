@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 
 namespace StockAnalyzer.Core.MathUtils;
 
@@ -24,7 +26,29 @@ public sealed record SeriesSummary(
     decimal? ZScoreOfLatest,
     decimal? PercentileRankOfLatest,
     decimal? TrendSlope,
-    int TrendBars);
+    int TrendBars)
+{
+    /// <summary>Median (type 7 quantile at 0.5) of all non-null values; only set by <see cref="SeriesSummaryStatistics.CalculateDistribution"/>.</summary>
+    public decimal? Median { get; init; }
+
+    /// <summary>Interquartile range Q(0.75) - Q(0.25) (type 7), series unit; null below two values; only set by <see cref="SeriesSummaryStatistics.CalculateDistribution"/>.</summary>
+    public decimal? Iqr { get; init; }
+
+    /// <summary>Median absolute deviation median(|x - median|), raw (not scaled), series unit; null below two values; only set by <see cref="SeriesSummaryStatistics.CalculateDistribution"/>.</summary>
+    public decimal? Mad { get; init; }
+
+    /// <summary>Sample skewness G1, dimensionless; null below three values or for a flat series (population deviation below the larger of <see cref="ComparisonSeriesDefaults.FlatWindowDeviationEpsilon"/> and <see cref="WindowMoments.SeriesRelativeFlatEpsilon"/> times the absolute mean, see <see cref="FlatWindowRule.Series"/>).</summary>
+    public decimal? Skewness { get; init; }
+
+    /// <summary>Sample excess kurtosis G2, dimensionless; null below four values or for a flat series.</summary>
+    public decimal? ExcessKurtosis { get; init; }
+
+    /// <summary>
+    /// Theil-Sen slope over the same last <see cref="TrendBars"/> bars as <see cref="TrendSlope"/> (series unit per bar, each value at its own bar position); null below two
+    /// non-null points and null whenever the requested <see cref="TrendBars"/> exceeds <see cref="SeriesSummaryStatistics.MaxRobustTrendBars"/> (protection of the quadratic cost).
+    /// </summary>
+    public decimal? RobustTrendSlope { get; init; }
+}
 
 /// <summary>
 /// Pure summary statistics of a bar series (oldest first, null = no value at that bar), computed in <c>decimal</c>.
@@ -41,6 +65,13 @@ public static class SeriesSummaryStatistics
 
     /// <summary>Fewest bars a least-squares trend needs (and so the smallest trend window); the one definition, read by the MCP limits contract and the tool.</summary>
     public const int MinTrendBars = 2;
+
+    /// <summary>
+    /// The largest <c>trendBars</c> for which <see cref="SeriesSummary.RobustTrendSlope"/> is calculated (the pair-slope cost is quadratic). It IS the measured window bound of the robust
+    /// regression kernel, referenced rather than repeated, so the indicator Period range and this MCP limit can never drift apart. The bound is judged on the requested window, not on the
+    /// number of non-null points. The smallest window is <see cref="MinTrendBars"/> (a robust slope of two points is their slope).
+    /// </summary>
+    public const int MaxRobustTrendBars = RobustRegressionMath.MaxWindowLength;
 
     /// <summary>
     /// Summarises <paramref name="values"/> (the whole calculation window, not only a returned tail).
@@ -76,6 +107,96 @@ public static class SeriesSummaryStatistics
             PercentileRank(valid, latest),
             TrendSlope(values, trendBars),
             trendBars);
+    }
+
+    /// <summary>
+    /// <see cref="Calculate"/> plus the distribution figures of <see cref="SeriesSummary"/> (median, interquartile range, median absolute deviation, sample skewness and excess kurtosis,
+    /// Theil-Sen trend slope). Every field <see cref="Calculate"/> fills is identical to its result; the skewness and kurtosis use the series flat rule (population deviation below the larger of
+    /// <see cref="ComparisonSeriesDefaults.FlatWindowDeviationEpsilon"/> (absolute) and <see cref="WindowMoments.SeriesRelativeFlatEpsilon"/> times the absolute mean) and are computed in double and narrowed by <see cref="IndicatorCalculationHelper.ToDecimalOrNull"/>.
+    /// </summary>
+    public static SeriesSummary CalculateDistribution(IReadOnlyList<decimal?> values, int trendBars)
+    {
+        SeriesSummary summary = Calculate(values, trendBars);
+        if (summary.Count == 0)
+        {
+            return summary;
+        }
+
+        var valid = new decimal[summary.Count];
+        int index = 0;
+        foreach (decimal? value in values)
+        {
+            if (value.HasValue)
+            {
+                valid[index++] = value.Value;
+            }
+        }
+
+        // The moments are summed in the original bar order, so the copy is taken before the selections below reorder `valid` in place.
+        decimal? skewness = null;
+        decimal? kurtosis = null;
+        double[] asDouble = new double[valid.Length];
+        for (int i = 0; i < valid.Length; i++)
+        {
+            asDouble[i] = (double)valid[i];
+        }
+
+        if (WindowMoments.TryCompute(asDouble, FlatWindowRule.Series, out WindowMoments moments))
+        {
+            skewness = IndicatorCalculationHelper.ToDecimalOrNull(moments.SampleSkewness);
+            kurtosis = IndicatorCalculationHelper.ToDecimalOrNull(moments.SampleExcessKurtosis);
+        }
+
+        // A selection returns an order statistic of the multiset, so each one may run on the buffer the previous one reordered.
+        decimal? median = OrderStatisticsMath.Median<decimal>(valid);
+        decimal? iqr = null;
+        decimal? mad = null;
+        if (summary.Count >= 2)
+        {
+            iqr = OrderStatisticsMath.InterquartileRange<decimal>(valid);
+            mad = OrderStatisticsMath.MedianAbsoluteDeviation<decimal>(valid, new decimal[valid.Length]);
+        }
+
+        return summary with
+        {
+            Median = median,
+            Iqr = iqr,
+            Mad = mad,
+            Skewness = skewness,
+            ExcessKurtosis = kurtosis,
+            RobustTrendSlope = RobustTrendSlopeOf(values, trendBars),
+        };
+    }
+
+    private static decimal? RobustTrendSlopeOf(IReadOnlyList<decimal?> values, int trendBars)
+    {
+        if (trendBars < MinTrendBars || trendBars > MaxRobustTrendBars)
+        {
+            return null;
+        }
+
+        // Same window as TrendSlope: the last trendBars BARS, each non-null point at its own bar offset (a null leaves a gap).
+        int windowStart = Math.Max(0, values.Count - trendBars);
+        Span<int> offsets = stackalloc int[MaxRobustTrendBars];
+        Span<decimal> points = stackalloc decimal[MaxRobustTrendBars];
+        int n = 0;
+        for (int i = windowStart; i < values.Count; i++)
+        {
+            if (values[i] is { } y)
+            {
+                offsets[n] = i - windowStart;
+                points[n] = y;
+                n++;
+            }
+        }
+
+        if (n < MinTrendBars)
+        {
+            return null;
+        }
+
+        Span<decimal> scratch = stackalloc decimal[RobustRegressionMath.PairCount(MaxRobustTrendBars)];
+        return RobustRegressionMath.TryTheilSenSlope(offsets.Slice(0, n), points.Slice(0, n), scratch, out decimal slope) ? slope : null;
     }
 
     private static void TryMeanAndStdDev(List<decimal> valid, out decimal? mean, out decimal? stdDev)

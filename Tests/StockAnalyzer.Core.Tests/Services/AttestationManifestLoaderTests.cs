@@ -39,7 +39,9 @@ internal sealed class AttestedSourceFixture : IDisposable
 
     public string Folder(TimeFrame timeframe) => timeframe switch
     {
-        TimeFrame.W1 => _market.WeeklyDataPath!, TimeFrame.MN1 => _market.MonthlyDataPath!, _ => _market.DailyDataPath!,
+        TimeFrame.W1 => _market.WeeklyDataPath!,
+        TimeFrame.MN1 => _market.MonthlyDataPath!,
+        _ => _market.DailyDataPath!,
     };
 
     /// <summary>Writes the Parquet with FLOAT prices like the real updater and returns the SHA-256 of the file bytes.</summary>
@@ -57,16 +59,24 @@ internal sealed class AttestedSourceFixture : IDisposable
         static string Z(DateTimeOffset v) => v.UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
         return new Dictionary<string, object?>
         {
-            ["schema_version"] = 2, ["provider_id"] = "prov", ["instrument_id"] = instrument, ["timeframe"] = timeframe,
-            ["revision_epoch"] = epoch, ["provider_sequence"] = sequence, ["as_of_utc"] = Z(asOf),
+            ["schema_version"] = 2,
+            ["provider_id"] = "prov",
+            ["instrument_id"] = instrument,
+            ["timeframe"] = timeframe,
+            ["revision_epoch"] = epoch,
+            ["provider_sequence"] = sequence,
+            ["as_of_utc"] = Z(asOf),
             ["source"] = new Dictionary<string, object?> { ["path"] = instrument + ".parquet", ["sha256"] = sha, ["row_count"] = bars.Count },
             ["bar_evidence"] = bars.Select(c =>
             {
                 var start = PredictionLogService.Utc(c.Timestamp);
                 return new Dictionary<string, object?>
                 {
-                    ["date"] = c.Timestamp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), ["period_start_utc"] = Z(start),
-                    ["period_end_utc"] = Z(start.AddDays(1)), ["available_at_utc"] = Z(start.AddDays(1)), ["finality"] = finality,
+                    ["date"] = c.Timestamp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    ["period_start_utc"] = Z(start),
+                    ["period_end_utc"] = Z(start.AddDays(1)),
+                    ["available_at_utc"] = Z(start.AddDays(1)),
+                    ["finality"] = finality,
                 };
             }).ToList(),
             ["tombstones"] = new List<Dictionary<string, object?>>(),

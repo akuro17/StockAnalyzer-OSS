@@ -58,7 +58,7 @@ public interface IMarketDataProvider
     /// Saves metadata to disk.
     /// </summary>
     Task SaveMetadataAsync(string ticker, TickerMetadata meta);
-    
+
     /// <summary>
     /// Adds a ticker to the master ticker list.
     /// </summary>

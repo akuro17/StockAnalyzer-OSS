@@ -55,7 +55,7 @@ public abstract class TwoClickBehavior<T> : IDrawingToolBehavior where T : IChar
     }
 
     protected abstract T CreateInstance(ChartPoint chartPoint, IEnumerable<CoreCandleData>? candles);
-    
+
     protected virtual void OnPointUpdated(T obj, ChartPoint chartPoint, IEnumerable<CoreCandleData>? candles) { }
 }
 

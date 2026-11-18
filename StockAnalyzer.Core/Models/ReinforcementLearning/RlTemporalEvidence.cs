@@ -46,7 +46,8 @@ public sealed record RlTemporalEvidence(int SchemaVersion, string SpecificationI
     /// <summary>Report-only OOS is known producer use, excluded from weights/selection by the reviewed producer.</summary>
     public string OtherInformationUse { get; init; } = RlTemporalContract.ReportOnlyInformationUse;
     public string DateBasis { get; init; } = RlSourceContract.DateLabelSemantics;
-    [JsonIgnore] public RlTemporalBoundStatus Status =>
+    [JsonIgnore]
+    public RlTemporalBoundStatus Status =>
         Training?.Status == RlTemporalBoundStatus.Unverified || Scaler?.Status == RlTemporalBoundStatus.Unverified || Selection?.Status == RlTemporalBoundStatus.Unverified
             ? RlTemporalBoundStatus.Unverified
             : Training?.Status == RlTemporalBoundStatus.ConservativeUpperBound || Scaler?.Status == RlTemporalBoundStatus.ConservativeUpperBound

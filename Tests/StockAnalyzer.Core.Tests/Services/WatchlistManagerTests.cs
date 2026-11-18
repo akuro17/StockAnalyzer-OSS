@@ -17,12 +17,12 @@ public class WatchlistManagerTests
         // Arrange
         var manager = new WatchlistManager();
         var profile = manager.CreateProfile("Test", IndicatorColor.Gray);
-        
+
         // Act
         manager.AddTickerToProfile(profile.Id, "aapl");
         manager.AddTickerToProfile(profile.Id, "AAPL");
         manager.AddTickerToProfile(profile.Id, "  Aapl  ");
-        
+
         // Assert
         var updatedProfile = manager.GetProfileById(profile.Id);
         Assert.NotNull(updatedProfile);
@@ -57,10 +57,10 @@ public class WatchlistManagerTests
         var manager = new WatchlistManager();
         var profile = manager.CreateProfile("RemoveTest", IndicatorColor.Gray);
         manager.AddTickerToProfile(profile.Id, "MSFT");
-        
+
         // Act
         manager.RemoveTickerFromProfile(profile.Id, "msft");
-        
+
         // Assert
         var updatedProfile = manager.GetProfileById(profile.Id);
         Assert.Empty(updatedProfile!.Items);
@@ -72,10 +72,10 @@ public class WatchlistManagerTests
         // Arrange
         var manager = new WatchlistManager();
         var profile = manager.CreateProfile("OldName", IndicatorColor.Gray);
-        
+
         // Act
         manager.UpdateProfileName(profile.Id, "NewName");
-        
+
         // Assert
         var updatedProfile = manager.GetProfileById(profile.Id);
         Assert.NotNull(updatedProfile);
@@ -87,12 +87,12 @@ public class WatchlistManagerTests
     {
         // Arrange
         var manager = new WatchlistManager();
-        var profiles = new List<WatchlistProfile> 
-        { 
-            new WatchlistProfile(Guid.NewGuid(), "P1", IndicatorColor.Gray) 
+        var profiles = new List<WatchlistProfile>
+        {
+            new WatchlistProfile(Guid.NewGuid(), "P1", IndicatorColor.Gray)
         };
         manager.Initialize(profiles);
-        
+
         int eventCount = 0;
         manager.WatchlistsChanged += (s, e) => eventCount++;
 
@@ -110,7 +110,7 @@ public class WatchlistManagerTests
         var manager = new WatchlistManager();
         var p1 = manager.CreateProfile("List 1", IndicatorColor.Gray);
         var p2 = manager.CreateProfile("List 2", IndicatorColor.Gray);
-        
+
         manager.AddTickerToProfile(p1.Id, "AAPL");
         manager.AddTickerToProfile(p1.Id, "MSFT");
         manager.AddTickerToProfile(p2.Id, "AAPL");
@@ -124,7 +124,7 @@ public class WatchlistManagerTests
 
         // Assert
         Assert.Equal(1, eventCount);
-        
+
         var u1 = manager.GetProfileById(p1.Id);
         var u2 = manager.GetProfileById(p2.Id);
 
@@ -137,7 +137,7 @@ public class WatchlistManagerTests
 
         // GOOG should be gone from p2
         Assert.DoesNotContain(u2.Items, i => i.Ticker == "GOOG");
-        
+
         // p2 should be empty now
         Assert.Empty(u2.Items);
     }

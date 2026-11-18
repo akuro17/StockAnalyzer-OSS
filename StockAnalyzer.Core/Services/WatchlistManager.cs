@@ -115,7 +115,7 @@ public class WatchlistManager : IWatchlistManager
             foreach (var ticker in tickerList)
             {
                 string normalizedTicker = ticker.Trim().ToUpperInvariant();
-                
+
                 // Deduplication (OrdinalIgnoreCase)
                 if (itemsList.Any(i => string.Equals(i.Ticker, normalizedTicker, StringComparison.OrdinalIgnoreCase)))
                 {

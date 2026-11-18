@@ -47,7 +47,7 @@ public static class ConfluenceScoreCalculator
         // Group counts for correction factor (Decorrelation)
         // MaxGroups (32) is a safe upper bound for DecorrelationGroup enum members (currently 6).
         const int MaxGroups = 32;
-        Span<int> groupCounts = stackalloc int[MaxGroups]; 
+        Span<int> groupCounts = stackalloc int[MaxGroups];
         groupCounts.Clear();
 
         for (int i = 0; i < workspace.Count; i++)
@@ -65,7 +65,7 @@ public static class ConfluenceScoreCalculator
             var s = workspace[i];
             double groupFactor = 1.0;
             int groupIdx = (int)s.Group;
-            
+
             if (s.Group != DecorrelationGroup.None && groupIdx < groupCounts.Length)
             {
                 int count = groupCounts[groupIdx];
@@ -126,7 +126,7 @@ public static class ConfluenceScoreCalculator
     {
         result.Clear();
         if (signals.Count == 0) return;
-        
+
         if (signals.Count == 1)
         {
             result.Add(signals[0]);
@@ -142,7 +142,7 @@ public static class ConfluenceScoreCalculator
             if (processed[i]) continue;
 
             ConfluenceSignal best = signals[i];
-            
+
             // Look ahead for duplicates
             for (int j = i + 1; j < signals.Count; j++)
             {

@@ -30,7 +30,7 @@ public sealed class PanelTabFactory : IPanelTabFactory
     private readonly ILogger<PanelTabFactory> _logger;
 
     public PanelTabFactory(
-        IServiceProvider serviceProvider, 
+        IServiceProvider serviceProvider,
         ITabRegistry tabRegistry,
         ILogger<PanelTabFactory>? logger = null)
     {
@@ -44,17 +44,17 @@ public sealed class PanelTabFactory : IPanelTabFactory
         try
         {
             var metadata = _tabRegistry.GetMetadata(id);
-            
+
             // Resolving from DI is the SSoT for lifecycle management.
             // If the ViewModel is registered as Singleton, we get the same instance.
             // If Transient, we get a new instance.
             var viewModel = (ViewModelBase)_tabRegistry.CreateViewModel(id, _serviceProvider);
 
-            var item = new WorkspaceViewItem 
-            { 
-                Id = id, 
-                Title = metadata.DisplayName, 
-                ViewModel = viewModel 
+            var item = new WorkspaceViewItem
+            {
+                Id = id,
+                Title = metadata.DisplayName,
+                ViewModel = viewModel
             };
 
             // FR-70-12: Synchronize Tab title for Chart tabs

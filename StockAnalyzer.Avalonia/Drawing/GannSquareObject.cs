@@ -20,7 +20,7 @@ public class GannSquareObject : IChartObject
     public bool IsMoveAxisModeExplicit { get; set; } = false;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.GannSquare;
-    
+
     public List<ChartPoint> Points { get; private set; }
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
@@ -49,11 +49,11 @@ public class GannSquareObject : IChartObject
         // Gann Square is usually forced to be a SQUARE in pixels? 
         // Or specific Ratio?
         // Let's implement as a resizable box but visually emphasize the center cross and diamond.
-        
+
         float x = (float)Math.Min(p1.X, p2.X);
         float y = (float)Math.Min(p1.Y, p2.Y);
         float w = (float)Math.Abs(p2.X - p1.X);
-        float h = (float)Math.Abs(p2.Y - p1.Y); 
+        float h = (float)Math.Abs(p2.Y - p1.Y);
         // If we want a perfect square based on width:
         // h = w; 
         // But user dragging usually defines range. Standard Gann Square fits the range.
@@ -67,7 +67,7 @@ public class GannSquareObject : IChartObject
             IsAntialias = true,
             Style = SKPaintStyle.Stroke
         };
-        
+
         using var thinPaint = new SKPaint
         {
             Color = SkiaColor.WithAlpha(150),
@@ -125,17 +125,17 @@ public class GannSquareObject : IChartObject
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
         if (Points.Count < 2) return false;
-        
+
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
-        
+
         float x = (float)Math.Min(p1.X, p2.X);
         float y = (float)Math.Min(p1.Y, p2.Y);
         float w = (float)Math.Abs(p2.X - p1.X);
         float h = (float)Math.Abs(p2.Y - p1.Y);
-        
+
         var rect = new global::Avalonia.Rect(x, y, w, h);
-        return rect.Contains(screenPoint); 
+        return rect.Contains(screenPoint);
     }
 
     public void Translate(TimeSpan timeDelta, decimal priceDelta)

@@ -23,28 +23,28 @@ public class FillPathScannerTouchFromTests
         int compared = 0;
 
         foreach (decimal low in grid)
-        foreach (decimal high in grid)
-        {
-            if (high < low) continue;
-            foreach (decimal open in grid)
-            foreach (decimal close in grid)
+            foreach (decimal high in grid)
             {
-                if (open < low || open > high || close < low || close > high) continue;
-                foreach (decimal threshold in grid)
-                foreach (TouchDirection direction in new[] { TouchDirection.Upward, TouchDirection.Downward })
-                {
-                    decimal? legacy = FillPathScanner.TryFindTouchPosition(open, high, low, close, threshold, direction);
-                    PathPoint? scanned = FillPathScanner.TryFindTouchFrom(open, high, low, close, threshold, direction, FillPathScanner.OpenPoint(open));
-
-                    Assert.Equal(legacy, scanned?.Position);
-                    if (scanned is { } point)
+                if (high < low) continue;
+                foreach (decimal open in grid)
+                    foreach (decimal close in grid)
                     {
-                        Assert.Equal(point.Position == 0m ? open : threshold, point.Price);
+                        if (open < low || open > high || close < low || close > high) continue;
+                        foreach (decimal threshold in grid)
+                            foreach (TouchDirection direction in new[] { TouchDirection.Upward, TouchDirection.Downward })
+                            {
+                                decimal? legacy = FillPathScanner.TryFindTouchPosition(open, high, low, close, threshold, direction);
+                                PathPoint? scanned = FillPathScanner.TryFindTouchFrom(open, high, low, close, threshold, direction, FillPathScanner.OpenPoint(open));
+
+                                Assert.Equal(legacy, scanned?.Position);
+                                if (scanned is { } point)
+                                {
+                                    Assert.Equal(point.Position == 0m ? open : threshold, point.Price);
+                                }
+                                compared++;
+                            }
                     }
-                    compared++;
-                }
             }
-        }
 
         Assert.True(compared > 5_000, $"grid unexpectedly small: {compared}");
     }

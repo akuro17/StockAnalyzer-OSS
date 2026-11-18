@@ -11,7 +11,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
     public partial class FontsSettingsViewModel : ViewModelBase, ISettingsPageViewModel, IDisposable
     {
         private readonly IFontSettingsManager _fontSettingsManager;
-        
+
         private double _snapshotBaseFontSize;
         private double _snapshotTitleFontSize;
         private double _snapshotDetailFontSize;
@@ -23,11 +23,11 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public string TitleKey => "Settings_Fonts";
         public string IconKey => "SettingsFontsIcon";
 
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedBaseFontSize = FontDefaults.Base;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedTitleFontSize = FontDefaults.Title;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedDetailFontSize = FontDefaults.Detail;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedHelperFontSize = FontDefaults.Helper;
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedTooltipFontSize = FontDefaults.Tooltip;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedBaseFontSize = FontDefaults.Base;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedTitleFontSize = FontDefaults.Title;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedDetailFontSize = FontDefaults.Detail;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedHelperFontSize = FontDefaults.Helper;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private double _selectedTooltipFontSize = FontDefaults.Tooltip;
 
         public ObservableCollection<double> AvailableFontSizes { get; } = new()
         {
@@ -56,11 +56,11 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
             public double DetailFontSize => FontDefaults.Detail;
             public double HelperFontSize => FontDefaults.Helper;
             public double TooltipFontSize => FontDefaults.Tooltip;
-            public void SetBaseFontSize(double size) {}
-            public void SetTitleFontSize(double size) {}
-            public void SetDetailFontSize(double size) {}
-            public void SetHelperFontSize(double size) {}
-            public void SetTooltipFontSize(double size) {}
+            public void SetBaseFontSize(double size) { }
+            public void SetTitleFontSize(double size) { }
+            public void SetDetailFontSize(double size) { }
+            public void SetHelperFontSize(double size) { }
+            public void SetTooltipFontSize(double size) { }
             public Task SaveAsync() => Task.CompletedTask;
             public Task LoadAsync() => Task.CompletedTask;
             public event PropertyChangedEventHandler? PropertyChanged;
@@ -68,19 +68,19 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
 
         private void TakeSnapshot()
         {
-            _snapshotBaseFontSize    = _fontSettingsManager.BaseFontSize;
-            _snapshotTitleFontSize   = _fontSettingsManager.TitleFontSize;
-            _snapshotDetailFontSize  = _fontSettingsManager.DetailFontSize;
-            _snapshotHelperFontSize  = _fontSettingsManager.HelperFontSize;
+            _snapshotBaseFontSize = _fontSettingsManager.BaseFontSize;
+            _snapshotTitleFontSize = _fontSettingsManager.TitleFontSize;
+            _snapshotDetailFontSize = _fontSettingsManager.DetailFontSize;
+            _snapshotHelperFontSize = _fontSettingsManager.HelperFontSize;
             _snapshotTooltipFontSize = _fontSettingsManager.TooltipFontSize;
         }
 
         private void InitializeFromSnapshot()
         {
-            SelectedBaseFontSize    = _fontSettingsManager.BaseFontSize;
-            SelectedTitleFontSize   = _fontSettingsManager.TitleFontSize;
-            SelectedDetailFontSize  = _fontSettingsManager.DetailFontSize;
-            SelectedHelperFontSize  = _fontSettingsManager.HelperFontSize;
+            SelectedBaseFontSize = _fontSettingsManager.BaseFontSize;
+            SelectedTitleFontSize = _fontSettingsManager.TitleFontSize;
+            SelectedDetailFontSize = _fontSettingsManager.DetailFontSize;
+            SelectedHelperFontSize = _fontSettingsManager.HelperFontSize;
             SelectedTooltipFontSize = _fontSettingsManager.TooltipFontSize;
             OnPropertyChanged(nameof(IsModified));
         }
@@ -143,10 +143,10 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public void ResetToDefault()
         {
             if (_isDisposed) return;
-            SelectedBaseFontSize    = FontDefaults.Base;
-            SelectedTitleFontSize   = FontDefaults.Title;
-            SelectedDetailFontSize  = FontDefaults.Detail;
-            SelectedHelperFontSize  = FontDefaults.Helper;
+            SelectedBaseFontSize = FontDefaults.Base;
+            SelectedTitleFontSize = FontDefaults.Title;
+            SelectedDetailFontSize = FontDefaults.Detail;
+            SelectedHelperFontSize = FontDefaults.Helper;
             SelectedTooltipFontSize = FontDefaults.Tooltip;
         }
 

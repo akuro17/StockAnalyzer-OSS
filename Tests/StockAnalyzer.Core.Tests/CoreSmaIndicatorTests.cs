@@ -111,7 +111,7 @@ public class CoreSmaIndicatorTests
     {
         var indicator = new CoreSmaIndicator { Period = 3 };
         var prices = new List<decimal>();
-        for(int i = 0; i < 15000; i++) prices.Add((decimal)i);
+        for (int i = 0; i < 15000; i++) prices.Add((decimal)i);
         var candles = CreateTestCandles(prices);
 
         indicator.Calculate(candles);

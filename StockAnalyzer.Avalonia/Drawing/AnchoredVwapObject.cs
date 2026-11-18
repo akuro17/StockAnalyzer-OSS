@@ -28,7 +28,7 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
     // Usually Anchored VWAP goes to end of chart (Right Infinite).
     // Let's say Point[0] is anchor. 
     public List<ChartPoint> Points { get; private set; }
-    
+
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
     public bool IsSelected { get; set; }
@@ -272,9 +272,9 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
 
         if (IsSelected)
         {
-             // Draw Anchor Point
-             var anchor = transform.ChartToScreen(Points[0]);
-             SelectionHandleRenderer.Draw(canvas, anchor, AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null, radius: ChartConstants.SelectedHandleRadius);
+            // Draw Anchor Point
+            var anchor = transform.ChartToScreen(Points[0]);
+            SelectionHandleRenderer.Draw(canvas, anchor, AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null, radius: ChartConstants.SelectedHandleRadius);
         }
     }
 
@@ -352,9 +352,9 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
         // 1. Check anchor point first (fast)
         if (Points.Count > 0)
         {
-             var anchor = transform.ChartToScreen(Points[0]);
-             double dist = Math.Sqrt(Math.Pow(anchor.X - screenPoint.X, 2) + Math.Pow(anchor.Y - screenPoint.Y, 2));
-             if (dist < tolerance * 2) return true;
+            var anchor = transform.ChartToScreen(Points[0]);
+            double dist = Math.Sqrt(Math.Pow(anchor.X - screenPoint.X, 2) + Math.Pow(anchor.Y - screenPoint.Y, 2));
+            if (dist < tolerance * 2) return true;
         }
 
         // 2. Check curve segments
@@ -367,7 +367,7 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
         foreach (var (time, price) in VwapCurve)
         {
             var p2 = transform.ChartToScreen(new ChartPoint(time, price));
-            
+
             if (p1.HasValue)
             {
                 if (HitTestHelper.IsPointNearLine(screenPoint, p1.Value, p2, tolerance))
@@ -402,14 +402,14 @@ public class AnchoredVwapObject : IChartObject, IDisposable, IDrawingCalculatedV
     {
         public static bool IsPointNearLine(global::Avalonia.Point p, global::Avalonia.Point a, global::Avalonia.Point b, double tolerance)
         {
-             double l2 = Math.Pow(a.X - b.X, 2) + Math.Pow(a.Y - b.Y, 2);
-             if (l2 == 0) return Math.Sqrt(Math.Pow(p.X - a.X, 2) + Math.Pow(p.Y - a.Y, 2)) <= tolerance;
+            double l2 = Math.Pow(a.X - b.X, 2) + Math.Pow(a.Y - b.Y, 2);
+            if (l2 == 0) return Math.Sqrt(Math.Pow(p.X - a.X, 2) + Math.Pow(p.Y - a.Y, 2)) <= tolerance;
 
-             double t = ((p.X - a.X) * (b.X - a.X) + (p.Y - a.Y) * (b.Y - a.Y)) / l2;
-             t = Math.Max(0, Math.Min(1, t));
+            double t = ((p.X - a.X) * (b.X - a.X) + (p.Y - a.Y) * (b.Y - a.Y)) / l2;
+            t = Math.Max(0, Math.Min(1, t));
 
-             global::Avalonia.Point projection = new global::Avalonia.Point(a.X + t * (b.X - a.X), a.Y + t * (b.Y - a.Y));
-             return Math.Sqrt(Math.Pow(p.X - projection.X, 2) + Math.Pow(p.Y - projection.Y, 2)) <= tolerance;
+            global::Avalonia.Point projection = new global::Avalonia.Point(a.X + t * (b.X - a.X), a.Y + t * (b.Y - a.Y));
+            return Math.Sqrt(Math.Pow(p.X - projection.X, 2) + Math.Pow(p.Y - projection.Y, 2)) <= tolerance;
         }
     }
 

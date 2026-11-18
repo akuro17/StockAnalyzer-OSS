@@ -336,8 +336,8 @@ public static class IndicatorCalculationHelper
     /// </para>
     /// </summary>
     public static (List<decimal?> Beta, List<decimal?> Alpha, List<decimal?> Correlation) CalculateRollingBetaStats(
-        IReadOnlyList<decimal?> seriesA, 
-        IReadOnlyList<decimal?> seriesB, 
+        IReadOnlyList<decimal?> seriesA,
+        IReadOnlyList<decimal?> seriesB,
         int period,
         decimal epsilon = 1e-12m)
     {

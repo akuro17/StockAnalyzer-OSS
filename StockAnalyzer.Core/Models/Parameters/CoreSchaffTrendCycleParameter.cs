@@ -57,11 +57,11 @@ namespace StockAnalyzer.Core.Models.Parameters
         public override void Validate()
         {
             if (CyclePeriod < 2 || ShortPeriod < 2 || LongPeriod < 2)
-                 throw new ArgumentOutOfRangeException("Periods must be 2 or greater");
+                throw new ArgumentOutOfRangeException("Periods must be 2 or greater");
             if (ShortPeriod >= LongPeriod)
-                 throw new ArgumentException("ShortPeriod must be less than LongPeriod");
+                throw new ArgumentException("ShortPeriod must be less than LongPeriod");
             if (SmoothPeriod < 1)
-                 throw new ArgumentOutOfRangeException(nameof(SmoothPeriod), "SmoothPeriod must be 1 or greater");
+                throw new ArgumentOutOfRangeException(nameof(SmoothPeriod), "SmoothPeriod must be 1 or greater");
         }
     }
 }

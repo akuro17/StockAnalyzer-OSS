@@ -50,11 +50,12 @@ public sealed class AxisRenderer : IDisposable
     {
         var key = (price, decimalPlaces, isPercentage);
         if (!forceSign && prefix == null && _priceLabelCache.TryGetValue(key, out var label)) return label;
-        
+
         if (isPercentage)
         {
             // Percentage mode often benefits from fixed precision, but we use decimalPlaces for flexibility
-            string format = decimalPlaces switch {
+            string format = decimalPlaces switch
+            {
                 0 => "+0;-0;0",
                 1 => "+0.0;-0.0;0.0",
                 _ => "+0.00;-0.00;0.00"
@@ -72,7 +73,7 @@ public sealed class AxisRenderer : IDisposable
         }
 
         if (_priceLabelCache.Count > 1000) _priceLabelCache.Clear();
-        
+
         // Dynamic format based on calculated decimal places (F0, F1, F2...)
         label = (prefix ?? "") + price.ToString("F" + decimalPlaces, CultureInfo.InvariantCulture);
         if (prefix == null) _priceLabelCache[key] = label;
@@ -83,7 +84,7 @@ public sealed class AxisRenderer : IDisposable
     {
         if (_volumeLabelCache.TryGetValue(v, out var label)) return label;
         if (_volumeLabelCache.Count > 1000) _volumeLabelCache.Clear();
-        
+
         if (v >= 1_000_000_000m)
             label = (v / 1_000_000_000m).ToString("0.##", CultureInfo.InvariantCulture) + "B";
         else if (v >= 1_000_000m)
@@ -92,7 +93,7 @@ public sealed class AxisRenderer : IDisposable
             label = (v / 1_000m).ToString("0.##", CultureInfo.InvariantCulture) + "K";
         else
             label = v.ToString("0.##", CultureInfo.InvariantCulture);
-            
+
         _volumeLabelCache[v] = label;
         return label;
     }
@@ -105,7 +106,7 @@ public sealed class AxisRenderer : IDisposable
             IsAntialias = true,
             TextAlign = SKTextAlign.Left
         };
-        
+
         _highlightTextPaint = new SKPaint
         {
             TextSize = 12,
@@ -147,7 +148,7 @@ public sealed class AxisRenderer : IDisposable
     private void DrawBorderLines(SKCanvas canvas, ChartLayoutContext layout)
     {
         var chartArea = layout.ChartArea;
-        
+
         // Chart area bottom border (separator between chart and volume/panels)
         float bottomY = MathF.Floor((float)chartArea.Bottom) + 0.5f;
         canvas.DrawLine((float)chartArea.Left, bottomY, (float)chartArea.Right, bottomY, _axisLinePaint);
@@ -203,7 +204,7 @@ public sealed class AxisRenderer : IDisposable
         {
             // For P&F, enforce strict BoxSize steps for Y-axis labels 
             step = snapshot.MaxBrickSize;
-            
+
             // For extreme zoom-out, skip labels to avoid overlapping text
             decimal roughStep = range / 8m;
             if (roughStep > step * 2)
@@ -232,7 +233,7 @@ public sealed class AxisRenderer : IDisposable
         for (decimal price = firstLine; price <= maxPrice && safetyCounter++ < StockAnalyzer.Avalonia.Common.ChartConstants.MaxRenderIterationLimit; price += step)
         {
             float y = MathF.Floor((float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, price)).Y + (float)chartArea.Top) + 0.5f;
-            
+
             // Bounds check to prevent drawing labels in sub-window areas
             if (!float.IsFinite(y)) continue;
 
@@ -282,7 +283,7 @@ public sealed class AxisRenderer : IDisposable
             string label = GetPriceLabel(displayPrice, decimalPlaces, isPercentage, forceSign, prefix);
             // Adjust y to center text vertically
             float textY = y + _textPaint.TextSize / 2f - 2f;
-            
+
             // Skip drawing if this position is occluded by a floating label
             if (IsOccluded(y, occlusions)) continue;
 
@@ -323,13 +324,13 @@ public sealed class AxisRenderer : IDisposable
         Span<int> bits = stackalloc int[4];
         decimal.GetBits(step, bits);
         int scale = (bits[3] >> 16) & 0x7F;
-        return Math.Clamp(scale, 0, 6); 
+        return Math.Clamp(scale, 0, 6);
     }
 
     private int FindClosestIndex(IReadOnlyList<CoreCandleData> candles, DateTime targetTime)
     {
         if (candles == null || candles.Count == 0) return 0;
-        
+
         int low = 0;
         int high = candles.Count - 1;
         while (low <= high)
@@ -340,7 +341,7 @@ public sealed class AxisRenderer : IDisposable
             if (comparison < 0) low = mid + 1;
             else high = mid - 1;
         }
-        
+
         // Target not perfectly found; return the lower boundary (the most recent past candle)
         return Math.Max(0, Math.Min(candles.Count - 1, high));
     }
@@ -348,7 +349,7 @@ public sealed class AxisRenderer : IDisposable
     private void DrawDateAxis(SKCanvas canvas, ChartLayoutContext layout, ChartDataSnapshot snapshot, IChartRenderConfig config)
     {
         var chartArea = layout.ChartArea;
-        
+
         // Calculate the absolute bottom Y coordinate for the Date labels
         float axisBottomY = (float)chartArea.Bottom;
         if (layout.VolumeArea.Height > 0)
@@ -359,7 +360,7 @@ public sealed class AxisRenderer : IDisposable
         {
             axisBottomY = Math.Max(axisBottomY, (float)layout.PanelAreas[i].Bottom);
         }
-        
+
         axisBottomY = MathF.Floor(axisBottomY) + 0.5f;
 
         // Draw horizontal axis line at the exact absolute bottom
@@ -372,17 +373,17 @@ public sealed class AxisRenderer : IDisposable
         {
             var startPt = transform.ScreenToNumeric(new global::Avalonia.Point(0, 0));
             var endPt = transform.ScreenToNumeric(new global::Avalonia.Point(chartArea.Width, 0));
-            
+
             decimal minVol = (decimal)Math.Min(startPt.x, endPt.x);
             decimal maxVol = (decimal)Math.Max(startPt.x, endPt.x);
-            
+
             if (maxVol > minVol)
             {
                 float rwPixelsPerGrid = 120f;
                 int rwStepsCount = Math.Max(2, (int)(chartArea.Width / rwPixelsPerGrid));
                 decimal roughStep = (maxVol - minVol) / rwStepsCount;
                 decimal niceStep = CalculateHybridStep(maxVol - minVol, (float)chartArea.Width);
-                
+
                 if (niceStep > 0)
                 {
                     decimal startVol = Math.Floor(minVol / niceStep) * niceStep;
@@ -390,10 +391,10 @@ public sealed class AxisRenderer : IDisposable
                     {
                         if (v < minVol) continue;
                         float x = MathF.Floor((float)transform.NumericToScreen((double)v, 0).X + (float)chartArea.Left) + 0.5f;
-                        
+
                         // Global standard volume formatting (K, M, B) cached
                         string label = GetVolumeLabel(v);
-                                       
+
                         float textWidth = _textPaint.MeasureText(label);
                         canvas.DrawText(label, x - textWidth / 2f, axisBottomY + 15, _textPaint);
                     }
@@ -406,20 +407,20 @@ public sealed class AxisRenderer : IDisposable
         if (count == 0) return;
 
         bool isIndexMode = config.ChartType.IsIndexBased();
-        
+
         // Find visible time boundaries using ScreenToChart
         DateTime startTime;
         DateTime endTime;
-        
+
         if (isIndexMode)
         {
             // For pure index mode, ScreenToChart returns ticks as the raw index.
             double rawStartIndex = transform.ScreenToChart(new global::Avalonia.Point(chartArea.Left, 0)).Time.Ticks;
             double rawEndIndex = transform.ScreenToChart(new global::Avalonia.Point(chartArea.Right, 0)).Time.Ticks;
-            
+
             int sIdx = Math.Clamp((int)Math.Floor(rawStartIndex), 0, snapshot.Candles.Count - 1);
             int eIdx = Math.Clamp((int)Math.Ceiling(rawEndIndex), 0, snapshot.Candles.Count - 1);
-            
+
             startTime = snapshot.Candles[sIdx].Timestamp;
             endTime = snapshot.Candles[eIdx].Timestamp;
         }
@@ -432,9 +433,9 @@ public sealed class AxisRenderer : IDisposable
         if (startTime >= endTime) return;
 
         TimeSpan visibleDuration = endTime - startTime;
-        
+
         // Define standard time intervals for adaptive selection
-        var intervals = new (TimeSpan span, bool isMajor)[] 
+        var intervals = new (TimeSpan span, bool isMajor)[]
         {
             (TimeSpan.FromDays(365), true),     // 1 Year
             (TimeSpan.FromDays(90), false),    // 1 Quarter
@@ -490,7 +491,7 @@ public sealed class AxisRenderer : IDisposable
         while (curr <= endTime)
         {
             if (curr >= startTime) _labelDates.Add(curr);
-            
+
             if (selectedStep.TotalDays >= 365) curr = curr.AddYears(1);
             else if (selectedStep.TotalDays >= 90) curr = curr.AddMonths(3);
             else if (selectedStep.TotalDays >= 30) curr = curr.AddMonths(1);
@@ -508,7 +509,7 @@ public sealed class AxisRenderer : IDisposable
         bool stepIsWeek = selectedStep.TotalDays >= 7 && !stepIsMonth && !stepIsYear;
         bool stepIsDay = selectedStep.TotalDays >= 1 && !stepIsWeek && !stepIsMonth && !stepIsYear;
         bool stepIsHour = selectedStep.TotalHours >= 1 && !stepIsDay;
-        
+
         foreach (var date in _labelDates)
         {
             float x;
@@ -578,17 +579,17 @@ public sealed class AxisRenderer : IDisposable
                 else if (stepIsDay || stepIsWeek) label = GetDateLabel(date, 2);
                 else label = GetDateLabel(date, 3); // "HH:mm"
             }
-            
+
             lastYear = date.Year;
             lastMonth = date.Month;
             lastDay = date.Day;
 
             float textWidth = paint.MeasureText(label);
             float drawX = x - textWidth / 2f;
-            
+
             // Prevent text overlapping horizontally
             if (drawX < lastDrawnRightEdge + 15f) continue;
-            
+
             // Ensure label doesn't bleed out of horizontal bounds
             if (drawX < (float)chartArea.Left) drawX = (float)chartArea.Left;
             if (drawX + textWidth > (float)chartArea.Right) drawX = (float)chartArea.Right - textWidth;
@@ -616,7 +617,7 @@ public sealed class AxisRenderer : IDisposable
         decimal niceStep;
         if (normalized < 1.5m) niceStep = 1m;
         else if (normalized < 2.25m) niceStep = 2m;
-        else if (normalized < 3.75m) niceStep = 2.5m; 
+        else if (normalized < 3.75m) niceStep = 2.5m;
         else if (normalized < 7.5m) niceStep = 5m;
         else niceStep = 10m;
 
@@ -624,7 +625,7 @@ public sealed class AxisRenderer : IDisposable
 
         // Final density check: avoid clutter during sudden volatility
         double actualSpacing = (double)finalStep * pxPerUnit;
-        if (actualSpacing < 45.0) 
+        if (actualSpacing < 45.0)
         {
             if (niceStep == 1m) finalStep = 2m * powerOf10;
             else if (niceStep == 2m) finalStep = 2.5m * powerOf10;

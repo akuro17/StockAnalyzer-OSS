@@ -77,7 +77,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
     public async ValueTask<Portfolio> LoadPortfolioAsync(CancellationToken ct = default)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(UserPortfolioRepository));
-        
+
         await _ioLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -131,7 +131,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
     {
         if (_disposed) throw new ObjectDisposedException(nameof(UserPortfolioRepository));
         if (portfolio == null) throw new ArgumentNullException(nameof(portfolio));
-        
+
         ct.ThrowIfCancellationRequested();
 
         await _ioLock.WaitAsync(ct).ConfigureAwait(false);
@@ -471,14 +471,14 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                         using (var command = dbConnection.CreateCommand())
                         {
                             command.CommandText = "INSERT INTO temp_positions VALUES ($1, $2, $3, $4, $5, $6);";
-                            
+
                             var p1 = command.CreateParameter(); p1.Value = pos.Ticker; command.Parameters.Add(p1);
                             var p2 = command.CreateParameter(); p2.Value = ToStoredDecimal(pos.Quantity); command.Parameters.Add(p2);
                             var p3 = command.CreateParameter(); p3.Value = ToStoredDecimal(pos.AverageCostPerUnit); command.Parameters.Add(p3);
                             var p4 = command.CreateParameter(); p4.Value = pos.IsShort; command.Parameters.Add(p4);
                             var p5 = command.CreateParameter(); p5.Value = ToStoredDecimal(pos.AverageCost.Amount); command.Parameters.Add(p5);
                             var p6 = command.CreateParameter(); p6.Value = pos.AverageCost.Currency.Value; command.Parameters.Add(p6);
-                            
+
                             await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
                         }
                     }
@@ -702,10 +702,10 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                         var cash = ReadStoredDecimal(reader.GetValue(5));
                         var fee = ReadStoredDecimal(reader.GetValue(6));
                         var notes = reader.IsDBNull(7) ? null : reader.GetString(7);
-                        
+
                         decimal? targetPrice = reader.IsDBNull(8) ? null : ReadStoredDecimal(reader.GetValue(8));
                         decimal? stopLoss = reader.IsDBNull(9) ? null : ReadStoredDecimal(reader.GetValue(9));
-                        
+
                         var id = Guid.Parse(reader.GetString(10));
                         Guid? relatedId = reader.IsDBNull(11) ? null : Guid.Parse(reader.GetString(11));
 
@@ -748,10 +748,10 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                         var cash = ReadStoredDecimal(reader.GetValue(5));
                         var fee = ReadStoredDecimal(reader.GetValue(6));
                         var notes = reader.IsDBNull(7) ? null : reader.GetString(7);
-                        
+
                         decimal? targetPrice = reader.IsDBNull(8) ? null : ReadStoredDecimal(reader.GetValue(8));
                         decimal? stopLoss = reader.IsDBNull(9) ? null : ReadStoredDecimal(reader.GetValue(9));
-                        
+
                         var id = Guid.Parse(reader.GetString(10));
                         Guid? relatedId = reader.IsDBNull(11) ? null : Guid.Parse(reader.GetString(11));
 

@@ -54,7 +54,7 @@ public class VerticalLineObject : IChartObject, IDrawingCalculatedValuesProvider
 
         // Draw full height line
         var clip = canvas.LocalClipBounds;
-        
+
         using var paint = new SKPaint
         {
             Color = SkiaColor,
@@ -89,7 +89,7 @@ public class VerticalLineObject : IChartObject, IDrawingCalculatedValuesProvider
         for (int i = 0; i < Points.Count; i++)
         {
             // Vertical line only cares about Time
-            Points[i] = new ChartPoint(Points[i].Time.Add(timeDelta), Points[i].Price); 
+            Points[i] = new ChartPoint(Points[i].Time.Add(timeDelta), Points[i].Price);
         }
     }
 

@@ -4,6 +4,7 @@ using System.Linq;
 using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 using Xunit;
+using static StockAnalyzer.Core.Tests.TestHelpers.DayNumberedBars;
 
 namespace StockAnalyzer.Core.Tests.MathUtils;
 
@@ -13,16 +14,7 @@ namespace StockAnalyzer.Core.Tests.MathUtils;
 /// </summary>
 public class ReturnStatisticsPeriodAlignmentTests
 {
-    private static readonly DateTime FirstMonday = new(2024, 1, 1);
-
-    private static CandleData Bar(DateTime date, decimal close) => new(date, close, close, close, close, 1000);
-
-    private static decimal PriceA(int i) => 100m + 3m * i + (i * i % 5);
-
-    private static decimal PriceB(int i) => 50m + 2m * i + (i * 7 % 4);
-
-    private static IReadOnlyDictionary<string, IReadOnlyList<CandleData>> Universe(IReadOnlyList<CandleData> a, IReadOnlyList<CandleData> b)
-        => new Dictionary<string, IReadOnlyList<CandleData>> { ["A"] = a, ["B"] = b };
+    private static readonly DateTime FirstMonday = Day1;
 
     /// <summary>Eight weekly bars; the label of week <paramref name="shiftedWeek"/> is the Tuesday (the Monday was a holiday), all others the Monday.</summary>
     private static List<CandleData> Weekly(Func<int, decimal> price, int shiftedWeek = -1, int skippedWeek = -1)
@@ -118,9 +110,6 @@ public class ReturnStatisticsPeriodAlignmentTests
     }
 
     // ---- multiBarReturnCount (R-2) ----------------------------------------------------------------------------------------------
-
-    private static List<CandleData> Days(Func<int, decimal> price, params int[] dayNumbers)
-        => dayNumbers.Select(n => Bar(FirstMonday.AddDays(n - 1), price(n))).ToList();
 
     [Fact]
     public void MultiBarReturnCount_CountsTheDateAfterADayOnlyOneMarketTradedOn()

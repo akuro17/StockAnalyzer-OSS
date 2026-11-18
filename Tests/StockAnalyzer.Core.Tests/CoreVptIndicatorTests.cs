@@ -14,7 +14,7 @@ namespace StockAnalyzer.Core.Tests
             var startDate = DateTime.Today;
             return closes.Select((close, i) => new CoreCandleData(
                 startDate.AddDays(i),
-                i > 0 ? closes[i-1] : close, // Open
+                i > 0 ? closes[i - 1] : close, // Open
                 close + 1, // High
                 close - 1, // Low
                 close,

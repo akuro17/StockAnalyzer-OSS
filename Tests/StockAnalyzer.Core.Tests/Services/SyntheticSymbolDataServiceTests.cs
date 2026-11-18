@@ -719,4 +719,106 @@ public class SyntheticSymbolDataServiceTests
     }
 
     #endregion
+
+    #region 7. Strict inner join of the legs (no forward fill across a market holiday)
+
+    // Business days of the two markets: the left market trades on 2024-01-08 (the right market is closed), the right market trades on 2024-01-11 (the left is closed).
+    private static readonly DateTime[] LeftMarketDays = DaysOf(1, 2, 3, 4, 5, 8, 9, 10, 12, 15);
+    private static readonly DateTime[] RightMarketDays = DaysOf(1, 2, 3, 4, 5, 9, 10, 11, 12, 15);
+    private static readonly DateTime[] BothMarketsDays = DaysOf(1, 2, 3, 4, 5, 9, 10, 12, 15);
+
+    private static DateTime[] DaysOf(params int[] daysOfJanuary2024)
+        => daysOfJanuary2024.Select(d => new DateTime(2024, 1, d, 0, 0, 0, DateTimeKind.Utc)).ToArray();
+
+    // The price of a bar depends on the symbol and the day, so a bar carried over from another day can never equal the bar of its own day.
+    private static List<CandleData> BarsOf(decimal basePrice, DateTime[] days)
+        => days.Select(d => new CandleData(d, basePrice + d.Day, basePrice + d.Day + 1m, basePrice + d.Day - 1m, basePrice + d.Day, 1000L)).ToList();
+
+    private static Mock<IDataService> LegsOf(List<CandleData> left, List<CandleData> right)
+    {
+        var inner = new Mock<IDataService>();
+        inner.Setup(d => d.LoadCandlesAsync("7203-T", TimeFrame.D1, It.IsAny<int>())).ReturnsAsync(left);
+        inner.Setup(d => d.LoadCandlesAsync("AAPL", TimeFrame.D1, It.IsAny<int>())).ReturnsAsync(right);
+        return inner;
+    }
+
+    private static SyntheticSymbolDataService StrictService(Mock<IDataService> inner)
+        => new(inner.Object, ComparisonDataAligner.CreateStrict(inner.Object));
+
+    [Fact]
+    public async Task LoadCandlesAsync_SyntheticD1_WhenOneMarketIsClosed_HasNoBarForThatDay()
+    {
+        var inner = LegsOf(BarsOf(100m, LeftMarketDays), BarsOf(50m, RightMarketDays));
+
+        var candles = await StrictService(inner).LoadCandlesAsync("7203-T / AAPL", TimeFrame.D1, 100);
+
+        Assert.Equal(BothMarketsDays, candles.Select(c => c.Timestamp).ToArray());
+        foreach (var candle in candles)
+        {
+            Assert.Equal(Math.Round((100m + candle.Timestamp.Day) / (50m + candle.Timestamp.Day), 8), candle.Close);
+        }
+    }
+
+    [Fact]
+    public async Task LoadCandlesAsync_SyntheticD1_BothOrientationsHaveTheSameTimestamps()
+    {
+        var inner = LegsOf(BarsOf(100m, LeftMarketDays), BarsOf(50m, RightMarketDays));
+        var service = StrictService(inner);
+
+        var leftOverRight = await service.LoadCandlesAsync("7203-T / AAPL", TimeFrame.D1, 100);
+        var rightOverLeft = await service.LoadCandlesAsync("AAPL / 7203-T", TimeFrame.D1, 100);
+
+        Assert.Equal(BothMarketsDays, leftOverRight.Select(c => c.Timestamp).ToArray());
+        Assert.Equal(leftOverRight.Select(c => c.Timestamp).ToArray(), rightOverLeft.Select(c => c.Timestamp).ToArray());
+    }
+
+    [Fact]
+    public async Task LoadCandlesAsync_SyntheticWeekly_AClosedDayOfOneMarketDoesNotEnterTheWeek()
+    {
+        // Week of 2024-01-08: the right market is closed on Monday, so the week opens with Tuesday 2024-01-09, not with a carried-over Monday.
+        var inner = LegsOf(BarsOf(100m, LeftMarketDays), BarsOf(50m, RightMarketDays));
+
+        var weeks = await StrictService(inner).LoadCandlesAsync("7203-T - AAPL", TimeFrame.W1, 10);
+
+        var week = Assert.Single(weeks, w => w.Timestamp == new DateTime(2024, 1, 8, 0, 0, 0, DateTimeKind.Utc));
+        Assert.Equal((100m + 9m) - (50m + 9m), week.Open);
+        Assert.Equal((100m + 12m) - (50m + 12m), week.Close);
+    }
+
+    [Fact]
+    public async Task LoadCandlesAsync_SyntheticD1_WhenTheShorterLegStartsLater_FallsBackToTheOverlapWithoutFilling()
+    {
+        // The right leg starts on 2024-01-10: more than half of the left timeline has no right bar, so the right leg is excluded from the left-based alignment
+        // and the reverse alignment is used; it must give exactly the overlap and no carried-over bar.
+        var inner = LegsOf(BarsOf(100m, LeftMarketDays), BarsOf(50m, DaysOf(10, 12, 15)));
+        var service = StrictService(inner);
+
+        var leftOverRight = await service.LoadCandlesAsync("7203-T / AAPL", TimeFrame.D1, 100);
+        var rightOverLeft = await service.LoadCandlesAsync("AAPL / 7203-T", TimeFrame.D1, 100);
+
+        Assert.Equal(DaysOf(10, 12, 15), leftOverRight.Select(c => c.Timestamp).ToArray());
+        Assert.Equal(DaysOf(10, 12, 15), rightOverLeft.Select(c => c.Timestamp).ToArray());
+    }
+
+    [Fact]
+    public async Task LoadCandlesAsync_WithoutAnInjectedAligner_DoesNotFillAcrossAClosedDay()
+    {
+        var inner = LegsOf(BarsOf(100m, LeftMarketDays), BarsOf(50m, RightMarketDays));
+
+        var candles = await new SyntheticSymbolDataService(inner.Object).LoadCandlesAsync("7203-T / AAPL", TimeFrame.D1, 100);
+
+        Assert.Equal(BothMarketsDays, candles.Select(c => c.Timestamp).ToArray());
+    }
+
+    [Fact]
+    public void CreateStrict_DoesNotForwardFill_WhileTheDefaultAlignerKeepsTheStandardLimit()
+    {
+        var inner = new Mock<IDataService>().Object;
+
+        Assert.Equal(0, ComparisonDataAligner.CreateStrict(inner).ForwardFillLimit);
+        Assert.Equal(ComparisonDataAligner.DefaultForwardFillLimit, new ComparisonDataAligner(inner).ForwardFillLimit);
+        Assert.True(ComparisonDataAligner.DefaultForwardFillLimit > 0);
+    }
+
+    #endregion
 }

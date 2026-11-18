@@ -98,7 +98,7 @@ public sealed class RlLocalSnapshotFactoryCharacterizationTests : IDisposable
         RlSourceFixture.WriteLocalSymbol(DataRoot, "ABC", RlSourceFixture.FirstDay, 1_278);
         DateOnly end = RlSourceFixture.FirstDay.AddDays(1_278);
         var shortHistory = await RlLocalSnapshotFactory.PrepareAsync(Job("ABC", RlSourceFixture.FirstDay, end) with
-            { ShortHistorySpecificationId = RlShortHistoryEvaluationContract.SpecificationId }, Snapshot("short"), RlSourceFixture.Limits, CancellationToken.None);
+        { ShortHistorySpecificationId = RlShortHistoryEvaluationContract.SpecificationId }, Snapshot("short"), RlSourceFixture.Limits, CancellationToken.None);
         Assert.True(shortHistory.ShortHistoryEvaluation);
         var smoke = await RlLocalSnapshotFactory.PrepareAsync(Job("ABC", RlSourceFixture.FirstDay, end, smoke: true), Snapshot("smoke"), RlSourceFixture.Limits, CancellationToken.None);
         Assert.Empty(smoke.Catalog.Oos);

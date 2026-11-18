@@ -62,7 +62,8 @@ public static class SpiralPriceModelEngine
                 Array.Resize(ref samples, outputCount);
                 return new SpiralAnalysisResult(parameters, samples, stoppedByExponentLimit: true,
                     CreateSummary(validModelCount, absoluteErrorSum, squaredErrorSum, validPriceSum, latestResidualPercent,
-                        latestVelocity, latestAcceleration, latestModelVelocity, latestModelAcceleration, fitMetricsAvailable)) { HasNumericLimit = numericLimit };
+                        latestVelocity, latestAcceleration, latestModelVelocity, latestModelAcceleration, fitMetricsAvailable))
+                { HasNumericLimit = numericLimit };
             }
 
             latestResidualPercent = null;
@@ -137,7 +138,8 @@ public static class SpiralPriceModelEngine
 
         return new SpiralAnalysisResult(parameters, samples, stoppedByExponentLimit: false,
             CreateSummary(validModelCount, absoluteErrorSum, squaredErrorSum, validPriceSum, latestResidualPercent,
-                latestVelocity, latestAcceleration, latestModelVelocity, latestModelAcceleration, fitMetricsAvailable)) { HasNumericLimit = numericLimit };
+                latestVelocity, latestAcceleration, latestModelVelocity, latestModelAcceleration, fitMetricsAvailable))
+        { HasNumericLimit = numericLimit };
     }
 
     private static double GetExponent(SpiralAnalysisParameters parameters, double angle)

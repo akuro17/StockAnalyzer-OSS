@@ -739,7 +739,7 @@ public partial class TrainingWizardViewModel : ViewModelBase, INotifyDataErrorIn
         LocalizationManager.Instance.LocaleChanged += OnLocaleChanged;
         StartTrainingCommand.CanExecuteChanged += (_, _) => NotifyStartBlocker();       // every input the gate reads already notifies the command
 
-        FeaturePicker =new FeatureChannelPickerViewModel(indicatorFactory ?? IndicatorFactory.Default, templateService, toastService)
+        FeaturePicker = new FeatureChannelPickerViewModel(indicatorFactory ?? IndicatorFactory.Default, templateService, toastService)
         {
             ShowColorSettings = false,
             ShowSetAsDefault = false,

@@ -68,13 +68,23 @@ internal static class RlLocalSourceFiles
     private static async Task<string> CopyAsync(string folder, string source, string destination, long bound, CancellationToken ct)
     {
         ValidatePath(folder, source);
-        await using var input = new FileStream(source, new FileStreamOptions { Mode = FileMode.Open, Access = FileAccess.Read,
-            Share = FileShare.Read, Options = FileOptions.Asynchronous | FileOptions.SequentialScan });
+        await using var input = new FileStream(source, new FileStreamOptions
+        {
+            Mode = FileMode.Open,
+            Access = FileAccess.Read,
+            Share = FileShare.Read,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+        });
         ValidatePath(folder, source);
         if (input.Length <= 0 || input.Length > bound) throw new InvalidDataException("Local Parquet exceeds the captured snapshot byte bound.");
         string before = ContentHash.OfFile(source);
-        await using (var output = new FileStream(destination, new FileStreamOptions { Mode = FileMode.CreateNew, Access = FileAccess.Write,
-            Share = FileShare.None, Options = FileOptions.Asynchronous | FileOptions.SequentialScan }))
+        await using (var output = new FileStream(destination, new FileStreamOptions
+        {
+            Mode = FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+        }))
             await input.CopyToAsync(output, ct).ConfigureAwait(false);
         ct.ThrowIfCancellationRequested();
         string hash = ContentHash.OfFile(destination);

@@ -13,13 +13,13 @@ public static class ChartSettingsConstants
     public const string DefaultNeutralColor = "#808080";
     public const string DefaultLineColor = "#2196F3";
     public const string DefaultAreaColor = "#2196F3";
-    
+
     // --- Dot Chart ---
     public const double DefaultDotBaseRadius = 3.0;
     public const double MinDotBaseRadius = 0.5;
     public const double MaxDotBaseRadius = 20.0;
     public const double DotBaseRadiusStep = 0.5;
-    
+
     // --- Heikin Ashi Specialized ---
     public const string DefaultHeikinBullishColor = "#26A69A";
     public const string DefaultHeikinBearishColor = "#EF5350";

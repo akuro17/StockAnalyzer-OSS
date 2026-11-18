@@ -79,7 +79,37 @@ public class ScreenerDefaultParameterCacheParityTests
     //   Old -> new hash: 9D0DE11C214D6F1B20113DE372E0F6DB48845B487FA0966D85A9F6E3CBBD7A84 -> 759BAFA814FD8FCEAE5D9BF792EEE76864C6D6A7C144FEC25C2FDB4C3C43F331.
     //   Reconstruction proof: with the three-file fix reverted the report hashed exactly to the old pin (9D0DE11C...), and the diff between the two reports is those five lines only.
     //   Every earlier pin stays reproducible: the permanent proofs put the SSAAnomaly lines back to the old value (ChangedLineOldValues) before hashing.
-    private const string PinnedFingerprint = "759BAFA814FD8FCEAE5D9BF792EEE76864C6D6A7C144FEC25C2FDB4C3C43F331";
+    // TWELFTH re-pin, 2026-11-17 (Statistical functions plan, Run R3; purely additive under the standing rule of lessons_webai_expansion_20261114_0001):
+    //   Added types: SkewnessKurtosis, JarqueBera, LjungBoxQ (15 lines, 5 variants each; 1040 -> 1055 lines).
+    //   Old -> new hash: 759BAFA814FD8FCEAE5D9BF792EEE76864C6D6A7C144FEC25C2FDB4C3C43F331 -> 0DFE495B8C33EE730F0D1F4CE0112002AEE589558A7787D4BB8D0779F3F59E72.
+    //   No existing line changed: removing the three types returns the prior pin (ValuesOfTheTypesBeforeStatisticalPlanAreUnchanged). Every value of the three types equals a
+    //   standalone calculation (TheStatisticalPlanTypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod).
+    // THIRTEENTH re-pin, 2026-11-17 (Statistical functions plan, Run R4; purely additive under the standing rule of lessons_webai_expansion_20261114_0001):
+    //   Added types: DownsideDeviation, BipowerVariation (10 lines, 5 variants each; 1055 -> 1065 lines).
+    //   Old -> new hash: 0DFE495B8C33EE730F0D1F4CE0112002AEE589558A7787D4BB8D0779F3F59E72 -> 1CCEBB29BF8A6BAC8FB13A00B6345E9E976CF644A1BC10DFD6EEF72853FBA770.
+    //   No existing line changed: removing the two types returns the prior pin (ValuesOfTheTypesBeforeStatisticalPlanR4AreUnchanged). Every value of the two types equals a
+    //   standalone calculation (TheStatisticalPlanR4TypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod).
+    // FOURTEENTH re-pin, 2026-11-17 (Statistical functions plan, Run R5; purely additive under the standing rule of lessons_webai_expansion_20261114_0001):
+    //   Added type: ADFStationarity (5 lines, 5 variants; 1065 -> 1070 lines).
+    //   Old -> new hash: 1CCEBB29BF8A6BAC8FB13A00B6345E9E976CF644A1BC10DFD6EEF72853FBA770 -> 1BC8A3D13E73F7AF697134C792DC98659F127FE6BEB5A8F3AE1339B5AFD852C5.
+    //   No existing line changed: removing the type returns the prior pin (ValuesOfTheTypesBeforeStatisticalPlanR5AreUnchanged). Every value of the type equals a
+    //   standalone calculation (TheStatisticalPlanR5TypeGivesTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod).
+    // FIFTEENTH re-pin, 2026-11-17 (Statistical functions plan, Run R6; purely additive under the standing rule of lessons_webai_expansion_20261114_0001):
+    //   Added type: VarianceRatio (5 lines, 5 variants; 1070 -> 1075 lines).
+    //   Old -> new hash: 1BC8A3D13E73F7AF697134C792DC98659F127FE6BEB5A8F3AE1339B5AFD852C5 -> B5E52100F8E585F97D06009A6348E5BB07809ACAA9CB4E2EC5D3AA928D0824A8.
+    //   No existing line changed: removing the type returns the prior pin (ValuesOfTheTypesBeforeStatisticalPlanR6AreUnchanged). Every value of the type equals a
+    //   standalone calculation (TheStatisticalPlanR6TypeGivesTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod).
+    // SIXTEENTH re-pin, 2026-11-17 (Statistical functions plan, Run R7; purely additive under the standing rule of lessons_webai_expansion_20261114_0001):
+    //   Added types: QuantileBands, TheilSenRegression, CornishFisherVaR (15 lines, 5 variants each; 1075 -> 1090 lines).
+    //   Old -> new hash: B5E52100F8E585F97D06009A6348E5BB07809ACAA9CB4E2EC5D3AA928D0824A8 -> 0E0E03D9A015FB58CB712F1A321700920D482DCBDBE445EDBE9256987CF61BF4.
+    //   No existing line changed: removing the three types returns the prior pin (ValuesOfTheTypesBeforeStatisticalPlanR7AreUnchanged). Every value of the three types equals a
+    //   standalone calculation (TheStatisticalPlanR7TypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod).
+    private const string PinnedFingerprint = "0E0E03D9A015FB58CB712F1A321700920D482DCBDBE445EDBE9256987CF61BF4";
+    private const string FingerprintBeforeStatisticalPlanR7 = "B5E52100F8E585F97D06009A6348E5BB07809ACAA9CB4E2EC5D3AA928D0824A8";
+    private const string FingerprintBeforeStatisticalPlanR6 = "1BC8A3D13E73F7AF697134C792DC98659F127FE6BEB5A8F3AE1339B5AFD852C5";
+    private const string FingerprintBeforeStatisticalPlanR5 = "1CCEBB29BF8A6BAC8FB13A00B6345E9E976CF644A1BC10DFD6EEF72853FBA770";
+    private const string FingerprintBeforeStatisticalPlanR4 = "0DFE495B8C33EE730F0D1F4CE0112002AEE589558A7787D4BB8D0779F3F59E72";
+    private const string FingerprintBeforeStatisticalPlan = "759BAFA814FD8FCEAE5D9BF792EEE76864C6D6A7C144FEC25C2FDB4C3C43F331";
     private const string FingerprintBeforeTimeSeriesPlanFive = "E5061217FAE4139B5786254FC783E046C360C30EAB9F3BE307E9E3DE2B3F769D";
     private const string FingerprintBeforeTimeSeriesPlanFour = "CD0FC956A95EB10B0470809C6C892B817CED627856044EEE84045FF6745380C0";
     private const string FingerprintBeforeTimeSeriesPlanTwo = "C8104FB99BFE0D1A68A9E507D2DD3CE6482A13DA5E26BA1D98A8BDA20C04AD4A";
@@ -113,6 +143,21 @@ public class ScreenerDefaultParameterCacheParityTests
 
     /// <summary>The types TimeSeries Plan 05 Task 5A added to the enum.</summary>
     private static readonly string[] TimeSeriesPlanFiveTypes = { "GrangerCausality", "JohansenCointegration" };
+
+    /// <summary>The types Statistical functions plan Run R3 added to the enum.</summary>
+    private static readonly string[] StatisticalPlanR3Types = { "SkewnessKurtosis", "JarqueBera", "LjungBoxQ" };
+
+    /// <summary>The types Statistical functions plan Run R4 added to the enum.</summary>
+    private static readonly string[] StatisticalPlanR4Types = { "DownsideDeviation", "BipowerVariation" };
+
+    /// <summary>The type Statistical functions plan Run R5 added to the enum.</summary>
+    private static readonly string[] StatisticalPlanR5Types = { "ADFStationarity" };
+
+    /// <summary>The type Statistical functions plan Run R6 added to the enum.</summary>
+    private static readonly string[] StatisticalPlanR6Types = { "VarianceRatio" };
+
+    /// <summary>The types Statistical functions plan Run R7 added to the enum.</summary>
+    private static readonly string[] StatisticalPlanR7Types = { "QuantileBands", "TheilSenRegression", "CornishFisherVaR" };
 
     /// <summary>The enum members that existed before plan 03 with a placeholder class (always null) and were implemented by plan 04; only their VALUES changed.</summary>
     private static readonly string[] FormerPlaceholderTypes = { "Garch11", "HurstExponent", "Entropy" };
@@ -215,7 +260,7 @@ public class ScreenerDefaultParameterCacheParityTests
     public void ValuesOfTheTypesBeforePlanThreeAreUnchanged()
     {
         // Without the seven plan-03 types, the two plan-04 types, MansfieldRS, MarketBreadth, HarRv, Bocpd, GrangerCausality, and JohansenCointegration, and with the three former placeholders as they were: the pin before plan 03.
-        Assert.Equal(FingerprintBeforePlanThree, HashWithoutNewTypes(PlanThreeTypes, PlanFourNewTypes, PlanNineTypes, PlanTenTypes, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes));
+        Assert.Equal(FingerprintBeforePlanThree, HashWithoutNewTypes(PlanThreeTypes, PlanFourNewTypes, PlanNineTypes, PlanTenTypes, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes, StatisticalPlanR3Types, StatisticalPlanR4Types, StatisticalPlanR5Types, StatisticalPlanR6Types, StatisticalPlanR7Types));
     }
 
     [Fact]
@@ -223,35 +268,35 @@ public class ScreenerDefaultParameterCacheParityTests
     {
         // Without the two plan-04 types, MansfieldRS, MarketBreadth, HarRv, Bocpd, GrangerCausality, and JohansenCointegration (the seven plan-03 types stay in the check) and with the three former placeholders put back to null:
         // the pin at plan 03 completion. Anything else that moved while plan 04, plan 09, plan 10, TimeSeries Plan 02, TimeSeries Plan 04, or TimeSeries Plan 05 was built makes this fail.
-        Assert.Equal(FingerprintBeforePlanFour, HashWithoutNewTypes(PlanFourNewTypes, PlanNineTypes, PlanTenTypes, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes));
+        Assert.Equal(FingerprintBeforePlanFour, HashWithoutNewTypes(PlanFourNewTypes, PlanNineTypes, PlanTenTypes, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes, StatisticalPlanR3Types, StatisticalPlanR4Types, StatisticalPlanR5Types, StatisticalPlanR6Types, StatisticalPlanR7Types));
     }
 
     [Fact]
     public void ValuesOfTheTypesBeforePlanNineAreUnchanged()
     {
         // MansfieldRS, MarketBreadth, HarRv, Bocpd, GrangerCausality, and JohansenCointegration are removed (all plan-03 and plan-04 types stay as implemented): the pin at plan 04 completion.
-        Assert.Equal(FingerprintBeforePlanNine, HashWithoutRemovedTypes(resetFormerPlaceholders: false, PlanNineTypes, PlanTenTypes, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes));
+        Assert.Equal(FingerprintBeforePlanNine, HashWithoutRemovedTypes(resetFormerPlaceholders: false, PlanNineTypes, PlanTenTypes, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes, StatisticalPlanR3Types, StatisticalPlanR4Types, StatisticalPlanR5Types, StatisticalPlanR6Types, StatisticalPlanR7Types));
     }
 
     [Fact]
     public void ValuesOfTheTypesBeforePlanTenAreUnchanged()
     {
         // MarketBreadth, HarRv, Bocpd, GrangerCausality, and JohansenCointegration are removed (all plan-03, plan-04, and plan-09 types stay as implemented): the pin at plan 09 completion.
-        Assert.Equal(FingerprintBeforePlanTen, HashWithoutRemovedTypes(resetFormerPlaceholders: false, PlanTenTypes, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes));
+        Assert.Equal(FingerprintBeforePlanTen, HashWithoutRemovedTypes(resetFormerPlaceholders: false, PlanTenTypes, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes, StatisticalPlanR3Types, StatisticalPlanR4Types, StatisticalPlanR5Types, StatisticalPlanR6Types, StatisticalPlanR7Types));
     }
 
     [Fact]
     public void ValuesOfTheTypesBeforeTimeSeriesPlanTwoAreUnchanged()
     {
         // HarRv, Bocpd, GrangerCausality, and JohansenCointegration are removed: returns the prior whole-report pin before HarRv identically.
-        Assert.Equal(FingerprintBeforeTimeSeriesPlanTwo, HashWithoutRemovedTypes(resetFormerPlaceholders: false, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes));
+        Assert.Equal(FingerprintBeforeTimeSeriesPlanTwo, HashWithoutRemovedTypes(resetFormerPlaceholders: false, TimeSeriesPlanTwoTypes, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes, StatisticalPlanR3Types, StatisticalPlanR4Types, StatisticalPlanR5Types, StatisticalPlanR6Types, StatisticalPlanR7Types));
     }
 
     [Fact]
     public void ValuesOfTheTypesBeforeTimeSeriesPlanFourAreUnchanged()
     {
         // Bocpd, GrangerCausality, and JohansenCointegration are removed: returns the prior whole-report pin identically.
-        string actual = HashWithoutRemovedTypes(resetFormerPlaceholders: false, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes);
+        string actual = HashWithoutRemovedTypes(resetFormerPlaceholders: false, TimeSeriesPlanFourTypes, TimeSeriesPlanFiveTypes, StatisticalPlanR3Types, StatisticalPlanR4Types, StatisticalPlanR5Types, StatisticalPlanR6Types, StatisticalPlanR7Types);
         _output.WriteLine("FINGERPRINT_BEFORE_TS_PLAN4 " + actual);
         Assert.Equal(FingerprintBeforeTimeSeriesPlanFour, actual);
     }
@@ -260,7 +305,7 @@ public class ScreenerDefaultParameterCacheParityTests
     public void ValuesOfTheTypesBeforeTimeSeriesPlanFiveAreUnchanged()
     {
         // Only GrangerCausality and JohansenCointegration are removed: returns the prior whole-report pin identically.
-        string actual = HashWithoutRemovedTypes(resetFormerPlaceholders: false, TimeSeriesPlanFiveTypes);
+        string actual = HashWithoutRemovedTypes(resetFormerPlaceholders: false, TimeSeriesPlanFiveTypes, StatisticalPlanR3Types, StatisticalPlanR4Types, StatisticalPlanR5Types, StatisticalPlanR6Types, StatisticalPlanR7Types);
         _output.WriteLine("FINGERPRINT_BEFORE_TS_PLAN5 " + actual);
         Assert.Equal(FingerprintBeforeTimeSeriesPlanFive, actual);
     }
@@ -387,6 +432,219 @@ public class ScreenerDefaultParameterCacheParityTests
 
         // Without a Period the screener still gives the one-bar value.
         Assert.Equal(oneBar, extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.GarmanKlassVolatility, Parameters = new Dictionary<string, object>() }, candles));
+    }
+
+    [Fact]
+    public void ValuesOfTheTypesBeforeStatisticalPlanAreUnchanged()
+    {
+        // SkewnessKurtosis, JarqueBera and LjungBoxQ (and the later R4 types) are removed and NOTHING else is put back (the eleventh re-pin's SSAAnomaly values are current): returns the prior whole-report pin identically.
+        var removed = StatisticalPlanR3Types.Concat(StatisticalPlanR4Types).Concat(StatisticalPlanR5Types).Concat(StatisticalPlanR6Types).Concat(StatisticalPlanR7Types).ToHashSet();
+        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN " + actual);
+        Assert.Equal(FingerprintBeforeStatisticalPlan, actual);
+    }
+
+    private static decimal? StatisticalPlanStandaloneLastValue(IndicatorType type, int? period, IReadOnlyList<CoreCandleData> candles) => type switch
+    {
+        IndicatorType.SkewnessKurtosis => new StockAnalyzer.Core.Models.Indicators.Advanced.CoreSkewnessKurtosisIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.SkewnessKurtosisMinPeriod, IndicatorDefaultConstants.SkewnessKurtosisMaxPeriod, IndicatorDefaultConstants.SkewnessKurtosisDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        IndicatorType.JarqueBera => new StockAnalyzer.Core.Models.Indicators.Advanced.CoreJarqueBeraIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.JarqueBeraMinPeriod, IndicatorDefaultConstants.JarqueBeraMaxPeriod, IndicatorDefaultConstants.JarqueBeraDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        IndicatorType.LjungBoxQ => new StockAnalyzer.Core.Models.Indicators.Advanced.CoreLjungBoxQIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.LjungBoxMinPeriod, IndicatorDefaultConstants.LjungBoxMaxPeriod, IndicatorDefaultConstants.LjungBoxDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        _ => throw new ArgumentOutOfRangeException(nameof(type)),
+    };
+
+    [Theory]
+    [InlineData(IndicatorType.SkewnessKurtosis)]
+    [InlineData(IndicatorType.JarqueBera)]
+    [InlineData(IndicatorType.LjungBoxQ)]
+    public void TheStatisticalPlanTypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod(IndicatorType type)
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        // Period 7 and 9 are below the minimum Period of all three indicators: their Configure throws, the screener keeps the defaults (see PeriodOrDefault).
+        // Period 25 is inside the range of all three and must reach the indicator.
+        foreach (int? period in new int?[] { null, 7, 9, 25 })
+        {
+            var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+            decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles);
+
+            decimal? standalone = StatisticalPlanStandaloneLastValue(type, period, candles);
+
+            Assert.NotNull(standalone);
+            Assert.Equal(standalone, screener);
+        }
+    }
+
+    [Fact]
+    public void ValuesOfTheTypesBeforeStatisticalPlanR4AreUnchanged()
+    {
+        // DownsideDeviation and BipowerVariation (and the later R5 type) are removed and NOTHING else is put back: returns the R3 whole-report pin identically.
+        var removed = StatisticalPlanR4Types.Concat(StatisticalPlanR5Types).Concat(StatisticalPlanR6Types).Concat(StatisticalPlanR7Types).ToHashSet();
+        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN_R4 " + actual);
+        Assert.Equal(FingerprintBeforeStatisticalPlanR4, actual);
+    }
+
+    private static decimal? StatisticalPlanR4StandaloneLastValue(IndicatorType type, int? period, IReadOnlyList<CoreCandleData> candles) => type switch
+    {
+        IndicatorType.DownsideDeviation => new StockAnalyzer.Core.Models.Indicators.Volatility.CoreDownsideDeviationIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.DownsideDeviationMinPeriod, IndicatorDefaultConstants.DownsideDeviationMaxPeriod, IndicatorDefaultConstants.DownsideDeviationDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        IndicatorType.BipowerVariation => new StockAnalyzer.Core.Models.Indicators.Volatility.CoreBipowerVariationIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.BipowerVariationMinPeriod, IndicatorDefaultConstants.BipowerVariationMaxPeriod, IndicatorDefaultConstants.BipowerVariationDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        _ => throw new ArgumentOutOfRangeException(nameof(type)),
+    };
+
+    [Theory]
+    [InlineData(IndicatorType.DownsideDeviation)]
+    [InlineData(IndicatorType.BipowerVariation)]
+    public void TheStatisticalPlanR4TypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod(IndicatorType type)
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        // Period 7, 9 and 25 are all inside the range 5..250 of both indicators and must reach the indicator.
+        foreach (int? period in new int?[] { null, 7, 9, 25 })
+        {
+            var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+            decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles);
+
+            decimal? standalone = StatisticalPlanR4StandaloneLastValue(type, period, candles);
+
+            Assert.NotNull(standalone);
+            Assert.Equal(standalone, screener);
+        }
+    }
+
+    [Fact]
+    public void ValuesOfTheTypesBeforeStatisticalPlanR5AreUnchanged()
+    {
+        // ADFStationarity (and the later R6 type) is removed and NOTHING else is put back: returns the R4 whole-report pin identically.
+        var removed = StatisticalPlanR5Types.Concat(StatisticalPlanR6Types).Concat(StatisticalPlanR7Types).ToHashSet();
+        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN_R5 " + actual);
+        Assert.Equal(FingerprintBeforeStatisticalPlanR5, actual);
+    }
+
+    [Fact]
+    public void TheStatisticalPlanR5TypeGivesTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod()
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        // Period 7 and 9 are below the minimum Period 20: Configure throws and the screener keeps the defaults (see PeriodOrDefault). Period 25 is inside the range and must reach the indicator.
+        foreach (int? period in new int?[] { null, 7, 9, 25 })
+        {
+            var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+            decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.ADFStationarity, Parameters = parameters }, candles);
+
+            decimal? standalone = new StockAnalyzer.Core.Models.Indicators.Advanced.CoreAdfStationarityIndicator
+            {
+                Period = PeriodOrDefault(period, IndicatorDefaultConstants.AdfStationarityMinPeriod, IndicatorDefaultConstants.AdfStationarityMaxPeriod, IndicatorDefaultConstants.AdfStationarityDefaultPeriod)
+            }.Calculate(candles).MainValues[^1];
+
+            Assert.NotNull(standalone);
+            Assert.Equal(standalone, screener);
+        }
+    }
+
+    [Fact]
+    public void ValuesOfTheTypesBeforeStatisticalPlanR6AreUnchanged()
+    {
+        // VarianceRatio (and the later R7 types) is removed and NOTHING else is put back: returns the R5 whole-report pin identically.
+        var removed = StatisticalPlanR6Types.Concat(StatisticalPlanR7Types).ToHashSet();
+        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN_R6 " + actual);
+        Assert.Equal(FingerprintBeforeStatisticalPlanR6, actual);
+    }
+
+    [Fact]
+    public void TheStatisticalPlanR6TypeGivesTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod()
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        // Period 7 and 9 are below the minimum Period 20: Configure throws and the screener keeps the defaults (see PeriodOrDefault). Period 25 is inside the range and must reach the indicator.
+        foreach (int? period in new int?[] { null, 7, 9, 25 })
+        {
+            var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+            decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = IndicatorType.VarianceRatio, Parameters = parameters }, candles);
+
+            decimal? standalone = new StockAnalyzer.Core.Models.Indicators.Advanced.CoreVarianceRatioIndicator
+            {
+                Period = PeriodOrDefault(period, IndicatorDefaultConstants.VarianceRatioMinPeriod, IndicatorDefaultConstants.VarianceRatioMaxPeriod, IndicatorDefaultConstants.VarianceRatioDefaultPeriod)
+            }.Calculate(candles).MainValues[^1];
+
+            Assert.NotNull(standalone);
+            Assert.Equal(standalone, screener);
+        }
+    }
+
+    [Fact]
+    public void ValuesOfTheTypesBeforeStatisticalPlanR7AreUnchanged()
+    {
+        // QuantileBands, TheilSenRegression and CornishFisherVaR are removed and NOTHING else is put back: returns the R6 whole-report pin identically.
+        var removed = StatisticalPlanR7Types.ToHashSet();
+        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN_R7 " + actual);
+        Assert.Equal(FingerprintBeforeStatisticalPlanR7, actual);
+    }
+
+    private static decimal? StatisticalPlanR7StandaloneLastValue(IndicatorType type, int? period, IReadOnlyList<CoreCandleData> candles) => type switch
+    {
+        IndicatorType.QuantileBands => new StockAnalyzer.Core.Models.Indicators.Trend.CoreQuantileBandsIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.QuantileBandsMinPeriod, IndicatorDefaultConstants.QuantileBandsMaxPeriod, IndicatorDefaultConstants.QuantileBandsDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        IndicatorType.TheilSenRegression => new StockAnalyzer.Core.Models.Indicators.Trend.CoreTheilSenRegressionIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.TheilSenMinPeriod, IndicatorDefaultConstants.TheilSenMaxPeriod, IndicatorDefaultConstants.TheilSenDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        IndicatorType.CornishFisherVaR => new StockAnalyzer.Core.Models.Indicators.Volatility.CoreCornishFisherVarIndicator
+        {
+            Period = PeriodOrDefault(period, IndicatorDefaultConstants.CornishFisherVarMinPeriod, IndicatorDefaultConstants.CornishFisherVarMaxPeriod, IndicatorDefaultConstants.CornishFisherVarDefaultPeriod)
+        }.Calculate(candles).MainValues[^1],
+        _ => throw new ArgumentOutOfRangeException(nameof(type)),
+    };
+
+    [Theory]
+    [InlineData(IndicatorType.QuantileBands)]
+    [InlineData(IndicatorType.TheilSenRegression)]
+    [InlineData(IndicatorType.CornishFisherVaR)]
+    public void TheStatisticalPlanR7TypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod(IndicatorType type)
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        // Period 7 and 9 are inside the range of QuantileBands and TheilSenRegression and below the minimum 10 of CornishFisherVaR (the screener keeps its defaults, see PeriodOrDefault);
+        // Period 25 is inside the range of all three and must reach the indicator.
+        foreach (int? period in new int?[] { null, 7, 9, 25 })
+        {
+            var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+            decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles);
+
+            decimal? standalone = StatisticalPlanR7StandaloneLastValue(type, period, candles);
+
+            // The Cornish-Fisher VaR has no value where the expansion is not monotone (plan decision U-7); the other two have one at every bar after the warm-up.
+            if (type != IndicatorType.CornishFisherVaR)
+            {
+                Assert.NotNull(standalone);
+            }
+
+            Assert.Equal(standalone, screener);
+        }
     }
 
     [Fact]

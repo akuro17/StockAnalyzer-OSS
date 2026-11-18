@@ -24,7 +24,7 @@ public class GannBoxObject : IChartObject, IDrawingCalculatedValuesProvider
     public bool IsMoveAxisModeExplicit { get; set; } = false;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.GannBox;
-    
+
     public List<ChartPoint> Points { get; private set; }
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
@@ -73,7 +73,7 @@ public class GannBoxObject : IChartObject, IDrawingCalculatedValuesProvider
             Style = SKPaintStyle.Stroke,
             PathEffect = StrokeStyle.ToSkPathEffect()
         };
-        
+
         using var gridPaint = new SKPaint
         {
             Color = SkiaColor.WithAlpha(100), // Original: 128?
@@ -127,13 +127,13 @@ public class GannBoxObject : IChartObject, IDrawingCalculatedValuesProvider
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
         if (Points.Count < 2) return false;
-        
+
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
 
         if (Distance(screenPoint, p1) <= tolerance * 2) return true;
         if (Distance(screenPoint, p2) <= tolerance * 2) return true;
-        
+
         var rect = new global::Avalonia.Rect(
             new global::Avalonia.Point(Math.Min(p1.X, p2.X), Math.Min(p1.Y, p2.Y)),
             new global::Avalonia.Size(Math.Abs(p2.X - p1.X), Math.Abs(p2.Y - p1.Y)));

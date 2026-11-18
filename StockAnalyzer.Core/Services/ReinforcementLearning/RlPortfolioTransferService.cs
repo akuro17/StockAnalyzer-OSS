@@ -138,11 +138,21 @@ public sealed class RlPortfolioTransferService : IRlPortfolioTransferService
             throw;
         }
 
-        string identity = ContentHash.OfText(JsonSerializer.Serialize(new { kind = RlPortfolioTransferContract.ZeroShotKind, base_model_sha256 = baseRun.ModelSha256,
-            panel.Manifest.UniverseSha256, panel.Manifest.CalendarSha256, costs, request.SmokeOnly, request.Mode,
+        string identity = ContentHash.OfText(JsonSerializer.Serialize(new
+        {
+            kind = RlPortfolioTransferContract.ZeroShotKind,
+            base_model_sha256 = baseRun.ModelSha256,
+            panel.Manifest.UniverseSha256,
+            panel.Manifest.CalendarSha256,
+            costs,
+            request.SmokeOnly,
+            request.Mode,
             partition_mode = plan is null ? null : RlPortfolioPartitionEvidence.ModeName(plan.Mode),
-            train_blocks = plan?.Requirement.TrainBlocks, validation_blocks = plan?.Requirement.ValidationBlocks, test_blocks = plan?.Requirement.TestBlocks,
-            transfer_contract_hash = RlPortfolioTransferContract.ContractHash }, RlFiles.Json));
+            train_blocks = plan?.Requirement.TrainBlocks,
+            validation_blocks = plan?.Requirement.ValidationBlocks,
+            test_blocks = plan?.Requirement.TestBlocks,
+            transfer_contract_hash = RlPortfolioTransferContract.ContractHash
+        }, RlFiles.Json));
         using var lease = _gate.AcquireIdentity(identity);
 
         var runId = Guid.NewGuid();

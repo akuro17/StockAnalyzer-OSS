@@ -28,7 +28,7 @@ public static class ChartRenderConfigFactoryHelper
             ChartType.Line => (settings.LineChartColor.ToIndicatorColor().ToHex(), settings.LineChartColor.ToIndicatorColor().ToHex()),
             ChartType.Area => (settings.AreaChartColor.ToIndicatorColor().ToHex(), settings.AreaChartColor.ToIndicatorColor().ToHex()),
             ChartType.Dot => (settings.DotUpColor.ToIndicatorColor().ToHex(), settings.DotDownColor.ToIndicatorColor().ToHex()),
-            _ => (settings.BullishColor.ToIndicatorColor().ToHex(), settings.BearishColor.ToIndicatorColor().ToHex()) 
+            _ => (settings.BullishColor.ToIndicatorColor().ToHex(), settings.BearishColor.ToIndicatorColor().ToHex())
         };
         return (new NamedColor("Custom", revHex), new NamedColor("Custom", priceHex));
     }
@@ -63,16 +63,16 @@ public readonly record struct CandlestickRenderConfig(
 ) : ICandlestickRenderConfig
 {
     public static CandlestickRenderConfig Create(
-        IChartRenderSettings settings, 
-        decimal currentPrice, 
-        int visibleStartIndex, 
-        int visibleCandleCount, 
-        StockAnalyzer.Core.Models.Point mousePosition, 
+        IChartRenderSettings settings,
+        decimal currentPrice,
+        int visibleStartIndex,
+        int visibleCandleCount,
+        StockAnalyzer.Core.Models.Point mousePosition,
         ICoordinateTransform? transform,
         double renderScaling)
     {
         var colors = ChartRenderConfigFactoryHelper.GetLabelsColors(settings);
-        
+
         return new CandlestickRenderConfig(
             ThemeManager: settings.ThemeManager!,
             ChartType: settings.ChartType,
@@ -522,12 +522,12 @@ public readonly record struct ComparisonRenderConfig(
 ) : IComparisonRenderConfig
 {
     public static ComparisonRenderConfig Create(
-        IChartRenderSettings settings, 
-        decimal currentPrice, 
-        int visibleStartIndex, 
-        int visibleCandleCount, 
-        StockAnalyzer.Core.Models.Point mousePosition, 
-        ICoordinateTransform? transform, 
+        IChartRenderSettings settings,
+        decimal currentPrice,
+        int visibleStartIndex,
+        int visibleCandleCount,
+        StockAnalyzer.Core.Models.Point mousePosition,
+        ICoordinateTransform? transform,
         double renderScaling,
         ComparisonAlignedData? comparisonData)
     {

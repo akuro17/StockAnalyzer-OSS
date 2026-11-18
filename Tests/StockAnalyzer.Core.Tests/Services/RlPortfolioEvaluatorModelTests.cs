@@ -45,8 +45,12 @@ public sealed class RlPortfolioEvaluatorModelTests : IDisposable
 
     private static BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
     {
-        SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 100_000m,
-        SlippageRatio = 0.001m, CommissionFlat = 1m, CommissionPerUnit = 0.005m,
+        SizingModel = PositionSizingModel.FixedQuantity,
+        SizingParameter = 1m,
+        InitialCapital = 100_000m,
+        SlippageRatio = 0.001m,
+        CommissionFlat = 1m,
+        CommissionPerUnit = 0.005m,
     });
 
     private void WriteWave(string symbol, int phase)

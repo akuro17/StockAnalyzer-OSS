@@ -12,7 +12,8 @@ namespace StockAnalyzer.Core.Tests.Services;
 public sealed class RlReplayPoliciesTests
 {
     private static RlGeneration Generation(string target) => new("model", "AAA", "rev", "hash", "eval", 0m, 0m,
-        new Dictionary<string, string>(), DateTimeOffset.UnixEpoch) { Target = target };
+        new Dictionary<string, string>(), DateTimeOffset.UnixEpoch)
+    { Target = target };
 
     [Fact]
     public void DiscreteGenerationOffersTargetAndFourBaselinesInOrder()

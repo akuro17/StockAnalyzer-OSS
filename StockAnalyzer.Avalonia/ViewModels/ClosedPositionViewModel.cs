@@ -36,7 +36,7 @@ public partial class ClosedPositionViewModel : ViewModelBase
         RealizedPnL = model.RealizedPnL;
         TotalFees = model.TotalFees;
 
-        PnLRate = EntryPrice == 0 ? 0 : 
+        PnLRate = EntryPrice == 0 ? 0 :
             (Type == TransactionType.Short ? (EntryPrice - ExitPrice) / EntryPrice * 100 : (ExitPrice - EntryPrice) / EntryPrice * 100);
 
         OnPropertyChanged(nameof(IsProfit));

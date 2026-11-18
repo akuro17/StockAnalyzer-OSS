@@ -20,12 +20,12 @@ public static class ChartAnchorDateResolver
     /// </summary>
     /// <remarks>
     /// For Daily, "rounding to the first business day of the period" is simply the date itself, so
-    /// this reduces to an exact-date search. For Weekly/Monthly, each candle's Timestamp is already
-    /// the first actual trading day of its aggregation period (see
-    /// <see cref="TimeFrameAggregator.AggregateDailyToWeekly"/>), so "round anchorDate to the first
-    /// business day of its containing week/month" is equivalent to finding whichever candle's
-    /// period (ISO week or calendar month) contains <paramref name="anchorDate"/> - this correctly
-    /// lands on a holiday-shifted first trading day without needing raw daily data. Only when no
+    /// this reduces to an exact-date search. For Weekly/Monthly, each candle's Timestamp is the start
+    /// of its aggregation period (the Monday, the 1st; see
+    /// <see cref="TimeFrameAggregator.AggregateToPeriodStart(IReadOnlyList{CandleData}, TimeFrame)"/>), so "round anchorDate to the
+    /// period of its containing week/month" is equivalent to finding whichever candle's
+    /// period (ISO week or calendar month) contains <paramref name="anchorDate"/> - this lands on
+    /// the right candle whatever date of the period the anchor has, without needing raw daily data. Only when no
     /// candle's period contains <paramref name="anchorDate"/> at all (e.g. before the ticker was
     /// listed, or beyond the loaded range) does this fall back to the nearest earlier candle by raw
     /// date, then the nearest later one. Returns null only when <paramref name="candles"/> is empty.

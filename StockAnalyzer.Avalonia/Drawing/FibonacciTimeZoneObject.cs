@@ -31,7 +31,7 @@ public class FibonacciTimeZoneObject : IChartObject, IDisposable
     // Actually, looking at previous files, ChartObjectType is an Enum. I might need to add to it or reuse "FibonacciRetracement" or "General".
     // I will use "General" or cast in Renderers if needed. Let's check ChartObjectType.cs in next step if it fails.
     // Wait, let's just stick to the pattern.
-    
+
     public List<ChartPoint> Points { get; private set; }
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
@@ -100,10 +100,10 @@ public class FibonacciTimeZoneObject : IChartObject, IDisposable
         foreach (var fib in _fibSequence)
         {
             double x = startX + (baseInterval * fib * direction);
-            
+
             // Optimization: Skip if off-screen (how to know screen bounds? Transform usually knows)
             // if (x < 0 || x > Width) continue; 
-            
+
             canvas.DrawLine((float)x, 0, (float)x, maxY, _paint);
             canvas.DrawText($"{fib}", (float)x + LabelLeftMargin, maxY - LabelBottomMargin, _textPaint);
         }
@@ -118,10 +118,10 @@ public class FibonacciTimeZoneObject : IChartObject, IDisposable
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
         if (Points.Count < 2) return false;
-        
+
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
-        
+
         double baseInterval = Math.Abs(p2.X - p1.X);
         double startX = p1.X;
         double direction = p2.X >= p1.X ? 1.0 : -1.0;
@@ -131,7 +131,7 @@ public class FibonacciTimeZoneObject : IChartObject, IDisposable
             double x = startX + (baseInterval * fib * direction);
             if (Math.Abs(screenPoint.X - x) <= tolerance) return true;
         }
-        
+
         return false;
     }
 

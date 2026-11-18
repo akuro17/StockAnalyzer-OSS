@@ -341,7 +341,7 @@ public static class ChartConstants
     /// Target Price Projection Object: Extension length of the projection line beyond P3 (pixels).
     /// </summary>
     public const float ProjectionLineExtension = 200f;
-    
+
     /// <summary>
     /// TrendLine Projection: Default alpha for the projection line (0-255).
     /// </summary>
@@ -370,7 +370,7 @@ public static class ChartConstants
     public const float ChannelCenterLineDashInterval = 5f;
 
     #endregion
-    
+
     #region Relative Performance Chart
 
     /// <summary>
@@ -413,7 +413,7 @@ public static class ChartConstants
     /// Positive: +#,##0.00, Negative: -#,##0.00, Zero: 0.00
     /// </summary>
     public const string DefaultSpreadFormat = "+#,##0.00;-#,##0.00;0.00";
-    
+
     /// <summary>Statistical boundary beyond which Z-score values are clipped to prevent axis compression.</summary>
     public const decimal ZScoreClippingLimit = 3.5m;
 

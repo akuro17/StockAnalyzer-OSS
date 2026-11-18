@@ -10,10 +10,10 @@ public class CoreAtrParameter : CoreIndicatorParameterBase
     [Range(1, 1000)]
     [DisplayName("Period")]
     [Description("Number of periods for the Average True Range.")]
-    public int Period 
-    { 
-        get => _period; 
-        set => SetProperty(ref _period, value); 
+    public int Period
+    {
+        get => _period;
+        set => SetProperty(ref _period, value);
     }
 
     public override string GetDisplayName(string type) => $"{type} ({Period})";

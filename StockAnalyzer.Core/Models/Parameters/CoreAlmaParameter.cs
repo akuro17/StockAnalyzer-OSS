@@ -9,30 +9,30 @@ public class CoreAlmaParameter : CoreIndicatorParameterBase
     [CoreParameterRange(1, 10000)]
     [DisplayName("Period")]
     [Description("Number of periods for the Arnaud Legoux Moving Average.")]
-    public int Period 
-    { 
-        get => _period; 
-        set => SetProperty(ref _period, value); 
+    public int Period
+    {
+        get => _period;
+        set => SetProperty(ref _period, value);
     }
 
     private double _offset = 0.85;
     [CoreParameterRange(0.01, 1.0)]
     [DisplayName("Offset")]
     [Description("Gaussian offset (0 to 1).")]
-    public double Offset 
-    { 
-        get => _offset; 
-        set => SetProperty(ref _offset, value); 
+    public double Offset
+    {
+        get => _offset;
+        set => SetProperty(ref _offset, value);
     }
 
     private double _sigma = 6.0;
     [CoreParameterRange(1.0, 100.0)]
     [DisplayName("Sigma")]
     [Description("Gaussian sigma.")]
-    public double Sigma 
-    { 
-        get => _sigma; 
-        set => SetProperty(ref _sigma, value); 
+    public double Sigma
+    {
+        get => _sigma;
+        set => SetProperty(ref _sigma, value);
     }
 
     public override string GetDisplayName(string type) => $"{type} ({Period}, {Offset}, {Sigma})";

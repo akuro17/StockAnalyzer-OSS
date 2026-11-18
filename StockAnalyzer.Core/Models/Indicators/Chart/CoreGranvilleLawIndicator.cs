@@ -94,7 +94,7 @@ public class CoreGranvilleLawIndicator : CoreIndicatorBase
 
             decimal offset = price - maValue;
             decimal deviationRate = maValue != 0 ? (offset / maValue) * 100m : 0;
-            
+
             // Calculate proximity relative to price points for bounce logic
             decimal proximityRateLow = maValue != 0 ? (Math.Abs(low - maValue) / maValue) * 100m : 0;
             decimal proximityRateHigh = maValue != 0 ? (Math.Abs(high - maValue) / maValue) * 100m : 0;

@@ -382,26 +382,37 @@ public sealed class PreparedSourcePipelineParityTests
                 }).ToArray();
                 entries.Add(new
                 {
-                    symbol, path = symbol + ".parquet",
+                    symbol,
+                    path = symbol + ".parquet",
                     sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
-                    row_count = dates.Length, bar_evidence = evidence,
+                    row_count = dates.Length,
+                    bar_evidence = evidence,
                 });
             }
             var manifestPath = Path.Combine(_root, "manifest.json");
             File.WriteAllText(manifestPath, JsonSerializer.Serialize(new
             {
-                schema_version = 1, provider_id = "i01-fixture", dataset_revision = "v1",
-                as_of_utc = JobStart.AddDays(-1), timeframe = timeframe.ToString().ToLowerInvariant(),
+                schema_version = 1,
+                provider_id = "i01-fixture",
+                dataset_revision = "v1",
+                as_of_utc = JobStart.AddDays(-1),
+                timeframe = timeframe.ToString().ToLowerInvariant(),
                 symbols = entries,
             }));
             Config = new TrainingJobConfig
             {
-                Symbols = new[] { "AAA", "BBB" }, Architecture = "lstm",
+                Symbols = new[] { "AAA", "BBB" },
+                Architecture = "lstm",
                 Framework = TrainingFramework.PyTorch,
-                WindowSize = Window, Horizon = Horizon, NSplits = Splits,
+                WindowSize = Window,
+                Horizon = Horizon,
+                NSplits = Splits,
                 OosTailDays = periodDays * 3,
-                Timeframe = timeframe, FeatureMode = PredictionFeatureMode.ComposedFeatures,
-                FeatureSpec = new FeatureSpec { Channels = new FeatureChannel[]
+                Timeframe = timeframe,
+                FeatureMode = PredictionFeatureMode.ComposedFeatures,
+                FeatureSpec = new FeatureSpec
+                {
+                    Channels = new FeatureChannel[]
                 {
                     new() { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.SMA,
                         Params = new Dictionary<string, string> { ["Period"] = SmaPeriod.ToString(CultureInfo.InvariantCulture) } },
@@ -411,7 +422,8 @@ public sealed class PreparedSourcePipelineParityTests
                         Params = new Dictionary<string, string> { ["Period"] = EmaPeriod.ToString(CultureInfo.InvariantCulture) },
                         Normalization = ChannelNormalization.WindowZScore },
                     new() { Kind = FeatureChannelKind.Price, Price = PriceType.Open },
-                } },
+                }
+                },
                 SourceManifestPath = manifestPath,
             };
         }

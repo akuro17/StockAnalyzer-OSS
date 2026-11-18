@@ -20,8 +20,8 @@ public sealed class WorkspaceViewItem : INotifyPropertyChanged
     /// <summary>
     /// Display title for the tab.
     /// </summary>
-    public string Title 
-    { 
+    public string Title
+    {
         get => _title;
         set
         {

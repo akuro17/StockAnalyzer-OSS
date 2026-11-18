@@ -86,10 +86,10 @@ public static class SettingsConstants
         }),
         new(Keys.About, "Settings_About", "SettingsAboutIcon")
     };
-    
-    public static readonly IReadOnlyList<string> AvailableColors = new List<string> 
-    { 
-        "Red", "Green", "Blue", "Black", "White", "Gray", "Yellow", "Orange", "Purple", "Cyan", "Magenta" 
+
+    public static readonly IReadOnlyList<string> AvailableColors = new List<string>
+    {
+        "Red", "Green", "Blue", "Black", "White", "Gray", "Yellow", "Orange", "Purple", "Cyan", "Magenta"
     };
 
     public static readonly IReadOnlyList<NamedColor> ReverseWatchColorOptions = new List<NamedColor>

@@ -67,33 +67,33 @@ internal sealed class IndicatorSettingsBinder
         switch (descriptor.Type)
         {
             case IndicatorParameterReader.IntegerType:
-            {
-                if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out long number))
                 {
-                    throw WrongType(entry, descriptor, "an integer", parameterPath);
-                }
+                    if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out long number))
+                    {
+                        throw WrongType(entry, descriptor, "an integer", parameterPath);
+                    }
 
-                IndicatorParameterRules.CheckBounds(entry, descriptor, number, parameterPath);
-                try
-                {
-                    return System.Convert.ChangeType(number, clrType, CultureInfo.InvariantCulture);
+                    IndicatorParameterRules.CheckBounds(entry, descriptor, number, parameterPath);
+                    try
+                    {
+                        return System.Convert.ChangeType(number, clrType, CultureInfo.InvariantCulture);
+                    }
+                    catch (OverflowException)
+                    {
+                        throw IndicatorParameterRules.OutOfRange(entry, descriptor, parameterPath);
+                    }
                 }
-                catch (OverflowException)
-                {
-                    throw IndicatorParameterRules.OutOfRange(entry, descriptor, parameterPath);
-                }
-            }
 
             case IndicatorParameterReader.NumberType:
-            {
-                if (value.ValueKind != JsonValueKind.Number || !value.TryGetDecimal(out decimal number))
                 {
-                    throw WrongType(entry, descriptor, "a number", parameterPath);
-                }
+                    if (value.ValueKind != JsonValueKind.Number || !value.TryGetDecimal(out decimal number))
+                    {
+                        throw WrongType(entry, descriptor, "a number", parameterPath);
+                    }
 
-                IndicatorParameterRules.CheckBounds(entry, descriptor, number, parameterPath);
-                return System.Convert.ChangeType(number, clrType, CultureInfo.InvariantCulture);
-            }
+                    IndicatorParameterRules.CheckBounds(entry, descriptor, number, parameterPath);
+                    return System.Convert.ChangeType(number, clrType, CultureInfo.InvariantCulture);
+                }
 
             case IndicatorParameterReader.BooleanType:
                 return value.ValueKind is JsonValueKind.True or JsonValueKind.False
@@ -106,18 +106,18 @@ internal sealed class IndicatorSettingsBinder
                     : throw WrongType(entry, descriptor, "a string", parameterPath);
 
             case IndicatorParameterReader.EnumType:
-            {
-                string? name = value.ValueKind == JsonValueKind.String
-                    ? descriptor.AllowedValues!.FirstOrDefault(a => string.Equals(a, value.GetString(), StringComparison.OrdinalIgnoreCase))
-                    : null;
-                return name is null
-                    ? throw new ToolException(
-                        ToolErrorCodes.InvalidIndicatorParameter,
-                        $"Parameter '{descriptor.Name}' of {entry.Type} has an unsupported value.",
-                        parameterPath,
-                        $"Allowed values: {string.Join(", ", descriptor.AllowedValues!)}.")
-                    : Enum.Parse(clrType, name);
-            }
+                {
+                    string? name = value.ValueKind == JsonValueKind.String
+                        ? descriptor.AllowedValues!.FirstOrDefault(a => string.Equals(a, value.GetString(), StringComparison.OrdinalIgnoreCase))
+                        : null;
+                    return name is null
+                        ? throw new ToolException(
+                            ToolErrorCodes.InvalidIndicatorParameter,
+                            $"Parameter '{descriptor.Name}' of {entry.Type} has an unsupported value.",
+                            parameterPath,
+                            $"Allowed values: {string.Join(", ", descriptor.AllowedValues!)}.")
+                        : Enum.Parse(clrType, name);
+                }
 
             default:
                 throw new ToolException(

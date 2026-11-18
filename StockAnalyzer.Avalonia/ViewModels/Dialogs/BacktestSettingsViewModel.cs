@@ -103,7 +103,7 @@ public partial class BacktestSettingsViewModel : ViewModelBase, ISettingsPageVie
     public bool IsEquityColorModeDrawdown => EquityColorMode == BacktestEquityColorMode.Drawdown;
 
     /// <summary>Why the last save failed at page level (I/O); empty otherwise. Per-item reasons are in the <c>*Error</c> properties.</summary>
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(HasValidationMessage))] private string _validationMessage = string.Empty;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(HasValidationMessage))] private string _validationMessage = string.Empty;
 
     public bool HasValidationMessage => !string.IsNullOrEmpty(ValidationMessage);
 

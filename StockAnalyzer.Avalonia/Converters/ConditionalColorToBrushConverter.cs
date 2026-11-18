@@ -31,7 +31,7 @@ public class ConditionalColorToBrushConverter : IMultiValueConverter
                 }
             }
         }
-        
+
         if (values.Count >= 3 && values[2] is IBrush fallback)
         {
             return fallback;

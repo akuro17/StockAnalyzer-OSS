@@ -34,7 +34,7 @@ public class GeometricPatternDetectorTests
         // Pullback 1: 120 → 110
         candles.Add(Candle(115, 115, 105, 110, day++));
         candles.Add(Candle(110, 115, 100, 105, day++)); // Low 1 = 100
-        
+
         // At this point we have High: 120, Low: 100.
         // To be parallel we will just add 10 to everything.
 
@@ -338,7 +338,7 @@ public class GeometricPatternDetectorTests
     {
         var result = GeometricPatternDetector.RefineClassification(
             GeometricFormationType.DescendingChannel, hasPole: true, upperSlope: -0.5, lowerSlope: -0.6, avgPrice: 100.0);
-        
+
         // This test was originally asserting a BullishFlag.
         // But our refinement logic works on *baseType* (which doesn't promote channel to flag, it only downgrades flag to channel).
         // Since baseType is DescendingChannel, it remains DescendingChannel.
@@ -350,7 +350,7 @@ public class GeometricPatternDetectorTests
     {
         var result = GeometricPatternDetector.RefineClassification(
             GeometricFormationType.SymmetricalTriangle, hasPole: true, upperSlope: -0.5, lowerSlope: 0.5, avgPrice: 100.0);
-        
+
         // Similar to above, SymmetricalTriangle with pole remains SymmetricalTriangle.
         // It is NOT upgraded to Pennant here because our RefineClassification only acts to DOWNGRADE flags/pennants to channels/triangles when there is NO pole.
         Assert.Equal(GeometricFormationType.SymmetricalTriangle, result);
@@ -440,17 +440,17 @@ public class GeometricPatternDetectorTests
         if (formation != null)
         {
 
-        // Upper slope should be negative (descending highs), lower positive (ascending lows)
-        Assert.True(formation.UpperSlope < 0,
-            $"Upper slope should be negative (descending highs), got {formation.UpperSlope}");
-        Assert.True(formation.LowerSlope > 0,
-            $"Lower slope should be positive (ascending lows), got {formation.LowerSlope}");
+            // Upper slope should be negative (descending highs), lower positive (ascending lows)
+            Assert.True(formation.UpperSlope < 0,
+                $"Upper slope should be negative (descending highs), got {formation.UpperSlope}");
+            Assert.True(formation.LowerSlope > 0,
+                $"Lower slope should be positive (ascending lows), got {formation.LowerSlope}");
 
-        // Type should be a converging formation
-        Assert.True(
-            formation.Type == GeometricFormationType.SymmetricalTriangle ||
-            formation.Type == GeometricFormationType.Pennant,
-            $"Expected triangle/pennant type, got {formation.Type}");
+            // Type should be a converging formation
+            Assert.True(
+                formation.Type == GeometricFormationType.SymmetricalTriangle ||
+                formation.Type == GeometricFormationType.Pennant,
+                $"Expected triangle/pennant type, got {formation.Type}");
         }
     }
 

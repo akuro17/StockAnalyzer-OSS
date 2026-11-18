@@ -44,7 +44,7 @@ namespace StockAnalyzer.Core.Tests
             var expected = new decimal?[] { null, null, null, null, null, null, null, null, null, 240m, -26.36363636363636363636363636m, 73.88429752066115702479338843m };
 
             Assert.Equal(expected.Length, indicator.Values.Count);
-            for(int i = 0; i < 9; i++)
+            for (int i = 0; i < 9; i++)
             {
                 Assert.Null(indicator.Values[i]);
             }

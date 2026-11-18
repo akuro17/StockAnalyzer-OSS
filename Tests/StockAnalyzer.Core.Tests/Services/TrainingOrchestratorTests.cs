@@ -59,8 +59,12 @@ namespace StockAnalyzer.Core.Tests.Services
             File.WriteAllText(manifest, "{\"schema_version\":1,\"kind\":\"training_run\",\"run_id\":\"original_run\"}");
             var config = new TrainingJobConfig
             {
-                Symbols = new[] { "X" }, Architecture = "lstm", WindowSize = 4, Horizon = 1,
-                InitializationMode = TrainingInitializationMode.Resume, CheckpointPath = manifest,
+                Symbols = new[] { "X" },
+                Architecture = "lstm",
+                WindowSize = 4,
+                Horizon = 1,
+                InitializationMode = TrainingInitializationMode.Resume,
+                CheckpointPath = manifest,
             };
             var orchestrator = new TrainingOrchestrator(new FakePythonService(WriteFakeInterpreter(SuccessBatch)),
                 s_indicatorChannelExporter);
@@ -124,7 +128,8 @@ namespace StockAnalyzer.Core.Tests.Services
 
             var result = await orchestrator.StartTrainingAsync(ValidConfig() with
             {
-                EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 3,
+                EnsembleMethod = TrainingEnsembleMethod.Bagging,
+                EnsembleMembers = 3,
             });
 
             Assert.True(result.Success);
@@ -186,7 +191,8 @@ namespace StockAnalyzer.Core.Tests.Services
 
             var result = await orchestrator.StartTrainingAsync(ValidConfig() with
             {
-                EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 3,
+                EnsembleMethod = TrainingEnsembleMethod.Bagging,
+                EnsembleMembers = 3,
             });
 
             Assert.False(result.Success);
@@ -221,7 +227,8 @@ namespace StockAnalyzer.Core.Tests.Services
 
             var result = await orchestrator.StartTrainingAsync(ValidConfig() with
             {
-                EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 3,
+                EnsembleMethod = TrainingEnsembleMethod.Bagging,
+                EnsembleMembers = 3,
             });
 
             Assert.False(result.Success);
@@ -258,7 +265,8 @@ namespace StockAnalyzer.Core.Tests.Services
 
             var result = await orchestrator.StartTrainingAsync(ValidConfig() with
             {
-                EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 3,
+                EnsembleMethod = TrainingEnsembleMethod.Bagging,
+                EnsembleMembers = 3,
             });
 
             Assert.True(result.Success);
@@ -450,10 +458,13 @@ namespace StockAnalyzer.Core.Tests.Services
             {
                 Timeframe = TrainingTimeframe.Weekly,
                 FeatureMode = PredictionFeatureMode.ComposedFeatures,
-                FeatureSpec = new FeatureSpec { Channels = new[]
+                FeatureSpec = new FeatureSpec
+                {
+                    Channels = new[]
                 {
                     new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.SMA },
-                } },
+                }
+                },
                 SourceManifestPath = Path.Combine(_workDir, "manifest.json"),
             };
             string? runDirectory = null;
@@ -585,10 +596,13 @@ namespace StockAnalyzer.Core.Tests.Services
             {
                 Timeframe = TrainingTimeframe.Weekly,
                 FeatureMode = PredictionFeatureMode.ComposedFeatures,
-                FeatureSpec = new FeatureSpec { Channels = new[]
+                FeatureSpec = new FeatureSpec
+                {
+                    Channels = new[]
                 {
                     new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.SMA },
-                } },
+                }
+                },
                 SourceManifestPath = Path.Combine(_workDir, "manifest.json"),
             };
             string? runDirectory = null;
@@ -633,10 +647,13 @@ namespace StockAnalyzer.Core.Tests.Services
             {
                 Timeframe = TrainingTimeframe.Weekly,
                 FeatureMode = PredictionFeatureMode.ComposedFeatures,
-                FeatureSpec = new FeatureSpec { Channels = new[]
+                FeatureSpec = new FeatureSpec
+                {
+                    Channels = new[]
                 {
                     new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.SMA },
-                } },
+                }
+                },
                 SourceManifestPath = Path.Combine(_workDir, "manifest.json"),
             };
             string? runDirectory = null;
@@ -686,11 +703,14 @@ namespace StockAnalyzer.Core.Tests.Services
             {
                 Timeframe = TrainingTimeframe.Weekly,
                 FeatureMode = PredictionFeatureMode.ComposedFeatures,
-                FeatureSpec = new FeatureSpec { Channels = new[]
+                FeatureSpec = new FeatureSpec
+                {
+                    Channels = new[]
                 {
                     new FeatureChannel { Kind = FeatureChannelKind.Price, Price = PriceType.Close },
                     new FeatureChannel { Kind = FeatureChannelKind.Indicator, Indicator = IndicatorType.SMA },
-                } },
+                }
+                },
                 SourceManifestPath = Path.Combine(_workDir, "manifest.json"),
             };
             string? runDirectory = null;

@@ -201,7 +201,7 @@ public class FftProjectionAnalysisTests
         for (int m = 1; m < result.ProjectedPoints.Count; m++)
         {
             double margin = result.UpperBandPoints[m].Y - result.ProjectedPoints[m].Y;
-            Assert.True(margin > prevMargin, $"Uncertainty band margin at step {m} ({margin}) must be strictly greater than step {m-1} ({prevMargin})");
+            Assert.True(margin > prevMargin, $"Uncertainty band margin at step {m} ({margin}) must be strictly greater than step {m - 1} ({prevMargin})");
             prevMargin = margin;
         }
     }

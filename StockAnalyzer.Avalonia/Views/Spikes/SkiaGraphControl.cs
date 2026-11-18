@@ -63,7 +63,7 @@ public class SkiaGraphControl : Control
         public void Render(ImmediateDrawingContext context)
         {
             var feature = context.TryGetFeature(typeof(ISkiaSharpApiLeaseFeature)) as ISkiaSharpApiLeaseFeature;
-            
+
             if (feature == null)
             {
                 return;
@@ -95,7 +95,7 @@ public class SkiaGraphControl : Control
             decimal maxPrice = viewModel.Candles.Max(c => c.High);
             decimal minPrice = viewModel.Candles.Min(c => c.Low);
             decimal priceRange = maxPrice - minPrice;
-            
+
             if (priceRange == 0) priceRange = 1;
 
             using var greenPaint = new SKPaint { Color = SKColors.Green, Style = SKPaintStyle.Fill };

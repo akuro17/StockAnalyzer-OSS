@@ -42,7 +42,8 @@ try
         enableExecution: commandLine.EnableExecution,
         enableDiscussion: commandLine.EnableDiscussion);
 }
-catch (Exception error) when (error is McpLimitsException or ExecutionLimitsException or DiscussionLimitsException){
+catch (Exception error) when (error is McpLimitsException or ExecutionLimitsException or DiscussionLimitsException)
+{
     log.Error($"Invalid configuration: {error.Message}");
     return McpCommandLine.ExitInvalidConfiguration;
 }

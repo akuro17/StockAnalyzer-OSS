@@ -28,22 +28,22 @@ public class IchimokuRenderer : IDisposable
         _cloudPath2.Dispose();
     }
 
-    public void Render(SKCanvas canvas, Rect chartArea, 
+    public void Render(SKCanvas canvas, Rect chartArea,
         Dictionary<string, IReadOnlyList<decimal?>> series,
-        CoreIndicatorSettings setting, 
+        CoreIndicatorSettings setting,
         decimal minVal, decimal maxVal,
         int visibleCandles, int offset, int startIndex,
-        IReadOnlyList<CoreCandleData> candles, 
-        TimeSpan interval, 
+        IReadOnlyList<CoreCandleData> candles,
+        TimeSpan interval,
         ICoordinateTransform? transform,
         IChartRenderConfig config)
     {
         // Force Offset 0 for Ichimoku (Data is already shifted by Logic)
         offset = 0;
- 
+
         decimal range = maxVal - minVal;
         if (range == 0) range = 1;
- 
+
         // Render Cloud (Senkou Span A vs B)
         if (series.TryGetValue(CoreIchimokuIndicator.SenkouSpanASeriesName, out var spanA) && series.TryGetValue(CoreIchimokuIndicator.SenkouSpanBSeriesName, out var spanB))
         {
@@ -70,14 +70,14 @@ public class IchimokuRenderer : IDisposable
             var colorConfig = setting.SeriesColors?.FirstOrDefault(c => c.TargetSeries.Contains(configTargetSeries));
             if (colorConfig != null)
             {
-                 seriesColor = colorConfig.Color.ToSkColor();
-                 colorFound = true;
+                seriesColor = colorConfig.Color.ToSkColor();
+                colorFound = true;
             }
 
             // Fallback logic from IndicatorRenderer
             if (!colorFound)
             {
-                 seriesColor = setting.Color.ToSkColor();
+                seriesColor = setting.Color.ToSkColor();
             }
 
             // FIX: If color is transparent (Alpha=0), force default colors for Ichimoku
@@ -86,7 +86,7 @@ public class IchimokuRenderer : IDisposable
             {
                 var theme = config.ThemeManager.CurrentTheme;
                 if (configTargetSeries == "Main") seriesColor = theme.IchimokuTenkan.ToSkColor();
-                else if (configTargetSeries == CoreIchimokuIndicator.KijunSenSeriesName) seriesColor = theme.IchimokuKijun.ToSkColor(); 
+                else if (configTargetSeries == CoreIchimokuIndicator.KijunSenSeriesName) seriesColor = theme.IchimokuKijun.ToSkColor();
                 else if (configTargetSeries == CoreIchimokuIndicator.ChikouSpanSeriesName) seriesColor = theme.IchimokuChikou.ToSkColor();
                 else if (configTargetSeries == CoreIchimokuIndicator.SenkouSpanASeriesName || configTargetSeries == CoreIchimokuIndicator.SenkouSpanBSeriesName) seriesColor = theme.IchimokuSenkou.ToSkColor();
             }
@@ -96,34 +96,34 @@ public class IchimokuRenderer : IDisposable
     }
 
     private void RenderCloud(SKCanvas canvas, Rect chartArea, decimal minVal, decimal range,
-        IReadOnlyList<decimal?> spanA, IReadOnlyList<decimal?> spanB, 
+        IReadOnlyList<decimal?> spanA, IReadOnlyList<decimal?> spanB,
         CoreIndicatorSettings setting, int totalCandles, int offset, int startIndex,
         IReadOnlyList<CoreCandleData> candles, TimeSpan interval, ICoordinateTransform? transform)
     {
         if (spanA == null || spanB == null) return;
 
-        byte alpha = 50; 
-        
+        byte alpha = 50;
+
         var baseUp = setting.UpColor.A == 0 ? new StockAnalyzer.Core.Models.IndicatorColor(255, 0, 255, 0) : setting.UpColor; // Default Green
         var baseDown = setting.DownColor.A == 0 ? new StockAnalyzer.Core.Models.IndicatorColor(255, 255, 0, 0) : setting.DownColor; // Default Red
 
         var upColor = baseUp.ToSkColor().WithAlpha(alpha);
         var downColor = baseDown.ToSkColor().WithAlpha(alpha);
-        
+
 
         float candleWidth;
         if (transform != null)
         {
-             double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
-             double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
-             candleWidth = (float)(x1 - x0);
+            double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
+            double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
+            candleWidth = (float)(x1 - x0);
         }
         else
         {
-             candleWidth = (float)(chartArea.Width / totalCandles);
+            candleWidth = (float)(chartArea.Width / totalCandles);
         }
 
-        for (int i = 0; i < totalCandles; i++) 
+        for (int i = 0; i < totalCandles; i++)
         {
             int idx1 = i - offset;
             int idx2 = i + 1 - offset;
@@ -141,20 +141,20 @@ public class IchimokuRenderer : IDisposable
             float x1, x2;
             if (transform is GenericCoordinateTransform gct && gct.Mode == ChartAxisMode.Index)
             {
-                 x1 = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i)), 0)).X;
-                 x2 = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i + 1)), 0)).X;
+                x1 = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i)), 0)).X;
+                x2 = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i + 1)), 0)).X;
             }
             else if (transform != null)
             {
-                 var t1 = GetCandleTime(i, candles, interval);
-                 var t2 = GetCandleTime(i + 1, candles, interval);
-                 x1 = (float)transform.ChartToScreen(new ChartPoint(t1, 0)).X;
-                 x2 = (float)transform.ChartToScreen(new ChartPoint(t2, 0)).X;
+                var t1 = GetCandleTime(i, candles, interval);
+                var t2 = GetCandleTime(i + 1, candles, interval);
+                x1 = (float)transform.ChartToScreen(new ChartPoint(t1, 0)).X;
+                x2 = (float)transform.ChartToScreen(new ChartPoint(t2, 0)).X;
             }
             else
             {
-                 x1 = (float)chartArea.Left + i * candleWidth;
-                 x2 = (float)chartArea.Left + (i + 1) * candleWidth;
+                x1 = (float)chartArea.Left + i * candleWidth;
+                x2 = (float)chartArea.Left + (i + 1) * candleWidth;
             }
 
             float cx1 = x1 + candleWidth / 2f;
@@ -185,13 +185,13 @@ public class IchimokuRenderer : IDisposable
                 double diff1 = (double)(a1.Value - b1.Value);
                 double diff2 = (double)(a2.Value - b2.Value);
                 double denominator = diff1 - diff2;
-                if (Math.Abs(denominator) < 1e-9) continue; 
+                if (Math.Abs(denominator) < 1e-9) continue;
 
                 double t = diff1 / denominator;
 
                 float cxMid = cx1 + (float)((cx2 - cx1) * t);
                 float yaMid = ya1 + (float)((ya2 - ya1) * t);
-                
+
                 _cloudPath.Reset();
                 _cloudPath.MoveTo(cx1, ya1);
                 _cloudPath.LineTo(cxMid, yaMid);
@@ -210,7 +210,7 @@ public class IchimokuRenderer : IDisposable
             }
         }
     }
-    
+
     private DateTime GetCandleTime(int index, IReadOnlyList<CoreCandleData> candles, TimeSpan interval)
     {
         if (candles.Count == 0) return DateTime.MinValue;

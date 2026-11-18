@@ -31,8 +31,8 @@ public static class AdaptiveSmoothingHelper
     /// Maps a raw driver value to an effective period based on the specified mapping mode and clamps it within [minPeriod, maxPeriod].
     /// </summary>
     public static decimal MapPeriod(
-        decimal? driverValue, 
-        decimal defaultPeriod, 
+        decimal? driverValue,
+        decimal defaultPeriod,
         decimal minPeriod = IndicatorDefaultConstants.DynamicPeriodMinDefault,
         decimal maxPeriod = IndicatorDefaultConstants.DynamicPeriodMaxDefault,
         DynamicPeriodMappingMode mode = DynamicPeriodMappingMode.Direct,
@@ -73,8 +73,8 @@ public static class AdaptiveSmoothingHelper
     /// can drive another indicator's period directly (<see cref="DynamicPeriodMappingMode.Direct"/>).
     /// </summary>
     public static bool IsPeriodNativeDriverType(IndicatorType? driverType)
-        => driverType == IndicatorType.HilbertTransform 
-        || driverType == IndicatorType.FFTCycle 
+        => driverType == IndicatorType.HilbertTransform
+        || driverType == IndicatorType.FFTCycle
         || driverType == IndicatorType.Autocorrelation;
 
     /// <summary>

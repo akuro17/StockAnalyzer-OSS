@@ -51,14 +51,14 @@ public class RegressionService
 
         // Slope (m) = (N * ΣXY - ΣX * ΣY) / (N * ΣX^2 - (ΣX)^2)
         decimal denominator = (n * sumX2 - sumX * sumX);
-        
+
         if (denominator == 0)
         {
-             return new RegressionResult { IsValid = false };
+            return new RegressionResult { IsValid = false };
         }
 
         decimal slope = (n * sumXY - sumX * sumY) / denominator;
-        
+
         // Intercept (b) = (ΣY - m * ΣX) / N
         decimal intercept = (sumY - slope * sumX) / n;
 

@@ -41,7 +41,7 @@ namespace StockAnalyzer.Core.Tests.ScreeningConditions
             var startDate = new DateTime(2023, 1, 1);
             candles.Add(new CandleData(startDate.AddDays(6), 90m, 90m, 90m, 90m, 100)); // Price drops below MA
             candles.Add(new CandleData(startDate.AddDays(7), 110m, 110m, 110m, 110m, 100)); // Price breaks above MA
-            
+
             // Expected signal: Buy1 on the last candle
 
             var conditionAnyBuy = new GranvilleLawCondition(GranvilleLawConditionType.AnyBuy, parameter);
@@ -63,7 +63,7 @@ namespace StockAnalyzer.Core.Tests.ScreeningConditions
             var startDate = new DateTime(2023, 1, 1);
             candles.Add(new CandleData(startDate.AddDays(6), 110m, 110m, 110m, 110m, 100)); // Price rises above MA
             candles.Add(new CandleData(startDate.AddDays(7), 90m, 90m, 90m, 90m, 100)); // Price breaks below MA
-            
+
             // Expected signal: Sell1 on the last candle
 
             var conditionAnySell = new GranvilleLawCondition(GranvilleLawConditionType.AnySell, parameter);

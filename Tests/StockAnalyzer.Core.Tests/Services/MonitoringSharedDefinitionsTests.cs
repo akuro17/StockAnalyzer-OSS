@@ -24,9 +24,20 @@ public sealed class MonitoringSharedDefinitionsTests
         Assert.Equal(held, FileLockViolation.IsHeldByAnotherOwner(new IOException("x", hresult)));
 
     [Theory]
-    [InlineData("CON", true)] [InlineData("con", true)] [InlineData("PRN", true)] [InlineData("AUX", true)] [InlineData("NUL", true)]
-    [InlineData("COM1", true)] [InlineData("com9", true)] [InlineData("LPT1", true)] [InlineData("lpt9", true)]
-    [InlineData("COM0", false)] [InlineData("COM10", false)] [InlineData("CONSOLE", false)] [InlineData("COM", false)] [InlineData("", false)]
+    [InlineData("CON", true)]
+    [InlineData("con", true)]
+    [InlineData("PRN", true)]
+    [InlineData("AUX", true)]
+    [InlineData("NUL", true)]
+    [InlineData("COM1", true)]
+    [InlineData("com9", true)]
+    [InlineData("LPT1", true)]
+    [InlineData("lpt9", true)]
+    [InlineData("COM0", false)]
+    [InlineData("COM10", false)]
+    [InlineData("CONSOLE", false)]
+    [InlineData("COM", false)]
+    [InlineData("", false)]
     public void WindowsDeviceFileName_ReservesTheDocumentedNames(string name, bool reserved) =>
         Assert.Equal(reserved, WindowsDeviceFileName.IsReserved(name));
 

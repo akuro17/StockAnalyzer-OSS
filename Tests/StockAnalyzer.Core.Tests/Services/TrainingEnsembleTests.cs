@@ -102,7 +102,8 @@ public sealed class TrainingEnsembleTests : IDisposable
 
         var stacking = Job(c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Stacking, StackingBases = new[] { "pytorch:lstm", "lightgbm" },
+            EnsembleMethod = TrainingEnsembleMethod.Stacking,
+            StackingBases = new[] { "pytorch:lstm", "lightgbm" },
         });
         var wire = TrainingConfigJson.Serialize(stacking);
         Assert.Contains("\"ensemble_method\": \"stacking\"", wire);
@@ -127,18 +128,21 @@ public sealed class TrainingEnsembleTests : IDisposable
         Job(c => c with { EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 2 }).Validate();
         Job(c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = TrainingResourceOverrides.MaximumEnsembleMembers,
+            EnsembleMethod = TrainingEnsembleMethod.Bagging,
+            EnsembleMembers = TrainingResourceOverrides.MaximumEnsembleMembers,
         }).Validate();
         Job(c => c with
         {
             EnsembleMethod = TrainingEnsembleMethod.Stacking,
             StackingBases = new[] { "pytorch:lstm", "pytorch:cnn", "lightgbm", "tensorflow:gru" },
-            Framework = TrainingFramework.LightGBM, Architecture = "gbdt",
+            Framework = TrainingFramework.LightGBM,
+            Architecture = "gbdt",
         }).Validate();
         Job(c => c with { Pretraining = TrainingPretraining.MaskedReconstruction }).Validate();
         Job(c => c with
         {
-            Pretraining = TrainingPretraining.MaskedReconstruction, InitializationMode = TrainingInitializationMode.Resume,
+            Pretraining = TrainingPretraining.MaskedReconstruction,
+            InitializationMode = TrainingInitializationMode.Resume,
             CheckpointPath = "run.json",
         }).Validate();
     }
@@ -148,7 +152,8 @@ public sealed class TrainingEnsembleTests : IDisposable
     {
         var stacking = Job(c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Stacking, StackingBases = new[] { "pytorch:lstm", "lightgbm" },
+            EnsembleMethod = TrainingEnsembleMethod.Stacking,
+            StackingBases = new[] { "pytorch:lstm", "lightgbm" },
         });
         // the default source is never written, so a past-out-of-fold stacking job stays readable by an older training package
         Assert.False(JsonDocument.Parse(TrainingConfigJson.Serialize(stacking)).RootElement
@@ -173,58 +178,74 @@ public sealed class TrainingEnsembleTests : IDisposable
         yield return Case("bagging one member", c => c with { EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = 1 });
         yield return Case("bagging too many", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Bagging, EnsembleMembers = TrainingResourceOverrides.MaximumEnsembleMembers + 1,
+            EnsembleMethod = TrainingEnsembleMethod.Bagging,
+            EnsembleMembers = TrainingResourceOverrides.MaximumEnsembleMembers + 1,
         });
         yield return Case("bagging with bases", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Bagging, StackingBases = new[] { "lightgbm" },
+            EnsembleMethod = TrainingEnsembleMethod.Bagging,
+            StackingBases = new[] { "lightgbm" },
         });
         yield return Case("bases without stacking", c => c with { StackingBases = new[] { "lightgbm", "pytorch:cnn" } });
         yield return Case("stacking one base", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Stacking, StackingBases = new[] { "lightgbm" },
+            EnsembleMethod = TrainingEnsembleMethod.Stacking,
+            StackingBases = new[] { "lightgbm" },
         });
         yield return Case("stacking duplicate bases", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Stacking, StackingBases = new[] { "pytorch:lstm", "pytorch:lstm" },
+            EnsembleMethod = TrainingEnsembleMethod.Stacking,
+            StackingBases = new[] { "pytorch:lstm", "pytorch:lstm" },
         });
         yield return Case("stacking base without architecture", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Stacking, StackingBases = new[] { "pytorch", "lightgbm" },
+            EnsembleMethod = TrainingEnsembleMethod.Stacking,
+            StackingBases = new[] { "pytorch", "lightgbm" },
         });
         yield return Case("stacking unknown framework", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Stacking, StackingBases = new[] { "xgboost:a", "lightgbm" },
+            EnsembleMethod = TrainingEnsembleMethod.Stacking,
+            StackingBases = new[] { "xgboost:a", "lightgbm" },
         });
         yield return Case("regression ensemble", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Bagging, TargetType = TargetType.Regression,
+            EnsembleMethod = TrainingEnsembleMethod.Bagging,
+            TargetType = TargetType.Regression,
         });
         yield return Case("ensemble with calibration", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Bagging, Calibration = true,
+            EnsembleMethod = TrainingEnsembleMethod.Bagging,
+            Calibration = true,
         });
         yield return Case("ensemble with pretraining", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Bagging, Pretraining = TrainingPretraining.MaskedReconstruction,
+            EnsembleMethod = TrainingEnsembleMethod.Bagging,
+            Pretraining = TrainingPretraining.MaskedReconstruction,
         });
         yield return Case("ensemble with resume", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Bagging, InitializationMode = TrainingInitializationMode.Resume,
+            EnsembleMethod = TrainingEnsembleMethod.Bagging,
+            InitializationMode = TrainingInitializationMode.Resume,
             CheckpointPath = "run.json",
         });
         yield return Case("pretraining on lightgbm", c => c with
         {
-            Pretraining = TrainingPretraining.MaskedReconstruction, Framework = TrainingFramework.LightGBM, Architecture = "gbdt",
+            Pretraining = TrainingPretraining.MaskedReconstruction,
+            Framework = TrainingFramework.LightGBM,
+            Architecture = "gbdt",
         });
         yield return Case("pretraining on tensorflow", c => c with
         {
-            Pretraining = TrainingPretraining.MaskedReconstruction, Framework = TrainingFramework.TensorFlow,
+            Pretraining = TrainingPretraining.MaskedReconstruction,
+            Framework = TrainingFramework.TensorFlow,
         });
         yield return Case("pretraining with fine-tune", c => c with
         {
-            Pretraining = TrainingPretraining.MaskedReconstruction, InitializationMode = TrainingInitializationMode.FineTune,
-            CheckpointPath = "best.json", ParentModelId = new string('a', 64), ParentModelHash = new string('b', 64),
+            Pretraining = TrainingPretraining.MaskedReconstruction,
+            InitializationMode = TrainingInitializationMode.FineTune,
+            CheckpointPath = "best.json",
+            ParentModelId = new string('a', 64),
+            ParentModelHash = new string('b', 64),
         });
         yield return Case("meta segment without an ensemble", c => c with
         {
@@ -232,11 +253,13 @@ public sealed class TrainingEnsembleTests : IDisposable
         });
         yield return Case("meta segment with bagging", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Bagging, StackingWeightSource = StackingWeightSource.ReleaseMetaSegment,
+            EnsembleMethod = TrainingEnsembleMethod.Bagging,
+            StackingWeightSource = StackingWeightSource.ReleaseMetaSegment,
         });
         yield return Case("undefined weight source", c => c with
         {
-            EnsembleMethod = TrainingEnsembleMethod.Stacking, StackingBases = new[] { "pytorch:lstm", "lightgbm" },
+            EnsembleMethod = TrainingEnsembleMethod.Stacking,
+            StackingBases = new[] { "pytorch:lstm", "lightgbm" },
             StackingWeightSource = (StackingWeightSource)9,
         });
         yield return Case("undefined ensemble method", c => c with { EnsembleMethod = (TrainingEnsembleMethod)9 });

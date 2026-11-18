@@ -58,8 +58,15 @@ public sealed class RlFinancialQualificationTests
         Assert.True(await registry.ActivateRlAsync(direction.ModelId!));
         Assert.True(await registry.ActivateRlAsync(actor.ModelId!));
         await CheckTampering(direction, actor, registry, output, root);
-        await Save(output, "current_code_revalidation.json", new { actor.ModelId, financial_version = RlFinancialParityContract.SpecificationId,
-            registry_root = Path.Combine(root, "Generations"), registered = true, active_unchanged = true, protocol_failures_verified = true });
+        await Save(output, "current_code_revalidation.json", new
+        {
+            actor.ModelId,
+            financial_version = RlFinancialParityContract.SpecificationId,
+            registry_root = Path.Combine(root, "Generations"),
+            registered = true,
+            active_unchanged = true,
+            protocol_failures_verified = true
+        });
     }
 
     [FinancialQualification]
@@ -70,10 +77,16 @@ public sealed class RlFinancialQualificationTests
         string root = Path.Combine(output, "owned_qualification_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         using var registry = new ModelGenerationRegistry(Path.Combine(root, "Generations"));
-        var costs = new BacktestConfiguration { InitialCapital = BacktestDefaults.InitialCapital,
-            SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter,
-            CommissionFlat = 2m, CommissionPerUnit = .5m, SlippageRatio = .001m,
-            LiquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio };
+        var costs = new BacktestConfiguration
+        {
+            InitialCapital = BacktestDefaults.InitialCapital,
+            SizingModel = BacktestDefaults.SizingModel,
+            SizingParameter = BacktestDefaults.SizingParameter,
+            CommissionFlat = 2m,
+            CommissionPerUnit = .5m,
+            SlippageRatio = .001m,
+            LiquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio
+        };
         var service = new RlTrainingService(registry, new TrainingJobGate(Path.Combine(root, "job-locks")), dataRoot: root);
         var progress = new Progress<RlTrainingProgress>(p => File.AppendAllText(Path.Combine(root, "progress.log"),
             $"{DateTimeOffset.UtcNow:O} {p.RunId} {p.State} {p.CompletedSteps} {p.Message}{Environment.NewLine}"));
@@ -82,7 +95,7 @@ public sealed class RlFinancialQualificationTests
         Assert.NotNull(direction.ModelId);
         await Save(output, "direction_qualification_result.json", direction);
         RlTrainingJob Job(bool smoke) => new("AAPL", new(2004, 1, 1), new(2026, 10, 4), costs, SmokeOnly: smoke)
-            { FrozenDirectionModelId = direction.ModelId };
+        { FrozenDirectionModelId = direction.ModelId };
         var smoke = await service.RunAsync(Job(true), progress);
         Assert.Null(smoke.ModelId);
         VerifyEvidence(smoke, smokeOnly: true);
@@ -161,9 +174,17 @@ public sealed class RlFinancialQualificationTests
         Assert.Equal(full.ModelId, (await registry.RegisterRlAsync(tampered)).ModelId);
         Assert.Equal(2, registry.ListRl().Count);
         Assert.Equal(direction.ModelId, registry.RlActiveId); Assert.Equal(full.ModelId, registry.RlContinuousActiveId);
-        await Save(output, "financial_qualification_result.json", new { direction, full, rejected,
-            fill_tampering_exercised = With("fills") is not null, trade_tampering_exercised = With("trades") is not null,
-            original_active_untouched = true, owned_active_unchanged_on_failure = true, registry_root = Path.Combine(root, "Generations") });
+        await Save(output, "financial_qualification_result.json", new
+        {
+            direction,
+            full,
+            rejected,
+            fill_tampering_exercised = With("fills") is not null,
+            trade_tampering_exercised = With("trades") is not null,
+            original_active_untouched = true,
+            owned_active_unchanged_on_failure = true,
+            registry_root = Path.Combine(root, "Generations")
+        });
     }
 
     private static JsonNode First(JsonNode parity) => parity["paired_episodes"]![0]!["steps"]![0]!;
@@ -196,9 +217,16 @@ public sealed class RlFinancialQualificationTests
         var metadata = job.RootElement.GetProperty("metadata").Deserialize<Dictionary<string, string>>()!;
         var run = Guid.NewGuid(); string session = Guid.NewGuid().ToString("N");
         using var host = new RlIpcHost(run, source, costs, actor.Directory, metadata, null, continuous: true);
-        JsonElement Request(long sequence, string method, object payload) => JsonSerializer.SerializeToElement(new {
-            protocol_version = RlContract.SchemaVersion, run_id = run.ToString("N"), sequence, session_id = session,
-            contract_hash = RlContinuousContract.ContractHash, method, payload }, RlFiles.Json);
+        JsonElement Request(long sequence, string method, object payload) => JsonSerializer.SerializeToElement(new
+        {
+            protocol_version = RlContract.SchemaVersion,
+            run_id = run.ToString("N"),
+            sequence,
+            session_id = session,
+            contract_hash = RlContinuousContract.ContractHash,
+            method,
+            payload
+        }, RlFiles.Json);
         host.Handle(Request(1, "Ready", new { temporal_producer_revision = RlTemporalContract.ProducerRevision }), default);
         host.Handle(Request(2, "Reset", new { role = "train", block_id = source.Catalog.Train[0].Id, seed = RlContract.CandidateSeeds[0], checkpoint = 0 }), default);
         var step = Request(3, "Step", new { actions = new[] { 1f, .5f } }); host.Handle(step, default);

@@ -11,7 +11,7 @@ public class CandlePatternDetectorTests
     private static List<CandleData> CreateCandles(decimal open, decimal high, decimal low, decimal close, decimal avgBodyContext = 0)
     {
         var candles = new List<CandleData>();
-        
+
         // Add context candles to establish Average Body if requested.
         if (avgBodyContext > 0)
         {
@@ -29,7 +29,7 @@ public class CandlePatternDetectorTests
 
     private static List<CandleData> CreateCandles2(
         decimal p1Open, decimal p1High, decimal p1Low, decimal p1Close,
-        decimal cOpen, decimal cHigh, decimal cLow, decimal cClose, 
+        decimal cOpen, decimal cHigh, decimal cLow, decimal cClose,
         decimal avgBodyContext = 0)
     {
         var candles = new List<CandleData>();
@@ -46,7 +46,7 @@ public class CandlePatternDetectorTests
     private static List<CandleData> CreateCandles3(
         decimal p2Open, decimal p2High, decimal p2Low, decimal p2Close,
         decimal p1Open, decimal p1High, decimal p1Low, decimal p1Close,
-        decimal cOpen, decimal cHigh, decimal cLow, decimal cClose, 
+        decimal cOpen, decimal cHigh, decimal cLow, decimal cClose,
         decimal avgBodyContext = 0)
     {
         var candles = new List<CandleData>();
@@ -106,7 +106,7 @@ public class CandlePatternDetectorTests
     [Theory]
     // 陽線の坊主系 (Bullish Marubozu)
     // AvgBody = 2, CurrentBody = 4 (100 to 104) is > avgBody*1.5. Range = 4. Body = 4 >= Range*0.6
-    [InlineData(100, 104, 100, 104, 2, CandlePatternType.BullishMarubozu)] 
+    [InlineData(100, 104, 100, 104, 2, CandlePatternType.BullishMarubozu)]
     // 大引坊主 (Closing Marubozu) - No upper shadow, has lower shadow (Low = 98)
     [InlineData(100, 104, 98, 104, 2, CandlePatternType.BullishClosingMarubozu)]
     // 寄付坊主 (Opening Marubozu) - Has upper shadow (High = 106), no lower shadow
@@ -191,39 +191,39 @@ public class CandlePatternDetectorTests
 
     [Theory]
     // 明けの明星 (Morning Star): p2 BearLarge(110->100), p1 SmallGapDown(97->98, high99 < p2Close100), c BullLarge(100->108, close>p2Mid105)
-    [InlineData(110, 112, 98, 100,  97, 99, 96, 98,  100, 109, 99, 108, 4, CandlePatternType.MorningStar)]
+    [InlineData(110, 112, 98, 100, 97, 99, 96, 98, 100, 109, 99, 108, 4, CandlePatternType.MorningStar)]
     // 宵の明星 (Evening Star): p2 BullLarge(100->110), p1 SmallGapUp(113->112, low111 > p2Close110), c BearLarge(110->102, close<p2Mid105)
-    [InlineData(100, 112, 98, 110,  113, 115, 111, 112,  110, 111, 101, 102, 4, CandlePatternType.EveningStar)]
+    [InlineData(100, 112, 98, 110, 113, 115, 111, 112, 110, 111, 101, 102, 4, CandlePatternType.EveningStar)]
     // 赤三兵 (Three White Soldiers): 3 Bull Large, open within prev body, close higher.
     // p2:100->105, p1:103->108, c:106->111
-    [InlineData(100, 106, 99, 105,  103, 109, 102, 108,  106, 112, 105, 111, 2, CandlePatternType.ThreeWhiteSoldiers)]
+    [InlineData(100, 106, 99, 105, 103, 109, 102, 108, 106, 112, 105, 111, 2, CandlePatternType.ThreeWhiteSoldiers)]
     // 黒三兵 (Three Black Crows): 3 Bear Large, open within prev body, close lower.
     // p2:111->106, p1:108->103, c:105->100
-    [InlineData(111, 112, 105, 106,  108, 109, 102, 103,  105, 106, 99, 100, 2, CandlePatternType.ThreeBlackCrows)]
+    [InlineData(111, 112, 105, 106, 108, 109, 102, 103, 105, 106, 99, 100, 2, CandlePatternType.ThreeBlackCrows)]
     // 同値三羽烏 (Identical Three Crows): 3 Bear Large, opens at previous close, close lower.
-    [InlineData(110, 110.1, 104, 104,  104.05, 104.1, 98, 98,  98.05, 98.1, 92, 92, 4, CandlePatternType.IdenticalThreeCrows)]
+    [InlineData(110, 110.1, 104, 104, 104.05, 104.1, 98, 98, 98.05, 98.1, 92, 92, 4, CandlePatternType.IdenticalThreeCrows)]
     // 上放れ並び赤 (Bullish Side-by-Side White Lines)
-    [InlineData(100, 107, 99, 106,  109, 114, 108, 113,  109.2, 114, 108.5, 113.1, 4, CandlePatternType.BullishSideBySideWhiteLines)]
+    [InlineData(100, 107, 99, 106, 109, 114, 108, 113, 109.2, 114, 108.5, 113.1, 4, CandlePatternType.BullishSideBySideWhiteLines)]
     // 下放れ並び赤 (Bearish Side-by-Side White Lines)
-    [InlineData(110, 111, 103, 104,  100, 103, 99, 102,  100.1, 103, 99.5, 102.2, 4, CandlePatternType.BearishSideBySideWhiteLines)]
+    [InlineData(110, 111, 103, 104, 100, 103, 99, 102, 100.1, 103, 99.5, 102.2, 4, CandlePatternType.BearishSideBySideWhiteLines)]
     // 強気棄て子 (Bullish Abandoned Baby): p2 BearLarge(110->100, low98), p1 DojiGapDown(95->95.05, high96 < low98), c BullLargeGapUp(97->108, low97 > high96, close108 > mid105)
-    [InlineData(110, 112, 98, 100,  95, 96, 94, 95.05,  97, 109, 97, 108, 4, CandlePatternType.BullishAbandonedBaby)]
+    [InlineData(110, 112, 98, 100, 95, 96, 94, 95.05, 97, 109, 97, 108, 4, CandlePatternType.BullishAbandonedBaby)]
     // 弱気棄て子 (Bearish Abandoned Baby): p2 BullLarge(100->110, high112), p1 DojiGapUp(115->115.05, low114 > high112), c BearLargeGapDown(113->102, high113 < low114, close102 < mid105)
-    [InlineData(100, 112, 98, 110,  115, 116, 114, 115.05,  113, 113, 101, 102, 4, CandlePatternType.BearishAbandonedBaby)]
+    [InlineData(100, 112, 98, 110, 115, 116, 114, 115.05, 113, 113, 101, 102, 4, CandlePatternType.BearishAbandonedBaby)]
     // 先詰まり (Advance Block): 3 Bull rising, diminishing bodies (6 > 4 > 3), upper shadow growing & long (u3=5 >= b3*0.5=1.5, u3>u1=1)
-    [InlineData(100, 107, 99, 106,  103, 110, 102, 107,  105, 113, 104, 108, 4, CandlePatternType.AdvanceBlock)]
+    [InlineData(100, 107, 99, 106, 103, 110, 102, 107, 105, 113, 104, 108, 4, CandlePatternType.AdvanceBlock)]
     // 思案 (Deliberation): 2 Bull Large (body=8, 8 >= 4*0.7=2.8), 3rd small star Bull (body=1 <= 8*0.4=3.2), open112 >= 112 - 4*0.15=111.4
-    [InlineData(100, 109, 99, 108,  104, 113, 103, 112,  112, 114, 111.5, 113, 4, CandlePatternType.Deliberation)]
+    [InlineData(100, 109, 99, 108, 104, 113, 103, 112, 112, 114, 111.5, 113, 4, CandlePatternType.Deliberation)]
     // スティックサンドイッチ (Stick Sandwich): p2 Bear (108->100), p1 Bull (102->107), c Bear (106.8->100, close equal to p2.Close)
-    [InlineData(108, 109, 99, 100,  102, 108, 101, 107,  106.8, 107, 99, 100, 4, CandlePatternType.StickSandwich)]
+    [InlineData(108, 109, 99, 100, 102, 108, 101, 107, 106.8, 107, 99, 100, 4, CandlePatternType.StickSandwich)]
     // 上放れタスキ (Bullish Tasuki Gap): C1(100,107,99,106), C2(107,113,106,112), C3(111,112,106.2,106.5) [avgBody=4]
-    [InlineData(100, 107, 99, 106,  107, 113, 106, 112,  111, 112, 106.2, 106.5, 4, CandlePatternType.BullishTasukiGap)]
+    [InlineData(100, 107, 99, 106, 107, 113, 106, 112, 111, 112, 106.2, 106.5, 4, CandlePatternType.BullishTasukiGap)]
     // 下放れタスキ (Bearish Tasuki Gap): C1(110,111,103,104), C2(103,104,97,98), C3(99,103.8,98.5,103.5) [avgBody=4]
-    [InlineData(110, 111, 103, 104,  103, 104, 97, 98,  99, 103.8, 98.5, 103.5, 4, CandlePatternType.BearishTasukiGap)]
+    [InlineData(110, 111, 103, 104, 103, 104, 97, 98, 99, 103.8, 98.5, 103.5, 4, CandlePatternType.BearishTasukiGap)]
     // 上放れ窓埋め三法 (Bullish Gap Three Methods): C1(100,107,99,106), C2(107,113,106,112), C3(111,112,103.5,104) [avgBody=4]
-    [InlineData(100, 107, 99, 106,  107, 113, 106, 112,  111, 112, 103.5, 104, 4, CandlePatternType.BullishGapThreeMethods)]
+    [InlineData(100, 107, 99, 106, 107, 113, 106, 112, 111, 112, 103.5, 104, 4, CandlePatternType.BullishGapThreeMethods)]
     // 下放れ窓埋め三法 (Bearish Gap Three Methods): C1(110,111,103,104), C2(103,104,97,98), C3(99,106.5,98.5,106) [avgBody=4]
-    [InlineData(110, 111, 103, 104,  103, 104, 97, 98,  99, 106.5, 98.5, 106, 4, CandlePatternType.BearishGapThreeMethods)]
+    [InlineData(110, 111, 103, 104, 103, 104, 97, 98, 99, 106.5, 98.5, 106, 4, CandlePatternType.BearishGapThreeMethods)]
     public void DetectPattern_TripleCandle_IdentifiesCorrectPattern(
         decimal p2O, decimal p2H, decimal p2L, decimal p2C,
         decimal p1O, decimal p1H, decimal p1L, decimal p1C,
@@ -237,11 +237,11 @@ public class CandlePatternDetectorTests
 
     [Theory]
     // 隠れ飲込み (Concealing Baby Swallow): 2 Bear Marubozu + 1 Bear with gap & upper shadow entering C2 + 1 Bear engulfing full range of C3
-    [InlineData(120, 120, 112, 112,  112, 112, 104, 104,  98, 108, 95, 96,  110, 110, 94, 94,  4, CandlePatternType.ConcealingBabySwallow)]
+    [InlineData(120, 120, 112, 112, 112, 112, 104, 104, 98, 108, 95, 96, 110, 110, 94, 94, 4, CandlePatternType.ConcealingBabySwallow)]
     // 強気三手一撃 (Bullish Three-Line Strike): 3 Bull rising + 1 huge Strike Bear engulfing all 3
-    [InlineData(100, 105, 99, 104,  103, 108, 102, 107,  106, 111, 105, 110,  110, 111, 97, 98,  4, CandlePatternType.BullishThreeLineStrike)]
+    [InlineData(100, 105, 99, 104, 103, 108, 102, 107, 106, 111, 105, 110, 110, 111, 97, 98, 4, CandlePatternType.BullishThreeLineStrike)]
     // 弱気三手一撃 (Bearish Three-Line Strike): 3 Bear falling + 1 huge Strike Bull engulfing all 3
-    [InlineData(110, 111, 105, 106,  107, 108, 102, 103,  104, 105, 99, 100,  100, 113, 99, 112,  4, CandlePatternType.BearishThreeLineStrike)]
+    [InlineData(110, 111, 105, 106, 107, 108, 102, 103, 104, 105, 99, 100, 100, 113, 99, 112, 4, CandlePatternType.BearishThreeLineStrike)]
     public void DetectPattern_Continuation4Candle_IdentifiesCorrectPattern(
         decimal p3O, decimal p3H, decimal p3L, decimal p3C,
         decimal p2O, decimal p2H, decimal p2L, decimal p2C,
@@ -256,17 +256,17 @@ public class CandlePatternDetectorTests
 
     [Theory]
     // マットホールド (Mat Hold): C1 Large Bull, C2 Gap Up Small, C3/C4 Small adjustments, C5 Bull breakout
-    [InlineData(100, 111, 99, 110,  112, 113.5, 111.5, 113,  112.5, 113.5, 111.5, 111.5,  111.5, 112.5, 110.5, 111,  111, 117, 110.5, 116,  4, CandlePatternType.MatHold)]
+    [InlineData(100, 111, 99, 110, 112, 113.5, 111.5, 113, 112.5, 113.5, 111.5, 111.5, 111.5, 112.5, 110.5, 111, 111, 117, 110.5, 116, 4, CandlePatternType.MatHold)]
     // 上昇三法 (Rising Three Methods): C1 Large Bull, C2/C3/C4 Small adjustments inside C1 range, C5 Bull breakout
-    [InlineData(100, 111, 99, 110,  109, 110, 106, 107,  107, 108, 104, 105,  105, 106, 102, 103,  103, 113, 102.5, 112,  4, CandlePatternType.RisingThreeMethods)]
+    [InlineData(100, 111, 99, 110, 109, 110, 106, 107, 107, 108, 104, 105, 105, 106, 102, 103, 103, 113, 102.5, 112, 4, CandlePatternType.RisingThreeMethods)]
     // 下降三法 (Falling Three Methods): C1 Large Bear, C2/C3/C4 Small adjustments inside C1 range, C5 Bear breakdown
-    [InlineData(110, 111, 99, 100,  101, 104.5, 100.5, 103,  103, 106.5, 102.5, 105,  105, 108.5, 104.5, 107,  107, 107.5, 97, 98,  4, CandlePatternType.FallingThreeMethods)]
+    [InlineData(110, 111, 99, 100, 101, 104.5, 100.5, 103, 103, 106.5, 102.5, 105, 105, 108.5, 104.5, 107, 107, 107.5, 97, 98, 4, CandlePatternType.FallingThreeMethods)]
     // 梯子底 (Ladder Bottom): 3 Bear falling (120->114, 116->108, 110->102), C4 Inverted Hammer (101->100, high105, u4=4 >= b4*1.0), C5 Breakout Bull (102->110 > C4.High 105)
-    [InlineData(120, 121, 113, 114,  116, 117, 107, 108,  110, 111, 101, 102,  101, 105, 99.5, 100,  102, 111, 101.5, 110, 4, CandlePatternType.LadderBottom)]
+    [InlineData(120, 121, 113, 114, 116, 117, 107, 108, 110, 111, 101, 102, 101, 105, 99.5, 100, 102, 111, 101.5, 110, 4, CandlePatternType.LadderBottom)]
     // 強気離脱 (Bullish Breakaway): C1(120,121,109,110), C2(108,108.2,104.5,105), C3(104.5,105.5,101.5,103), C4(103,103.8,100.8,102), C5(101.5,110,101,108.5) [avgBody=4]
-    [InlineData(120, 121, 109, 110,  108, 108.2, 104.5, 105,  104.5, 105.5, 101.5, 103,  103, 103.8, 100.8, 102,  101.5, 110, 101, 108.5, 4, CandlePatternType.BullishBreakaway)]
+    [InlineData(120, 121, 109, 110, 108, 108.2, 104.5, 105, 104.5, 105.5, 101.5, 103, 103, 103.8, 100.8, 102, 101.5, 110, 101, 108.5, 4, CandlePatternType.BullishBreakaway)]
     // 弱気離脱 (Bearish Breakaway): C1(100,111,99,110), C2(112,115.5,111.8,115), C3(115.5,118.5,114.5,117), C4(117,119.2,116.2,118), C5(118.5,119,110,111.5) [avgBody=4]
-    [InlineData(100, 111, 99, 110,  112, 115.5, 111.8, 115,  115.5, 118.5, 114.5, 117,  117, 119.2, 116.2, 118,  118.5, 119, 110, 111.5, 4, CandlePatternType.BearishBreakaway)]
+    [InlineData(100, 111, 99, 110, 112, 115.5, 111.8, 115, 115.5, 118.5, 114.5, 117, 117, 119.2, 116.2, 118, 118.5, 119, 110, 111.5, 4, CandlePatternType.BearishBreakaway)]
     public void DetectPattern_Continuation5Candle_IdentifiesCorrectPattern(
         decimal p4O, decimal p4H, decimal p4L, decimal p4C,
         decimal p3O, decimal p3H, decimal p3L, decimal p3C,

@@ -76,11 +76,11 @@ public class MetadataHydrationTests
         var mockPython = new Mock<IPythonService>();
         var dbManager = new DuckDBConnectionManager(NullLogger<DuckDBConnectionManager>.Instance);
         using var scratch = new ScratchMetadataFolder(); var settings = scratch.Settings;
-        
+
         var provider = new ParquetMarketDataProvider(dbManager, mockPython.Object, settings);
 
         var expectedMeta = new TickerMetadata("Test Corp", "Full Test Corp", "US", "Tech", "Software", "USD", 150m, 145m);
-        
+
         int callCount = 0;
         mockPython.Setup(p => p.RunAsync(It.IsAny<Func<Python.Runtime.PyModule, TickerMetadata>>(), It.IsAny<CancellationToken>()))
                   .Callback(() => callCount++)
@@ -104,7 +104,7 @@ public class MetadataHydrationTests
         var mockPython = new Mock<IPythonService>();
         var dbManager = new DuckDBConnectionManager(NullLogger<DuckDBConnectionManager>.Instance);
         using var scratch = new ScratchMetadataFolder(); var settings = scratch.Settings;
-        
+
         var provider = new ParquetMarketDataProvider(dbManager, mockPython.Object, settings);
 
         int activeCalls = 0;
@@ -112,13 +112,16 @@ public class MetadataHydrationTests
         var lockObj = new object();
 
         mockPython.Setup(p => p.RunAsync(It.IsAny<Func<Python.Runtime.PyModule, TickerMetadata>>(), It.IsAny<CancellationToken>()))
-                  .Returns(async () => {
-                      lock(lockObj) {
+                  .Returns(async () =>
+                  {
+                      lock (lockObj)
+                      {
                           activeCalls++;
                           maxSimultaneousCalls = Math.Max(maxSimultaneousCalls, activeCalls);
                       }
                       await Task.Delay(100); // Simulate network delay
-                      lock(lockObj) {
+                      lock (lockObj)
+                      {
                           activeCalls--;
                       }
                       return TickerMetadata.Unknown;

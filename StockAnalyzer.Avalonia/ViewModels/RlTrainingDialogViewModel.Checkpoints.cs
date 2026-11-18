@@ -104,11 +104,13 @@ public sealed partial class RlTrainingDialogViewModel
         PauseCommand.NotifyCanExecuteChanged(); ResumeCheckpointCommand.NotifyCanExecuteChanged(); AbandonCheckpointCommand.NotifyCanExecuteChanged();
         ExportCheckpointCommand.NotifyCanExecuteChanged(); ExportGenerationCommand.NotifyCanExecuteChanged();
     }
-    [RelayCommand(CanExecute = nameof(CanPause))] private void Pause()
+    [RelayCommand(CanExecute = nameof(CanPause))]
+    private void Pause()
     {
         if (!CanPause) return; _pauseCts!.Cancel(); Message = _localization.GetString("Rl.Checkpoint.PausePending"); NotifyCheckpointCommands();
     }
-    [RelayCommand(CanExecute = nameof(CanInspectCheckpoints))] private async Task InspectCheckpointsAsync()
+    [RelayCommand(CanExecute = nameof(CanInspectCheckpoints))]
+    private async Task InspectCheckpointsAsync()
     {
         if (!CanInspectCheckpoints) return;
         long revision = NextRevision(ref _checkpointRevision); SelectedCheckpoint = null; ResumeConfirmed = false; AbandonConfirmed = false; CheckpointRows.Clear(); using var cancel = new CancellationTokenSource(); BeginOperation(RlDialogOperation.InspectingCheckpoints, cancel); CheckpointsState = RlDialogLoadState.Loading;
@@ -125,7 +127,8 @@ public sealed partial class RlTrainingDialogViewModel
         catch (Exception error) { if (!_disposed) { CheckpointsState = RlDialogLoadState.Failed; SetErrorMessage(error); } }
         finally { EndOperation(); }
     }
-    [RelayCommand(CanExecute = nameof(CanResumeCheckpoint))] private async Task ResumeCheckpointAsync()
+    [RelayCommand(CanExecute = nameof(CanResumeCheckpoint))]
+    private async Task ResumeCheckpointAsync()
     {
         if (!CanResumeCheckpoint || _disposed) return;
         var review = SelectedCheckpoint!.Review; ResumeConfirmed = false; AbandonConfirmed = false;
@@ -159,7 +162,8 @@ public sealed partial class RlTrainingDialogViewModel
         finally { _jobCts = null; _pauseCts = null; EndOperation(); }
         if (!_disposed) await InspectCheckpointsAsync();
     }
-    [RelayCommand(CanExecute = nameof(CanAbandonCheckpoint))] private async Task AbandonCheckpointAsync()
+    [RelayCommand(CanExecute = nameof(CanAbandonCheckpoint))]
+    private async Task AbandonCheckpointAsync()
     {
         if (!CanAbandonCheckpoint || _disposed) return;
         var reviewed = SelectedCheckpoint!.Review; AbandonConfirmed = false; ResumeConfirmed = false; BeginOperation(RlDialogOperation.InspectingCheckpoints);

@@ -26,7 +26,7 @@ public class CoreKamaIndicatorTests
     [Fact]
     public void Calculate_WithValidData_ReturnsExpectedValues()
     {
-        var candles = GenerateCandleData(30, 100, i => 100 + (decimal)Math.Sin(i / 5.0) * 5); 
+        var candles = GenerateCandleData(30, 100, i => 100 + (decimal)Math.Sin(i / 5.0) * 5);
         int period = 10;
         var indicator = new CoreKamaIndicator { Period = period };
         var result = indicator.Calculate(candles);

@@ -19,7 +19,7 @@ public class CoordinateTransform
         // If inverted, we can just flip the price logic or the final Y
         // Standard: Y = Height * (1 - ratio)
         // Inverted: Y = Height * ratio
-        
+
         if (isLogScale && minPrice > 0 && maxPrice > 0)
         {
             try
@@ -41,12 +41,12 @@ public class CoordinateTransform
         // Inverted: use ratio directly (0 at min price -> top) if min is top?
         // Wait: Inverted means Low Price is at TOP (0), High Price is at BOTTOM (Height).
         // Normal: High Price is at TOP (0), Low Price is at BOTTOM (Height).
-        
+
         // Normal: Y = H * (1 - (Val - Min) / Range) -> Val=Max => Y=0, Val=Min => Y=H
         // Inverted: Y = H * ((Val - Min) / Range) -> Val=Min => Y=0, Val=Max => Y=H
-        
-        return isInverted 
-            ? canvasHeight * ratio 
+
+        return isInverted
+            ? canvasHeight * ratio
             : canvasHeight * (1 - ratio);
     }
 
@@ -74,10 +74,10 @@ public class CoordinateTransform
 
         // Normal: ratio = 1 - (y / H)
         // Inverted: ratio = y / H
-        var ratio = isInverted 
+        var ratio = isInverted
             ? (y / canvasHeight)
             : 1 - (y / canvasHeight);
-            
+
         var range = maxPrice - minPrice;
 
         return minPrice + range * (decimal)ratio;

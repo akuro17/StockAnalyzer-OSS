@@ -22,9 +22,9 @@ public static class KagiConverter
     }
 
     public static List<KagiCandleData> Convert(
-        IReadOnlyList<CoreCandleData> candles, 
-        decimal reversalAmount, 
-        ReversalType type = ReversalType.Fixed, 
+        IReadOnlyList<CoreCandleData> candles,
+        decimal reversalAmount,
+        ReversalType type = ReversalType.Fixed,
         int atrPeriod = 14,
         decimal atrMultiplier = 1.0m,
         ChartRoundingMode roundingMode = ChartRoundingMode.None,
@@ -36,10 +36,10 @@ public static class KagiConverter
     }
 
     public static void Convert(
-        IReadOnlyList<CoreCandleData> candles, 
-        decimal reversalAmount, 
-        ReversalType type, 
-        int atrPeriod, 
+        IReadOnlyList<CoreCandleData> candles,
+        decimal reversalAmount,
+        ReversalType type,
+        int atrPeriod,
         decimal atrMultiplier,
         ChartRoundingMode roundingMode,
         AutoFallbackMode fallbackMode,
@@ -95,7 +95,7 @@ public static class KagiConverter
                 {
                     state.Direction = price > state.CurrentPrice ? 1 : -1;
                     state.IsYang = state.Direction == 1;
-                    
+
                     // Add the first trend segment at index 1, originating from startPrice and ending at price
                     outputBuffer.Add(KagiCandleData.Create(c.Timestamp, startPrice, price, state.IsYang, startPrice, state.IsYang ? 1 : 0));
                     elementDatesBuffer?.Add(new ElementDates(c.Timestamp, c.Timestamp));
@@ -150,7 +150,7 @@ public static class KagiConverter
         {
             // Split at LastLow
             decimal boundary = state.LastLow;
-            
+
             // 1. Process first half: start -> boundary (with original IsYang = true)
             AddOrExtendSegment(result, dates, start, boundary, true, time, vol, forceNewSegment);
 
@@ -163,7 +163,7 @@ public static class KagiConverter
         {
             // Split at LastHigh
             decimal boundary = state.LastHigh;
-            
+
             // 1. Process first half: start -> boundary (with original IsYang = false)
             AddOrExtendSegment(result, dates, start, boundary, false, time, vol, forceNewSegment);
 
@@ -190,13 +190,13 @@ public static class KagiConverter
             var last = result[result.Count - 1];
             bool lastDirUp = last.Close >= last.Open;
             bool currDirUp = end >= start;
-            
+
             if (last.Close == start && last.IsYang == isYang && lastDirUp == currDirUp)
             {
-                var extended = last with 
-                { 
-                    Close = end, 
-                    High = Math.Max(last.Open, end), 
+                var extended = last with
+                {
+                    Close = end,
+                    High = Math.Max(last.Open, end),
                     Low = Math.Min(last.Open, end),
                     Timestamp = time,
                     Volume = last.Volume + vol
@@ -210,8 +210,8 @@ public static class KagiConverter
 
         if (!isExtension)
         {
-             result.Add(KagiCandleData.Create(time, start, end, isYang, start, isYang ? 1 : 0));
-             dates?.Add(new ElementDates(time, time));
+            result.Add(KagiCandleData.Create(time, start, end, isYang, start, isYang ? 1 : 0));
+            dates?.Add(new ElementDates(time, time));
         }
     }
 }

@@ -18,7 +18,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
         {
             if (parameters is CoreSmaParameter p)
             {
-                Period = p.Period; 
+                Period = p.Period;
             }
         }
 
@@ -26,7 +26,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
         {
             if (candles.Count < Period + 1)
             {
-                for(int i = 0; i < candles.Count; i++) _values.Add(null);
+                for (int i = 0; i < candles.Count; i++) _values.Add(null);
                 return IndicatorResult.Success(_values);
             }
 
@@ -56,8 +56,8 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
                 // Use sample standard deviation (N-1)
                 if (returns.Count < 2)
                 {
-                     _values.Add(0);
-                     continue;
+                    _values.Add(0);
+                    continue;
                 }
                 double variance = sumOfSquares / (returns.Count - 1);
                 double stdDev = System.Math.Sqrt(variance);

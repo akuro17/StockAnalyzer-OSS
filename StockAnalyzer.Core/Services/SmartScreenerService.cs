@@ -15,10 +15,10 @@ namespace StockAnalyzer.Core.Services
         public SmartScreenerService(IPythonService pythonService, IStockAnalyzerSettings settings)
         {
             _pythonService = pythonService;
-            
+
             // Resolve script path robustly using BaseDirectory and fallbacks
             _scriptPath = ResolveScriptPath();
-            
+
             // Resolve JSON data path from settings (appsettings.json) with FindRepoRoot fallback
             var repoRoot = FindRepoRoot();
             var configuredPath = settings.ScreeningDataPath;
@@ -40,7 +40,7 @@ namespace StockAnalyzer.Core.Services
         private string ResolveScriptPath()
         {
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            
+
             // 1. Check strict BaseDirectory/Scripts (Deployment / Output Copy)
             var deployedPath = Path.Combine(baseDir, "Scripts");
             if (Directory.Exists(deployedPath))
@@ -49,7 +49,7 @@ namespace StockAnalyzer.Core.Services
             }
 
             // 2. Check dev relative paths locating the repo root
-            try 
+            try
             {
                 var repoRoot = FindRepoRoot();
                 var devPath = Path.GetFullPath(Path.Combine(repoRoot, "StockAnalyzer.Core", "Scripts"));
@@ -71,7 +71,7 @@ namespace StockAnalyzer.Core.Services
         {
             // Simple heuristic: walk up until we find StockAnalyzer.sln
             var current = AppDomain.CurrentDomain.BaseDirectory;
-             while (!string.IsNullOrEmpty(current))
+            while (!string.IsNullOrEmpty(current))
             {
                 if (File.Exists(Path.Combine(current, "StockAnalyzer.sln")))
                 {
@@ -81,10 +81,10 @@ namespace StockAnalyzer.Core.Services
                 if (parent == null) break;
                 current = parent.FullName;
             }
-            
+
             // Fallback: Use BaseDirectory. 
             // In a deployed scenario, we should look for data relative to the executable.
-            return AppDomain.CurrentDomain.BaseDirectory; 
+            return AppDomain.CurrentDomain.BaseDirectory;
         }
 
         public async Task<List<string>> ScreenAsync(string criteria)
@@ -95,14 +95,14 @@ namespace StockAnalyzer.Core.Services
             {
                 dynamic sys = scope.Import("sys");
                 sys.path.append(_scriptPath);
-                
+
                 if (!System.IO.File.Exists(System.IO.Path.Combine(_scriptPath, "smart_screener.py")))
                 {
                     throw new System.IO.FileNotFoundException($"FATAL ERROR! Path investigated: {_scriptPath}");
                 }
 
                 using var script = scope.Import("smart_screener");
-                
+
                 // Invoke python function
                 // screen_stocks(json_file_path, criteria)
                 using (Py.GIL())
@@ -111,7 +111,7 @@ namespace StockAnalyzer.Core.Services
                     using var pyCriteria = new PyString(criteria);
                     using var pyList = script.InvokeMethod("screen_stocks", pyJsonDataPath, pyCriteria);
                     var result = new List<string>();
-                    
+
                     // Convert PyList to C# List<string>
                     int len = (int)pyList.Length();
                     for (int i = 0; i < len; i++)

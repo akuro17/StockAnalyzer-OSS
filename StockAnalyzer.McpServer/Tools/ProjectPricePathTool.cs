@@ -56,12 +56,12 @@ internal sealed class ProjectPricePathTool : IMcpTool
     public string Name => "sa_project_price_path";
 
     /// <summary>
-    /// Said in <c>notes</c> (and in the description) for W1 and MN1: the future dates are calendar period starts, not the first trading day that single-symbol tools use.
+    /// Said in <c>notes</c> (and in the description) for W1 and MN1: the future dates are calendar period starts, the same label the last stored bar carries.
     /// </summary>
     internal const string PeriodStartDateNote =
         "With timeFrame W1 or MN1 the dates of the projected points are calendar period starts (the Monday of the ISO week, the 1st of the month), " +
-        "so that holidays of future periods do not change them. asOfDate is the label of the last stored bar, which single-symbol tools date by the first trading day of its period; " +
-        "the two labels differ after a holiday, so consecutive dates need not be exactly 7 or 30 days apart.";
+        "so that holidays of future periods do not change them. asOfDate is the label of the last stored bar, which is dated by the start of its period as well, " +
+        "so consecutive dates are exactly 7 days (W1) or one calendar month (MN1) apart.";
 
     public string Description =>
         $"Generates multi-step mathematical price projection trajectories (ARIMA, FFT, SSA, HMM) with lower/upper bands (the projected value plus or minus confidenceMultiplier model standard deviations; " +

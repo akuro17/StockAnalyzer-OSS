@@ -11,7 +11,7 @@ public class CandlePatternConditionTests
     private static List<CandleData> CreateCandles(decimal open, decimal high, decimal low, decimal close, decimal avgBodyContext = 0)
     {
         var candles = new List<CandleData>();
-        
+
         // Add context candles to establish Average Body if requested
         if (avgBodyContext > 0)
         {

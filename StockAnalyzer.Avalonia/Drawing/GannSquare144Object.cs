@@ -20,7 +20,7 @@ public class GannSquare144Object : IChartObject
     public bool IsMoveAxisModeExplicit { get; set; } = false;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.GannSquare144;
-    
+
     public List<ChartPoint> Points { get; private set; }
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
@@ -60,7 +60,7 @@ public class GannSquare144Object : IChartObject
             IsAntialias = true,
             Style = SKPaintStyle.Stroke
         };
-        
+
         using var innerPaint = new SKPaint
         {
             Color = SkiaColor.WithAlpha(100),
@@ -116,10 +116,10 @@ public class GannSquare144Object : IChartObject
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
         if (Points.Count < 2) return false;
-        
+
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
-        
+
         var rect = new global::Avalonia.Rect(
             new global::Avalonia.Point(Math.Min(p1.X, p2.X), Math.Min(p1.Y, p2.Y)),
             new global::Avalonia.Size(Math.Abs(p2.X - p1.X), Math.Abs(p2.Y - p1.Y)));

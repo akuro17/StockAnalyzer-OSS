@@ -64,8 +64,8 @@ public static class PngMetadataEncoder
         if (!string.IsNullOrWhiteSpace(metadata.Symbol))
         {
             keyValues.Add(("Symbol", metadata.Symbol));
-            keyValues.Add(("Title", string.IsNullOrWhiteSpace(metadata.CompanyName) 
-                ? $"StockAnalyzer Chart - {metadata.Symbol}" 
+            keyValues.Add(("Title", string.IsNullOrWhiteSpace(metadata.CompanyName)
+                ? $"StockAnalyzer Chart - {metadata.Symbol}"
                 : $"StockAnalyzer Chart - {metadata.Symbol} ({metadata.CompanyName})"));
         }
 

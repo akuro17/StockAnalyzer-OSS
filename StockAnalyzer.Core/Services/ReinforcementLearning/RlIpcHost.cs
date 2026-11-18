@@ -119,8 +119,15 @@ internal sealed partial class RlIpcHost : IDisposable
                 Selected = (best.Seed, best.Checkpoint); result = new { selected = true }; break;
             default: throw new InvalidDataException("Unknown RL protocol method.");
         }
-        return new { protocol_version = RlContract.SchemaVersion, run_id = _runId.ToString("N"), sequence,
-            session_id = sessionId, contract_hash = ContractHash, result };
+        return new
+        {
+            protocol_version = RlContract.SchemaVersion,
+            run_id = _runId.ToString("N"),
+            sequence,
+            session_id = sessionId,
+            contract_hash = ContractHash,
+            result
+        };
     }
 
     private object Reset(string id, JsonElement payload, CancellationToken ct)
@@ -131,10 +138,14 @@ internal sealed partial class RlIpcHost : IDisposable
         string blockId = payload.GetProperty("block_id").GetString() ?? "";
         int seed = payload.GetProperty("seed").GetInt32();
         int checkpoint = payload.GetProperty("checkpoint").GetInt32();
-        var blocks = role switch { "train" => _source.Catalog.Train, "validation" => _source.Catalog.Validation,
+        var blocks = role switch
+        {
+            "train" => _source.Catalog.Train,
+            "validation" => _source.Catalog.Validation,
             "oos" when Selected == (seed, checkpoint) => _source.Catalog.Oos,
             "parity" when Continuous && Selected == (seed, checkpoint) => _source.Catalog.Validation,
-            _ => throw new InvalidDataException("Unsupported evaluation role/selection.") };
+            _ => throw new InvalidDataException("Unsupported evaluation role/selection.")
+        };
         var block = blocks.FirstOrDefault(b => b.Id == blockId) ?? throw new InvalidDataException("Block is outside declared partition.");
         if (_sessions.Remove(id, out var previous)) previous.Trading.Dispose();
         // At most one train session and one temporarily paused evaluation session; one processor steps serially.
@@ -196,9 +207,16 @@ internal sealed partial class RlIpcHost : IDisposable
         }
         if (Continuous && session.Role == "parity" && _metadata.ContainsKey("financial_parity_specification_id"))
             info["financial_trace"] = RlFinancialTrace.Capture(step, result).ToWire();
-        info["fills"] = result.Fills.Skip(session.PublishedFills).Select(fill => new { fill.BarIndex, fill.FillTime, side = fill.Side.ToString(),
-            price = RlEvaluation.DecimalText(fill.Price), quantity = RlEvaluation.DecimalText(fill.Quantity), commission = RlEvaluation.DecimalText(fill.Commission),
-            slippage_amount = RlEvaluation.DecimalText(fill.SlippageAmount) }).ToArray();
+        info["fills"] = result.Fills.Skip(session.PublishedFills).Select(fill => new
+        {
+            fill.BarIndex,
+            fill.FillTime,
+            side = fill.Side.ToString(),
+            price = RlEvaluation.DecimalText(fill.Price),
+            quantity = RlEvaluation.DecimalText(fill.Quantity),
+            commission = RlEvaluation.DecimalText(fill.Commission),
+            slippage_amount = RlEvaluation.DecimalText(fill.SlippageAmount)
+        }).ToArray();
         session.PublishedFills = result.Fills.Length;
         if (step.Terminated && session.Role is not ("train" or "parity"))
         {
@@ -213,24 +231,46 @@ internal sealed partial class RlIpcHost : IDisposable
         }
         float reward = (float)step.Reward;
         if (!float.IsFinite(reward)) throw new InvalidDataException("RL reward ML conversion is nonfinite.");
-        return new { observation = RlObservationBuilder.Build(step.Snapshot, _scaler!), reward, terminated = step.Terminated,
-            truncated = step.Truncated, info };
+        return new
+        {
+            observation = RlObservationBuilder.Build(step.Snapshot, _scaler!),
+            reward,
+            terminated = step.Terminated,
+            truncated = step.Truncated,
+            info
+        };
     }
 
     private Dictionary<string, object> SnapshotInfo(Session session, RlSessionSnapshot snapshot) => new()
     {
-        ["source_revision"] = _source.Revision, ["block_id"] = session.Block.Id, ["anchor"] = snapshot.MarketAnchor,
-        ["market_anchor_bar_index"] = snapshot.MarketAnchorBarIndex, ["completed_decisions"] = snapshot.CompletedDecisions,
-        ["remaining_decisions"] = snapshot.RemainingDecisions, ["terminal_reason"] = snapshot.TerminalReason.ToString(),
-        ["execution_mode"] = ExecutionModel.YFinanceApproximate.ToString(), ["disclosure"] = RlFiles.Disclosure,
-        ["account"] = new { cash = RlEvaluation.DecimalText(snapshot.EquityPoint.Cash), equity = RlEvaluation.DecimalText(snapshot.EquityPoint.Equity),
-            held_margin = RlEvaluation.DecimalText(snapshot.EquityPoint.HeldMargin), quantity = RlEvaluation.DecimalText(snapshot.Quantity),
-            entry_price = RlEvaluation.DecimalText(snapshot.EntryPrice), unrealized_pnl = RlEvaluation.DecimalText(snapshot.UnrealizedPnL),
-            peak_equity = RlEvaluation.DecimalText(snapshot.PeakEquity), drawdown = RlEvaluation.DecimalText(snapshot.Drawdown),
-            maximum_drawdown = RlEvaluation.DecimalText(snapshot.MaximumDrawdown), snapshot.HeldBars, snapshot.PendingEntry, snapshot.PendingExit,
+        ["source_revision"] = _source.Revision,
+        ["block_id"] = session.Block.Id,
+        ["anchor"] = snapshot.MarketAnchor,
+        ["market_anchor_bar_index"] = snapshot.MarketAnchorBarIndex,
+        ["completed_decisions"] = snapshot.CompletedDecisions,
+        ["remaining_decisions"] = snapshot.RemainingDecisions,
+        ["terminal_reason"] = snapshot.TerminalReason.ToString(),
+        ["execution_mode"] = ExecutionModel.YFinanceApproximate.ToString(),
+        ["disclosure"] = RlFiles.Disclosure,
+        ["account"] = new
+        {
+            cash = RlEvaluation.DecimalText(snapshot.EquityPoint.Cash),
+            equity = RlEvaluation.DecimalText(snapshot.EquityPoint.Equity),
+            held_margin = RlEvaluation.DecimalText(snapshot.EquityPoint.HeldMargin),
+            quantity = RlEvaluation.DecimalText(snapshot.Quantity),
+            entry_price = RlEvaluation.DecimalText(snapshot.EntryPrice),
+            unrealized_pnl = RlEvaluation.DecimalText(snapshot.UnrealizedPnL),
+            peak_equity = RlEvaluation.DecimalText(snapshot.PeakEquity),
+            drawdown = RlEvaluation.DecimalText(snapshot.Drawdown),
+            maximum_drawdown = RlEvaluation.DecimalText(snapshot.MaximumDrawdown),
+            snapshot.HeldBars,
+            snapshot.PendingEntry,
+            snapshot.PendingExit,
             active_stop_price = snapshot.ActiveStopPrice.HasValue ? RlEvaluation.DecimalText(snapshot.ActiveStopPrice.Value) : null,
-            retained_stop_distance = RlEvaluation.DecimalText(snapshot.RetainedStopDistance), snapshot.DeferredMarketExit,
-            fields = snapshot.AccountFields.Select(RlEvaluation.DecimalText).ToArray() },
+            retained_stop_distance = RlEvaluation.DecimalText(snapshot.RetainedStopDistance),
+            snapshot.DeferredMarketExit,
+            fields = snapshot.AccountFields.Select(RlEvaluation.DecimalText).ToArray()
+        },
     };
 
     public void EvaluateBaselines(CancellationToken ct)
@@ -289,10 +329,15 @@ internal sealed partial class RlIpcHost : IDisposable
                 if (policy == RlContract.RandomBaselineId)
                 {
                     var means = seedReports.Select(r => RlEvaluation.Parse((string)r["mean_return"])).ToArray();
-                    summary = new(summary) { ["seeds"] = seedReports, ["mean_return"] = RlEvaluation.DecimalText(means.Sum() / means.Length),
-                        ["min_seed_return"] = RlEvaluation.DecimalText(means.Min()), ["max_seed_return"] = RlEvaluation.DecimalText(means.Max()),
+                    summary = new(summary)
+                    {
+                        ["seeds"] = seedReports,
+                        ["mean_return"] = RlEvaluation.DecimalText(means.Sum() / means.Length),
+                        ["min_seed_return"] = RlEvaluation.DecimalText(means.Min()),
+                        ["max_seed_return"] = RlEvaluation.DecimalText(means.Max()),
                         ["mean_maximum_drawdown"] = RlEvaluation.DecimalText(seedReports.Sum(r => RlEvaluation.Parse((string)r["mean_maximum_drawdown"])) / seedReports.Count),
-                        ["worst_maximum_drawdown"] = RlEvaluation.DecimalText(seedReports.Max(r => RlEvaluation.Parse((string)r["worst_maximum_drawdown"]))) };
+                        ["worst_maximum_drawdown"] = RlEvaluation.DecimalText(seedReports.Max(r => RlEvaluation.Parse((string)r["worst_maximum_drawdown"])))
+                    };
                     if (_source.ExpandedEvaluation) summary["return_distribution"] = RlConstraintEvaluation.ToWire(
                         RlAllBlockEvaluation.Distribution(allSeedRows.Select(r => RlEvaluation.Parse(r.TerminalReturn))));
                 }
@@ -320,18 +365,25 @@ internal sealed partial class RlIpcHost : IDisposable
             throw new InvalidDataException("Required exact per-seed training transition evidence missing.");
         var report = new Dictionary<string, object>()
         {
-            ["schema_version"] = _source.ExpandedEvaluation ? RlAllBlockEvaluationContract.SchemaVersion : RlContract.SchemaVersion, ["smoke_only"] = smoke, ["parity_verified"] = false,
-            ["contract_hash"] = ContractHash, ["source_revision"] = _source.Revision,
-            ["evaluation_revision"] = evaluationRevision, ["symbol"] = _source.Manifest.Symbol,
-            ["candidate_seed"] = selected.Seed, ["checkpoint_step"] = selected.Checkpoint,
+            ["schema_version"] = _source.ExpandedEvaluation ? RlAllBlockEvaluationContract.SchemaVersion : RlContract.SchemaVersion,
+            ["smoke_only"] = smoke,
+            ["parity_verified"] = false,
+            ["contract_hash"] = ContractHash,
+            ["source_revision"] = _source.Revision,
+            ["evaluation_revision"] = evaluationRevision,
+            ["symbol"] = _source.Manifest.Symbol,
+            ["candidate_seed"] = selected.Seed,
+            ["checkpoint_step"] = selected.Checkpoint,
             ["validation_mean_return"] = (string)RlEvaluation.Aggregate(validation)["mean_return"],
             ["oos_mean_return"] = oos.Count == 0 ? "0" : (string)RlEvaluation.Aggregate(oos)["mean_return"],
-            ["validation_episodes"] = validation, ["oos_episodes"] = oos,
+            ["validation_episodes"] = validation,
+            ["oos_episodes"] = oos,
             ["candidate_evaluations"] = _reports.Where(p => p.Key.Role == "validation").Select(p => new { seed = p.Key.Seed, checkpoint_step = p.Key.Checkpoint, summary = RlEvaluation.Aggregate(p.Value, _source.ExpandedEvaluation) }).ToArray(),
             ["training_transitions"] = _trainingTransitions,
             ["information_usage"] = _informationUsage.Values.OrderBy(u => u.Role, StringComparer.Ordinal)
                 .ThenBy(u => u.Seed).ThenBy(u => u.Checkpoint).ThenBy(u => u.BlockId, StringComparer.Ordinal).ToArray(),
-            ["baselines"] = Baselines, ["configuration"] = _costs,
+            ["baselines"] = Baselines,
+            ["configuration"] = _costs,
             ["resources"] = new { processed_transitions = Transitions, episode_starts = EpisodeStarts, work = _work.Snapshot() },
             ["disclosure"] = RlFiles.Disclosure + (Continuous ? " " + RlContinuousContract.Disclosure : ""),
         };
@@ -362,9 +414,12 @@ internal sealed partial class RlIpcHost : IDisposable
     }
     public object CreateDiagnostics() => new
     {
-        specification_id = RlDiagnosticsContract.SpecificationId, source_revision = _source.Revision,
-        contract_hash = ContractHash, dependencies_sha256 = _metadata.GetValueOrDefault("diagnostics_dependencies_sha256"),
-        selected_seed = Selected?.Seed, selected_checkpoint = Selected?.Checkpoint,
+        specification_id = RlDiagnosticsContract.SpecificationId,
+        source_revision = _source.Revision,
+        contract_hash = ContractHash,
+        dependencies_sha256 = _metadata.GetValueOrDefault("diagnostics_dependencies_sha256"),
+        selected_seed = Selected?.Seed,
+        selected_checkpoint = Selected?.Checkpoint,
         entry_definition = "pre-step Buy with flat quantity, no pending entry and no deferred market exit; includes NoEntry/rejected attempts",
         updates = _updates.ToArray(),
         actions = _actionDiagnostics.OrderBy(p => p.Key.Role, StringComparer.Ordinal).ThenBy(p => p.Key.Seed).ThenBy(p => p.Key.Checkpoint)
@@ -405,8 +460,11 @@ internal sealed partial class RlIpcHost : IDisposable
     public object CreateFailureTrace() => new
     {
         specification_id = RlFinancialParityContract.SpecificationId,
-        source_revision = _source.Revision, contract_hash = ContractHash, last_request_sequence = _sequence,
-        work = _work.Snapshot(), last_successful_account = _lastSuccessfulAccount is null ? (JsonElement?)null
+        source_revision = _source.Revision,
+        contract_hash = ContractHash,
+        last_request_sequence = _sequence,
+        work = _work.Snapshot(),
+        last_successful_account = _lastSuccessfulAccount is null ? (JsonElement?)null
             : JsonSerializer.SerializeToElement(_lastSuccessfulAccount, RlFinancialParityContract.TraceJson),
     };
     public void CountQualificationTransitions(int count, int starts)

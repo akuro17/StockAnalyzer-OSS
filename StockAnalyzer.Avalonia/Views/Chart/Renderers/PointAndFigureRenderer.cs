@@ -46,7 +46,7 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
         var config = (IPnfRenderConfig)baseConfig;
 
         if (snapshot.Candles.Count == 0 || config.PnfBoxSize <= 0) return;
-        
+
         // Context Unpacking
         decimal boxSize = config.PnfBoxSize;
 
@@ -90,7 +90,7 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
         {
             var col = snapshot.Candles[i];
             int absoluteIndex = snapshot.StartIndex + i;
-            
+
             // Generate X based on absolute column index
             // ChartToScreen ALREADY returns the CENTER of the mapped index
             float centerX = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absoluteIndex)).X + (float)chartArea.Left;
@@ -98,10 +98,10 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
             // Column Range
             decimal high = col.High;
             decimal low = col.Low;
-            
+
             // Determine if X or O column
             bool isUp = col.Close >= col.Open;
-            
+
             float yTopMost = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, high + boxSize)).Y + (float)chartArea.Top;
             float yBottomMost = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, low)).Y + (float)chartArea.Top;
 
@@ -119,29 +119,29 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
 
                 // Calculate number of boxes strictly via snapped prices
                 int boxCount = Math.Max(1, (int)Math.Round((snapHigh - snapLow) / boxSize) + 1);
-                
+
                 // X-radius from scaleX (column width), Y-radius from boxHeight (price scale)
                 // This ensures marks align with both vertical and horizontal grid lines
                 float columnHalfWidth = (float)t.ScaleX / 2f;
-                
+
                 for (int j = 0; j < boxCount; j++)
                 {
                     decimal price = snapLow + j * boxSize;
-                    
+
                     // Get absolute Y coordinate for the exact center of the box
                     float centerY = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, price + boxSize / 2m)).Y + (float)chartArea.Top;
 
                     float yTop = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, price + boxSize)).Y + (float)chartArea.Top;
                     float yBottom = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, price)).Y + (float)chartArea.Top;
                     float boxHeight = Math.Abs(yTop - yBottom);
-                    
+
                     float radiusY = Math.Max(0.5f, boxHeight / 2f);
                     float radiusX = Math.Max(0.5f, columnHalfWidth);
 
                     // Dynamic stroke width based on smaller dimension
                     float minDim = Math.Min(boxHeight, (float)t.ScaleX);
                     float strokeWidth = Math.Clamp(minDim / 10f, 1f, 5f);
-                    
+
                     _xPaint.StrokeWidth = strokeWidth;
                     _oPaint.StrokeWidth = strokeWidth;
 
@@ -167,11 +167,11 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
         {
             DrawBreakoutSignals(canvas, chartArea, snapshot, config, t, boxSize, boxPixelHeight);
 
-             DrawActiveTrendlines(canvas, chartArea, snapshot, config, t, boxSize);
-         }
+            DrawActiveTrendlines(canvas, chartArea, snapshot, config, t, boxSize);
+        }
 
-          canvas.Restore();
-      }
+        canvas.Restore();
+    }
 
     private void DrawBreakoutSignals(
         SKCanvas canvas,
@@ -241,7 +241,7 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
                 // Resistance (X) is at High + BoxSize, Support (O) is at Low.
                 if (signal.IsBullish)
                 {
-                    lineYPrice = signal.SignalLevel + boxSize; 
+                    lineYPrice = signal.SignalLevel + boxSize;
                 }
                 else
                 {
@@ -288,7 +288,7 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
 
                     decimal startPrice = signal.SignalLevel;
                     decimal endYPrice = signal.SignalLevel;
-                    
+
                     if (signal.PatternType == PnfPatternType.BearishResistanceLineBreakout)
                     {
                         // Forward Projection: Extend 5 columns into the future
@@ -296,7 +296,7 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
                         decimal projectedEndPrice = endYPrice - (5 * boxSize);
 
                         startPrice = signal.SignalLevel + (colsBack * boxSize);
-                        
+
                         float endY = (float)t.GetYFromPrice(projectedEndPrice + boxSize) + (float)chartArea.Top;
                         float startY = (float)t.GetYFromPrice(startPrice + boxSize) + (float)chartArea.Top;
                         canvas.DrawLine(startX, startY, projectedEndX, endY, _dashPaint);
@@ -308,7 +308,7 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
                         decimal projectedEndPrice = endYPrice + (5 * boxSize);
 
                         startPrice = signal.SignalLevel - (colsBack * boxSize);
-                        
+
                         // Corner Snapping: Snap to BOTTOM of the box (Low)
                         float endY = (float)t.GetYFromPrice(projectedEndPrice) + (float)chartArea.Top;
                         float startY = (float)t.GetYFromPrice(startPrice) + (float)chartArea.Top;
@@ -316,99 +316,99 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
                     }
                     else if (signal.PatternType == PnfPatternType.BullishTriangleBreakout || signal.PatternType == PnfPatternType.BearishTriangleBreakout)
                     {
-                         // Triangle: Draw two converging lines
-                         // Anchor positions (from PatternEngine): 5-column sequence ending at 'i' (absolute index)
-                         // We use snapshot.AllCandles to fetch anchor prices even if they are off-screen.
-                         var allCandles = snapshot.AllCandles ?? snapshot.Candles;
-                         int absoluteTriggerIndex = absoluteIndex;
+                        // Triangle: Draw two converging lines
+                        // Anchor positions (from PatternEngine): 5-column sequence ending at 'i' (absolute index)
+                        // We use snapshot.AllCandles to fetch anchor prices even if they are off-screen.
+                        var allCandles = snapshot.AllCandles ?? snapshot.Candles;
+                        int absoluteTriggerIndex = absoluteIndex;
 
-                         bool hasAll = snapshot.AllCandles != null;
-                         bool isWithinBounds = hasAll 
-                             ? (absoluteTriggerIndex >= 4 && absoluteTriggerIndex < allCandles.Count)
-                             : ((absoluteTriggerIndex - snapshot.StartIndex) >= 4);
+                        bool hasAll = snapshot.AllCandles != null;
+                        bool isWithinBounds = hasAll
+                            ? (absoluteTriggerIndex >= 4 && absoluteTriggerIndex < allCandles.Count)
+                            : ((absoluteTriggerIndex - snapshot.StartIndex) >= 4);
 
-                         if (isWithinBounds)
-                         {
-                             int absR1, absR2; // Resistance anchors (absolute indices)
-                             int absS1, absS2; // Support anchors (absolute indices)
+                        if (isWithinBounds)
+                        {
+                            int absR1, absR2; // Resistance anchors (absolute indices)
+                            int absS1, absS2; // Support anchors (absolute indices)
 
-                             if (signal.IsBullish)
-                             {
-                                 absR1 = absoluteTriggerIndex - 4; absR2 = absoluteTriggerIndex - 2;
-                                 absS1 = absoluteTriggerIndex - 3; absS2 = absoluteTriggerIndex - 1;
-                             }
-                             else
-                             {
-                                 absR1 = absoluteTriggerIndex - 3; absR2 = absoluteTriggerIndex - 1;
-                                 absS1 = absoluteTriggerIndex - 4; absS2 = absoluteTriggerIndex - 2;
-                             }
+                            if (signal.IsBullish)
+                            {
+                                absR1 = absoluteTriggerIndex - 4; absR2 = absoluteTriggerIndex - 2;
+                                absS1 = absoluteTriggerIndex - 3; absS2 = absoluteTriggerIndex - 1;
+                            }
+                            else
+                            {
+                                absR1 = absoluteTriggerIndex - 3; absR2 = absoluteTriggerIndex - 1;
+                                absS1 = absoluteTriggerIndex - 4; absS2 = absoluteTriggerIndex - 2;
+                            }
 
-                             int idxR1 = hasAll ? absR1 : absR1 - snapshot.StartIndex;
-                             int idxR2 = hasAll ? absR2 : absR2 - snapshot.StartIndex;
-                             int idxS1 = hasAll ? absS1 : absS1 - snapshot.StartIndex;
-                             int idxS2 = hasAll ? absS2 : absS2 - snapshot.StartIndex;
+                            int idxR1 = hasAll ? absR1 : absR1 - snapshot.StartIndex;
+                            int idxR2 = hasAll ? absR2 : absR2 - snapshot.StartIndex;
+                            int idxS1 = hasAll ? absS1 : absS1 - snapshot.StartIndex;
+                            int idxS2 = hasAll ? absS2 : absS2 - snapshot.StartIndex;
 
-                             if (idxR1 >= 0 && idxR1 < allCandles.Count &&
-                                 idxR2 >= 0 && idxR2 < allCandles.Count &&
-                                 idxS1 >= 0 && idxS1 < allCandles.Count &&
-                                 idxS2 >= 0 && idxS2 < allCandles.Count)
-                             {
-                                 var cR1 = allCandles[idxR1]; var cR2 = allCandles[idxR2];
-                                 var cS1 = allCandles[idxS1]; var cS2 = allCandles[idxS2];
+                            if (idxR1 >= 0 && idxR1 < allCandles.Count &&
+                                idxR2 >= 0 && idxR2 < allCandles.Count &&
+                                idxS1 >= 0 && idxS1 < allCandles.Count &&
+                                idxS2 >= 0 && idxS2 < allCandles.Count)
+                            {
+                                var cR1 = allCandles[idxR1]; var cR2 = allCandles[idxR2];
+                                var cS1 = allCandles[idxS1]; var cS2 = allCandles[idxS2];
 
-                                 // Corner Snapping: Use the RIGHT edge of the column (center + half width)
-                                 float rx1 = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absR1)).X + (float)chartArea.Left + (float)t.ScaleX / 2f;
-                                 float rx2 = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absR2)).X + (float)chartArea.Left + (float)t.ScaleX / 2f;
-                                 float sx1 = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absS1)).X + (float)chartArea.Left + (float)t.ScaleX / 2f;
-                                 float sx2 = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absS2)).X + (float)chartArea.Left + (float)t.ScaleX / 2f;
-                                 float rxBreak = xBase + (float)t.ScaleX / 2f; // Breakout column right edge
+                                // Corner Snapping: Use the RIGHT edge of the column (center + half width)
+                                float rx1 = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absR1)).X + (float)chartArea.Left + (float)t.ScaleX / 2f;
+                                float rx2 = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absR2)).X + (float)chartArea.Left + (float)t.ScaleX / 2f;
+                                float sx1 = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absS1)).X + (float)chartArea.Left + (float)t.ScaleX / 2f;
+                                float sx2 = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absS2)).X + (float)chartArea.Left + (float)t.ScaleX / 2f;
+                                float rxBreak = xBase + (float)t.ScaleX / 2f; // Breakout column right edge
 
-                                 // Resistance Line (Top: Bearish Color - connects Highs)
-                                 _dashPaint.Color = config.PnfBreakoutBearishColor.ToSkColor().WithAlpha(150);
-                                 float ry1 = (float)t.GetYFromPrice(cR1.High + boxSize) + (float)chartArea.Top;
-                                 float ry2 = (float)t.GetYFromPrice(cR2.High + boxSize) + (float)chartArea.Top;
-                                 float slopeR = (ry2 - ry1) / (rx2 - rx1);
-                                 float ryBreak = ry2 + slopeR * (rxBreak - rx2);
-                                 canvas.DrawLine(rx1, ry1, rxBreak, ryBreak, _dashPaint);
+                                // Resistance Line (Top: Bearish Color - connects Highs)
+                                _dashPaint.Color = config.PnfBreakoutBearishColor.ToSkColor().WithAlpha(150);
+                                float ry1 = (float)t.GetYFromPrice(cR1.High + boxSize) + (float)chartArea.Top;
+                                float ry2 = (float)t.GetYFromPrice(cR2.High + boxSize) + (float)chartArea.Top;
+                                float slopeR = (ry2 - ry1) / (rx2 - rx1);
+                                float ryBreak = ry2 + slopeR * (rxBreak - rx2);
+                                canvas.DrawLine(rx1, ry1, rxBreak, ryBreak, _dashPaint);
 
-                                 // Support Line (Bottom: Bullish Color - connects Lows)
-                                 _dashPaint.Color = config.PnfBreakoutBullishColor.ToSkColor().WithAlpha(150);
-                                 float sy1 = (float)t.GetYFromPrice(cS1.Low) + (float)chartArea.Top;
-                                 float sy2 = (float)t.GetYFromPrice(cS2.Low) + (float)chartArea.Top;
-                                 float slopeS = (sy2 - sy1) / (sx2 - sx1);
-                                 float syBreak = sy2 + slopeS * (rxBreak - sx2);
-                                 canvas.DrawLine(sx1, sy1, rxBreak, syBreak, _dashPaint);
-                             }
-                         }
+                                // Support Line (Bottom: Bullish Color - connects Lows)
+                                _dashPaint.Color = config.PnfBreakoutBullishColor.ToSkColor().WithAlpha(150);
+                                float sy1 = (float)t.GetYFromPrice(cS1.Low) + (float)chartArea.Top;
+                                float sy2 = (float)t.GetYFromPrice(cS2.Low) + (float)chartArea.Top;
+                                float slopeS = (sy2 - sy1) / (sx2 - sx1);
+                                float syBreak = sy2 + slopeS * (rxBreak - sx2);
+                                canvas.DrawLine(sx1, sy1, rxBreak, syBreak, _dashPaint);
+                            }
+                        }
                     }
                 }
-             }
+            }
 
-             // Draw a marker (triangle pointing to the level)
-             _markerPath.Reset();
-             float arrowSize = Math.Max(5f, boxPixelHeight * 0.3f);
-             float verticalOffset = boxPixelHeight * 0.8f; 
-             
-             if (signal.IsBullish)
-             {
-                 float topOfColumnY = markerY - verticalOffset;
-                 _markerPath.MoveTo(markerX, topOfColumnY - arrowSize * 1.5f);
-                 _markerPath.LineTo(markerX - arrowSize, topOfColumnY);
-                 _markerPath.LineTo(markerX + arrowSize, topOfColumnY);
-             }
-             else
-             {
-                 float bottomOfColumnY = markerY + verticalOffset;
-                 _markerPath.MoveTo(markerX, bottomOfColumnY + arrowSize * 1.5f);
-                 _markerPath.LineTo(markerX - arrowSize, bottomOfColumnY);
-                 _markerPath.LineTo(markerX + arrowSize, bottomOfColumnY);
-             }
-             _markerPath.Close();
-             
-             _signalPaint.Style = SKPaintStyle.Fill;
-             _signalPaint.Color = _signalPaint.Color.WithAlpha(180);
-             canvas.DrawPath(_markerPath, _signalPaint);
-         }
+            // Draw a marker (triangle pointing to the level)
+            _markerPath.Reset();
+            float arrowSize = Math.Max(5f, boxPixelHeight * 0.3f);
+            float verticalOffset = boxPixelHeight * 0.8f;
+
+            if (signal.IsBullish)
+            {
+                float topOfColumnY = markerY - verticalOffset;
+                _markerPath.MoveTo(markerX, topOfColumnY - arrowSize * 1.5f);
+                _markerPath.LineTo(markerX - arrowSize, topOfColumnY);
+                _markerPath.LineTo(markerX + arrowSize, topOfColumnY);
+            }
+            else
+            {
+                float bottomOfColumnY = markerY + verticalOffset;
+                _markerPath.MoveTo(markerX, bottomOfColumnY + arrowSize * 1.5f);
+                _markerPath.LineTo(markerX - arrowSize, bottomOfColumnY);
+                _markerPath.LineTo(markerX + arrowSize, bottomOfColumnY);
+            }
+            _markerPath.Close();
+
+            _signalPaint.Style = SKPaintStyle.Fill;
+            _signalPaint.Color = _signalPaint.Color.WithAlpha(180);
+            canvas.DrawPath(_markerPath, _signalPaint);
+        }
     }
 
     private void DrawActiveTrendlines(
@@ -438,13 +438,13 @@ public sealed class PointAndFigureRenderer : IChartRenderer, IDisposable
                 int absoluteAnchorIndex = line.AnchorIndex;
                 int currentRelativeIndex = snapshot.Candles.Count - 1;
                 int absoluteCurrentIndex = snapshot.StartIndex + currentRelativeIndex;
-                
-                int projectionCols = 15; 
+
+                int projectionCols = 15;
                 int absoluteEndIndex = absoluteCurrentIndex + projectionCols;
-                
+
                 float xAnchor = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absoluteAnchorIndex)).X + (float)chartArea.Left;
                 float xEnd = (float)t.ChartToScreen(GenericCoordinateTransform.SafeIndexPoint(absoluteEndIndex)).X + (float)chartArea.Left;
-                
+
                 float startX = xAnchor + (float)t.ScaleX / 2f; // Offset to right edge
                 float endX = xEnd + (float)t.ScaleX / 2f; // Offset to right edge
 

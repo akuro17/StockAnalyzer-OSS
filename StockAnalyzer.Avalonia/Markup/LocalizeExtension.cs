@@ -14,14 +14,14 @@ public class LocalizeExtension : MarkupExtension
     /// The localization key to look up.
     /// </summary>
     public string Key { get; set; } = string.Empty;
-    
+
     /// <summary>
     /// Creates a new instance of the LocalizeExtension.
     /// </summary>
     public LocalizeExtension()
     {
     }
-    
+
     /// <summary>
     /// Creates a new instance of the LocalizeExtension with the specified key.
     /// </summary>
@@ -30,7 +30,7 @@ public class LocalizeExtension : MarkupExtension
     {
         Key = key;
     }
-    
+
     /// <summary>
     /// Provides the localized string value.
     /// </summary>
@@ -38,7 +38,7 @@ public class LocalizeExtension : MarkupExtension
     {
         if (string.IsNullOrEmpty(Key))
             return string.Empty;
-            
+
         return LocalizationManager.Instance.Get(Key);
     }
 }

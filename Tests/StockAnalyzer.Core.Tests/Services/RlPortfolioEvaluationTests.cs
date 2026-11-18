@@ -29,7 +29,7 @@ public sealed class RlPortfolioEvaluationTests : IDisposable
     public void Dispose() { try { Directory.Delete(_root, true); } catch (IOException) { } }
 
     private static BacktestConfiguration Costs(decimal commissionFlat = 0m) => RlContract.CreateConfiguration(new BacktestConfiguration
-        { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m, CommissionFlat = commissionFlat });
+    { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m, CommissionFlat = commissionFlat });
 
     private static ReadOnlyMemory<int> Prefix(int first) => Enumerable.Range(0, Length + 1).Select(t => Math.Max(0, t - first)).ToArray();
 
@@ -69,7 +69,7 @@ public sealed class RlPortfolioEvaluationTests : IDisposable
         // Step 0: weights 0.5/0.5 -> 50 shares at 100 and 100 at 50, no cash. Symbol 0 is 110 from index 65 on. Hold: no order, no cost,
         // E = 50 * 110 + 100 * 50 = 10500, reward 500 / 10000 = 0.05.
         var bars = RlPanelBarsFixture.Flat(new[] { 100m, 50m }, new Dictionary<(int, int), (decimal, decimal)>
-            { [(0, 65)] = (110m, 110m) });
+        { [(0, 65)] = (110m, 110m) });
         using var session = new RlPortfolioSession(bars, RlPanelBarsFixture.Block(0, 1), ImmutableArray.Create(0, 1), Costs(commissionFlat: 1m));
         Assert.Throws<InvalidOperationException>(() => session.Hold());     // Created, not Ready
         session.Reset();
@@ -222,8 +222,13 @@ public sealed class RlPortfolioEvaluationTests : IDisposable
         {
             var frame = JsonSerializer.SerializeToElement(new Dictionary<string, object>
             {
-                ["protocol_version"] = 1, ["run_id"] = "11111111222233334444555555555555", ["contract_hash"] = RlPortfolioContract.ContractHash,
-                ["sequence"] = ++sequence, ["session_id"] = session, ["method"] = method, ["payload"] = payload,
+                ["protocol_version"] = 1,
+                ["run_id"] = "11111111222233334444555555555555",
+                ["contract_hash"] = RlPortfolioContract.ContractHash,
+                ["sequence"] = ++sequence,
+                ["session_id"] = session,
+                ["method"] = method,
+                ["payload"] = payload,
             });
             host.Handle(frame, default);
         }

@@ -34,7 +34,7 @@ public class LongShortPositionObject : IChartObject, IDisposable, IDrawingCalcul
     public int ZIndex { get; set; } = 0;
     public int Priority { get; set; } = 0;
     public int AnchorPointIndex { get; set; } = 0;
-    
+
     // New Settings Properties
     public Color TargetColor { get; set; } = Colors.Green;
     public Color StopColor { get; set; } = Colors.Red;
@@ -89,7 +89,7 @@ public class LongShortPositionObject : IChartObject, IDisposable, IDrawingCalcul
         Points.Add(stop);
         Points.Add(target);
     }
-    
+
     // Additional Property
     public bool IsLong => Type == ChartObjectType.LongPosition;
 
@@ -155,12 +155,12 @@ public class LongShortPositionObject : IChartObject, IDisposable, IDrawingCalcul
         float yEntry = (float)pEntry.Y;
         float yStop = (float)pStop.Y;
         float yTarget = (float)pTarget.Y;
-        
+
         float width = (float)BoxWidth; // User-resizable width
         float rightX = x + width;
 
         _entryPaint.Color = new SKColor(Color.R, Color.G, Color.B, Color.A);
-        
+
         byte alpha = (byte)Math.Clamp(AreaOpacity * 255, 0, 255);
 
         _targetPaint.Color = new SKColor(TargetColor.R, TargetColor.G, TargetColor.B, alpha);
@@ -171,26 +171,26 @@ public class LongShortPositionObject : IChartObject, IDisposable, IDrawingCalcul
         // Min/Max ensures correct Rect construction regardless of Up/Down.
         var targetRect = new SKRect(x, Math.Min(yEntry, yTarget), rightX, Math.Max(yEntry, yTarget));
         var stopRect = new SKRect(x, Math.Min(yEntry, yStop), rightX, Math.Max(yEntry, yStop));
-        
+
         // Logic: Target is always Target color. Stop is always Stop color.
         canvas.DrawRect(targetRect, _targetPaint);
         canvas.DrawRect(stopRect, _stopPaint);
-        
+
         // Draw Entry Line
         canvas.DrawLine(x, yEntry, rightX, yEntry, _entryPaint);
-        
+
         // Draw Stats
         decimal risk = Math.Abs(entryPt.Price - stopPt.Price);
         decimal reward = Math.Abs(targetPt.Price - entryPt.Price);
         decimal ratio = risk != 0 ? reward / risk : 0;
-        
+
         _textPaint.Color = DrawingThemeContext.TextColor;
-        
+
         string FormatDiff(decimal diff) => diff > 0 ? $"+{diff:F2}" : $"{diff:F2}";
 
         string targetStr = $"{targetPt.Price:F2} / {FormatDiff(targetPt.Price - entryPt.Price)}";
-        string entryStr  = $"{entryPt.Price:F2} / R/R {ratio:F2}";
-        string stopStr   = $"{stopPt.Price:F2} / {FormatDiff(stopPt.Price - entryPt.Price)}";
+        string entryStr = $"{entryPt.Price:F2} / R/R {ratio:F2}";
+        string stopStr = $"{stopPt.Price:F2} / {FormatDiff(stopPt.Price - entryPt.Price)}";
 
         // Vertical adjustment to center text vertically with the line
         float textYOffset = ChartConstants.LongShortTextOffsetY;
@@ -198,54 +198,54 @@ public class LongShortPositionObject : IChartObject, IDisposable, IDrawingCalcul
         canvas.DrawText(targetStr, rightX + ChartConstants.LongShortTextOffsetX, yTarget + textYOffset, _font, _textPaint);
         canvas.DrawText(entryStr, rightX + ChartConstants.LongShortTextOffsetX, yEntry + textYOffset, _font, _textPaint);
         canvas.DrawText(stopStr, rightX + ChartConstants.LongShortTextOffsetX, yStop + textYOffset, _font, _textPaint);
-        
+
         if (IsSelected)
         {
-             // Draw handles. Entry stays at the box's left edge (its anchor point);
-             // Stop/Target are drawn at the right edge, where dragging them
-             // horizontally resizes BoxWidth (see ChartInteractionController). Whichever handle
-             // matches AnchorPointIndex (0=Entry, 1=Stop, 2=Target) is highlighted with
-             // AnchorPointColor instead of the usual fixed red.
-             SelectionHandleRenderer.Draw(canvas, new global::Avalonia.Point(x, yEntry), AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : SKColors.Red); // Entry Handle
-             SelectionHandleRenderer.Draw(canvas, new global::Avalonia.Point(rightX, yStop), AnchorPointIndex == 1 ? DrawingThemeContext.AnchorPointColor : SKColors.Red); // Stop Handle
-             SelectionHandleRenderer.Draw(canvas, new global::Avalonia.Point(rightX, yTarget), AnchorPointIndex == 2 ? DrawingThemeContext.AnchorPointColor : SKColors.Red); // Target Handle
+            // Draw handles. Entry stays at the box's left edge (its anchor point);
+            // Stop/Target are drawn at the right edge, where dragging them
+            // horizontally resizes BoxWidth (see ChartInteractionController). Whichever handle
+            // matches AnchorPointIndex (0=Entry, 1=Stop, 2=Target) is highlighted with
+            // AnchorPointColor instead of the usual fixed red.
+            SelectionHandleRenderer.Draw(canvas, new global::Avalonia.Point(x, yEntry), AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : SKColors.Red); // Entry Handle
+            SelectionHandleRenderer.Draw(canvas, new global::Avalonia.Point(rightX, yStop), AnchorPointIndex == 1 ? DrawingThemeContext.AnchorPointColor : SKColors.Red); // Stop Handle
+            SelectionHandleRenderer.Draw(canvas, new global::Avalonia.Point(rightX, yTarget), AnchorPointIndex == 2 ? DrawingThemeContext.AnchorPointColor : SKColors.Red); // Target Handle
         }
     }
 
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
-         if (Points.Count < 3) return false;
-         
-         var p1 = transform.ChartToScreen(Points[0]);
-         var p2 = transform.ChartToScreen(Points[1]);
-         var p3 = transform.ChartToScreen(Points[2]);
+        if (Points.Count < 3) return false;
 
-         double x = p1.X;
-         double y1 = p1.Y;
-         double y2 = p2.Y;
-         double y3 = p3.Y;
-         double rightX = x + BoxWidth;
+        var p1 = transform.ChartToScreen(Points[0]);
+        var p2 = transform.ChartToScreen(Points[1]);
+        var p3 = transform.ChartToScreen(Points[2]);
 
-         if (screenPoint.X >= x && screenPoint.X <= rightX)
-         {
-             double minY = Math.Min(Math.Min(y1, y2), y3);
-             double maxY = Math.Max(Math.Max(y1, y2), y3);
-             if (screenPoint.Y >= minY && screenPoint.Y <= maxY) return true;
-         }
+        double x = p1.X;
+        double y1 = p1.Y;
+        double y2 = p2.Y;
+        double y3 = p3.Y;
+        double rightX = x + BoxWidth;
 
-         // Also check handles specifically just in case
-         if (Math.Abs(p1.X - screenPoint.X) < ChartConstants.DefaultHitProximity && Math.Abs(p1.Y - screenPoint.Y) < ChartConstants.DefaultHitProximity) return true;
-         if (Math.Abs(p2.X - screenPoint.X) < ChartConstants.DefaultHitProximity && Math.Abs(p2.Y - screenPoint.Y) < ChartConstants.DefaultHitProximity) return true;
-         if (Math.Abs(p3.X - screenPoint.X) < ChartConstants.DefaultHitProximity && Math.Abs(p3.Y - screenPoint.Y) < ChartConstants.DefaultHitProximity) return true;
-         
-         return false; 
+        if (screenPoint.X >= x && screenPoint.X <= rightX)
+        {
+            double minY = Math.Min(Math.Min(y1, y2), y3);
+            double maxY = Math.Max(Math.Max(y1, y2), y3);
+            if (screenPoint.Y >= minY && screenPoint.Y <= maxY) return true;
+        }
+
+        // Also check handles specifically just in case
+        if (Math.Abs(p1.X - screenPoint.X) < ChartConstants.DefaultHitProximity && Math.Abs(p1.Y - screenPoint.Y) < ChartConstants.DefaultHitProximity) return true;
+        if (Math.Abs(p2.X - screenPoint.X) < ChartConstants.DefaultHitProximity && Math.Abs(p2.Y - screenPoint.Y) < ChartConstants.DefaultHitProximity) return true;
+        if (Math.Abs(p3.X - screenPoint.X) < ChartConstants.DefaultHitProximity && Math.Abs(p3.Y - screenPoint.Y) < ChartConstants.DefaultHitProximity) return true;
+
+        return false;
     }
 
     public void Translate(TimeSpan timeDelta, decimal priceDelta)
     {
         for (int i = 0; i < Points.Count; i++)
         {
-             Points[i] = new ChartPoint(Points[i].Time.Add(timeDelta), Points[i].Price + priceDelta);
+            Points[i] = new ChartPoint(Points[i].Time.Add(timeDelta), Points[i].Price + priceDelta);
         }
     }
 

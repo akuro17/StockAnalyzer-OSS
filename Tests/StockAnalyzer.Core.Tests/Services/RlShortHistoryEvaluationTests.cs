@@ -23,8 +23,12 @@ public sealed class RlShortHistoryEvaluationTests
     private static RlEpisodeCatalog AllBlocks(int count)
         => RlSourceSnapshot.BuildCatalog(Bars(count), ImmutableArray<RlCorporateAction>.Empty, ImmutableArray<DateOnly>.Empty, false,
             RlAllBlockEvaluationContract.SpecificationId);
-    private static BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration { InitialCapital = 1000000m,
-        SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter });
+    private static BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
+    {
+        InitialCapital = 1000000m,
+        SizingModel = BacktestDefaults.SizingModel,
+        SizingParameter = BacktestDefaults.SizingParameter
+    });
 
     [Fact]
     public void CatalogBoundaryHasIndependentHandAnswers()
@@ -58,7 +62,9 @@ public sealed class RlShortHistoryEvaluationTests
         Assert.Single(catalog.Validation); Assert.Empty(catalog.Oos);
     }
 
-    [Theory] [InlineData(6218)] [InlineData(9246)]
+    [Theory]
+    [InlineData(6218)]
+    [InlineData(9246)]
     public void CatalogKeepsEveryCompleteBlockLikeTheAllBlockRuleButCarriesOnlyItsOwnId(int count)
     {
         var shortHistory = ShortHistory(count); var all = AllBlocks(count); var standard = Standard(count);

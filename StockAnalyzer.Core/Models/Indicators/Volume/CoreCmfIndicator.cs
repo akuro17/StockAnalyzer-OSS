@@ -48,7 +48,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
 
                 decimal sumMfVolume = 0;
                 long sumVolume = 0;
-                for(int j = i - Period + 1; j <= i; j++)
+                for (int j = i - Period + 1; j <= i; j++)
                 {
                     sumMfVolume += mfVolumes[j];
                     sumVolume += volumes[j];

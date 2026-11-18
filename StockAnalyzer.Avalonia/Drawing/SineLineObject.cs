@@ -52,13 +52,13 @@ public class SineLineObject : IChartObject, IDrawingCalculatedValuesProvider
         // Parameters
         float startX = (float)p1.X;
         float midY = (float)p1.Y;
-        
+
         float periodPx = Math.Abs((float)(p2.X - p1.X));
         if (periodPx < 2f) periodPx = 2f;
-        
+
         // Amplitude: Difference in Y from MidLine (P1.Y)
         float amplitudePx = Math.Abs((float)(p2.Y - p1.Y));
-        
+
         using var paint = new SKPaint
         {
             Color = SkiaColor,
@@ -78,39 +78,39 @@ public class SineLineObject : IChartObject, IDrawingCalculatedValuesProvider
         // Adjust for coordinate system: Screen Y increases downwards.
         // If we want standard sine visual, -sin maybe? Let's just stick to math, user can invert by dragging down vs up if we preserve sign.
         // But amplitude is abs.
-        
+
         // Optimization: Start drawing from bounds.Left
         // x_start = bounds.Left.
         // We want integers or small steps.
-        
+
         float step = 2f; // pixels
         float x = bounds.Left;
-        
+
         // Move to first point
         bool first = true;
-        
+
         // Extend slightly beyond bounds
         for (x = bounds.Left - periodPx; x <= bounds.Right + periodPx; x += step)
         {
             // Calculate Y
             double angle = 2.0 * Math.PI * (x - startX) / periodPx;
             float y = midY + amplitudePx * (float)Math.Sin(angle); // + because Y is down? 
-            // If dragging Up (y < midY), we want peak... 
-            // If P2 is above P1 (Screen Y is smaller), Amp is + distance.
-            // If we want P2 to be a Peak?
-            // If P2 is at (startX + periodPx/4), sin is 1.
-            // y = midY + Amp * 1 = midY + Amp (Below midY).
-            // So dragging down creates a "peak" at bottom.
-            // Dragging up (P2.Y < P1.Y) implies we want peak at top (Y < MidY).
-            // So if P2.Y < P1.Y, we probably want y = midY - Amp * sin...
-            
+                                                                   // If dragging Up (y < midY), we want peak... 
+                                                                   // If P2 is above P1 (Screen Y is smaller), Amp is + distance.
+                                                                   // If we want P2 to be a Peak?
+                                                                   // If P2 is at (startX + periodPx/4), sin is 1.
+                                                                   // y = midY + Amp * 1 = midY + Amp (Below midY).
+                                                                   // So dragging down creates a "peak" at bottom.
+                                                                   // Dragging up (P2.Y < P1.Y) implies we want peak at top (Y < MidY).
+                                                                   // So if P2.Y < P1.Y, we probably want y = midY - Amp * sin...
+
             // Let's use signed amplitude based on P2
-            float signedAmp = (float)(p2.Y - p1.Y); 
+            float signedAmp = (float)(p2.Y - p1.Y);
             // But wait, Period is X diff.
             // If P2 is at 1/4 period, Sin is 1. Y = Mid + SignedAmp. Correct.
-            
+
             // Re-calc using signed amp
-             y = midY + signedAmp * (float)Math.Sin(angle);
+            y = midY + signedAmp * (float)Math.Sin(angle);
 
             if (first)
             {
@@ -122,7 +122,7 @@ public class SineLineObject : IChartObject, IDrawingCalculatedValuesProvider
                 path.LineTo(x, y);
             }
         }
-        
+
         canvas.DrawPath(path, paint);
 
         if (IsSelected)
@@ -134,22 +134,22 @@ public class SineLineObject : IChartObject, IDrawingCalculatedValuesProvider
 
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
-         if (Points.Count < 2) return false;
+        if (Points.Count < 2) return false;
 
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
-        
+
         float startX = (float)p1.X;
         float midY = (float)p1.Y;
         float periodPx = Math.Abs((float)(p2.X - p1.X));
         if (periodPx < 0.1f) return false;
-        
+
         float signedAmp = (float)(p2.Y - p1.Y);
 
         // Calculate Y at screenPoint.X
         double angle = 2.0 * Math.PI * (screenPoint.X - startX) / periodPx;
         float y = midY + signedAmp * (float)Math.Sin(angle);
-        
+
         return Math.Abs(screenPoint.Y - y) <= tolerance;
     }
 

@@ -126,7 +126,7 @@ public class HarmonicPatternRenderer : IDisposable
         _borderPaint.StrokeWidth = isSelected ? (float)hObj.Thickness + 1 : (float)hObj.Thickness;
         canvas.DrawLine(x1, clip.Top, x1, clip.Bottom, _borderPaint);
         canvas.DrawLine(x2, clip.Top, x2, clip.Bottom, _borderPaint);
-        
+
         // Draw Handles if selected
         if (isSelected)
         {
@@ -167,7 +167,7 @@ public class HarmonicPatternRenderer : IDisposable
         _path2.Close();
         canvas.DrawPath(_path2, _fillPaint);
         canvas.DrawPath(_path2, _linePaint);
-        
+
         // Line XC
         canvas.DrawLine((float)screenX.X, (float)screenX.Y, (float)screenC.X, (float)screenC.Y, _linePaint);
         // Line XD
@@ -179,10 +179,10 @@ public class HarmonicPatternRenderer : IDisposable
 
         var przLowScreen = transform.ChartToScreen(new ChartPoint(result.D.Time, result.PrzLow));
         var przHighScreen = transform.ChartToScreen(new ChartPoint(result.D.Time, result.PrzHigh));
-        
+
         // Extend PRZ slightly to the right for visibility
         float przWidth = 40.0f; // px
-        
+
         var przRect = new SKRect(
             (float)screenD.X,
             (float)Math.Min(przHighScreen.Y, przLowScreen.Y), // Skia Y is inverted (0 at top)
@@ -204,7 +204,7 @@ public class HarmonicPatternRenderer : IDisposable
         // 3. Draw Text (Pattern Name and Score)
         string labelText = $"{result.PatternType} ({(result.ConfidenceScore * 100):F1}%)";
         _textPaint.Color = skLineColor;
-        
+
         // Position text below or above D point depending on direction
         float textY = result.IsBullish ? przRect.Bottom + 16 : przRect.Top - 8;
         canvas.DrawText(labelText, (float)screenD.X, textY, _textPaint);

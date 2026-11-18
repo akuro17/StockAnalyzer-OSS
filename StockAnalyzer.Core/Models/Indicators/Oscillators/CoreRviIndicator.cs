@@ -16,7 +16,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
         {
             if (parameters is CoreSmaParameter p)
             {
-                Period = p.Period; 
+                Period = p.Period;
             }
         }
 
@@ -83,18 +83,18 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
                 // Signal = Symmetrically weighted MA of RVI = (RVI(i) + 2*RVI(i-1) + 2*RVI(i-2) + RVI(i-3)) / 6
                 if (_values.Count(v => v.HasValue) >= 4 && i >= 3)
                 {
-                   var rvi_i = _values[i];
-                   var rvi_i1 = _values[i-1];
-                   var rvi_i2 = _values[i-2];
-                   var rvi_i3 = _values[i-3];
-                   if(rvi_i.HasValue && rvi_i1.HasValue && rvi_i2.HasValue && rvi_i3.HasValue)
-                   {
+                    var rvi_i = _values[i];
+                    var rvi_i1 = _values[i - 1];
+                    var rvi_i2 = _values[i - 2];
+                    var rvi_i3 = _values[i - 3];
+                    if (rvi_i.HasValue && rvi_i1.HasValue && rvi_i2.HasValue && rvi_i3.HasValue)
+                    {
                         SignalLine.Add((rvi_i.Value + 2 * rvi_i1.Value + 2 * rvi_i2.Value + rvi_i3.Value) / 6);
-                   }
-                   else
-                   {
-                       SignalLine.Add(null);
-                   }
+                    }
+                    else
+                    {
+                        SignalLine.Add(null);
+                    }
                 }
                 else SignalLine.Add(null);
             }

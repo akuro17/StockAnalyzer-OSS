@@ -19,7 +19,7 @@ public abstract partial class BaseChartSettingsViewModel : ViewModelBase, ISetti
     protected readonly IChartSettingsManager SettingsManager;
     protected readonly ILogger Logger;
     protected GlobalChartSettings Snapshot;
-    
+
     private bool _isDisposed;
     private readonly IDisposable? _autoSaveSubscription;
 
@@ -44,7 +44,7 @@ public abstract partial class BaseChartSettingsViewModel : ViewModelBase, ISetti
                 h => this.PropertyChanged -= h)
             .Where(x => x.EventArgs.PropertyName != nameof(IsModified))
             .Throttle(TimeSpan.FromMilliseconds(Models.SettingsConstants.SettingsPreviewThrottleIntervalMs))
-            .Subscribe(_ => 
+            .Subscribe(_ =>
             {
                 if (!_isDisposed)
                 {
@@ -76,7 +76,7 @@ public abstract partial class BaseChartSettingsViewModel : ViewModelBase, ISetti
         var newSettings = CreateSettings();
         await SettingsManager.UpdateAsync(newSettings);
         Snapshot = newSettings;
-        
+
         // Final reload to ensure UI reflects any clamped/validated values from the core model
         LoadFromSettings(Snapshot);
         UpdateInitialState();
@@ -86,10 +86,10 @@ public abstract partial class BaseChartSettingsViewModel : ViewModelBase, ISetti
     public virtual void RevertChanges()
     {
         if (_isDisposed) return;
-        
+
         // Restore live preview to original snapshot
         SettingsManager.UpdatePreview(Snapshot);
-        
+
         LoadFromSettings(Snapshot);
         UpdateInitialState();
         OnPropertyChanged(nameof(IsModified));
@@ -98,14 +98,14 @@ public abstract partial class BaseChartSettingsViewModel : ViewModelBase, ISetti
     public virtual void ResetToDefault()
     {
         if (_isDisposed) return;
-        
+
         // Load defaults into properties, but do NOT update initial state.
         // This ensures IsModified returns true if defaults differ from current Snapshot.
         LoadFromSettings(new GlobalChartSettings());
-        
+
         // Trigger preview update immediately
         SettingsManager.UpdatePreview(CreateSettings());
-        
+
         OnPropertyChanged(nameof(IsModified));
     }
 

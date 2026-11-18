@@ -23,7 +23,7 @@ public partial class OhlcBarSettingsViewModel : BaseChartSettingsViewModel
     private HsvData _initialBullishColor;
     private HsvData _initialBearishColor;
 
-    public override bool IsModified => 
+    public override bool IsModified =>
         BullishColor != _initialBullishColor ||
         BearishColor != _initialBearishColor;
 

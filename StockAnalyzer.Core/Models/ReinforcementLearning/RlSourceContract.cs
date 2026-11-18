@@ -27,9 +27,14 @@ public static class RlSourceContract
     public static IReadOnlyDictionary<string, object> Acquisition { get; } =
         new Dictionary<string, object>
         {
-            ["timeframe"] = nameof(TimeFrame.D1), ["source_folder"] = MarketDataSettings.DefaultDailyDataPath,
-            ["network"] = false, ["preserve_stored_order"] = true, ["repair"] = false,
-            ["impute"] = false, ["adjust_prices"] = false, ["evidence_policy"] = EvidencePolicy,
+            ["timeframe"] = nameof(TimeFrame.D1),
+            ["source_folder"] = MarketDataSettings.DefaultDailyDataPath,
+            ["network"] = false,
+            ["preserve_stored_order"] = true,
+            ["repair"] = false,
+            ["impute"] = false,
+            ["adjust_prices"] = false,
+            ["evidence_policy"] = EvidencePolicy,
         }.ToImmutableDictionary();
 
     public static void Validate(IReadOnlyDictionary<string, JsonElement> values)

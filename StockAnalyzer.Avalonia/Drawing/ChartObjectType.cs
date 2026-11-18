@@ -52,7 +52,7 @@ public enum ChartObjectType
     BarPattern,
     GeometricPattern,
     HarmonicPattern,
-    
+
     CyclicLines,
     IchimokuTimeLines,
     SineLine,

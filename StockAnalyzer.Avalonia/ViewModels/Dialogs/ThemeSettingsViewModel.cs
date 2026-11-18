@@ -71,33 +71,33 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
 
     #region Color Properties (14 Items)
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _backgroundColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _gridColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _axisColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _crosshairColor;
-    
-    
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _volumeUpColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _volumeDownColor;
-    
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _rulerFillColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _rulerStrokeColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _backgroundColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _gridColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _axisColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _crosshairColor;
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellBackgroundColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellTextColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellSecondaryTextColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellWarningTextColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellAccentColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellBorderColor;
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _semanticPlusColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _semanticMinusColor;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _semanticNeutralColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _volumeUpColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _volumeDownColor;
 
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _buttonBackground;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _buttonText;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _buttonHover;
-    [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _buttonPressed;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _rulerFillColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _rulerStrokeColor;
+
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellBackgroundColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellTextColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellSecondaryTextColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellWarningTextColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellAccentColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _shellBorderColor;
+
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _semanticPlusColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _semanticMinusColor;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _semanticNeutralColor;
+
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _buttonBackground;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _buttonText;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _buttonHover;
+    [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private IndicatorColor _buttonPressed;
 
     #endregion
 
@@ -139,26 +139,26 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
         if (_snapshot.Count > 0)
         {
             _snapBackgroundColor = _snapshot[ThemeColorKey.Background];
-            _snapGridColor        = _snapshot[ThemeColorKey.Grid];
-            _snapAxisColor        = _snapshot[ThemeColorKey.Axis];
-            _snapCrosshairColor   = _snapshot[ThemeColorKey.Crosshair];
-            _snapVolumeUpColor    = _snapshot[ThemeColorKey.VolumeUp];
-            _snapVolumeDownColor  = _snapshot[ThemeColorKey.VolumeDown];
-            _snapRulerFillColor   = _snapshot[ThemeColorKey.RulerFill];
+            _snapGridColor = _snapshot[ThemeColorKey.Grid];
+            _snapAxisColor = _snapshot[ThemeColorKey.Axis];
+            _snapCrosshairColor = _snapshot[ThemeColorKey.Crosshair];
+            _snapVolumeUpColor = _snapshot[ThemeColorKey.VolumeUp];
+            _snapVolumeDownColor = _snapshot[ThemeColorKey.VolumeDown];
+            _snapRulerFillColor = _snapshot[ThemeColorKey.RulerFill];
             _snapRulerStrokeColor = _snapshot[ThemeColorKey.RulerStroke];
             _snapShellBackgroundColor = _snapshot[ThemeColorKey.ShellBackground];
-            _snapShellTextColor       = _snapshot[ThemeColorKey.ShellText];
+            _snapShellTextColor = _snapshot[ThemeColorKey.ShellText];
             _snapShellSecondaryTextColor = _snapshot.TryGetValue(ThemeColorKey.ShellSecondaryText, out var secVal) ? secVal : _snapshot[ThemeColorKey.ShellText];
             _snapShellWarningTextColor = _snapshot[ThemeColorKey.ShellWarningText];
-            _snapShellAccentColor     = _snapshot[ThemeColorKey.ShellAccent];
-            _snapShellBorderColor     = _snapshot[ThemeColorKey.ShellBorder];
-            _snapSemanticPlusColor    = _snapshot[ThemeColorKey.SemanticPlus];
-            _snapSemanticMinusColor   = _snapshot[ThemeColorKey.SemanticMinus];
+            _snapShellAccentColor = _snapshot[ThemeColorKey.ShellAccent];
+            _snapShellBorderColor = _snapshot[ThemeColorKey.ShellBorder];
+            _snapSemanticPlusColor = _snapshot[ThemeColorKey.SemanticPlus];
+            _snapSemanticMinusColor = _snapshot[ThemeColorKey.SemanticMinus];
             _snapSemanticNeutralColor = _snapshot[ThemeColorKey.SemanticNeutral];
-            _snapButtonBackground     = _snapshot[ThemeColorKey.ButtonBackground];
-            _snapButtonText           = _snapshot[ThemeColorKey.ButtonText];
-            _snapButtonHover          = _snapshot[ThemeColorKey.ButtonHover];
-            _snapButtonPressed        = _snapshot[ThemeColorKey.ButtonPressed];
+            _snapButtonBackground = _snapshot[ThemeColorKey.ButtonBackground];
+            _snapButtonText = _snapshot[ThemeColorKey.ButtonText];
+            _snapButtonHover = _snapshot[ThemeColorKey.ButtonHover];
+            _snapButtonPressed = _snapshot[ThemeColorKey.ButtonPressed];
         }
     }
 
@@ -179,26 +179,26 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
             if (SelectedPreset != _snapshotMode) return true;
 
             return _backgroundColor != _snapBackgroundColor ||
-                   _gridColor        != _snapGridColor        ||
-                   _axisColor        != _snapAxisColor        ||
-                   _crosshairColor   != _snapCrosshairColor   ||
-                   _volumeUpColor    != _snapVolumeUpColor    ||
-                   _volumeDownColor  != _snapVolumeDownColor  ||
-                   _rulerFillColor   != _snapRulerFillColor   ||
+                   _gridColor != _snapGridColor ||
+                   _axisColor != _snapAxisColor ||
+                   _crosshairColor != _snapCrosshairColor ||
+                   _volumeUpColor != _snapVolumeUpColor ||
+                   _volumeDownColor != _snapVolumeDownColor ||
+                   _rulerFillColor != _snapRulerFillColor ||
                    _rulerStrokeColor != _snapRulerStrokeColor ||
                    _shellBackgroundColor != _snapShellBackgroundColor ||
-                   _shellTextColor       != _snapShellTextColor       ||
+                   _shellTextColor != _snapShellTextColor ||
                    _shellSecondaryTextColor != _snapShellSecondaryTextColor ||
                    _shellWarningTextColor != _snapShellWarningTextColor ||
-                   _shellAccentColor     != _snapShellAccentColor     ||
-                   _shellBorderColor     != _snapShellBorderColor     ||
-                   _semanticPlusColor    != _snapSemanticPlusColor    ||
-                   _semanticMinusColor   != _snapSemanticMinusColor   ||
+                   _shellAccentColor != _snapShellAccentColor ||
+                   _shellBorderColor != _snapShellBorderColor ||
+                   _semanticPlusColor != _snapSemanticPlusColor ||
+                   _semanticMinusColor != _snapSemanticMinusColor ||
                    _semanticNeutralColor != _snapSemanticNeutralColor ||
-                   _buttonBackground     != _snapButtonBackground     ||
-                   _buttonText           != _snapButtonText           ||
-                   _buttonHover          != _snapButtonHover          ||
-                   _buttonPressed        != _snapButtonPressed;
+                   _buttonBackground != _snapButtonBackground ||
+                   _buttonText != _snapButtonText ||
+                   _buttonHover != _snapButtonHover ||
+                   _buttonPressed != _snapButtonPressed;
         }
     }
 
@@ -292,7 +292,7 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
         if (_isDisposed || _themeManager == null) return;
         _themeManager.SetThemeMode(_snapshotMode);
         _themeManager.ChangeTheme(_themeManager.CurrentMode == AppThemeMode.Light ? ThemeColors.Light : ThemeColors.Dark); // Restore base
-        
+
         // Restore individual colors from snapshot
         foreach (var kvp in _snapshot)
         {
@@ -477,26 +477,26 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
 
         // Use backing fields to prevent triggering ApplyColorChange during sync
         _backgroundColor = map[ThemeColorKey.Background];
-        _gridColor        = map[ThemeColorKey.Grid];
-        _axisColor        = map[ThemeColorKey.Axis];
-        _crosshairColor   = map[ThemeColorKey.Crosshair];
-        _volumeUpColor    = map[ThemeColorKey.VolumeUp];
-        _volumeDownColor  = map[ThemeColorKey.VolumeDown];
-        _rulerFillColor   = map[ThemeColorKey.RulerFill];
+        _gridColor = map[ThemeColorKey.Grid];
+        _axisColor = map[ThemeColorKey.Axis];
+        _crosshairColor = map[ThemeColorKey.Crosshair];
+        _volumeUpColor = map[ThemeColorKey.VolumeUp];
+        _volumeDownColor = map[ThemeColorKey.VolumeDown];
+        _rulerFillColor = map[ThemeColorKey.RulerFill];
         _rulerStrokeColor = map[ThemeColorKey.RulerStroke];
         _shellBackgroundColor = map[ThemeColorKey.ShellBackground];
-        _shellTextColor       = map[ThemeColorKey.ShellText];
+        _shellTextColor = map[ThemeColorKey.ShellText];
         _shellSecondaryTextColor = map.TryGetValue(ThemeColorKey.ShellSecondaryText, out var secCol) ? secCol : map[ThemeColorKey.ShellText];
         _shellWarningTextColor = map[ThemeColorKey.ShellWarningText];
-        _shellAccentColor     = map[ThemeColorKey.ShellAccent];
-        _shellBorderColor     = map[ThemeColorKey.ShellBorder];
-        _semanticPlusColor    = map[ThemeColorKey.SemanticPlus];
-        _semanticMinusColor   = map[ThemeColorKey.SemanticMinus];
+        _shellAccentColor = map[ThemeColorKey.ShellAccent];
+        _shellBorderColor = map[ThemeColorKey.ShellBorder];
+        _semanticPlusColor = map[ThemeColorKey.SemanticPlus];
+        _semanticMinusColor = map[ThemeColorKey.SemanticMinus];
         _semanticNeutralColor = map[ThemeColorKey.SemanticNeutral];
-        _buttonBackground     = map[ThemeColorKey.ButtonBackground];
-        _buttonText           = map[ThemeColorKey.ButtonText];
-        _buttonHover          = map[ThemeColorKey.ButtonHover];
-        _buttonPressed        = map[ThemeColorKey.ButtonPressed];
+        _buttonBackground = map[ThemeColorKey.ButtonBackground];
+        _buttonText = map[ThemeColorKey.ButtonText];
+        _buttonHover = map[ThemeColorKey.ButtonHover];
+        _buttonPressed = map[ThemeColorKey.ButtonPressed];
 
         OnPropertyChanged(nameof(BackgroundColor));
         OnPropertyChanged(nameof(GridColor));
@@ -520,12 +520,12 @@ public partial class ThemeSettingsViewModel : ViewModelBase, ISettingsPageViewMo
         OnPropertyChanged(nameof(ButtonHover));
         OnPropertyChanged(nameof(ButtonPressed));
     }
-    
+
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        
+
         _throttleCts?.Cancel();
         _throttleCts?.Dispose();
         _throttleCts = null;

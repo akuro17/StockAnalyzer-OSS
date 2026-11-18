@@ -185,10 +185,10 @@ namespace StockAnalyzer.UITests.PageObjects
         private void InvokeToolsMenuItem(string automationId, string? submenuId = null)
         {
             _window.Focus();
-            var toolsMenu = _testBase.WaitForElement(() => 
+            var toolsMenu = _testBase.WaitForElement(() =>
                 _window.FindFirstDescendant(cf => cf.ByAutomationId("Menu_Tools")),
                 errorMessage: "Tools menu not found");
-            
+
             AutomationElement? targetMenu = null;
             const int menuAttempts = 3;
             const int popupTimeoutMs = 1500;
@@ -226,7 +226,7 @@ namespace StockAnalyzer.UITests.PageObjects
                 {
                     _testBase.LogWarn($"Tools menu pointer action {i + 1} had no clickable point: {ex.Message}");
                 }
-                
+
                 if (submenuId != null)
                 {
                     var submenu = WaitForPopupMenuItemByAutomationId(submenuId, popupTimeoutMs);
@@ -237,12 +237,12 @@ namespace StockAnalyzer.UITests.PageObjects
                 targetMenu = WaitForPopupMenuItemByAutomationId(automationId, popupTimeoutMs);
                 if (targetMenu != null)
                     break;
-                
+
                 _testBase.LogInfo($"{automationId} not visible after Tools menu action {i + 1}; retrying.");
             }
 
             if (targetMenu == null) throw new Exception($"Tools menu item {automationId} not found by AutomationId");
-                
+
             var invokePattern = targetMenu.Patterns.Invoke.PatternOrDefault;
             if (invokePattern != null)
             {
@@ -258,18 +258,18 @@ namespace StockAnalyzer.UITests.PageObjects
         private AutomationElement? WaitForPopupMenuItem(string name1, string? name2 = null)
         {
             var desktop = _testBase.Automation!.GetDesktop();
-            return _testBase.WaitForElement(() => 
+            return _testBase.WaitForElement(() =>
             {
-                var popups = desktop.FindAllChildren(cf => 
+                var popups = desktop.FindAllChildren(cf =>
                     cf.ByControlType(ControlType.Window).Or(cf.ByControlType(ControlType.Menu)).Or(cf.ByControlType(ControlType.Pane)).Or(cf.ByClassName("PopupRoot")));
-                
+
                 foreach (var popup in popups)
                 {
                     var condition = name2 != null ? cf => cf.ByName(name1).Or(cf.ByName(name2)) : (Func<FlaUI.Core.Conditions.ConditionFactory, FlaUI.Core.Conditions.ConditionBase>)(cf => cf.ByName(name1));
                     var item = popup.FindFirstDescendant(condition);
                     if (item != null) return item;
                 }
-                
+
                 // Fallback to window
                 var condition2 = name2 != null ? cf => cf.ByName(name1).Or(cf.ByName(name2)) : (Func<FlaUI.Core.Conditions.ConditionFactory, FlaUI.Core.Conditions.ConditionBase>)(cf => cf.ByName(name1));
                 return _window.FindFirstDescendant(condition2);
@@ -281,7 +281,7 @@ namespace StockAnalyzer.UITests.PageObjects
             var desktop = _testBase.Automation!.GetDesktop();
             try
             {
-                return _testBase.WaitForElement(() => 
+                return _testBase.WaitForElement(() =>
                 {
                     // Popups may be separate top-level windows, but only this process is in scope.
                     var item = _window.FindFirstDescendant(cf => cf.ByAutomationId(automationId));
@@ -289,7 +289,7 @@ namespace StockAnalyzer.UITests.PageObjects
 
                     var processId = _window.Properties.ProcessId.Value;
                     var popups = desktop.FindAllChildren(cf => cf.ByProcessId(processId));
-                    
+
                     foreach (var popup in popups)
                     {
                         item = popup.FindFirstDescendant(cf => cf.ByAutomationId(automationId));
@@ -304,12 +304,12 @@ namespace StockAnalyzer.UITests.PageObjects
                 return null;
             }
         }
-        
+
         private static bool IsSettingsDialog(string? name)
         {
             if (string.IsNullOrEmpty(name)) return false;
-            return name.Contains("設定") || 
-                   name.Contains("Settings") || 
+            return name.Contains("設定") ||
+                   name.Contains("Settings") ||
                    name.Contains("テクニカル指標") ||
                    name.Contains("Indicator");
         }
@@ -325,18 +325,18 @@ namespace StockAnalyzer.UITests.PageObjects
             // Note: Canvas children count might not change if drawing logic is custom (OnRender).
             // But if elements are added to VisualTree, it will change.
             // StockAnalyzer likely uses DrawingVisuals or Child Elements.
-            
+
             // Relaxed check: Just check for some change OR specific visual element if identifiable.
             // If the chart uses DrawingContext.DrawLine directly on the canvas, FlaUI won't see children.
             // However, assuming StockAnalyzer adds logic elements...
-            
+
             // For now, we trust the count check if it was originally intended.
             // If it fails, we might need a screenshot comparison or checking ViewModel state (which is hard from UI Test).
-            
-             _testBase.WaitUntil(() => GetChartChildCount() >= previousCount, 
-                errorMessage: "Chart element count check.");
-             
-             // Since we can't easily verify custom drawing pixels, we assume success if dialog closed and no crash.
+
+            _testBase.WaitUntil(() => GetChartChildCount() >= previousCount,
+               errorMessage: "Chart element count check.");
+
+            // Since we can't easily verify custom drawing pixels, we assume success if dialog closed and no crash.
         }
     }
 }

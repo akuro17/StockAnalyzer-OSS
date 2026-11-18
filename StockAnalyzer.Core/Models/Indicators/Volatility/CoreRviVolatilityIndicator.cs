@@ -13,7 +13,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
         {
             if (parameters is CoreSmaParameter p)
             {
-                Period = p.Period; 
+                Period = p.Period;
             }
         }
 

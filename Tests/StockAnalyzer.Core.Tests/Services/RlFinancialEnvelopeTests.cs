@@ -23,10 +23,18 @@ public sealed class RlFinancialEnvelopeTests
         return new(bars, "R03_DECIMAL_INTERVAL", TimeFrame.D1, BacktestInput.CurrentDataVersion, Start, Start.AddDays(bars.Length), 0, RlContract.WindowLength - 1);
     }
     private static BacktestConfiguration Costs(decimal slip = 0m) => RlContract.CreateConfiguration(new BacktestConfiguration
-    { InitialCapital = 1000m, CommissionFlat = 2m, CommissionPerUnit = .5m, SlippageRatio = slip,
-        SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter });
+    {
+        InitialCapital = 1000m,
+        CommissionFlat = 2m,
+        CommissionPerUnit = .5m,
+        SlippageRatio = slip,
+        SizingModel = BacktestDefaults.SizingModel,
+        SizingParameter = BacktestDefaults.SizingParameter
+    });
 
-    [Theory] [InlineData("0")] [InlineData("0.0123456789012345678901234567")]
+    [Theory]
+    [InlineData("0")]
+    [InlineData("0.0123456789012345678901234567")]
     public void DifferentRawStopsHaveDecimalPriceCashRealizedSlippageProof(string slippage)
     {
         var costs = Costs(decimal.Parse(slippage, System.Globalization.CultureInfo.InvariantCulture));
@@ -59,7 +67,8 @@ public sealed class RlFinancialEnvelopeTests
             resultA.Trades[0].ClosedNet, resultB.Trades[0].ClosedNet, 6m, 6m, resultA.Fills.Sum(f => f.SlippageAmount), resultB.Fills.Sum(f => f.SlippageAmount), 0m, bound));
     }
 
-    [Fact] public void DecimalEndpointPropagationAllowsRoundedPriceBoundaryAndNeverUsesMlToleranceForMoney()
+    [Fact]
+    public void DecimalEndpointPropagationAllowsRoundedPriceBoundaryAndNeverUsesMlToleranceForMoney()
     {
         var costs = Costs(.0000000000000000000000000001m);
         var envelope = new RlFinancialEnvelope(costs);
@@ -90,7 +99,8 @@ public sealed class RlFinancialEnvelopeTests
         Assert.True(checkedErrors.RealizedGrossError <= checkedErrors.RealizedGrossBound);
     }
 
-    [Fact] public void AttemptsFailuresSuccessAndRegistrationReservationsAreDistinctAndNeverRolledBack()
+    [Fact]
+    public void AttemptsFailuresSuccessAndRegistrationReservationsAreDistinctAndNeverRolledBack()
     {
         var work = new RlWorkLedger(); work.Attempt(true); work.Succeeded(true);
         work.Attempt(false); // a failed/cancelled attempted Step publishes no financial success
@@ -108,7 +118,8 @@ public sealed class RlFinancialEnvelopeTests
         Assert.Equal(0, bounded.Snapshot().SuccessfulFinancialTransitions);
     }
 
-    [Fact] public void IndividualTradeValuesCannotHideBehindMatchingTotalsAndEvents()
+    [Fact]
+    public void IndividualTradeValuesCannotHideBehindMatchingTotalsAndEvents()
     {
         var input = Input(); using var session = new BacktestEngine(IndicatorFactory.Default).CreateRlContinuousSession(input, Costs());
         session.Reset(); session.Step(RlAction.Buy, 1f, .5f); session.Step(RlAction.Hold, 0f, 0f);

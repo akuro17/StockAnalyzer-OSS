@@ -9,12 +9,12 @@ namespace StockAnalyzer.Core.Utilities
     public static class AutoBoxSizeCalculator
     {
         public static decimal Calculate(
-            ChartSizingMode mode, 
-            IEnumerable<CandleData> candles, 
-            decimal fixedSize, 
-            int atrPeriod, 
-            decimal atrMultiplier, 
-            ChartRoundingMode roundingMode, 
+            ChartSizingMode mode,
+            IEnumerable<CandleData> candles,
+            decimal fixedSize,
+            int atrPeriod,
+            decimal atrMultiplier,
+            ChartRoundingMode roundingMode,
             AutoFallbackMode fallbackMode,
             decimal currentPrice,
             decimal percentage = 1.0m)
@@ -34,12 +34,12 @@ namespace StockAnalyzer.Core.Utilities
         }
 
         public static decimal Calculate(
-            ChartSizingMode mode, 
-            IReadOnlyList<CoreCandleData> candles, 
-            decimal fixedSize, 
-            int atrPeriod, 
-            decimal atrMultiplier, 
-            ChartRoundingMode roundingMode, 
+            ChartSizingMode mode,
+            IReadOnlyList<CoreCandleData> candles,
+            decimal fixedSize,
+            int atrPeriod,
+            decimal atrMultiplier,
+            ChartRoundingMode roundingMode,
             AutoFallbackMode fallbackMode,
             decimal currentPrice,
             decimal percentage = 1.0m)
@@ -48,7 +48,7 @@ namespace StockAnalyzer.Core.Utilities
             {
                 return Calculate(mode, System.Runtime.InteropServices.CollectionsMarshal.AsSpan(list), fixedSize, atrPeriod, atrMultiplier, roundingMode, fallbackMode, currentPrice, percentage);
             }
-            
+
             // Fallback for generic IReadOnlyList
             int len = candles.Count;
             if (currentPrice <= 0) return ChartConstants.DefaultBoxSize;
@@ -63,12 +63,12 @@ namespace StockAnalyzer.Core.Utilities
         }
 
         public static decimal Calculate(
-            ChartSizingMode mode, 
-            ReadOnlySpan<CandleData> candles, 
-            decimal fixedSize, 
-            int atrPeriod, 
-            decimal atrMultiplier, 
-            ChartRoundingMode roundingMode, 
+            ChartSizingMode mode,
+            ReadOnlySpan<CandleData> candles,
+            decimal fixedSize,
+            int atrPeriod,
+            decimal atrMultiplier,
+            ChartRoundingMode roundingMode,
             AutoFallbackMode fallbackMode,
             decimal currentPrice,
             decimal percentage = 1.0m)
@@ -85,12 +85,12 @@ namespace StockAnalyzer.Core.Utilities
         }
 
         public static decimal Calculate(
-            ChartSizingMode mode, 
-            ReadOnlySpan<CoreCandleData> candles, 
-            decimal fixedSize, 
-            int atrPeriod, 
-            decimal atrMultiplier, 
-            ChartRoundingMode roundingMode, 
+            ChartSizingMode mode,
+            ReadOnlySpan<CoreCandleData> candles,
+            decimal fixedSize,
+            int atrPeriod,
+            decimal atrMultiplier,
+            ChartRoundingMode roundingMode,
             AutoFallbackMode fallbackMode,
             decimal currentPrice,
             decimal percentage = 1.0m)
@@ -155,9 +155,9 @@ namespace StockAnalyzer.Core.Utilities
                 else
                 {
                     decimal step = EstimateTickSize(currentPrice);
-                    if (roundingMode == ChartRoundingMode.TickSize || 
-                        roundingMode == ChartRoundingMode.Floor || 
-                        roundingMode == ChartRoundingMode.Ceiling || 
+                    if (roundingMode == ChartRoundingMode.TickSize ||
+                        roundingMode == ChartRoundingMode.Floor ||
+                        roundingMode == ChartRoundingMode.Ceiling ||
                         roundingMode == ChartRoundingMode.Round)
                     {
                         calculatedSize = ChartMath.Quantize(calculatedSize, step, roundingMode);

@@ -25,7 +25,7 @@ internal static class ScreenerSideFrameFixtures
 
     /// <summary>The weekly bars of the first 28 days of <paramref name="daily"/> (the complete weeks).</summary>
     public static IReadOnlyList<CandleData> CompleteWeeks(IReadOnlyList<CandleData> daily)
-        => TimeFrameAggregator.Aggregate(daily.Take(28).ToList(), TimeFrame.W1);
+        => TimeFrameAggregator.AggregateToPeriodStart(daily.Take(28).ToList(), TimeFrame.W1);
 
     /// <summary>The bar set of the 30 daily bars: D1 as is, W1 = the four complete weeks.</summary>
     public static ScreenerBarSet BarSet(int days = 30)

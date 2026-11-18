@@ -14,10 +14,10 @@ namespace StockAnalyzer.Core.Tests
             var startDate = DateTime.Today;
             return highs.Select((high, i) => new CoreCandleData(
                 startDate.AddDays(i),
-                (high+lows[i])/2, // Open
+                (high + lows[i]) / 2, // Open
                 high,
                 lows[i],
-                (high+lows[i])/2, // Close
+                (high + lows[i]) / 2, // Close
                 1000
             )).ToList();
         }
@@ -29,8 +29,8 @@ namespace StockAnalyzer.Core.Tests
             // EMA(9) of EMA(9) needs 9+9-2 = 16 data points for first ratio.
             // Sum of 25 ratios needs 16+25-1 = 40 data points for first Mass Index value.
             var indicator = new CoreMassIndexIndicator { Period = 25 };
-            var highs = Enumerable.Range(1, 50).Select(i => (decimal)(i*1.1 + Math.Sin(i)));
-            var lows = Enumerable.Range(1, 50).Select(i => (decimal)(i*0.9 - Math.Sin(i)));
+            var highs = Enumerable.Range(1, 50).Select(i => (decimal)(i * 1.1 + Math.Sin(i)));
+            var lows = Enumerable.Range(1, 50).Select(i => (decimal)(i * 0.9 - Math.Sin(i)));
             var candles = CreateTestCandles(highs.ToArray(), lows.ToArray());
 
             indicator.Calculate(candles);

@@ -39,7 +39,7 @@ namespace StockAnalyzer.Core.Services
             // ArrowStreamWriter does not close the base stream by default usually?
             // Actually it depends. But 'using' writer will flush.
             using var writer = new ArrowStreamWriter(outputStream, CandleSchema, leaveOpen: true);
-            
+
             await writer.WriteRecordBatchAsync(recordBatch);
             await writer.WriteEndAsync();
         }
@@ -65,12 +65,12 @@ namespace StockAnalyzer.Core.Services
 
             foreach (var candle in candles)
             {
-                 timestampBuilder.Append(new DateTimeOffset(candle.Timestamp));
-                 openBuilder.Append((double)candle.Open);
-                 highBuilder.Append((double)candle.High);
-                 lowBuilder.Append((double)candle.Low);
-                 closeBuilder.Append((double)candle.Close);
-                 volumeBuilder.Append(candle.Volume);
+                timestampBuilder.Append(new DateTimeOffset(candle.Timestamp));
+                openBuilder.Append((double)candle.Open);
+                highBuilder.Append((double)candle.High);
+                lowBuilder.Append((double)candle.Low);
+                closeBuilder.Append((double)candle.Close);
+                volumeBuilder.Append(candle.Volume);
             }
 
             var recordBatch = new RecordBatch(CandleSchema, new IArrowArray[]

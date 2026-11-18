@@ -41,7 +41,7 @@ public sealed record Transaction
         if (quantity < 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be non-negative.");
         if (pricePerUnit < 0) throw new ArgumentOutOfRangeException(nameof(pricePerUnit), "Price must be non-negative.");
         if (executedAt > DateTimeOffset.UtcNow) throw new ArgumentOutOfRangeException(nameof(executedAt), "Transaction time cannot be in the future.");
-        
+
         if ((type == TransactionType.Long || type == TransactionType.ExitLong || type == TransactionType.ExitShort || type == TransactionType.Short) && string.IsNullOrWhiteSpace(ticker))
         {
             throw new ArgumentException("Ticker is required for trade transactions.", nameof(ticker));

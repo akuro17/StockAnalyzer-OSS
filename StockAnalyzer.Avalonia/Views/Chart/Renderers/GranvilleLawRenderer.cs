@@ -140,7 +140,7 @@ public sealed class GranvilleLawRenderer
             float x1 = (float)transform.ChartToScreen(new ChartPoint(snapshot.Candles[1].Timestamp, 0)).X;
             candleWidth = System.Math.Max(1f, x1 - x0);
         }
-        
+
         // Add 0.5f to ensure no 1px gaps between adjacent heatmap bars
         float dx = candleWidth + 0.5f;
 
@@ -166,14 +166,14 @@ public sealed class GranvilleLawRenderer
                 {
                     x = (float)transform.ChartToScreen(new ChartPoint(candle.Timestamp, 0)).X;
                 }
-                
+
                 // Align exactly with CandleStickRenderer
                 float snappedCenterX = (float)Math.Floor(x) + 0.5f;
 
                 _buyHeatmapPaint.Color = color;
                 _buyHeatmapPaint.StrokeWidth = dx;
                 _buyHeatmapPaint.Style = SKPaintStyle.Stroke;
-                
+
                 float y1 = (float)transform.ChartToScreen(new ChartPoint(DateTime.MinValue, (decimal)signalVal)).Y + (float)targetRect.Top;
                 canvas.DrawLine(snappedCenterX, zeroY, snappedCenterX, y1, _buyHeatmapPaint);
             }

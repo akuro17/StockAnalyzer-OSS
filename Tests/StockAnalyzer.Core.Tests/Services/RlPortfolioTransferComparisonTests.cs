@@ -16,7 +16,7 @@ namespace StockAnalyzer.Core.Tests.Services;
 public sealed class RlPortfolioTransferComparisonTests
 {
     private static BacktestConfiguration Costs(decimal flat = 0m) => RlContract.CreateConfiguration(new BacktestConfiguration
-        { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m, CommissionFlat = flat });
+    { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m, CommissionFlat = flat });
 
     private static RlPortfolioBlockResult Block(string id, decimal policy)
         => new(id, ImmutableArray.Create("AAA", "BBB"), policy, 0m, 0m, 0m);
@@ -200,7 +200,12 @@ public sealed class RlPortfolioTransferComparisonTests
     }
 
     [Theory]
-    [InlineData(0, 7)] [InlineData(1, 7)] [InlineData(4, 7)] [InlineData(7, 7)] [InlineData(3, 10)] [InlineData(60, 120)]
+    [InlineData(0, 7)]
+    [InlineData(1, 7)]
+    [InlineData(4, 7)]
+    [InlineData(7, 7)]
+    [InlineData(3, 10)]
+    [InlineData(60, 120)]
     public void TheOneSidedPTailsAddUpToOneAndTheEdgesAreExact(int wins, int effective)
     {
         double tail = RlPortfolioSignTest.OneSidedP(wins, effective);

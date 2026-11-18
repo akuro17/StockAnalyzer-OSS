@@ -189,7 +189,7 @@ public class PitchforkObject : IChartObject, IDisposable, IDrawingCalculatedValu
         // P2 Line: Passes through P2, Slope same as Median Line.
         // P3 Line: Passes through P3, Slope same as Median Line.
         // Actually, in Andrews Pitchfork, P2 and P3 ARE the points the outer lines pass through.
-        
+
         DrawRay(canvas, _paint, s2, s2 + v, isRay: true);
         DrawRay(canvas, _paint, s3, s3 + v, isRay: true);
 
@@ -219,7 +219,7 @@ public class PitchforkObject : IChartObject, IDisposable, IDrawingCalculatedValu
             // Draw Anchor highlight for Schiff
             if (PitchforkType != PitchforkType.Andrews)
             {
-                 SelectionHandleRenderer.DrawOutline(canvas, anchor, radius: ChartConstants.PitchforkAnchorHighlightRadius, strokeWidth: ChartConstants.PitchforkAnchorHighlightStrokeWidth);
+                SelectionHandleRenderer.DrawOutline(canvas, anchor, radius: ChartConstants.PitchforkAnchorHighlightRadius, strokeWidth: ChartConstants.PitchforkAnchorHighlightStrokeWidth);
             }
         }
     }
@@ -230,17 +230,17 @@ public class PitchforkObject : IChartObject, IDisposable, IDrawingCalculatedValu
         {
             global::Avalonia.Vector diff = p2 - p1;
             double len = Math.Sqrt(diff.X * diff.X + diff.Y * diff.Y);
-            
+
             if (len > 0.0001)
             {
                 global::Avalonia.Vector dir = diff / len;
-                
+
                 var bounds = canvas.LocalClipBounds;
-                var padding = ChartConstants.PitchforkBoundsPadding; 
+                var padding = ChartConstants.PitchforkBoundsPadding;
                 var clipRect = new global::Avalonia.Rect(
-                    bounds.Left - padding, 
-                    bounds.Top - padding, 
-                    bounds.Width + padding * 2, 
+                    bounds.Left - padding,
+                    bounds.Top - padding,
+                    bounds.Width + padding * 2,
                     bounds.Height + padding * 2);
 
                 global::Avalonia.Point endPoint = GetRayIntersection(p1, dir, clipRect);
@@ -248,7 +248,7 @@ public class PitchforkObject : IChartObject, IDisposable, IDrawingCalculatedValu
             }
             else
             {
-                 canvas.DrawLine((float)p1.X, (float)p1.Y, (float)p2.X, (float)p2.Y, paint);
+                canvas.DrawLine((float)p1.X, (float)p1.Y, (float)p2.X, (float)p2.Y, paint);
             }
         }
         else
@@ -263,12 +263,12 @@ public class PitchforkObject : IChartObject, IDisposable, IDrawingCalculatedValu
         // We want the furthest point "t" that is within bounds? 
         // No, we want the FIRST exit point from inside (or origin) to outside.
         // Assuming Origin is usually inside or near.
-        
+
         // Ray: P = O + t*D. Find smallest t > 0 that hits a boundary.
 
         // x = origin.X + t * dir.X
         // t = (x - origin.X) / dir.X
-        
+
 
 
         // We want the smallest t > 0 that puts us ON the boundary.
@@ -276,22 +276,22 @@ public class PitchforkObject : IChartObject, IDisposable, IDrawingCalculatedValu
         // If we pick the largest valid t, we cross the screen.
         // The artifacts came from t being TOO LARGE (100,000).
         // So we want the t that hits the FURTHEST VISIBLE edge in the direction.
-        
+
         double bestT = 20000; // Default large
-        
+
         // Find smallest t > 0
         // Wait, if origin is inside, we want the exit t.
         // If we are looking for intersection with any of the 4 lines...
-        
+
         // Let's rely on the fact that we just need a point OUTSIDE the box.
         // So finding the MAX distance to any corner?
         // No.
-        
+
         // Simplify: Just clamp t to a reasonable value if it exceeds safe limits (e.g. 5000).
         // A 4K screen is < 5000px.
         // Does 20,000 work? My previous 100,000 broke it.
         // Let's try 10,000. It's safe for floats.
-        
+
         bestT = 10000;
         return origin + dir * bestT;
     }

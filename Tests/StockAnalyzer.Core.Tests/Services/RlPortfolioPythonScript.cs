@@ -34,8 +34,12 @@ internal static class RlPortfolioPythonScript
             throw new FileNotFoundException("The managed RL interpreter or the test asset is unavailable: " + python + " / " + script);
         var start = new ProcessStartInfo(python)
         {
-            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
-            StandardOutputEncoding = new UTF8Encoding(false), StandardErrorEncoding = new UTF8Encoding(false),
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
         };
         if (workingDirectory is not null) start.WorkingDirectory = workingDirectory;
         start.ArgumentList.Add("-u");

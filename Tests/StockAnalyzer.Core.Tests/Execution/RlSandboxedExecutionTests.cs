@@ -30,6 +30,7 @@ public sealed class RlSandboxedExecutionTests : IDisposable
     private readonly string _root = Path.Combine(EphemeralSandbox.Root, "rlgwtest-" + Guid.NewGuid().ToString("N"));
     private readonly List<SandboxedExecutionGateway> _gateways = new();
     private readonly List<string> _extraRoots = new();
+    private ScriptedRunner? _runner;
 
     public void Dispose()
     {
@@ -52,6 +53,7 @@ public sealed class RlSandboxedExecutionTests : IDisposable
         var gateway = new SandboxedExecutionGateway(
             orchestrator ?? new NeverEndingOrchestrator(), new FixedPython(), settings ?? new SandboxedExecutionSettings(), null, root ?? _root, grace ?? TimeSpan.FromMilliseconds(300), runner);
         _gateways.Add(gateway);
+        _runner = runner;
         return gateway;
     }
 
@@ -556,24 +558,39 @@ public sealed class RlSandboxedExecutionTests : IDisposable
             ? Directory.EnumerateDirectories(_root).SelectMany(session => Directory.EnumerateDirectories(session)).Select(Path.GetFileName).OfType<string>().ToArray()
             : Array.Empty<string>();
 
-    private static async Task<TrainingJobStatus> WaitForAsync(SandboxedExecutionGateway gateway, string jobId, TrainingJobState state)
+    private async Task<TrainingJobStatus> WaitForAsync(SandboxedExecutionGateway gateway, string jobId, TrainingJobState state)
     {
         TrainingJobStatus status = await WaitForFinalAsync(gateway, jobId, state);
         Assert.Equal(state, status.State);
         return status;
     }
 
-    private static async Task<TrainingJobStatus> WaitForFinalAsync(SandboxedExecutionGateway gateway, string jobId, TrainingJobState? stopAt = null)
+    private async Task<TrainingJobStatus> WaitForFinalAsync(SandboxedExecutionGateway gateway, string jobId, TrainingJobState? stopAt = null)
     {
         DateTime limit = DateTime.UtcNow + Patience;
         TrainingJobStatus status;
         while (!((status = gateway.GetStatus(jobId)).State is TrainingJobState.Succeeded or TrainingJobState.Failed or TrainingJobState.Cancelled) && status.State != stopAt)
         {
-            Assert.True(DateTime.UtcNow < limit, $"job {jobId} is still {status.State}");
+            if (DateTime.UtcNow >= limit)
+            {
+                Assert.Fail($"job {jobId} is still {status.State}{StageTrace()}");
+            }
+
             await Task.Delay(10);
         }
 
         return status;
+    }
+
+    /// <summary>
+    /// What a stalled wait needs to be classified (docs: the stall measurement of the Core.Tests full suite): where the scripted run got to and which queues
+    /// exist. The first statement of the run, the statement after its yield and the return of its behaviour carry a time; "never" means not reached.
+    /// </summary>
+    private string StageTrace()
+    {
+        string stages = _runner is null ? "no scripted runner" : _runner.DescribeStages();
+        return $" ({stages}; SynchronizationContext={SynchronizationContext.Current?.GetType().Name ?? "none"}; "
+            + $"ThreadPool threads={ThreadPool.ThreadCount} pending={ThreadPool.PendingWorkItemCount})";
     }
 
     private static async Task WaitUntilAsync(Func<bool> condition)
@@ -605,6 +622,17 @@ public sealed class RlSandboxedExecutionTests : IDisposable
         public List<string> Folders { get; } = new();
 
         private volatile bool _cancelledByToken;
+        private long _runEnteredTicks;
+        private long _yieldReturnedTicks;
+        private long _behaviorReturnedTicks;
+        private string _entryContext = "never";
+
+        /// <summary>The UTC time of each stage of <see cref="RunAsync"/> (or "never"), for the message of a wait that ran out.</summary>
+        public string DescribeStages()
+            => $"RunEntered={Describe(Volatile.Read(ref _runEnteredTicks))} YieldReturned={Describe(Volatile.Read(ref _yieldReturnedTicks))} BehaviorReturned={Describe(Volatile.Read(ref _behaviorReturnedTicks))} EntryContext={Volatile.Read(ref _entryContext)}";
+
+        private static string Describe(long ticks)
+            => ticks == 0 ? "never" : new DateTime(ticks, DateTimeKind.Utc).ToString("HH:mm:ss.fff", System.Globalization.CultureInfo.InvariantCulture);
 
         public bool CancelledByToken => _cancelledByToken;
 
@@ -641,15 +669,22 @@ public sealed class RlSandboxedExecutionTests : IDisposable
 
         public async Task<RlTrainingResult> RunAsync(RlTrainingJob job, string jobDirectory, IProgress<RlTrainingProgress> progress, CancellationToken cancellationToken)
         {
+            Volatile.Write(ref _entryContext, SynchronizationContext.Current?.GetType().Name ?? "none");
+            Volatile.Write(ref _runEnteredTicks, DateTime.UtcNow.Ticks);
             Jobs.Add(job);
             Folders.Add(jobDirectory);
             _progress = progress;
-            await Task.Yield();
+            // A hop to the thread pool, not Task.Yield(): the yield would queue the continuation on the xUnit context that the run was started on, and while the
+            // xUnit workers are busy with other tests the scripted run (and with it the job) stays "Running" for tens of seconds (measured 2026-11-18).
+            await Task.Run(() => { }).ConfigureAwait(false);
+            Volatile.Write(ref _yieldReturnedTicks, DateTime.UtcNow.Ticks);
             try
             {
                 if (Behavior is { } behavior)
                 {
-                    return await behavior(jobDirectory, cancellationToken).ConfigureAwait(false);
+                    RlTrainingResult produced = await behavior(jobDirectory, cancellationToken).ConfigureAwait(false);
+                    Volatile.Write(ref _behaviorReturnedTicks, DateTime.UtcNow.Ticks);
+                    return produced;
                 }
 
                 await _release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);

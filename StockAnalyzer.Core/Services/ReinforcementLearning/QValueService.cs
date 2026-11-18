@@ -143,18 +143,18 @@ public sealed class QValueService : IQValueService
                 RlContract.CandidateSeeds[0]);
         if (!continuous) account = RunDiscreteSteps(session, account, request.DecisionCount, Choose, cancellationToken);
         else for (int i = 0; i < request.DecisionCount; i++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (account.Terminated) throw new InvalidOperationException("Unavailable: replay cursor follows a naturally terminated episode.");
-            RlAction action = Choose(account, i);
-            var trading = (IRlContinuousTradingSession)session;
-            if (request.PolicyId == generation.Target)
             {
-                var raw = actor!.Infer(RlObservationBuilder.Build(account, model.Scaler));
-                account = trading.Step(action, raw[0], raw[1], cancellationToken).Snapshot;
+                cancellationToken.ThrowIfCancellationRequested();
+                if (account.Terminated) throw new InvalidOperationException("Unavailable: replay cursor follows a naturally terminated episode.");
+                RlAction action = Choose(account, i);
+                var trading = (IRlContinuousTradingSession)session;
+                if (request.PolicyId == generation.Target)
+                {
+                    var raw = actor!.Infer(RlObservationBuilder.Build(account, model.Scaler));
+                    account = trading.Step(action, raw[0], raw[1], cancellationToken).Snapshot;
+                }
+                else account = trading.StepFixedControl(action, cancellationToken).Snapshot;
             }
-            else account = trading.StepFixedControl(action, cancellationToken).Snapshot;
-        }
         if (account.Terminated) throw new InvalidOperationException("Unavailable: Q is not an executable action at an ended cursor.");
         ValidateAccount(account, costs, continuous);
         float[] observation = RlObservationBuilder.Build(account, model.Scaler);
@@ -189,8 +189,13 @@ public sealed class QValueService : IQValueService
                 $" Acquisition={source.Manifest.AcquisitionProvenanceStatus}; ingestion={source.Manifest.IngestionImputationStatus}; precision={source.Manifest.SourceStorageDtype}."
                 + (continuous ? " " + RlContinuousContract.Disclosure : "")
                 + (continuous && temporalEvidence is null ? " " + RlTemporalContract.LegacyDisclosure : ""), request.PolicyId)
-                { Continuous = readout, TemporalSpecificationId = generation.TemporalSpecificationId,
-                    TemporalStatus = temporalEvidence?.Status ?? generation.TemporalStatus, EvaluationConstraints = constraints, AllBlockEvaluation = expanded };
+        {
+            Continuous = readout,
+            TemporalSpecificationId = generation.TemporalSpecificationId,
+            TemporalStatus = temporalEvidence?.Status ?? generation.TemporalStatus,
+            EvaluationConstraints = constraints,
+            AllBlockEvaluation = expanded
+        };
     }
 
     /// <summary>
@@ -300,7 +305,7 @@ public sealed class QValueService : IQValueService
             RlContract.SelectAction(q), account, RlFiles.Disclosure +
                 $" Acquisition={episode.Manifest.AcquisitionProvenanceStatus}; ingestion={episode.Manifest.IngestionImputationStatus}; precision={episode.Manifest.SourceStorageDtype}."
                 + ExternalWindowDisclosure, targetPolicy)
-            { ScalerFindings = findings };
+        { ScalerFindings = findings };
 
         timings.Log(_logger, replayStart, "Ephemeral", findings.Length);
         return new RlExternalReplayResult(snapshot, asOfDate, episode.ResolvedAnchorDate);
@@ -373,8 +378,14 @@ public sealed class QValueService : IQValueService
             RlContract.SelectAction(q), account, RlFiles.Disclosure +
                 $" Acquisition={episode.Manifest.AcquisitionProvenanceStatus}; ingestion={episode.Manifest.IngestionImputationStatus}; precision={episode.Manifest.SourceStorageDtype}."
                 + ExternalWindowDisclosure, request.PolicyId)
-            { TemporalSpecificationId = generation.TemporalSpecificationId, TemporalStatus = generation.TemporalStatus,
-                ReplayScope = scope, OverlappingParts = parts, ScalerFindings = findings, ContinuityFindings = continuity };
+        {
+            TemporalSpecificationId = generation.TemporalSpecificationId,
+            TemporalStatus = generation.TemporalStatus,
+            ReplayScope = scope,
+            OverlappingParts = parts,
+            ScalerFindings = findings,
+            ContinuityFindings = continuity
+        };
         timings.Log(_logger, replayStart, scope.ToString(), findings.Length);
         return new RlExternalReplayResult(snapshot, request.AnchorDate, episode.ResolvedAnchorDate);
     }

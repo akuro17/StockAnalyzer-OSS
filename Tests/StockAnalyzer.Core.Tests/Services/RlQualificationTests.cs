@@ -70,12 +70,18 @@ public sealed class RlQualificationTests
             model_path = Path.Combine(directory, RlFiles.Model),
             model_sha256 = StockAnalyzer.Core.Common.ContentHash.OfFile(Path.Combine(directory, RlFiles.Model)),
             observation_sha256 = StockAnalyzer.Core.Common.ContentHash.OfFile(Path.Combine(directory, RlFiles.Parity)),
-            input_shape = new[] { 1, RlContract.ObservationLength }, output_shape = new[] { 1, RlContract.ActionCount },
-            provider = "CPUExecutionProvider", intra_op_threads = RlContract.CpuThreads, inter_op_threads = RlContract.CpuThreads,
+            input_shape = new[] { 1, RlContract.ObservationLength },
+            output_shape = new[] { 1, RlContract.ActionCount },
+            provider = "CPUExecutionProvider",
+            intra_op_threads = RlContract.CpuThreads,
+            inter_op_threads = RlContract.CpuThreads,
             runtime = Microsoft.ML.OnnxRuntime.OrtEnv.Instance().GetVersionString(),
-            warmup_calls = RlContract.InferenceWarmupCalls, measured_calls = RlContract.InferenceMeasuredCalls,
-            managed_allocated_bytes = managed, managed_bytes_per_call = managed / (decimal)RlContract.InferenceMeasuredCalls,
-            process_private_before_bytes = privateBefore, process_private_after_bytes = privateAfter,
+            warmup_calls = RlContract.InferenceWarmupCalls,
+            measured_calls = RlContract.InferenceMeasuredCalls,
+            managed_allocated_bytes = managed,
+            managed_bytes_per_call = managed / (decimal)RlContract.InferenceMeasuredCalls,
+            process_private_before_bytes = privateBefore,
+            process_private_after_bytes = privateAfter,
             process_private_delta_bytes = privateAfter - privateBefore,
             native_measurement_limit = "Process private memory is a process-wide proxy, not isolated native allocator accounting. No zero-native-allocation assertion is made.",
             measured_elapsed_ms = ticks * 1000d / Stopwatch.Frequency,
@@ -91,9 +97,13 @@ public sealed class RlQualificationTests
         using var registry = new ModelGenerationRegistry(Path.Combine(root, "Generations"));
         var service = new RlTrainingService(registry, new TrainingJobGate(Path.Combine(root, "job-locks")), dataRoot: root);
         var job = new RlTrainingJob("AAPL", new DateOnly(1990, 1, 1), DateOnly.FromDateTime(DateTime.UtcNow),
-            new BacktestConfiguration { InitialCapital = BacktestDefaults.InitialCapital,
-                SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter,
-                LiquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio },
+            new BacktestConfiguration
+            {
+                InitialCapital = BacktestDefaults.InitialCapital,
+                SizingModel = BacktestDefaults.SizingModel,
+                SizingParameter = BacktestDefaults.SizingParameter,
+                LiquidationPenaltyRatio = BacktestDefaults.LiquidationPenaltyRatio
+            },
             SmokeOnly: smoke);
         var progress = new Progress<RlTrainingProgress>(p => File.AppendAllText(Path.Combine(root, "progress.log"),
             $"{DateTimeOffset.UtcNow:O} {p.State} {p.CompletedSteps} {p.Message}{Environment.NewLine}"));

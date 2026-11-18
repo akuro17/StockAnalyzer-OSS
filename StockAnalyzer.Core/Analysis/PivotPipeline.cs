@@ -27,7 +27,7 @@ public static class PivotPipeline
         for (int i = 0; i < pivots.Count; i++)
         {
             var current = pivots[i];
-            
+
             if (current.Type == FractalPivotType.High)
             {
                 if (lastHigh.HasValue)

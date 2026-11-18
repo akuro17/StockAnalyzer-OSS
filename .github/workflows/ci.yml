@@ -32,13 +32,40 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Cold Restore Dependencies
-        run: dotnet restore StockAnalyzer.sln --force
+        run: |
+          dotnet restore StockAnalyzer.sln --force
+          dotnet restore Tests/StockAnalyzer.Avalonia.Tests/StockAnalyzer.Avalonia.Tests.csproj --force
+          dotnet restore Tests/StockAnalyzer.Core.IsolationTests/StockAnalyzer.Core.IsolationTests.csproj --force
+
+      # Tests/StockAnalyzer.Tests.csproj targets net8.0-windows (UseWPF) and holds the MCP server tests, so its steps run on the Windows job only
+      # (CiWorkflowTargetFrameworkGuardTests enforces this for every project the workflow names).
+      - name: Cold Restore Windows-Only Test Project
+        if: runner.os == 'Windows'
+        run: dotnet restore Tests/StockAnalyzer.Tests.csproj --force
 
       - name: Clean Release Build
         run: dotnet build StockAnalyzer.sln -c Release --no-incremental
 
+      # These test projects are not members of StockAnalyzer.sln, so the solution build above does not build them: without an explicit build
+      # their --no-build runs below would find no assembly or a stale one.
+      - name: Build Test Projects Outside The Solution
+        run: |
+          dotnet build Tests/StockAnalyzer.Avalonia.Tests/StockAnalyzer.Avalonia.Tests.csproj -c Release --no-incremental
+          dotnet build Tests/StockAnalyzer.Core.IsolationTests/StockAnalyzer.Core.IsolationTests.csproj -c Release --no-incremental
+
+      - name: Build Windows-Only Test Project
+        if: runner.os == 'Windows'
+        run: dotnet build Tests/StockAnalyzer.Tests.csproj -c Release --no-incremental
+
       - name: Run Cross-Platform Core Tests
         run: dotnet test Tests/StockAnalyzer.Core.Tests/StockAnalyzer.Core.Tests.csproj -c Release --no-build --verbosity normal
+
+      - name: Run Core Isolation Tests
+        run: dotnet test Tests/StockAnalyzer.Core.IsolationTests/StockAnalyzer.Core.IsolationTests.csproj -c Release --no-build --verbosity normal
+
+      - name: Run MCP Server And Main Unit Tests
+        if: runner.os == 'Windows'
+        run: dotnet test Tests/StockAnalyzer.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=E2E&FullyQualifiedName!~UITests"
 
       - name: Run Cross-Platform Avalonia Unit Tests
         run: dotnet test Tests/StockAnalyzer.Avalonia.Tests/StockAnalyzer.Avalonia.Tests.csproj -c Release --no-build --verbosity normal --filter "Category!=E2E&FullyQualifiedName!~UITests"

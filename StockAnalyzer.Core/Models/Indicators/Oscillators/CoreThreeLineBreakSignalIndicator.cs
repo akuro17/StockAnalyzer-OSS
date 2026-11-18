@@ -38,7 +38,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             var values = new decimal?[candles.Count];
 
             var blocks = new List<TlbBlock>();
-            
+
             // Initialization phase (find first trend)
             int startIndex = 0;
             bool? isUpTrend = null;

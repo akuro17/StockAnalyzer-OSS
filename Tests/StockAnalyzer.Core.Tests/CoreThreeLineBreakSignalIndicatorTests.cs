@@ -23,7 +23,7 @@ namespace StockAnalyzer.Core.Tests
             var indicator = new CoreThreeLineBreakSignalIndicator();
             var candles = CreateTestCandles(new decimal[] { 10, 11, 12, 13, 14 });
             var result = indicator.Calculate(candles);
-            
+
             Assert.True(result.IsSuccessful);
             Assert.True(result.HasSeries("Histogram"));
             Assert.Equal(5, result.GetSeries("Histogram").Count);

@@ -42,7 +42,7 @@ public enum ChartAxisMode
 public class GenericCoordinateTransform : ICoordinateTransform
 {
     private ChartAxisMode _mode;
-    
+
     // Domain Bounds (Logical)
     private DateTime _minTime;
     private DateTime _maxTime;
@@ -71,10 +71,10 @@ public class GenericCoordinateTransform : ICoordinateTransform
     public double ViewportHeight { get; private set; }
 
     // Screen Mapping Coefficients
-    private double _scaleX; 
+    private double _scaleX;
     private double _scaleY;
     private double _offsetY;
-    
+
     // Intrinsic Padding to prevent borderline clipping
     private double _currentPaddingX = 8.0; // Dynamic, to protect the right-half of thick candle bodies and labels
     private double _currentPaddingY = 5.0; // Dynamic, to protect vertical clipping
@@ -128,15 +128,15 @@ public class GenericCoordinateTransform : ICoordinateTransform
     {
         if (canvasWidth <= 0) canvasWidth = 1000;
         if (canvasHeight <= 0) canvasHeight = 500;
-            
+
         _mode = mode;
         CanvasWidth = canvasWidth;
         CanvasHeight = canvasHeight;
-        
+
         // Ensure Viewport variables are initialized so standalone panel configurations don't collapse.
         ViewportWidth = canvasWidth;
         ViewportHeight = canvasHeight;
-        
+
         // Default ranges
         _minTime = DateTime.Now.AddDays(-1);
         _maxTime = DateTime.Now;
@@ -199,7 +199,7 @@ public class GenericCoordinateTransform : ICoordinateTransform
     public double GetFractionalIndex(DateTime time)
     {
         if (_timeMap == null || _timeMap.Count == 0) return 0;
-        
+
         double avgMs = (_timeMap[^1] - _timeMap[0]).TotalMilliseconds / _timeMap.Count;
         if (avgMs <= 0) avgMs = TimeSpan.FromDays(1).TotalMilliseconds;
 
@@ -225,7 +225,7 @@ public class GenericCoordinateTransform : ICoordinateTransform
 
         DateTime t1 = _timeMap[high];
         DateTime t2 = _timeMap[low];
-        
+
         double ratio = (time - t1).TotalMilliseconds / (t2 - t1).TotalMilliseconds;
         return high + ratio;
     }
@@ -262,10 +262,10 @@ public class GenericCoordinateTransform : ICoordinateTransform
     {
         if (width > 0) CanvasWidth = width;
         if (height > 0) CanvasHeight = height;
-        
+
         ViewportX = vX;
         ViewportY = vY;
-        
+
         // Instead of falling back to CanvasWidth/Height (which causes massive visual protrusion if the 
         // layout provider temporally returns a completely squashed/negative ChartArea), force clamping 
         // to exactly 1.0 so that invalid layout frames just render safely out of sight (above the clip rect).
@@ -283,7 +283,7 @@ public class GenericCoordinateTransform : ICoordinateTransform
     {
         SetTimeRange(minTime, maxTime);
         SetPriceRange(minPrice, maxPrice);
-        
+
         if (newCanvasWidth.HasValue && newCanvasHeight.HasValue)
         {
             UpdateCanvasSize(newCanvasWidth.Value, newCanvasHeight.Value);
@@ -298,7 +298,7 @@ public class GenericCoordinateTransform : ICoordinateTransform
 
         double availableHeight = ViewportHeight - (_currentPaddingY * 2);
         if (availableHeight <= 0) availableHeight = 1;
-        
+
         if (PriceScale == PriceScaleType.Log)
         {
             double safeMin = _minPrice > 0m ? (double)_minPrice : Math.Max(0.0001, (double)_maxPrice * 0.01);
@@ -334,7 +334,7 @@ public class GenericCoordinateTransform : ICoordinateTransform
                 _maxIndex = GetFractionalIndex(_maxTime);
                 double gaplessRange = _maxIndex - _minIndex;
                 if (gaplessRange <= 0) gaplessRange = 1;
-                
+
                 _scaleX = availableWidth / gaplessRange;
 
                 // Dynamic padding: If scaled unit is wider than twice the padding,
@@ -484,7 +484,7 @@ public class GenericCoordinateTransform : ICoordinateTransform
     {
         double x = GetXFromTime(chartPoint.Time);
         double y = GetYFromPrice(chartPoint.Price);
-        
+
         // Return local screen position (Renderers translate canvas to chart area offset)
         return new global::Avalonia.Point(x, y);
     }
@@ -527,9 +527,12 @@ public class GenericCoordinateTransform : ICoordinateTransform
                 }
                 else
                 {
-                    try {
+                    try
+                    {
                         timeOrValue = _minTime.AddMilliseconds(msFromStart);
-                    } catch {
+                    }
+                    catch
+                    {
                         timeOrValue = _minTime;
                     }
                 }
@@ -538,9 +541,12 @@ public class GenericCoordinateTransform : ICoordinateTransform
             case ChartAxisMode.GaplessTime:
                 double fracIdxFromStart = relX / _scaleX;
                 double globalFracIdx = _minIndex + fracIdxFromStart;
-                try {
+                try
+                {
                     timeOrValue = GetTimeFromFractionalIndex(globalFracIdx);
-                } catch {
+                }
+                catch
+                {
                     timeOrValue = _minTime; // Safety fallback
                 }
                 break;
@@ -549,13 +555,16 @@ public class GenericCoordinateTransform : ICoordinateTransform
                 double idxFromStart = relX / _scaleX;
                 double targetIdx = _minIndex + idxFromStart;
                 if (targetIdx < 0) targetIdx = 0;
-                
+
                 // WebAI: TimeMapが存在する場合、インデックスからリアルタイムを逆算して描画オブジェクトの時間トラッキングを可能にする
                 if (_timeMap != null && _timeMap.Count > 0)
                 {
-                    try {
+                    try
+                    {
                         timeOrValue = GetTimeFromFractionalIndex(targetIdx);
-                    } catch {
+                    }
+                    catch
+                    {
                         if (targetIdx > DateTime.MaxValue.Ticks) targetIdx = DateTime.MaxValue.Ticks;
                         timeOrValue = new DateTime((long)targetIdx);
                     }
@@ -571,9 +580,12 @@ public class GenericCoordinateTransform : ICoordinateTransform
                 double volFromStart = relX / _scaleX;
                 decimal targetVol = _minVolume + (decimal)volFromStart;
                 // Store as Ticks (ensure within long range, usually volume fits)
-                try {
+                try
+                {
                     timeOrValue = new DateTime((long)targetVol);
-                } catch {
+                }
+                catch
+                {
                     timeOrValue = new DateTime(0);
                 }
                 break;

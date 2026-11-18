@@ -14,7 +14,7 @@ namespace StockAnalyzer.Core.Tests.ZeroAllocation
             var dark1 = ThemeColors.Dark;
             var dark2 = ThemeColors.Dark;
             Assert.Same(dark1, dark2);
-            
+
             var light1 = ThemeColors.Light;
             var light2 = ThemeColors.Light;
             Assert.Same(light1, light2);
@@ -30,7 +30,7 @@ namespace StockAnalyzer.Core.Tests.ZeroAllocation
 
             // Start monitoring allocations on the current thread
             long startBytes = GC.GetAllocatedBytesForCurrentThread();
-            
+
             // Perform multiple accesses to various properties
             for (int i = 0; i < 100; i++)
             {
@@ -51,7 +51,7 @@ namespace StockAnalyzer.Core.Tests.ZeroAllocation
             // of a record/class should not result in any heap allocations.
             Assert.Equal(0, totalAllocated);
         }
-        
+
         [Fact]
         public void ThemeColors_Light_Values_MatchStrictSpec()
         {

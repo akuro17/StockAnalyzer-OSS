@@ -28,7 +28,7 @@ public class CoreStochasticParameter : CoreIndicatorParameterBase
         get => _dPeriod;
         set => SetProperty(ref _dPeriod, value);
     }
-    
+
     private int _smooth = 3;
 
     [CoreParameterRange(1, 10000)]
@@ -47,8 +47,8 @@ public class CoreStochasticParameter : CoreIndicatorParameterBase
 
     public override void Validate()
     {
-         if (KPeriod <= 0) throw new ArgumentOutOfRangeException(nameof(KPeriod));
-         if (DPeriod <= 0) throw new ArgumentOutOfRangeException(nameof(DPeriod));
-         if (Smooth <= 0) throw new ArgumentOutOfRangeException(nameof(Smooth));
+        if (KPeriod <= 0) throw new ArgumentOutOfRangeException(nameof(KPeriod));
+        if (DPeriod <= 0) throw new ArgumentOutOfRangeException(nameof(DPeriod));
+        if (Smooth <= 0) throw new ArgumentOutOfRangeException(nameof(Smooth));
     }
 }

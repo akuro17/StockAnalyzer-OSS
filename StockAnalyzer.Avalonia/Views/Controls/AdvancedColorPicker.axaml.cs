@@ -17,8 +17,8 @@ public partial class AdvancedColorPicker : UserControl
 {
     public static readonly StyledProperty<IndicatorColor> ColorProperty =
         AvaloniaProperty.Register<AdvancedColorPicker, IndicatorColor>(
-            nameof(Color), 
-            defaultValue: IndicatorColor.Gray, 
+            nameof(Color),
+            defaultValue: IndicatorColor.Gray,
             defaultBindingMode: BindingMode.TwoWay);
 
     public IndicatorColor Color

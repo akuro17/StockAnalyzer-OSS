@@ -11,7 +11,7 @@ public class IndicatorResult : IIndicatorResult
 {
     public IEnumerator<decimal?> GetEnumerator() => MainValues.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
-    
+
     public int Count => MainValues.Count;
     public decimal? this[int index] => MainValues[index];
 
@@ -73,8 +73,8 @@ public class IndicatorResult : IIndicatorResult
         _seriesLabels = new Dictionary<string, string>();
         foreach (var seriesName in SeriesNamesList)
         {
-            _seriesLabels[seriesName] = seriesName == MainSeriesName 
-                ? indicatorShortName 
+            _seriesLabels[seriesName] = seriesName == MainSeriesName
+                ? indicatorShortName
                 : $"{indicatorShortName} ({seriesName})";
         }
     }

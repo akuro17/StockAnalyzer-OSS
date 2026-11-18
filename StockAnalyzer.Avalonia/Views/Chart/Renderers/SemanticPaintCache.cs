@@ -25,13 +25,13 @@ public sealed class SemanticPaintCache : IDisposable
     {
         // Reference equality check is sufficient if ThemeColors is replaced on change
         if (ReferenceEquals(_lastTheme, theme)) return;
-        
+
         _lastTheme = theme;
-        
+
         foreach (SemanticRole role in _allRoles)
         {
             var color = theme.GetSemanticColor(role);
-            
+
             // Update Stroke Paint
             if (!_strokePaints.TryGetValue(role, out var strokePaint))
             {
@@ -55,7 +55,7 @@ public sealed class SemanticPaintCache : IDisposable
                 };
                 _fillPaints[role] = fillPaint;
             }
-            
+
             // For fill, we might want to apply a default transparency for certain roles
             var fillColor = (role == SemanticRole.Support || role == SemanticRole.Resistance || role == SemanticRole.Neutral)
                 ? color.ToSkColor().WithAlpha(30) // Subtle tint

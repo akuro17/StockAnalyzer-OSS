@@ -37,7 +37,7 @@ public class SemanticRoleTests
     {
         // Arrange
         var theme = ThemeColors.Light;
-        
+
         // Act
         var color = theme.GetSemanticColor(role);
 
@@ -86,7 +86,7 @@ public class SemanticRoleTests
     {
         // Arrange
         var theme = ThemeColors.Dark;
-        
+
         // Act
         var bullishColor = theme.GetSemanticColor(SemanticRole.Bullish);
         var bearishColor = theme.GetSemanticColor(SemanticRole.Bearish);

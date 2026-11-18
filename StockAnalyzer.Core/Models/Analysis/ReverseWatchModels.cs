@@ -40,7 +40,7 @@ public sealed class ReverseWatchCurveData
     public required ReverseWatchCurveBounds Bounds { get; init; }
     public required int Period { get; init; }
     public required string StockCode { get; init; }
-    
+
     // Debug Info for Visualization
     public double ScalingFactor { get; init; } = 1.0;
     public double LastAngleDegrees { get; init; }

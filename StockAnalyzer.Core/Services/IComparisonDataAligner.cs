@@ -11,11 +11,11 @@ namespace StockAnalyzer.Core.Services;
 public interface IComparisonDataAligner
 {
     int MaxComparisonSymbols { get; set; }
-    
+
     Task<ComparisonAlignedData> AlignAsync(
-        string primarySymbol, 
-        IReadOnlyList<string> comparisonSymbols, 
-        TimeFrame timeFrame, 
+        string primarySymbol,
+        IReadOnlyList<string> comparisonSymbols,
+        TimeFrame timeFrame,
         int candleCount,
         CancellationToken ct = default);
 }

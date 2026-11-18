@@ -19,12 +19,12 @@ public readonly struct ChartLayoutContext
     public float MarginRight { get; }
 
     public ChartLayoutContext(
-        Rect totalBounds, 
-        Rect chartArea, 
-        Rect volumeArea, 
+        Rect totalBounds,
+        Rect chartArea,
+        Rect volumeArea,
         IReadOnlyList<Rect> panelAreas,
-        float marginTop, 
-        float marginBottom, 
+        float marginTop,
+        float marginBottom,
         float marginLeft,
         float marginRight)
     {

@@ -1013,7 +1013,10 @@ public sealed class BacktestEvaluationServiceTests
             input, configuration, BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()), Options(input, 7));
         BacktestReportOptions matching = new(input.Frame, 0, input.EvaluationStartUtc, input.EvaluationEndUtc)
         {
-            AnnualPeriods = 252, BootstrapSeed = 7, BootstrapIterations = 1000, TradingStartIndex = 4,
+            AnnualPeriods = 252,
+            BootstrapSeed = 7,
+            BootstrapIterations = 1000,
+            TradingStartIndex = 4,
         };
         BacktestEvaluationArtifact supplied = Service(new ResultEngine(result), new NoSamplingEvidenceTrustPolicy()).Evaluate(
             input, configuration, BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()), matching);
@@ -1030,7 +1033,10 @@ public sealed class BacktestEvaluationServiceTests
         BacktestInput input = InputWithTradingStart(count: 10, historyStart: 0, tradingStart: 4);
         BacktestReportOptions mismatching = new(input.Frame, 0, input.EvaluationStartUtc, input.EvaluationEndUtc)
         {
-            AnnualPeriods = 252, BootstrapSeed = 7, BootstrapIterations = 1000, TradingStartIndex = 2,
+            AnnualPeriods = 252,
+            BootstrapSeed = 7,
+            BootstrapIterations = 1000,
+            TradingStartIndex = 2,
         };
 
         Assert.Throws<ArgumentException>(() => Service(new ResultEngine(HeldFrom(configuration, 10, 4)), new NoSamplingEvidenceTrustPolicy()).Evaluate(

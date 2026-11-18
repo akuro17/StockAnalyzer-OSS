@@ -322,12 +322,12 @@ public class PortfolioManager : IPortfolioManager
     public Portfolio ApplyTransaction(Portfolio current, Transaction transaction)
     {
         var nextHistory = current.History.Concat(new[] { transaction }).ToList();
-        
+
         var oldResult = ProcessTransactions(0m, current.History);
         var newResult = ProcessTransactions(0m, nextHistory);
-        
+
         decimal finalCash = current.CashBalance + (newResult.Cash - oldResult.Cash);
-        
+
         var finalCashBalances = new Dictionary<CurrencyCode, decimal>(current.CashBalances);
         foreach (var kvp in newResult.CashBalances)
         {
@@ -363,7 +363,7 @@ public class PortfolioManager : IPortfolioManager
     }
 
     public PortfolioEvaluationResult Evaluate(
-        Portfolio portfolio, 
+        Portfolio portfolio,
         IReadOnlyDictionary<string, decimal> latestPrices,
         IReadOnlyDictionary<CurrencyCode, ExchangeRate> latestRates,
         CurrencyCode targetBaseCurrency)
@@ -387,7 +387,7 @@ public class PortfolioManager : IPortfolioManager
     }
 
     public PortfolioMetrics GetMetrics(
-        Portfolio portfolio, 
+        Portfolio portfolio,
         IReadOnlyDictionary<string, decimal> latestPrices,
         IReadOnlyDictionary<CurrencyCode, ExchangeRate> latestRates,
         CurrencyCode targetBaseCurrency)
@@ -400,9 +400,9 @@ public class PortfolioManager : IPortfolioManager
     /// Optionally populates detail dictionaries if they are not null.
     /// </summary>
     private PortfolioMetrics Calculate(
-        Portfolio portfolio, 
-        IReadOnlyDictionary<string, decimal> latestPrices, 
-        Dictionary<string, decimal>? positionValues, 
+        Portfolio portfolio,
+        IReadOnlyDictionary<string, decimal> latestPrices,
+        Dictionary<string, decimal>? positionValues,
         Dictionary<string, decimal>? positionPLs)
     {
         decimal totalPositionValue = 0;
@@ -414,11 +414,11 @@ public class PortfolioManager : IPortfolioManager
             var position = kvp.Value;
             decimal currentPrice;
             decimal pl = 0;
-            
+
             if (latestPrices.TryGetValue(position.Ticker, out var price))
             {
                 currentPrice = price;
-                pl = position.IsShort 
+                pl = position.IsShort
                     ? position.Quantity * (position.AverageCostPerUnit - currentPrice)
                     : position.Quantity * (currentPrice - position.AverageCostPerUnit);
                 totalUnrealizedPL += pl;
@@ -428,8 +428,8 @@ public class PortfolioManager : IPortfolioManager
                 currentPrice = position.AverageCostPerUnit;
             }
 
-            var value = position.IsShort 
-                ? -position.Quantity * currentPrice 
+            var value = position.IsShort
+                ? -position.Quantity * currentPrice
                 : position.Quantity * currentPrice;
             totalPositionValue += value;
 
@@ -450,8 +450,8 @@ public class PortfolioManager : IPortfolioManager
     }
 
     private PortfolioMetrics Calculate(
-        Portfolio portfolio, 
-        IReadOnlyDictionary<string, decimal> latestPrices, 
+        Portfolio portfolio,
+        IReadOnlyDictionary<string, decimal> latestPrices,
         IReadOnlyDictionary<CurrencyCode, ExchangeRate> latestRates,
         CurrencyCode targetBaseCurrency,
         Dictionary<string, decimal>? positionValues,
@@ -490,7 +490,7 @@ public class PortfolioManager : IPortfolioManager
             var position = kvp.Value;
             var assetCurrency = position.AverageCost.Currency;
             decimal currentPriceLocal;
-            
+
             if (latestPrices.TryGetValue(position.Ticker, out var price))
             {
                 currentPriceLocal = price;
@@ -501,11 +501,11 @@ public class PortfolioManager : IPortfolioManager
             }
 
             // Calculate valuation and PnL in asset's native currency
-            var marketValueLocal = position.IsShort 
-                ? -position.Quantity * currentPriceLocal 
+            var marketValueLocal = position.IsShort
+                ? -position.Quantity * currentPriceLocal
                 : position.Quantity * currentPriceLocal;
 
-            var plLocal = position.IsShort 
+            var plLocal = position.IsShort
                 ? position.Quantity * (position.AverageCostPerUnit - currentPriceLocal)
                 : position.Quantity * (currentPriceLocal - position.AverageCostPerUnit);
 
@@ -641,8 +641,8 @@ public class PortfolioManager : IPortfolioManager
     }
 
     public async Task<AllocationResult> GetAllocationAsync(
-        Portfolio portfolio, 
-        IReadOnlyDictionary<string, decimal> latestPrices, 
+        Portfolio portfolio,
+        IReadOnlyDictionary<string, decimal> latestPrices,
         IMarketDataProvider marketDataProvider)
     {
         decimal totalEquityValue = 0;
@@ -675,10 +675,10 @@ public class PortfolioManager : IPortfolioManager
         var totalValue = totalEquityValue + portfolio.CashBalance;
 
         // 2. Perform LRM for Asset Allocations (Equity vs Cash)
-        var assetRaw = new List<(string Category, decimal Value)> 
-        { 
-            (StockAnalyzer.Core.Constants.LayoutConstants.CategoryEquity, totalEquityValue), 
-            (StockAnalyzer.Core.Constants.LayoutConstants.CategoryCash, portfolio.CashBalance) 
+        var assetRaw = new List<(string Category, decimal Value)>
+        {
+            (StockAnalyzer.Core.Constants.LayoutConstants.CategoryEquity, totalEquityValue),
+            (StockAnalyzer.Core.Constants.LayoutConstants.CategoryCash, portfolio.CashBalance)
         };
         var assetAllocations = ApplyLrm(assetRaw, totalValue);
 
@@ -686,7 +686,7 @@ public class PortfolioManager : IPortfolioManager
         var sectorRaw = sectorValueMap
             .Select(kvp => (Category: kvp.Key, Value: kvp.Value))
             .ToList();
-        
+
         if (portfolio.CashBalance > 0)
         {
             sectorRaw.Add((Category: StockAnalyzer.Core.Constants.LayoutConstants.CategoryCash, Value: portfolio.CashBalance));
@@ -843,8 +843,9 @@ public class PortfolioManager : IPortfolioManager
 
         // Target 100.00% as 10000 units
         const int targetUnits = 10000;
-        
-        var temp = rawEntries.Select(e => {
+
+        var temp = rawEntries.Select(e =>
+        {
             decimal exactUnits = (e.Value / totalValue) * targetUnits;
             int floorUnits = (int)Math.Floor(exactUnits);
             decimal remainder = exactUnits - floorUnits;
@@ -860,7 +861,7 @@ public class PortfolioManager : IPortfolioManager
         {
             int units = temp[i].Units;
             if (i < deficit) units++;
-            
+
             finalized.Add(new AllocationEntry(temp[i].Category, temp[i].Value, units / 100m));
         }
 

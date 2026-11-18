@@ -31,29 +31,29 @@ public sealed class WalkForwardDataRequirementEquivalenceTests
         var clock = Stopwatch.StartNew();
         int tuples = 0;
         foreach (int k in SplitCounts)
-        foreach (int w in Windows)
-        foreach (int h in Horizons)
-        foreach (int lag in Lags)
-        foreach (int? gap in new int?[] { null, 0, k + 1 })
-        foreach (bool calibration in Calibrations)
-        {
-            tuples++;
-            long windowOffset = (long)w + h - 1;
-            long resolvedGap = gap ?? windowOffset;
-            long depth = windowOffset + lag;
-            string label = $"K={k} W={w} H={h} L={lag} gap={(gap?.ToString() ?? "null")} calibration={calibration}";
+            foreach (int w in Windows)
+                foreach (int h in Horizons)
+                    foreach (int lag in Lags)
+                        foreach (int? gap in new int?[] { null, 0, k + 1 })
+                            foreach (bool calibration in Calibrations)
+                            {
+                                tuples++;
+                                long windowOffset = (long)w + h - 1;
+                                long resolvedGap = gap ?? windowOffset;
+                                long depth = windowOffset + lag;
+                                string label = $"K={k} W={w} H={h} L={lag} gap={(gap?.ToString() ?? "null")} calibration={calibration}";
 
-            int minimum = WalkForwardDataRequirement.MinimumRawBarsForTraining(w, h, k, gap, lag, calibration);
-            long smin = minimum - windowOffset - lag;   // the windowed-sample count at the minimum raw count
+                                int minimum = WalkForwardDataRequirement.MinimumRawBarsForTraining(w, h, k, gap, lag, calibration);
+                                long smin = minimum - windowOffset - lag;   // the windowed-sample count at the minimum raw count
 
-            Assert.True(WalkForwardDataRequirement.TrainingRunFeasible(smin, k, resolvedGap, depth, calibration), $"{label}: smin={smin} must be feasible");
-            Assert.True(smin >= 1, $"{label}: smin={smin}");
-            Assert.False(WalkForwardDataRequirement.TrainingRunFeasible(smin - 1, k, resolvedGap, depth, calibration), $"{label}: smin-1 must be infeasible");
+                                Assert.True(WalkForwardDataRequirement.TrainingRunFeasible(smin, k, resolvedGap, depth, calibration), $"{label}: smin={smin} must be feasible");
+                                Assert.True(smin >= 1, $"{label}: smin={smin}");
+                                Assert.False(WalkForwardDataRequirement.TrainingRunFeasible(smin - 1, k, resolvedGap, depth, calibration), $"{label}: smin-1 must be infeasible");
 
-            long upper = (long)SweepFactor * (k + 1) * (resolvedGap + depth + 2);
-            for (long t = smin; t <= upper; t++)
-                Assert.True(WalkForwardDataRequirement.TrainingRunFeasible(t, k, resolvedGap, depth, calibration), $"{label}: t={t} must be feasible");
-        }
+                                long upper = (long)SweepFactor * (k + 1) * (resolvedGap + depth + 2);
+                                for (long t = smin; t <= upper; t++)
+                                    Assert.True(WalkForwardDataRequirement.TrainingRunFeasible(t, k, resolvedGap, depth, calibration), $"{label}: t={t} must be feasible");
+                            }
 
         Assert.Equal(SplitCounts.Length * Windows.Length * Horizons.Length * Lags.Length * 3 * Calibrations.Length, tuples);
         Assert.True(clock.Elapsed < Budget, $"The grid took {clock.Elapsed}; reduce {nameof(SweepFactor)} and record it in the step log.");

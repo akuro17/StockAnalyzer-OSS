@@ -11,7 +11,7 @@ public partial class EditTransactionDialog : Window
     public EditTransactionDialog()
     {
         InitializeComponent();
-        
+
         var datePicker = this.FindControl<CalendarDatePicker>("ExecutedAtDatePicker");
         if (datePicker != null)
         {

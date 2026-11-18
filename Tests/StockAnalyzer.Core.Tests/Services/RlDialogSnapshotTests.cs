@@ -44,7 +44,8 @@ public sealed partial class RlGenerationAndQValueTests
         cancel.Cancel(); await Assert.ThrowsAnyAsync<OperationCanceledException>(() => snapshot);
     }
     [Theory]
-    [InlineData(false)] [InlineData(true)]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task U01_ReplayLeaseCoversAwaitAndReleasesOnFailureAndCancellation(bool cancelRequest)
     {
         using var registry = new ModelGenerationRegistry(RegistryRoot);

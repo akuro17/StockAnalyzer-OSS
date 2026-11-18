@@ -220,7 +220,7 @@ public class DivergenceCrossDetectorTests
     {
         // Short series crosses above long series
         var shortSeries = new List<decimal?> { 10m, 12m, 14m, 16m, 18m };
-        var longSeries = new List<decimal?>  { 15m, 15m, 15m, 15m, 15m };
+        var longSeries = new List<decimal?> { 15m, 15m, 15m, 15m, 15m };
 
         var signals = DivergenceCrossDetector.DetectCrosses(shortSeries, longSeries);
 
@@ -234,7 +234,7 @@ public class DivergenceCrossDetectorTests
     {
         // Short series crosses below long series
         var shortSeries = new List<decimal?> { 20m, 18m, 16m, 14m, 12m };
-        var longSeries = new List<decimal?>  { 15m, 15m, 15m, 15m, 15m };
+        var longSeries = new List<decimal?> { 15m, 15m, 15m, 15m, 15m };
 
         var signals = DivergenceCrossDetector.DetectCrosses(shortSeries, longSeries);
 
@@ -248,7 +248,7 @@ public class DivergenceCrossDetectorTests
     {
         // Multiple crosses
         var shortSeries = new List<decimal?> { 10m, 20m, 10m, 20m, 10m };
-        var longSeries = new List<decimal?>  { 15m, 15m, 15m, 15m, 15m };
+        var longSeries = new List<decimal?> { 15m, 15m, 15m, 15m, 15m };
 
         var signals = DivergenceCrossDetector.DetectCrosses(shortSeries, longSeries);
 
@@ -260,7 +260,7 @@ public class DivergenceCrossDetectorTests
     {
         // Short always above long
         var shortSeries = new List<decimal?> { 20m, 22m, 24m, 26m };
-        var longSeries = new List<decimal?>  { 10m, 10m, 10m, 10m };
+        var longSeries = new List<decimal?> { 10m, 10m, 10m, 10m };
 
         var signals = DivergenceCrossDetector.DetectCrosses(shortSeries, longSeries);
 
@@ -271,7 +271,7 @@ public class DivergenceCrossDetectorTests
     public void DetectCrosses_WithNullValues_SkipsNulls()
     {
         var shortSeries = new List<decimal?> { null, null, 10m, 20m };
-        var longSeries = new List<decimal?>  { null, null, 15m, 15m };
+        var longSeries = new List<decimal?> { null, null, 15m, 15m };
 
         var signals = DivergenceCrossDetector.DetectCrosses(shortSeries, longSeries);
 

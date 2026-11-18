@@ -97,7 +97,7 @@ public static class PatternFormationValidator
         // Prevent very short legs (like a 1-candle spike) from creating artificially high ratios.
         // Assume anything under 3 bars is "just a quick spike" and cap the min denominator.
         double effectiveMin = Math.Max(3.0, minDuration);
-        
+
         double ratio = (double)maxDuration / effectiveMin;
         return ratio <= maxRatio;
     }

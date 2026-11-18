@@ -14,6 +14,22 @@ StockAnalyzer is an open-source, cross-platform desktop application for stock an
 
 ---
 
+## Download
+
+Pre-built development binaries are available on GitHub Releases:
+
+- [StockAnalyzer OSS - Development Build (`latest-dev`)](https://github.com/akuro17/StockAnalyzer-OSS/releases/tag/latest-dev)
+
+Release archives are published as `StockAnalyzer-<rid>-<mode>.zip` for `win-x64`, `linux-x64`, and `osx-x64` in two packaging modes:
+
+- `self-contained`: Bundles the .NET 8 runtime (`StockAnalyzer.Avalonia` and `StockAnalyzer.McpServer`).
+- `framework-dependent`: Smaller archive that requires an installed .NET 8 runtime/SDK.
+
+> [!NOTE]
+> On Windows, running an unsigned GitHub Actions binary may trigger a Windows SmartScreen warning. See [FAQ & Troubleshooting](#faq--troubleshooting) for details.
+
+---
+
 ## Requirements
 
 - .NET SDK: 8.0 or later

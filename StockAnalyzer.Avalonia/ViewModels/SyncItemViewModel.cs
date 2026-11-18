@@ -23,7 +23,7 @@ namespace StockAnalyzer.Avalonia.ViewModels
             _progressText = model.ProgressText;
             _errorMessage = model.ErrorMessage;
             _lastUpdatedText = model.LastUpdated?.ToString("HH:mm:ss") ?? "-";
-            
+
             RetryCommand = new AsyncRelayCommand(OnRetry, CanRetry);
         }
 

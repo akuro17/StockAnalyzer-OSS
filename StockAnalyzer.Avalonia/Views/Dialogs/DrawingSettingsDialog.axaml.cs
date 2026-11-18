@@ -390,13 +390,13 @@ public partial class DrawingSettingsDialog : Window
 
         if (_drawing == null)
         {
-             if (_coordinator != null && _activeToken.HasValue)
-             {
-                 _coordinator.Cancel(_activeToken.Value);
-                 _activeToken = null;
-             }
-             Close((DrawingSettingsResult?)DrawingSettingsResult.None);
-             return;
+            if (_coordinator != null && _activeToken.HasValue)
+            {
+                _coordinator.Cancel(_activeToken.Value);
+                _activeToken = null;
+            }
+            Close((DrawingSettingsResult?)DrawingSettingsResult.None);
+            return;
         }
 
         try

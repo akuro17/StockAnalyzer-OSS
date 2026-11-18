@@ -140,14 +140,14 @@ public partial class CoreIndicatorSettings : ObservableObject
         UpdateDisplayName();
         MathematicalVersion++;
     }
-    
+
     [ObservableProperty]
     private IndicatorColor _color = new(255, 255, 0, 0); // Red
     [ObservableProperty]
     private double _thickness = 1.5;
     [ObservableProperty]
     private CoreLineStyle _style = CoreLineStyle.Solid;
-    
+
     [ObservableProperty]
     private int _offset = 0;
     partial void OnOffsetChanged(int value) => MathematicalVersion++;
@@ -337,11 +337,11 @@ public partial class CoreIndicatorSettings : ObservableObject
         {
             clone.ParameterObject = ParameterObject.Clone();
         }
-        
+
         // OverlayPanelId is a string (immutable), so MemberwiseClone already copies it correctly.
 
         clone.SeriesColors = new ObservableCollection<SeriesColorConfig>();
-        foreach(var sc in SeriesColors)
+        foreach (var sc in SeriesColors)
         {
             clone.SeriesColors.Add(sc.Duplicate());
         }

@@ -35,11 +35,11 @@ public sealed class ComparisonChartRenderer : IChartRenderer, IDisposable, IAxis
         PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0) // Pre-allocate dash effect
     };
     private readonly SKPaint _badgePaint = new() { Style = SKPaintStyle.Fill, IsAntialias = true };
-    private readonly SKPaint _badgeTextPaint = new() 
-    { 
-        Color = SKColors.White, 
-        IsAntialias = true, 
-        TextSize = 10f, 
+    private readonly SKPaint _badgeTextPaint = new()
+    {
+        Color = SKColors.White,
+        IsAntialias = true,
+        TextSize = 10f,
         Typeface = SKTypeface.Default // Use standard typeface instead of hardcoded Arial
     };
     private readonly SKPath _path = new();
@@ -56,7 +56,7 @@ public sealed class ComparisonChartRenderer : IChartRenderer, IDisposable, IAxis
     {
         if (baseConfig is not IComparisonRenderConfig config) return;
         var comparisonData = config.ComparisonData;
-        
+
         // Safety checks: Ensure data and timeline consistency
         if (comparisonData == null || comparisonData.Series.Count == 0 || comparisonData.Timestamps.Length == 0) return;
         if (config.Transform is not ICoordinateTransform transform) return;
@@ -68,9 +68,9 @@ public sealed class ComparisonChartRenderer : IChartRenderer, IDisposable, IAxis
         TimeSpan interval = TimeSpan.FromDays(1);
         if (candleCount > 1)
         {
-             interval = snapshot.Candles[1].Timestamp - snapshot.Candles[0].Timestamp;
+            interval = snapshot.Candles[1].Timestamp - snapshot.Candles[0].Timestamp;
         }
-        
+
         // Calculate coordinate offsets for centering
         float xStart = (float)transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
         float xNext = (float)transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp + interval, 0)).X;
@@ -116,9 +116,9 @@ public sealed class ComparisonChartRenderer : IChartRenderer, IDisposable, IAxis
 
                 var baseColorIndex = config.SeriesColorIndex.GetOrAdd(comparisonData.PrimarySymbol);
                 var baseColor = ChartColorPalette.Get(baseColorIndex, config.ThemeManager.CurrentTheme.IsDark);
-                
+
                 _badgePaint.Color = baseColor.WithAlpha(120).ToSkColor();
-                
+
                 float textWidth = _badgeTextPaint.MeasureText(label);
                 float margin = 4f;
                 float rectWidth = textWidth + (margin * 2);
@@ -143,9 +143,9 @@ public sealed class ComparisonChartRenderer : IChartRenderer, IDisposable, IAxis
             {
                 // 1. Skip drawing the benchmark symbol (PrimarySymbol) in Ratio or Spread modes.
                 // It is already represented by the dashed baseline, and drawing a solid line on top is redundant.
-                bool isStaticBase = string.Equals(symbol, comparisonData.PrimarySymbol, StringComparison.OrdinalIgnoreCase) && 
+                bool isStaticBase = string.Equals(symbol, comparisonData.PrimarySymbol, StringComparison.OrdinalIgnoreCase) &&
                                     (config.ComparisonMode == ComparisonMode.Ratio || config.ComparisonMode == ComparisonMode.Spread);
-                
+
                 if (isStaticBase)
                 {
                     // Draw a dashed baseline if this is the static primary symbol in Ratio/Spread mode
@@ -171,7 +171,7 @@ public sealed class ComparisonChartRenderer : IChartRenderer, IDisposable, IAxis
                 // 3. Draw Path
                 _path.Reset();
                 bool firstPoint = true;
-                
+
                 bool isDark = config.ThemeManager.CurrentTheme.IsDark;
                 int colorIndex = config.SeriesColorIndex.GetOrAdd(symbol);
                 _linePaint.Color = ChartColorPalette.Get(colorIndex, isDark).ToSkColor();
@@ -188,7 +188,7 @@ public sealed class ComparisonChartRenderer : IChartRenderer, IDisposable, IAxis
 
                     var candle = snapshot.Candles[dataIndex];
                     float x = MathF.Floor((float)transform.ChartToScreen(new ChartPoint(candle.Timestamp, 0)).X + halfCandleWidth) + 0.5f;
-                    
+
                     // Step 6: Clipping for Z-Score outliers (|z| > 3.5)
                     decimal renderedValue = relativeValue.Value;
                     bool isPositiveOutlier = false;
@@ -327,7 +327,7 @@ public sealed class ComparisonChartRenderer : IChartRenderer, IDisposable, IAxis
     private void DrawBaseline(SKCanvas canvas, Rect chartArea, IComparisonRenderConfig config, string primarySymbol)
     {
         if (config.Transform is not ICoordinateTransform transform) return;
-        
+
         // Baseline is always 0.0 (Performance/ZScore/Spread) or 1.0 (Ratio)
         decimal baselineValue = config.ComparisonMode switch
         {

@@ -29,7 +29,7 @@ public sealed record ClosedPosition
     {
         if (string.IsNullOrWhiteSpace(ticker)) throw new ArgumentException("Ticker cannot be empty.", nameof(ticker));
         if (quantity <= 0) throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity must be positive.");
-        
+
         Id = id;
         Ticker = ticker;
         Type = type;

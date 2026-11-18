@@ -40,7 +40,7 @@ namespace StockAnalyzer.Core.Optimization
 
             // 1. Calculate optimal chunk size
             int chunkSize = context.GetOptimalChunkSize(source.Count);
-            
+
             // 2. Partition the source data
             var partitions = CreatePartitions(source, chunkSize);
 
@@ -79,7 +79,7 @@ namespace StockAnalyzer.Core.Optimization
             // Assuming for generic "Output Functionality" that aggregation might happen later or order is handled by the caller.
             // However, typically for time-series, order matters. 
             // Let's assume the caller handles re-sorting or we simple return the flat list.
-            
+
             return resultsBag.SelectMany(x => x).ToList();
         }
 

@@ -58,17 +58,17 @@ public sealed class OHLCBarRenderer : IChartRenderer, IDisposable
         double x1;
         if (isIndexMode)
         {
-             x0 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex), 0)).X;
-             x1 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex + 1), 0)).X;
+            x0 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex), 0)).X;
+            x1 = transform.ChartToScreen(new ChartPoint(new DateTime(snapshot.StartIndex + 1), 0)).X;
         }
         else
         {
-             x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
-             x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp + interval, 0)).X;
+            x0 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp, 0)).X;
+            x1 = transform.ChartToScreen(new ChartPoint(snapshot.Candles[0].Timestamp + interval, 0)).X;
         }
-        
+
         float candleWidth = (float)(x1 - x0);
-        float tickLength = Math.Max(2f, candleWidth * 0.4f); 
+        float tickLength = Math.Max(2f, candleWidth * 0.4f);
 
         // Pixel Snap constants (High-DPI aware)
         float scaling = (float)config.RenderScaling;
@@ -97,7 +97,7 @@ public sealed class OHLCBarRenderer : IChartRenderer, IDisposable
             {
                 x = (float)transform.ChartToScreen(new ChartPoint(candle.Timestamp, 0)).X + (float)chartArea.Left;
             }
-            
+
             // Pixel Snap ensuring grouping by physical pixel (High-DPI aware)
             float snappedCenterX = (float)Math.Floor(x * scaling) / scaling + halfPixel;
 
@@ -139,7 +139,7 @@ public sealed class OHLCBarRenderer : IChartRenderer, IDisposable
                 aggCount++;
             }
         }
-        
+
         // Flush the final batch
         if (aggCount > 0)
         {

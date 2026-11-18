@@ -10,6 +10,7 @@ using Xunit.Abstractions;
 
 namespace StockAnalyzer.Core.Tests;
 
+[Collection("LongRunningMeasurement")]
 public class GeometricRobustFitAndPromotionTests
 {
     private readonly ITestOutputHelper _output;

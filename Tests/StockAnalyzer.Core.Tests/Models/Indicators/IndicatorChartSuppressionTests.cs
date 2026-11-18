@@ -23,6 +23,15 @@ public class IndicatorChartSuppressionTests
     [InlineData(IndicatorType.CrossCorrelation, "OptimalLag")]
     [InlineData(IndicatorType.GrangerCausality, "DccCorrelation")]
     [InlineData(IndicatorType.JohansenCointegration, "CointegrationSpreadZScore")]
+    [InlineData(IndicatorType.JarqueBera, "JBStatistic")]
+    [InlineData(IndicatorType.LjungBoxQ, "QStatistic")]
+    [InlineData(IndicatorType.DownsideDeviation, "RollingSortino")]
+    [InlineData(IndicatorType.DownsideDeviation, "SemivarianceAsymmetry")]
+    [InlineData(IndicatorType.BipowerVariation, "JumpRatio")]
+    [InlineData(IndicatorType.ADFStationarity, "HalfLife")]
+    [InlineData(IndicatorType.ADFStationarity, "Rho")]
+    [InlineData(IndicatorType.VarianceRatio, "ZStarStatistic")]
+    [InlineData(IndicatorType.VarianceRatio, "PValue")]
     public void IsSuppressed_ForNonChartedSeries_ReturnsTrue(IndicatorType type, string seriesName)
     {
         Assert.True(IndicatorChartSuppression.IsSuppressed(type, seriesName));
@@ -41,6 +50,12 @@ public class IndicatorChartSuppressionTests
     [InlineData(IndicatorType.CrossCorrelation, "CrossCorrelation")]
     [InlineData(IndicatorType.RollingBeta, "Main")]
     [InlineData(IndicatorType.RollingBeta, "RollingCorrelation")]
+    [InlineData(IndicatorType.JarqueBera, "Main")]
+    [InlineData(IndicatorType.JarqueBera, "SignificanceLevel")]
+    [InlineData(IndicatorType.LjungBoxQ, "Main")]
+    [InlineData(IndicatorType.LjungBoxQ, "SignificanceLevel")]
+    [InlineData(IndicatorType.SkewnessKurtosis, "Main")]
+    [InlineData(IndicatorType.SkewnessKurtosis, "ExcessKurtosis")]
     public void IsSuppressed_ForChartedSeries_ReturnsFalse(IndicatorType type, string seriesName)
     {
         Assert.False(IndicatorChartSuppression.IsSuppressed(type, seriesName));
@@ -70,6 +85,8 @@ public class IndicatorChartSuppressionTests
     [InlineData(IndicatorType.IFFTInstantaneousPhase, "PhaseDelta", true)]
     [InlineData(IndicatorType.ClothoidMovingAverage, "EffectiveLag", true)]
     [InlineData(IndicatorType.CrossCorrelation, "OptimalLag", false)]
+    [InlineData(IndicatorType.JarqueBera, "JBStatistic", false)]
+    [InlineData(IndicatorType.LjungBoxQ, "QStatistic", false)]
     public void IsDataWindowSuppressed_CorrectlySuppressesOrAllows(IndicatorType type, string seriesName, bool expectedSuppressed)
     {
         Assert.Equal(expectedSuppressed, IndicatorChartSuppression.IsDataWindowSuppressed(type, seriesName));

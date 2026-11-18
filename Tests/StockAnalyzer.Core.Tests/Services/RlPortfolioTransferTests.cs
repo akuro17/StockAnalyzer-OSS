@@ -54,8 +54,12 @@ public sealed class RlPortfolioTransferTests : IDisposable
 
     private static BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
     {
-        SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 100_000m,
-        SlippageRatio = 0.001m, CommissionFlat = 1m, CommissionPerUnit = 0.005m,
+        SizingModel = PositionSizingModel.FixedQuantity,
+        SizingParameter = 1m,
+        InitialCapital = 100_000m,
+        SlippageRatio = 0.001m,
+        CommissionFlat = 1m,
+        CommissionPerUnit = 0.005m,
     });
 
     private void WriteWave(string symbol, int phase, int count)
@@ -988,8 +992,12 @@ public sealed class RlPortfolioTransferTests : IDisposable
             Mode: RlPanelEvaluationMode.ShortHistory));
         var service = new RlPortfolioService(_settings, dataRoot: DataRoot);
         var scratch = await service.RunAsync(Request(Three, 2_300) with { SmokeOnly = true }, null, CancellationToken.None);       // captures the panel
-        var tuned = await service.RunAsync(Request(Three, 2_300) with { SmokeOnly = true, PanelId = PanelIdOf(scratch.PanelDirectory),
-            Transfer = new RlPortfolioTransferInit(pre.RunId, RlPortfolioFreeze.EncoderFrozen) }, null, CancellationToken.None);
+        var tuned = await service.RunAsync(Request(Three, 2_300) with
+        {
+            SmokeOnly = true,
+            PanelId = PanelIdOf(scratch.PanelDirectory),
+            Transfer = new RlPortfolioTransferInit(pre.RunId, RlPortfolioFreeze.EncoderFrozen)
+        }, null, CancellationToken.None);
         Assert.Equal(scratch.PanelDirectory, tuned.PanelDirectory);
         var comparison = RlPortfolioTransferComparison.Compare(tuned.Evaluation, scratch.Evaluation);
         Assert.Equal(scratch.Evaluation.Cells.Length, comparison.Cells.Length);

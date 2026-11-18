@@ -33,12 +33,12 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     private readonly string _metadataPath;
     private readonly string? _tickerListPath;
     private readonly ResiliencePipeline _resiliencePipeline;
-    
+
     // Low-allocation cache for ticker metadata (Sector/Industry) with TTL
     private readonly ConcurrentDictionary<string, (TickerMetadata Meta, DateTime Timestamp)> _metadataCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _userTags = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _metadataSemaphore = new(1, 1);
-    
+
     // Column Constants for Metadata Parquet
     private const string ColMetadataVersion = "metadata_version";
     private const string ColShortName = "short_name";
@@ -147,7 +147,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     private const string ColIsSLShort = "is_sl_short";
 
     public ParquetMarketDataProvider(
-        DuckDBConnectionManager dbManager, 
+        DuckDBConnectionManager dbManager,
         IPythonService pythonService,
         IOptions<MarketDataSettings> settings,
         ILogger<ParquetMarketDataProvider>? logger = null,
@@ -159,15 +159,15 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
         // Fail-Fast: Validate settings immediately
         settings.Value.Validate();
-        
+
         _baseDataPath = Common.PathDiscovery.ResolveDataPath(settings.Value.DailyDataPath, MarketDataSettings.DefaultDailyDataPath, "*.parquet");
         _metadataPath = Common.PathDiscovery.ResolveDataPath(settings.Value.MetadataPath, "Data/Metadata");
-        
+
         if (!string.IsNullOrEmpty(settings.Value.TickerListPath))
         {
             _tickerListPath = Common.PathDiscovery.ResolveFilePath(settings.Value.TickerListPath, "StockAnalyzer.Python/tickers.json");
         }
-        
+
         // Ensure default tickers.json exists
         if (!string.IsNullOrEmpty(_tickerListPath) && !File.Exists(_tickerListPath) && Common.DataStorageGuard.IsWritable(dataStorageState))
         {
@@ -233,7 +233,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                     return default;
                 },
                 ShouldHandle = new PredicateBuilder()
-                    .Handle<Exception>(ex => 
+                    .Handle<Exception>(ex =>
                         ex.Message.Contains("Database is locked", StringComparison.OrdinalIgnoreCase) ||
                         ex is IOException ||
                         ex.GetType().Name.Contains("DuckDBException"))
@@ -265,7 +265,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         }
 
         // Fallback: simple disk crawl for existing data files
-        var tickers = await Task.Run(() => 
+        var tickers = await Task.Run(() =>
             Directory.GetFiles(_baseDataPath, "*.parquet")
                      .Select(Path.GetFileNameWithoutExtension)
                      .Where(f => !string.IsNullOrWhiteSpace(f))
@@ -345,7 +345,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         if (string.IsNullOrWhiteSpace(symbol)) return;
         symbol = TickerSymbol.Canonicalize(symbol);
 
-        await UpdateTickerListAsync(list => 
+        await UpdateTickerListAsync(list =>
         {
             if (!list.Contains(symbol, StringComparer.OrdinalIgnoreCase))
             {
@@ -359,7 +359,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     public async Task AddTickersAsync(IEnumerable<string> symbols)
     {
         if (symbols == null) return;
-        
+
         var normalizedSymbols = symbols
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => TickerSymbol.Canonicalize(s))
@@ -367,7 +367,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
         if (normalizedSymbols.Count == 0) return;
 
-        await UpdateTickerListAsync(list => 
+        await UpdateTickerListAsync(list =>
         {
             bool added = false;
             foreach (var symbol in normalizedSymbols)
@@ -387,7 +387,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     public async Task RemoveTickersAsync(IEnumerable<string> symbols)
     {
         if (symbols == null) return;
-        
+
         var normalizedSymbols = symbols
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => TickerSymbol.Canonicalize(s))
@@ -395,7 +395,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
         if (normalizedSymbols.Count == 0) return;
 
-        await UpdateTickerListAsync(list => 
+        await UpdateTickerListAsync(list =>
         {
             bool removed = false;
             foreach (var symbol in normalizedSymbols)
@@ -415,13 +415,13 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     {
         if (string.IsNullOrEmpty(_tickerListPath))
         {
-             _logger.LogWarning("TickerListPath is not configured. Cannot update master ticker list.");
-             return;
+            _logger.LogWarning("TickerListPath is not configured. Cannot update master ticker list.");
+            return;
         }
 
         using (await _dbManager.AcquireLockAsync("UpdateTickerList"))
         {
-            await _resiliencePipeline.ExecuteAsync(async ct => 
+            await _resiliencePipeline.ExecuteAsync(async ct =>
             {
                 List<string> list;
                 if (File.Exists(_tickerListPath))
@@ -439,13 +439,13 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                 if (updateAction(list))
                 {
                     list = list.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x).ToList();
-                    
+
                     var tempPath = _tickerListPath + ".tmp";
                     var options = new JsonSerializerOptions { WriteIndented = true };
                     var newJson = JsonSerializer.Serialize(list, options);
-                    
+
                     await File.WriteAllTextAsync(tempPath, newJson, ct);
-                    
+
                     // Atomic Swap with Verification
                     var tempInfo = new FileInfo(tempPath);
                     if (tempInfo.Exists && tempInfo.Length > 0)
@@ -493,7 +493,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
             {
                 var sw = Stopwatch.StartNew();
                 var connection = _dbManager.GetConnection();
-                
+
                 if (connection is not DbConnection dbConnection)
                 {
                     throw new InvalidOperationException("Connection must be a DbConnection to support async operations.");
@@ -504,7 +504,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
                 // Use true async API and pass CancellationToken
                 using var reader = await command.ExecuteReaderAsync(ct);
-                
+
                 int dateIdx = reader.GetOrdinal("date");
                 int openIdx = reader.GetOrdinal("open");
                 int highIdx = reader.GetOrdinal("high");
@@ -705,7 +705,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         if (symbolList.Count == 0) return new Dictionary<string, decimal>();
 
         var results = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
-        
+
         using (await _dbManager.AcquireLockAsync("GetLatestPrices"))
         {
             var sw = Stopwatch.StartNew();
@@ -762,15 +762,15 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         {
             var meta = await _pythonService.RunAsync(py =>
             {
-                try 
+                try
                 {
                     using var sys = py.Import("sys");
                     var scriptDir = Path.GetDirectoryName(PythonScriptLocator.Resolve("data_provider.py"))
                         ?? throw new DirectoryNotFoundException("Python data provider directory could not be resolved.");
-                    
+
                     // Convert backslashes for Python sys.path
                     scriptDir = scriptDir.Replace("\\", "/");
-                    
+
                     using var pathList = sys.GetAttr("path");
                     bool pathExists = false;
                     foreach (var path in (dynamic)pathList)
@@ -805,7 +805,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                     {
                         var s = val?.ToString()?.Trim();
                         if (string.IsNullOrEmpty(s)) return fallback;
-                        if (s.Equals("N/A", StringComparison.OrdinalIgnoreCase) || 
+                        if (s.Equals("N/A", StringComparison.OrdinalIgnoreCase) ||
                             s.Equals("Unknown", StringComparison.OrdinalIgnoreCase))
                         {
                             return fallback;

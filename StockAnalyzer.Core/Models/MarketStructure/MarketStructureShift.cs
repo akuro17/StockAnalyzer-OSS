@@ -22,7 +22,7 @@ public class MarketStructureShift
 
     /// <summary>The index of the previous pivot high.</summary>
     public int PreviousPivotHighIndex { get; }
-    
+
     /// <summary>The time of the previous pivot high.</summary>
     public System.DateTime PreviousPivotHighTime { get; }
 
@@ -31,7 +31,7 @@ public class MarketStructureShift
 
     /// <summary>The index of the previous pivot low.</summary>
     public int PreviousPivotLowIndex { get; }
-    
+
     /// <summary>The time of the previous pivot low.</summary>
     public System.DateTime PreviousPivotLowTime { get; }
 

@@ -111,8 +111,15 @@ internal sealed class RlPortfolioIpcHost : IDisposable
             case "Select": result = Select(payload); break;
             default: throw new InvalidDataException("Unknown RL portfolio protocol method.");
         }
-        return new { protocol_version = RlContract.SchemaVersion, run_id = _runId.ToString("N"), sequence,
-            session_id = sessionId, contract_hash = _contractHash, result };
+        return new
+        {
+            protocol_version = RlContract.SchemaVersion,
+            run_id = _runId.ToString("N"),
+            sequence,
+            session_id = sessionId,
+            contract_hash = _contractHash,
+            result
+        };
     }
 
     private ImmutableArray<RlPanelBlock> Blocks(string role) => role switch

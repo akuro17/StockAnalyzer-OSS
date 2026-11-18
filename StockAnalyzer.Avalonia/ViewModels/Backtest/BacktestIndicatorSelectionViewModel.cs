@@ -729,22 +729,22 @@ public partial class BacktestIndicatorSelectionViewModel : ViewModelBase
 
     private BacktestConditionSide CreateConditionSide(
         ScreenerCatalogItem catalogItem, CoreIndicatorSettings? settings, string outputName, TimeFrame? frame, int offset) => new()
-    {
-        IndicatorType = catalogItem.IndicatorType!.Value,
-        Parameters = settings?.ParameterObject?.Clone(),
-        OutputName = _catalogProvider.NormalizeOutputSeriesName(
+        {
+            IndicatorType = catalogItem.IndicatorType!.Value,
+            Parameters = settings?.ParameterObject?.Clone(),
+            OutputName = _catalogProvider.NormalizeOutputSeriesName(
             catalogItem.IndicatorType!.Value,
             outputName,
             catalogItem.IndicatorType == IndicatorType.Price ? settings?.PriceSource : null,
             _indicatorFactory),
-        Offset = offset,
-        Frame = frame,
-        // Plan docs/sa_improvement_plan_BacktestPriceSourceConditionFix: scoped to the Price
-        // catalog rows only - BindConditionSide is the only place that ever sets a meaningful, non-default
-        // PriceSource on `settings`, so this stays a strictly-additive fix for the specific broken case
-        // (no behavior change for any other indicator type).
-        PriceSource = catalogItem.IndicatorType == IndicatorType.Price ? settings?.PriceSource : null,
-    };
+            Offset = offset,
+            Frame = frame,
+            // Plan docs/sa_improvement_plan_BacktestPriceSourceConditionFix: scoped to the Price
+            // catalog rows only - BindConditionSide is the only place that ever sets a meaningful, non-default
+            // PriceSource on `settings`, so this stays a strictly-additive fix for the specific broken case
+            // (no behavior change for any other indicator type).
+            PriceSource = catalogItem.IndicatorType == IndicatorType.Price ? settings?.PriceSource : null,
+        };
 
     /// <summary>
     /// Task 8b: null whenever both fields are blank, so a run/save with the feature untouched never

@@ -31,9 +31,9 @@ namespace StockAnalyzer.Core.Tests
 
             Assert.Equal(expected.Length, indicator.Values.Count);
             // Smoke test: verify nulls at start, non-nulls at end
-            for(int i = 0; i < 4; i++)
+            for (int i = 0; i < 4; i++)
                 Assert.Null(indicator.Values[i]);
-            for(int i = 4; i < expected.Length; i++)
+            for (int i = 4; i < expected.Length; i++)
                 Assert.NotNull(indicator.Values[i]);
         }
 

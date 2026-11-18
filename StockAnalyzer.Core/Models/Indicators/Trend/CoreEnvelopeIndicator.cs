@@ -42,10 +42,10 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
             decimal sum = 0;
             for (int i = 0; i < Period; i++)
             {
-                 sum += closePrices[i];
-                 upper.Add(null); main.Add(null); lower.Add(null);
+                sum += closePrices[i];
+                upper.Add(null); main.Add(null); lower.Add(null);
             }
-            
+
             decimal sma = sum / Period;
             main[Period - 1] = sma;
             upper[Period - 1] = sma * (1 + Deviation);

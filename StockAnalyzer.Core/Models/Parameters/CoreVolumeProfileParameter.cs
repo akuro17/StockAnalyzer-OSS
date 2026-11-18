@@ -10,48 +10,48 @@ namespace StockAnalyzer.Core.Models.Parameters
         [DisplayName("Period")]
         [Description("Lookback bars, counted backward from the end of the visible range (0 = All visible bars).")]
         [CoreParameterRange(0, 10000)]
-        public int Period 
-        { 
-            get => _period; 
-            set => SetProperty(ref _period, value); 
+        public int Period
+        {
+            get => _period;
+            set => SetProperty(ref _period, value);
         }
 
         private int _rowCount = 50;
         [DisplayName("Row Count")]
         [Description("Number of vertical price histogram buckets.")]
         [CoreParameterRange(IndicatorDefaultConstants.VolumeProfileMinRowCount, IndicatorDefaultConstants.VolumeProfileMaxRowCount)]
-        public int RowCount 
-        { 
-            get => _rowCount; 
-            set => SetProperty(ref _rowCount, value); 
+        public int RowCount
+        {
+            get => _rowCount;
+            set => SetProperty(ref _rowCount, value);
         }
-        
+
         private double _opacity = 0.3;
         [DisplayName("Opacity")]
         [Description("Transparency level for Volume Profile bars.")]
         [CoreParameterRange(0.1, 1.0)]
-        public double Opacity 
-        { 
-            get => _opacity; 
-            set => SetProperty(ref _opacity, value); 
+        public double Opacity
+        {
+            get => _opacity;
+            set => SetProperty(ref _opacity, value);
         }
 
         private VolumeDistributionMode _mode = VolumeDistributionMode.Proportional;
         [DisplayName("Mode")]
         [Description("Volume histogram width calculation mode.")]
-        public VolumeDistributionMode Mode 
-        { 
-            get => _mode; 
-            set => SetProperty(ref _mode, value); 
+        public VolumeDistributionMode Mode
+        {
+            get => _mode;
+            set => SetProperty(ref _mode, value);
         }
-        
+
         private DisplaySide _side = DisplaySide.Left;
         [DisplayName("Side")]
         [Description("Alignment side for histogram display (Left or Right).")]
-        public DisplaySide Side 
-        { 
-            get => _side; 
-            set => SetProperty(ref _side, value); 
+        public DisplaySide Side
+        {
+            get => _side;
+            set => SetProperty(ref _side, value);
         }
 
         private IndicatorColor? _valueAreaColor = IndicatorDefaultConstants.VolumeProfileValueAreaColor;
@@ -81,7 +81,7 @@ namespace StockAnalyzer.Core.Models.Parameters
         {
             if (Period < 0 || Period > 10000)
             {
-                 throw new ArgumentOutOfRangeException(nameof(Period), "Period must be between 0 (All) and 10000.");
+                throw new ArgumentOutOfRangeException(nameof(Period), "Period must be between 0 (All) and 10000.");
             }
             if (RowCount < IndicatorDefaultConstants.VolumeProfileMinRowCount || RowCount > IndicatorDefaultConstants.VolumeProfileMaxRowCount)
             {

@@ -47,7 +47,7 @@ namespace StockAnalyzer.Core.Models.Parameters
 
         public override void Validate()
         {
-             if (LongRocPeriod < 1 || ShortRocPeriod < 1 || WmaPeriod < 1)
+            if (LongRocPeriod < 1 || ShortRocPeriod < 1 || WmaPeriod < 1)
                 throw new ArgumentOutOfRangeException("Periods must be greater than 0");
         }
     }

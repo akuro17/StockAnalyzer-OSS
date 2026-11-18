@@ -25,7 +25,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
- Signal.Clear();
+            Signal.Clear();
             var candleDataList = candles.ToList();
             if (candles.Count < Period) { for (int i = 0; i < candles.Count; i++) { _values.Add(null); Signal.Add(null); } return CreateAutomaticResult(); }
 

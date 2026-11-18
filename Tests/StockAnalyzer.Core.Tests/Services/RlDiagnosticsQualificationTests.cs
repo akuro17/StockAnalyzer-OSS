@@ -42,7 +42,8 @@ public sealed class RlDiagnosticsQualificationTests
         DateOnly Date(string variable) => DateOnly.ParseExact(Environment.GetEnvironmentVariable(variable)
             ?? throw new InvalidOperationException("Explicit later interval required."), "yyyy-MM-dd", CultureInfo.InvariantCulture);
         return new("AAPL", Date(RlContinuousQualificationTests.StartDateVariable), Date(RlContinuousQualificationTests.EndDateVariable), costs,
-            SmokeOnly: smoke) { FrozenDirectionModelId = directionId };
+            SmokeOnly: smoke)
+        { FrozenDirectionModelId = directionId };
     }
 
     private static async Task Qualify(bool smoke)

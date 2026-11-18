@@ -42,21 +42,21 @@ public sealed class IndexIndicatorRenderer : IDisposable
     /// <param name="config">The renderer configuration including transform.</param>
     /// <param name="snapshot">The chart data snapshot for indexing context.</param>
     public void Render(
-        SKCanvas canvas, 
-        Rect chartArea, 
-        IReadOnlyList<decimal?> values, 
-        CoreIndicatorSettings setting, 
+        SKCanvas canvas,
+        Rect chartArea,
+        IReadOnlyList<decimal?> values,
+        CoreIndicatorSettings setting,
         IChartRenderConfig config,
         ChartDataSnapshot snapshot)
     {
         if (values == null || values.Count == 0 || config.Transform == null) return;
-        
+
         // Safety: Snapshot and Values count must align for index-based rendering
         int count = Math.Min(values.Count, snapshot.Candles.Count);
         if (count == 0) return;
 
         var t = config.Transform;
-        
+
         // Configure Paint
         _paint.Color = new SKColor(setting.Color.R, setting.Color.G, setting.Color.B, setting.Color.A);
         _paint.StrokeWidth = (float)setting.Thickness;

@@ -29,7 +29,7 @@ public class MockStockAnalyzerSettings : IStockAnalyzerSettings
     // Chart Colors (Hex)
     public string RenkoUpColor => "Green";
     public string RenkoDownColor => "Red";
-    
+
     public string KagiUpColor => "Green";
     public string KagiDownColor => "Red";
 
@@ -39,18 +39,18 @@ public class MockStockAnalyzerSettings : IStockAnalyzerSettings
     // Reverse Watch Phase Colors
     public string GetReverseWatchPhaseColor(int phase)
     {
-         return phase switch
-         {
-             1 => "#CCFF99", // Lime Green (Phase 1)
-             2 => "#00CC00", // Green (Phase 2)
-             3 => "#006600", // Dark Green (Phase 3)
-             4 => "#FFD700", // Yellow (Phase 4)
-             5 => "#FF9999", // Salmon (Phase 5)
-             6 => "#FF0000", // Red (Phase 6)
-             7 => "#8B0000", // Dark Red (Phase 7)
-             8 => "#607D8B", // Blue Gray (Phase 8)
-             _ => "#808080"
-         };
+        return phase switch
+        {
+            1 => "#CCFF99", // Lime Green (Phase 1)
+            2 => "#00CC00", // Green (Phase 2)
+            3 => "#006600", // Dark Green (Phase 3)
+            4 => "#FFD700", // Yellow (Phase 4)
+            5 => "#FF9999", // Salmon (Phase 5)
+            6 => "#FF0000", // Red (Phase 6)
+            7 => "#8B0000", // Dark Red (Phase 7)
+            8 => "#607D8B", // Blue Gray (Phase 8)
+            _ => "#808080"
+        };
     }
 
     // SmartScreener

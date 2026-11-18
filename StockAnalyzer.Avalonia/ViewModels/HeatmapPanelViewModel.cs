@@ -82,7 +82,7 @@ public partial class HeatmapPanelViewModel : ViewModelBase, IDisposable, IRecipi
         {
             var portfolio = _currentPortfolio ?? StockAnalyzer.Core.Factories.PortfolioFactory.CreateDefaultMock();
 
-            var result = await Task.Run(() => 
+            var result = await Task.Run(() =>
                 _portfolioManager.GetPerformanceHeatmapAsync(portfolio, period, _marketDataProvider, token), token);
 
             if (token.IsCancellationRequested) return;
@@ -105,7 +105,7 @@ public partial class HeatmapPanelViewModel : ViewModelBase, IDisposable, IRecipi
 
                 if (vm.IsEmpty)
                 {
-                    vm._logger.LogWarning("Heatmap fetch returned 0 entries for period {Period}. Tickers attempted: {Tickers}", 
+                    vm._logger.LogWarning("Heatmap fetch returned 0 entries for period {Period}. Tickers attempted: {Tickers}",
                         period, string.Join(", ", portfolio.Positions.Keys));
                 }
                 else

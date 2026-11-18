@@ -165,8 +165,11 @@ public sealed class PredictionLogService : IPredictionLogService, ICurrentPredic
             var path = RecordPath(predictionId);
             var record = await ReadAsync(path).ConfigureAwait(false) ?? throw new InvalidDataException("Prediction is absent.");
             if (record.Outcomes[^1].State == PredictionOutcomeState.Unavailable) return;
-            await AtomicJsonFile.SaveAsync(path, record with { Outcomes = record.Outcomes.Add(PredictionMonitoringReducer.Unavailable(
-                record.Outcomes[^1], _clock.GetUtcNow(), terminalError)) }, TrainingConfigJson.Options).ConfigureAwait(false);
+            await AtomicJsonFile.SaveAsync(path, record with
+            {
+                Outcomes = record.Outcomes.Add(PredictionMonitoringReducer.Unavailable(
+                record.Outcomes[^1], _clock.GetUtcNow(), terminalError))
+            }, TrainingConfigJson.Options).ConfigureAwait(false);
             _logger.LogWarning("Forecast {PredictionId} is permanently unavailable: {Error}.", predictionId, terminalError);
             alerts = await EvaluateAsync(ct).ConfigureAwait(false);
         }

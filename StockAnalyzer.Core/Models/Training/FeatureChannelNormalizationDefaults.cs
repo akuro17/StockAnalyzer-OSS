@@ -30,6 +30,8 @@ public static class FeatureChannelNormalizationDefaults
         IndicatorType.ROC, IndicatorType.PPO, IndicatorType.PriceOscillator, IndicatorType.TRIX, IndicatorType.BollingerBandsRatio,
         IndicatorType.BandWidth, IndicatorType.NATR, IndicatorType.MaDeviationRate, IndicatorType.VolumeROC, IndicatorType.ZScore,
         IndicatorType.HurstExponent, IndicatorType.Entropy, IndicatorType.MansfieldRS, IndicatorType.Bocpd,
+        // p-values in [0, 1] (statistical functions plan R3)
+        IndicatorType.JarqueBera, IndicatorType.LjungBoxQ,
     };
 
     /// <summary>Values in price units (the channel moves with the price level).</summary>
@@ -45,6 +47,7 @@ public static class FeatureChannelNormalizationDefaults
         IndicatorType.KalmanFilter, IndicatorType.ARIMA, IndicatorType.HilbertTrendline,
         IndicatorType.ChandelierExit, IndicatorType.T3, IndicatorType.McGinleyDynamic,
         IndicatorType.VolumeProfileLevels,
+        IndicatorType.QuantileBands, IndicatorType.TheilSenRegression,
     };
 
     /// <summary>The raw price fields (open, high, low, close, ...) are price units.</summary>

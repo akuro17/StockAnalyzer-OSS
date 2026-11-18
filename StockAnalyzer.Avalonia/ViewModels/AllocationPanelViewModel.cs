@@ -67,7 +67,7 @@ public partial class AllocationPanelViewModel : ViewModelBase, IDisposable, IRec
 
     private void StartUpdateLoop()
     {
-        _ = Task.Run(async () => 
+        _ = Task.Run(async () =>
         {
             await Task.Delay(Random.Shared.Next(LayoutConstants.AllocationJitterMinMs, LayoutConstants.AllocationJitterMaxMs));
             await RefreshDataAsync();
@@ -86,10 +86,10 @@ public partial class AllocationPanelViewModel : ViewModelBase, IDisposable, IRec
         {
             var currentPortfolio = _currentPortfolio ?? StockAnalyzer.Core.Factories.PortfolioFactory.CreateDefaultMock();
             var symbols = currentPortfolio.Positions.Keys;
-            
+
             if (!symbols.Any() && currentPortfolio.CashBalance == 0)
             {
-                _dispatcherService.Post(static vm => 
+                _dispatcherService.Post(static vm =>
                 {
                     vm.IsEmpty = true;
                     vm.IsLoading = false;
@@ -128,10 +128,10 @@ public partial class AllocationPanelViewModel : ViewModelBase, IDisposable, IRec
     private void UpdateCollection(ObservableCollection<AllocationEntryViewModel> collection, IReadOnlyList<AllocationEntry> data, bool usePalette)
     {
         var othersThreshold = LayoutConstants.AllocationOthersThreshold;
-        
+
         _mainItemsBuffer.Clear();
         _smallItemsBuffer.Clear();
-        
+
         foreach (var item in data)
         {
             if (item.Percentage >= othersThreshold)
@@ -143,10 +143,10 @@ public partial class AllocationPanelViewModel : ViewModelBase, IDisposable, IRec
                 _smallItemsBuffer.Add(item);
             }
         }
-        
+
         // Sort main items descending by MarketValue (without LINQ OrderBy)
         _mainItemsBuffer.Sort(static (a, b) => b.MarketValue.CompareTo(a.MarketValue));
-        
+
         _targetEntriesBuffer.Clear();
 
         // Add main items
@@ -154,14 +154,14 @@ public partial class AllocationPanelViewModel : ViewModelBase, IDisposable, IRec
         {
             var item = _mainItemsBuffer[i];
             uint color;
-            
+
             if (item.Category == LayoutConstants.CategoryCash) color = LayoutConstants.ColorCash;
             else if (item.Category == LayoutConstants.CategoryEquity) color = LayoutConstants.ColorEquity;
             else color = usePalette ? LayoutConstants.AllocationSegmentPalette[i % LayoutConstants.AllocationSegmentPalette.Length] : LayoutConstants.ColorOthers;
 
             _targetEntriesBuffer.Add((item.Category, item.MarketValue, item.Percentage, color));
         }
-        
+
         if (_smallItemsBuffer.Count > 0)
         {
             decimal othersValue = 0m;
@@ -204,7 +204,7 @@ public partial class AllocationPanelViewModel : ViewModelBase, IDisposable, IRec
         for (int i = 0; i < _targetEntriesBuffer.Count; i++)
         {
             var entry = _targetEntriesBuffer[i];
-            
+
             AllocationEntryViewModel? existing = null;
             foreach (var item in collection)
             {

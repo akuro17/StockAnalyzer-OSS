@@ -32,7 +32,7 @@ public static class ThreeLineBreakConverter
         if (candles == null || candles.Count < 2) return;
 
         var strategy = new StandardThreeLineBreakStrategy();
-        
+
         if (!strategy.TryDetermineInitialTrend(candles, out int startIndex, out bool isUp))
         {
             return;
@@ -88,16 +88,16 @@ public static class ThreeLineBreakConverter
     /// Supports buffer injection for intermediate blocks to achieve true Zero-Allocation.
     /// </summary>
     public static void ConvertToCoreCandleData(
-        IReadOnlyList<CoreCandleData> candles, 
-        List<CoreCandleData> outputBuffer, 
+        IReadOnlyList<CoreCandleData> candles,
+        List<CoreCandleData> outputBuffer,
         List<ThreeLineBreakBlock>? tempBlockBuffer = null,
-        int lineCount = 3, 
+        int lineCount = 3,
         decimal minimumMove = 0m)
     {
         // Use injected buffer if available, otherwise fallback to local (minor allocation)
         var blocks = tempBlockBuffer ?? new List<ThreeLineBreakBlock>(candles.Count / 2);
         ConvertInto(candles, blocks, lineCount, ChartConstants.ThreeLineBreakTrendThreshold, minimumMove);
-        
+
         outputBuffer.Clear();
         if (outputBuffer.Capacity < blocks.Count) outputBuffer.Capacity = blocks.Count;
 

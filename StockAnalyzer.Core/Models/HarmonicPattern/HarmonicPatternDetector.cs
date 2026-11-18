@@ -39,7 +39,7 @@ public static class HarmonicPatternDetector
             // Use Local Extrema instead of ZigZag to eliminate left-edge dependency
             int windowSize = (int)Math.Max(1, Math.Round(threshold));
             var pivots = ExtractPivotsByLocalExtrema(candles, windowSize);
-            
+
             if (pivots.Count < ChartConstants.HarmonicMinPivotCount)
                 continue;
 

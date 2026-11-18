@@ -23,7 +23,7 @@ public partial class BulkTagEditViewModel : ViewModelBase
     private void SelectTag(string? tag)
     {
         if (string.IsNullOrEmpty(tag)) return;
-        
+
         if (string.IsNullOrWhiteSpace(BulkTagInput))
         {
             BulkTagInput = tag;
@@ -33,7 +33,7 @@ public partial class BulkTagEditViewModel : ViewModelBase
             var existing = BulkTagInput.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(t => t.Trim())
                 .ToList();
-                
+
             if (!existing.Contains(tag, StringComparer.OrdinalIgnoreCase))
             {
                 existing.Add(tag);

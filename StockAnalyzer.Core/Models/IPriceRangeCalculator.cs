@@ -130,7 +130,7 @@ public sealed class ComparisonPriceRangeCalculator : IPriceRangeCalculator
             {
                 var series = kvp.Value;
                 if (series == null || series.Length == 0) continue;
-                
+
                 // 表示開始点（startIndex）を基準点とする。欠損している場合は後方、次に前方を探索して補完する（探索は ComparisonSeriesCalculator と共通）。
                 if (ComparisonSeriesCalculator.FindBaseIndex(series, Math.Max(0, startIndex)) is { } baseIndex)
                 {
@@ -260,8 +260,8 @@ public sealed class ComparisonPriceRangeCalculator : IPriceRangeCalculator
                 count++;
             }
         }
-        
-        if (count < period) return false; 
+
+        if (count < period) return false;
 
         double mean = sum / period;
         double sumSqDiff = 0;

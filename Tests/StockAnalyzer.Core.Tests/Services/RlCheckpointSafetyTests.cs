@@ -19,7 +19,8 @@ namespace StockAnalyzer.Core.Tests.Services;
 [Collection("ChildProcess")]
 public sealed class RlCheckpointSafetyTests
 {
-    [Fact] public async Task AcceptedAttemptRecordsPreparationFailureBeforeDirectionQualification()
+    [Fact]
+    public async Task AcceptedAttemptRecordsPreparationFailureBeforeDirectionQualification()
     {
         string root = Path.Combine(Path.GetTempPath(), "sa_m01_preparation_" + Guid.NewGuid().ToString("N"));
         try
@@ -29,8 +30,8 @@ public sealed class RlCheckpointSafetyTests
             await registry.SaveRlArtifactPolicyAsync(new(NonactiveRetentionDays: 0, NonactiveKeepCount: 0));
             var training = new RlTrainingService(registry, new TrainingJobGate(Path.Combine(root, "Locks")), dataRoot: root);
             var job = new RlTrainingJob("AAPL", new DateOnly(2004, 1, 1), new DateOnly(2020, 1, 1), new BacktestConfiguration
-                { InitialCapital = BacktestDefaults.InitialCapital, SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = RlContract.FixedQuantity }, SmokeOnly: true)
-                { FrozenDirectionModelId = new string('0', ContentHash.HexLength) };
+            { InitialCapital = BacktestDefaults.InitialCapital, SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = RlContract.FixedQuantity }, SmokeOnly: true)
+            { FrozenDirectionModelId = new string('0', ContentHash.HexLength) };
             await Assert.ThrowsAsync<InvalidOperationException>(() => training.RunResumableAsync(job, CancellationToken.None));
             var run = Assert.Single(Directory.GetDirectories(Path.Combine(root, RlFiles.TrainingFolder, RlFiles.RlFolder)));
             Assert.True(RlCheckpointStore.ReadBudget(run).ActiveSeconds > 0);
@@ -40,11 +41,12 @@ public sealed class RlCheckpointSafetyTests
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
-    [ChildProcessFact] public async Task DependencyIdentityRejectsChangedRealPayloadWithUnchangedDistributionMetadata()
+    [ChildProcessFact]
+    public async Task DependencyIdentityRejectsChangedRealPayloadWithUnchangedDistributionMetadata()
     {
         string pythonRoot = Directory.GetParent(Path.GetDirectoryName(PythonScriptLocator.Resolve(RlFiles.DependenciesScript))!)!.FullName;
         var start = new ProcessStartInfo(Path.Combine(pythonRoot, RlFiles.VirtualEnvironment, OperatingSystem.IsWindows() ? "Scripts/python.exe" : "bin/python"))
-            { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+        { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         start.ArgumentList.Add(Path.Combine(Directory.GetParent(pythonRoot)!.FullName, "Tests", "StockAnalyzer.Core.Tests", "Assets", "check_rl_dependency_payload.py"));
         start.Environment["PYTHONDONTWRITEBYTECODE"] = "1";
         using var process = Process.Start(start)!;
@@ -102,7 +104,8 @@ public sealed class RlCheckpointSafetyTests
         finally { Directory.Delete(root, true); }
     }
 
-    [Fact] public async Task ExistingSavedArtifactPolicyGetsAdoptedCheckpointDefaultAndRejectsZero()
+    [Fact]
+    public async Task ExistingSavedArtifactPolicyGetsAdoptedCheckpointDefaultAndRejectsZero()
     {
         string root = Path.Combine(Path.GetTempPath(), "sa_r09_policy_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
@@ -117,7 +120,8 @@ public sealed class RlCheckpointSafetyTests
         }
         finally { Directory.Delete(root, true); }
     }
-    [Fact] public async Task DurableWorkJournalNeverRollsBackFailedAttemptChargesAndExcludesTimeBetweenOwners()
+    [Fact]
+    public async Task DurableWorkJournalNeverRollsBackFailedAttemptChargesAndExcludesTimeBetweenOwners()
     {
         string root = Path.Combine(Path.GetTempPath(), "sa_r09_budget_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
@@ -142,7 +146,8 @@ public sealed class RlCheckpointSafetyTests
         }
         finally { Directory.Delete(root, true); }
     }
-    [Fact] public void IncompleteJournalRefusesResumeInsteadOfSilentlyResettingBudget()
+    [Fact]
+    public void IncompleteJournalRefusesResumeInsteadOfSilentlyResettingBudget()
     {
         string root = Path.Combine(Path.GetTempPath(), "sa_r09_partial_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try
@@ -153,7 +158,8 @@ public sealed class RlCheckpointSafetyTests
         }
         finally { Directory.Delete(root, true); }
     }
-    [Fact] public void MissingJournalCannotOpenResumedOwnerOrSilentlyRecreateItsBudget()
+    [Fact]
+    public void MissingJournalCannotOpenResumedOwnerOrSilentlyRecreateItsBudget()
     {
         string root = Path.Combine(Path.GetTempPath(), "sa_r09_missing_" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
         try

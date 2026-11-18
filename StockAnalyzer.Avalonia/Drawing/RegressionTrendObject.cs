@@ -302,10 +302,10 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         // Render 3 Lines: Center, +2SD, -2SD
         // Start and End X in Screen Coordinates
         // To draw correctly we need the Screen Points corresponding to Index 0 and Index (Count-1) of the REGRESSION range.
-        
+
         // Problem: _result is 0-based index relative to the RANGE.
         // We need to map Range Start Time to Screen.
-        
+
         var startPt = new ChartPoint(_start, 0); // Price 0 placeholder
         var endPt = new ChartPoint(_end, 0);
 
@@ -317,19 +317,19 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         // Regression Y = mx + c.
         // Value At Start (x=0) = Intercept.
         // Value At End (x=Count-1) = Slope*(Count-1) + Intercept.
-        
+
         decimal yAnalysisStart = _result.GetValueAt(0);
         decimal yAnalysisEnd = _result.GetValueAt(_result.Count - 1);
 
         // Convert these Prices to Screen Y
         var pStart = new ChartPoint(_start, yAnalysisStart);
         var pEnd = new ChartPoint(_end, yAnalysisEnd);
-        
+
         var screenStart = transform.ChartToScreen(pStart);
         var screenEnd = transform.ChartToScreen(pEnd);
-        
+
         // Adjust Screen X. s1.X should match screenStart.X
-        
+
         // Center Line
         _linePaint.Color = SkiaColor;
         _linePaint.StrokeWidth = (float)Thickness;
@@ -561,12 +561,12 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
     public bool HitTest(global::Avalonia.Point screenPoint, ICoordinateTransform transform, double tolerance = ChartConstants.DefaultHitTestTolerance)
     {
         if (!_result.IsValid) return false;
-        
+
         // The hit area is the band polygon of Render (and, with ExtendRight, the three extension lines), rebuilt from the regression result.
         decimal yAnalysisStart = _result.GetValueAt(0);
         decimal yAnalysisEnd = _result.GetValueAt(_result.Count - 1);
         decimal std = _result.StdDev * StdDevMultiplier;
-        
+
         var pStartUpper = new ChartPoint(_start, yAnalysisStart + std);
         var pEndUpper = new ChartPoint(_end, yAnalysisEnd + std);
         var pStartLower = new ChartPoint(_start, yAnalysisStart - std);
@@ -576,7 +576,7 @@ public class RegressionTrendObject : IChartObject, IDisposable, IDrawingCalculat
         var s2 = transform.ChartToScreen(pEndUpper);
         var s3 = transform.ChartToScreen(pEndLower);
         var s4 = transform.ChartToScreen(pStartLower);
-        
+
         // The band polygon (same vertex order as the fill in Render); no native path is created for a hit test.
         if (DrawingHitTestMath.PolygonContains(screenPoint, s1, s2, s3, s4)) return true;
 

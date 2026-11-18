@@ -141,7 +141,7 @@ public static class TabReorderBehavior
 #pragma warning disable CS0618
             var data = new DataObject();
             data.Set("TabItem", _sourceItem);
-            data.Set("SourceIndex", tabControl.Items.Cast<object>().ToList().IndexOf(_sourceItem.Content!)); 
+            data.Set("SourceIndex", tabControl.Items.Cast<object>().ToList().IndexOf(_sourceItem.Content!));
 
             DragDrop.DoDragDrop(e, data, DragDropEffects.Move);
 #pragma warning restore CS0618
@@ -195,7 +195,7 @@ public static class TabReorderBehavior
 
         var sourceIndex = (int)data.Get("SourceIndex")!;
 #pragma warning restore CS0618
-        
+
         // Determine target index based on drop position
         var dropPos = e.GetPosition(tabControl);
         var targetItem = e.Source as Visual;
@@ -219,7 +219,7 @@ public static class TabReorderBehavior
         {
             string panelName = tabControl.Tag?.ToString() ?? "Unknown";
             var command = GetReorderCommand(tabControl);
-            
+
             if (command != null && command.CanExecute($"{panelName}:{sourceIndex}:{targetIndex}"))
             {
                 command.Execute($"{panelName}:{sourceIndex}:{targetIndex}");

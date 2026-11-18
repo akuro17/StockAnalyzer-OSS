@@ -16,7 +16,9 @@ public sealed partial class RlGenerationAndQValueTests
     private static float[] ExpectedOutput(bool continuous) => continuous ? new[] { .25f, -.5f } : new[] { 0f, 1f, -1f };
     private static float[] Observation() => Enumerable.Range(0, RlContract.ObservationLength).Select(i => (i % 7) * .125f - .25f).ToArray();
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void M03_ReturnedOutputIsIndependentlyOwnedAcrossRepeatedCalls(bool continuous)
     {
         using var model = new RlQModel(DiagnosticModel(continuous), continuous);
@@ -32,8 +34,10 @@ public sealed partial class RlGenerationAndQValueTests
     }
 
     [Theory]
-    [InlineData(false, float.NaN)] [InlineData(true, float.NaN)]
-    [InlineData(false, float.PositiveInfinity)] [InlineData(true, float.NegativeInfinity)]
+    [InlineData(false, float.NaN)]
+    [InlineData(true, float.NaN)]
+    [InlineData(false, float.PositiveInfinity)]
+    [InlineData(true, float.NegativeInfinity)]
     public void M03_NonFiniteOrMalformedObservationsAreRejectedAndTheModelStaysUsable(bool continuous, float bad)
     {
         using var model = new RlQModel(DiagnosticModel(continuous), continuous);
@@ -44,7 +48,9 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.Equal(ExpectedOutput(continuous), model.Infer(Observation()));
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task M03_ConcurrentCallsOnOneModelReturnTheirOwnCorrectResults(bool continuous)
     {
         using var model = new RlQModel(DiagnosticModel(continuous), continuous);
@@ -57,7 +63,9 @@ public sealed partial class RlGenerationAndQValueTests
         Assert.Equal(all.Length, all.Distinct().Count());
     }
 
-    [Theory] [InlineData(false)] [InlineData(true)]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void M03_InferAfterDisposeFailsAsDisposedAndDisposeIsRepeatable(bool continuous)
     {
         var model = new RlQModel(DiagnosticModel(continuous), continuous);
@@ -88,8 +96,11 @@ public sealed partial class RlGenerationAndQValueTests
             // The returned array and runtime result wrappers are unavoidable allocations, so no zero-allocation claim is made.
             return new
             {
-                kind = continuous ? "actor" : "q", warmup_calls = RlContract.InferenceWarmupCalls, measured_calls = RlContract.InferenceMeasuredCalls,
-                managed_allocated_bytes = managed, bytes_per_call = managed / (double)RlContract.InferenceMeasuredCalls,
+                kind = continuous ? "actor" : "q",
+                warmup_calls = RlContract.InferenceWarmupCalls,
+                measured_calls = RlContract.InferenceMeasuredCalls,
+                managed_allocated_bytes = managed,
+                bytes_per_call = managed / (double)RlContract.InferenceMeasuredCalls,
                 measured_at_utc = DateTimeOffset.UtcNow,
             };
         }).ToArray();

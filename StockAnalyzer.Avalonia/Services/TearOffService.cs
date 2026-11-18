@@ -20,8 +20,8 @@ public class TearOffService : ITearOffService
     private readonly Func<object?>? _mainWindowProvider;
 
     public TearOffService(
-        IMessenger messenger, 
-        IDetachedWindowFactory windowFactory, 
+        IMessenger messenger,
+        IDetachedWindowFactory windowFactory,
         IContainerRegistry containerRegistry,
         IDispatcherService dispatcherService,
         ILogger<TearOffService>? logger = null,
@@ -42,11 +42,11 @@ public class TearOffService : ITearOffService
         _logger.LogInformation("[TabTearOff] Initiating transaction: Tab={TabId}", item.Id);
 
         // Perform on UI thread to ensure visual tree operations and window creation are safe
-        _dispatcherService.Post(() => 
+        _dispatcherService.Post(() =>
         {
             // 1. Transaction Start: Request removal from MainWindow collections
             var response = _messenger.Send(new TearOffRequestMessage(item));
-            
+
             if (!response.Response)
             {
                 _logger.LogWarning("[TabTearOff] Failed: Item Tab={TabId} not found in any main panel", item.Id);
@@ -56,15 +56,15 @@ public class TearOffService : ITearOffService
             try
             {
                 // 2. The "Effect": Materialize and Show Detached Window
-                if (global::StockAnalyzer.Avalonia.App.Current.ApplicationLifetime is global::Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop && 
+                if (global::StockAnalyzer.Avalonia.App.Current.ApplicationLifetime is global::Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop &&
                     desktop.MainWindow != null)
                 {
                     // Use the factory to create a new window instance (Factory will wrap item in DetachedWindowViewModel)
                     var window = _windowFactory.CreateWindow(desktop.MainWindow, item);
-                    
+
                     // Show as a top-level window (no owner) to allow independent Z-order
                     _windowFactory.ShowWindow(window);
-                    
+
                     _logger.LogInformation("[TabTearOff] Success: Tab={TabId} moved to standalone window", item.Id);
                 }
                 else
@@ -75,7 +75,7 @@ public class TearOffService : ITearOffService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "[TabTearOff] Critical error for Tab={TabId}. Initiating Rollback.", item.Id);
-                
+
                 // 3. Rollback: If window creation or display fails, restore the item to the main window
                 _messenger.Send(new RestoreRequestMessage(item));
             }
@@ -85,7 +85,7 @@ public class TearOffService : ITearOffService
     public void Restore(WorkspaceViewItem item)
     {
         if (item == null) return;
-        
+
         _logger.LogInformation("[TabTearOff] Restoring: Tab={TabId} to main window", item.Id);
         _messenger.Send(new RestoreRequestMessage(item));
     }
@@ -96,21 +96,21 @@ public class TearOffService : ITearOffService
 
         _logger.LogInformation("[TabTearOff] Restoring detached state: Tab={TabId}", item.Id);
 
-        _dispatcherService.Post(() => 
+        _dispatcherService.Post(() =>
         {
             try
             {
-                if (global::StockAnalyzer.Avalonia.App.Current.ApplicationLifetime is global::Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop && 
+                if (global::StockAnalyzer.Avalonia.App.Current.ApplicationLifetime is global::Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop &&
                     desktop.MainWindow != null)
                 {
                     var window = _windowFactory.CreateWindow(desktop.MainWindow, item);
-                    
+
                     // Apply saved geometry with clamping safety via factory
                     if (!double.IsNaN(item.DetachedX))
                     {
                         _windowFactory.ApplyGeometry(window, item.DetachedX, item.DetachedY, item.DetachedWidth, item.DetachedHeight);
                     }
-                    
+
                     // Show as a top-level window (no owner) to allow independent Z-order
                     _windowFactory.ShowWindow(window);
                     _logger.LogInformation("[TabTearOff] Detached restoration success: Tab={TabId}", item.Id);
@@ -133,7 +133,7 @@ public class TearOffService : ITearOffService
 
         _logger.LogInformation("[TabTearOff] Restoring detached group: Count={Count}, LeadTab={TabId}", itemList.Count, firstItem.Id);
 
-        _dispatcherService.Post(() => 
+        _dispatcherService.Post(() =>
         {
             try
             {
@@ -205,7 +205,7 @@ public class TearOffService : ITearOffService
         var window = _windowFactory.CreateWindow(mainWindow, firstItem);
 
         // 2. Get the newly created container's ViewModel
-        if (window is global::Avalonia.Controls.Window avaloniaWin && 
+        if (window is global::Avalonia.Controls.Window avaloniaWin &&
             avaloniaWin.DataContext is ViewModels.IDetachedWindowContainer groupVm)
         {
             // 3. Add remaining items to the same container
@@ -239,7 +239,7 @@ public class TearOffService : ITearOffService
 
         _logger.LogInformation("[TabTearOff] Redocking: Tab={TabId} from Container={ContainerId}", item.Id, item.ContainerId);
 
-        _dispatcherService.Post(() => 
+        _dispatcherService.Post(() =>
         {
             try
             {

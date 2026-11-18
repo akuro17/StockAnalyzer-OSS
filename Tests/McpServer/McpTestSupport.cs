@@ -86,6 +86,32 @@ internal static class McpTestSupport
         ["MarketDataSettings:TickerListPath"] = fixture.Settings.TickerListPath,
     };
 
+    /// <summary>
+    /// The weekdays from <paramref name="firstDay"/> to <paramref name="lastDay"/> as dated closes, the price taken from the index of the weekday; a day in <paramref name="closedDays"/>
+    /// has no bar but keeps its index, so two markets with different holidays share one price by day. For <see cref="ParquetFixtureBuilder.SeedDailyOhlcvFromDatedCloses"/>.
+    /// </summary>
+    public static List<(DateTime Date, decimal Close)> WeekdayCloses(DateTime firstDay, DateTime lastDay, Func<int, decimal> price, params DateTime[] closedDays)
+    {
+        var bars = new List<(DateTime, decimal)>();
+        int index = 0;
+        for (DateTime day = firstDay; day <= lastDay; day = day.AddDays(1))
+        {
+            if (day.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            {
+                continue;
+            }
+
+            if (!closedDays.Contains(day))
+            {
+                bars.Add((day, price(index)));
+            }
+
+            index++;
+        }
+
+        return bars;
+    }
+
     /// <summary>Writes a real parquet file from a DuckDB query (setup only).</summary>
     public static void WriteParquet(string path, string query)
     {

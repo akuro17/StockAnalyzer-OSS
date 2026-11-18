@@ -101,7 +101,7 @@ namespace StockAnalyzer.Core.Tests
                 candles.Add(new CoreCandleData(startDate.AddDays(i), price, price, price, price, 100));
                 price -= 2m; // Constant drop
             }
-            
+
             // Drop price massively to trigger B4 (> 10% deviation)
             candles.Add(new CoreCandleData(startDate.AddDays(7), 70m, 70m, 70m, 70m, 100));
 
@@ -126,7 +126,7 @@ namespace StockAnalyzer.Core.Tests
                 candles.Add(new CoreCandleData(startDate.AddDays(i), price, price, price, price, 100));
                 price += 2m; // Constant rise
             }
-            
+
             // Spike price massively to trigger S4 (> 10% deviation)
             candles.Add(new CoreCandleData(startDate.AddDays(7), 130m, 130m, 130m, 130m, 100));
 

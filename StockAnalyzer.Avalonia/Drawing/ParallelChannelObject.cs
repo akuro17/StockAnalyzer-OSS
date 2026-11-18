@@ -19,7 +19,7 @@ public class ParallelChannelObject : IChartObject, IDisposable, IDrawingCalculat
     public bool IsMoveAxisModeExplicit { get; set; } = false;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.ParallelChannel;
-    
+
     // P1, P2 Define the main trend line. P3 defines the parallel line position.
     public List<ChartPoint> Points { get; private set; }
 
@@ -156,7 +156,7 @@ public class ParallelChannelObject : IChartObject, IDisposable, IDrawingCalculat
         // Simple bounding box or Polygon containment
         // Polygon test
         if (Points.Count < 3) return false;
-        
+
         // Re-calculate polygon points (logic duplication, could refactor)
         var s1 = transform.ChartToScreen(Points[0]);
         var s2 = transform.ChartToScreen(Points[1]);
@@ -222,7 +222,7 @@ public class ParallelChannelObject : IChartObject, IDisposable, IDrawingCalculat
         if (dx == 0 && dy == 0) return false;
 
         double t = ((test.X - p1.X) * dx + (test.Y - p1.Y) * dy) / (dx * dx + dy * dy);
-        
+
         if (t < 0) return PointDistance(p1, test) < tolerance;
         if (t > 1) return PointDistance(p2, test) < tolerance;
         global::Avalonia.Point projection = new global::Avalonia.Point(p1.X + t * dx, p1.Y + t * dy);

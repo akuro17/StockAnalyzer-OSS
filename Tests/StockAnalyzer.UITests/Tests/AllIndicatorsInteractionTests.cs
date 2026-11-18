@@ -20,11 +20,11 @@ namespace StockAnalyzer.UITests.Tests
         public void VerifyAllIndicatorsInteraction_SingleSession()
         {
             // Optimize: Launch ONCE, then iterate.
-            try 
+            try
             {
                 LaunchApplication();
                 var mainPage = new MainWindowPage(MainWindow!, this);
-                
+
                 var indicatorTypes = IndicatorFactory.GetRegisteredTypesStatic()
                     .Where(type => type != IndicatorType.Price)
                     .OrderBy(type => type.ToString())
@@ -54,7 +54,7 @@ namespace StockAnalyzer.UITests.Tests
 
                 settingsPage.Close();
                 LogInfo($"Completed indicator interaction test: {successCount}/{indicatorTypes.Length} added.");
-                
+
                 if (sbErrors.Length > 0)
                 {
                     Assert.Fail($"Some indicators failed interaction:\n{sbErrors}");

@@ -59,26 +59,26 @@ public class FibonacciCircleObject : IChartObject
             Style = SKPaintStyle.Stroke,
             IsAntialias = true
         };
-        
+
         using var textPaint = new SKPaint
         {
-             Color = SkiaColor,
-             IsAntialias = true,
-             TextSize = DrawingThemeContext.DrawingFontSize
+            Color = SkiaColor,
+            IsAntialias = true,
+            TextSize = DrawingThemeContext.DrawingFontSize
         };
 
         foreach (var level in _fibLevels)
         {
             float r = (float)(baseRadius * level);
             canvas.DrawCircle((float)center.X, (float)center.Y, r, paint);
-             
+
             // Draw Label near the arc
-            double dist = Math.Sqrt(dx*dx + dy*dy);
+            double dist = Math.Sqrt(dx * dx + dy * dy);
             if (dist > 0)
             {
-                 float lx = (float)(center.X + (dx / dist) * r);
-                 float ly = (float)(center.Y + (dy / dist) * r);
-                 canvas.DrawText($"{level:P1}", lx, ly, textPaint);
+                float lx = (float)(center.X + (dx / dist) * r);
+                float ly = (float)(center.Y + (dy / dist) * r);
+                canvas.DrawText($"{level:P1}", lx, ly, textPaint);
             }
         }
 
@@ -95,7 +95,7 @@ public class FibonacciCircleObject : IChartObject
 
         var center = transform.ChartToScreen(Points[0]);
         var edge = transform.ChartToScreen(Points[1]);
-        
+
         double dx = edge.X - center.X;
         double dy = edge.Y - center.Y;
         double baseRadius = Math.Sqrt(dx * dx + dy * dy);

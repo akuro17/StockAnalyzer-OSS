@@ -270,7 +270,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                 var localized = LocalizationManager.Instance[key];
                 if (!string.IsNullOrEmpty(localized)) return localized;
             }
-            catch {}
+            catch { }
             return key;
         }
     }
@@ -315,7 +315,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         _comparisonColors = new IndicatorColor[ChartColorPalette.PaletteSize];
         for (int i = 0; i < _comparisonColors.Length; i++)
         {
-             _comparisonColors[i] = new IndicatorColor(0, 0, 0, 0); // Transparent placeholder
+            _comparisonColors[i] = new IndicatorColor(0, 0, 0, 0); // Transparent placeholder
         }
         UpdateComparisonColors(_chartViewModel!.ThemeManager?.CurrentTheme?.IsDark ?? true);
 
@@ -325,13 +325,13 @@ public partial class DataWindowViewModel : ViewModelBase,
         _messenger.Register<DataWindowViewModel, IndicatorSettingsChangedMessage>(this, (r, m) => r.Receive(m));
         _messenger.Register<DataWindowViewModel, SingleIndicatorSettingsChangedMessage>(this, (r, m) => r.Receive(m));
         _messenger.Register<DataWindowViewModel, IndicatorResultsUpdatedMessage>(this, (r, m) => r.UpdatePropertiesInternal());
-        
+
         // Initial update
         UpdatePropertiesInternal();
     }
-    
+
     // For design time support
-    public DataWindowViewModel() 
+    public DataWindowViewModel()
     {
         _chartViewModel = new ChartViewModel();
         _messenger = WeakReferenceMessenger.Default;
@@ -343,7 +343,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         _comparisonColors = new IndicatorColor[ChartColorPalette.PaletteSize];
         for (int i = 0; i < _comparisonColors.Length; i++)
         {
-             _comparisonColors[i] = new IndicatorColor(0, 0, 0, 0);
+            _comparisonColors[i] = new IndicatorColor(0, 0, 0, 0);
         }
     }
 
@@ -387,7 +387,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         int index = _lastCrosshairCandleIndex;
         bool isHovering = candle != null && index >= 0 && index < candles.Count;
         int hoveredPosition = index;   // position inside the visible window, as sent by the crosshair
-        
+
         // Fallback: If no crosshair or collection changed, use latest candle
         if (!isHovering)
         {
@@ -402,17 +402,17 @@ public partial class DataWindowViewModel : ViewModelBase,
                 index = -1;
             }
         }
-            
+
         UpdateBasicProperties(isHovering ? candle : null, isHovering, hoveredPosition);
         UpdateTrendDates(isHovering, hoveredPosition);
         UpdateSpecializedProperties(ResolveConvertedIndex(isHovering, hoveredPosition), isHovering ? candle : null);
         UpdateIndicatorItems(_chartViewModel.Indicators, _chartViewModel.IndicatorResults ?? new Dictionary<string, IIndicatorResult>());
         UpdateDrawingItems(candle);
         OnPropertyChanged(nameof(HasItems));
-        
+
         if (_chartViewModel.ChartType == ChartType.RelativePerformance && index >= 0)
         {
-             UpdateRelativePerformanceItems(index);
+            UpdateRelativePerformanceItems(index);
         }
     }
 
@@ -428,7 +428,7 @@ public partial class DataWindowViewModel : ViewModelBase,
     private void ToggleVisibility(DataWindowItemViewModel? item)
     {
         if (item?.AssociateId == null) return;
-        
+
         var indicator = _chartViewModel.Indicators.FirstOrDefault(i => i.Id == item.AssociateId);
         if (indicator == null)
         {
@@ -457,7 +457,7 @@ public partial class DataWindowViewModel : ViewModelBase,
     {
         if (item?.AssociateId == null) return;
         string typeName = item.AssociateId;
-        
+
         bool isGuid = Guid.TryParse(typeName, out _);
         var indicatorsInGroup = _chartViewModel.Indicators
             .Where(i => (isGuid && i.Id == typeName) || (!isGuid && (i.TypeEnum?.ToString() == typeName || i.TypeEnum?.GetDescription() == typeName)))
@@ -476,7 +476,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                 changed = true;
             }
         }
-        
+
         // Sync ViewModel state for immediate feedback
         if (changed)
         {
@@ -529,7 +529,7 @@ public partial class DataWindowViewModel : ViewModelBase,
     {
         if (item?.AssociateId == null) return;
         string typeName = item.AssociateId;
-        
+
         bool isGuid = Guid.TryParse(typeName, out _);
         var indicatorsInGroup = _chartViewModel.Indicators
             .Where(i => (isGuid && i.Id == typeName) || (!isGuid && (i.TypeEnum?.ToString() == typeName || i.TypeEnum?.GetDescription() == typeName)))
@@ -550,7 +550,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         if (changed)
         {
             SyncViewModelsToIndicators(indicatorsInGroup);
-            
+
             // Send individual visual-only messages to avoid destructive Clear/Add in MainWindowVM
             foreach (var indicator in indicatorsInGroup)
             {
@@ -581,7 +581,7 @@ public partial class DataWindowViewModel : ViewModelBase,
     {
         if (indicators == null || indicators.Count == 0) return;
         var ids = new System.Collections.Generic.HashSet<string>(indicators.Select(i => i.Id));
-        
+
         foreach (var item in IndicatorItems)
         {
             if (item.AssociateId != null && ids.Contains(item.AssociateId))
@@ -621,11 +621,12 @@ public partial class DataWindowViewModel : ViewModelBase,
 
     public void Receive(CrosshairPositionChangedMessage message)
     {
-        _dispatcherService.Post(static state => {
+        _dispatcherService.Post(static state =>
+        {
             var vm = state.Vm;
             var data = state.Msg.Value;
             if (data == null) return;
-            
+
             // Update Floating Tooltip (FR-39-15)
             vm.UpdateFloatingTooltip(data);
 
@@ -634,7 +635,7 @@ public partial class DataWindowViewModel : ViewModelBase,
             bool isReverseWatch = vm._chartViewModel.ChartType == ChartType.ReverseWatch;
             int currentIndicatorCount = vm._chartViewModel.Indicators?.Count ?? 0;
             var currentResults = vm._chartViewModel.IndicatorResults;
-            
+
             if (isReverseWatch)
             {
                 if (vm._lastChartType == ChartType.ReverseWatch &&
@@ -665,7 +666,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                 vm._lastIndicatorCount = currentIndicatorCount;
                 vm._lastResultsRef = currentResults;
             }
-            
+
             if (data.ReverseWatchPoint != null)
             {
                 vm._lastRwPoint = data.ReverseWatchPoint;
@@ -679,7 +680,7 @@ public partial class DataWindowViewModel : ViewModelBase,
             {
                 vm._lastRwPoint = null;
             }
-            
+
             vm.UpdateBasicProperties(data.HoveredCandle, data.HoveredCandle != null, data.CandleIndex);
             vm.UpdateTrendDates(data.HoveredCandle != null, data.CandleIndex);
 
@@ -690,7 +691,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                 vm.IsLowVisible = false;
                 vm.IsCloseVisible = false;
                 vm.IsVolumeVisible = false;
-                
+
                 // Ensure colors are correct for current theme even if floating tooltip is disabled
                 vm.UpdateComparisonColors(vm._chartViewModel.ThemeManager?.CurrentTheme?.IsDark ?? true);
                 vm.UpdateRelativePerformanceItems(data.CandleIndex);
@@ -711,13 +712,13 @@ public partial class DataWindowViewModel : ViewModelBase,
                     vm.ReverseWatchValueText = string.Empty;
                     vm.ReverseWatchVolumeText = string.Empty;
                 }
-                
+
                 vm.IsHighVisible = false;
                 vm.IsLowVisible = false;
                 vm.IsOpenVisible = false;
                 vm.IsCloseVisible = false;
                 vm.IsVolumeVisible = false;
-                
+
                 vm.OpenText = string.Empty;
                 vm.HighText = string.Empty;
                 vm.LowText = string.Empty;
@@ -755,7 +756,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         int globalIndex = -1;
         decimal? previousClose = null;
         decimal? changeClose = null;
-        
+
         if (drawn != null)
         {
             // A chart that is not a time series draws a converted series: the rows describe its hovered element (start of the visible window + hovered
@@ -802,16 +803,16 @@ public partial class DataWindowViewModel : ViewModelBase,
             }
             else if (candles != null)
             {
-                 // Fallback: finding the index
-                 globalIndex = -1;
-                 for (int i = 0; i < candles.Count; i++)
-                 {
-                     if (candles[i].Timestamp == candle.Timestamp)
-                     {
-                         globalIndex = i;
-                         break;
-                     }
-                 }
+                // Fallback: finding the index
+                globalIndex = -1;
+                for (int i = 0; i < candles.Count; i++)
+                {
+                    if (candles[i].Timestamp == candle.Timestamp)
+                    {
+                        globalIndex = i;
+                        break;
+                    }
+                }
             }
         }
 
@@ -820,7 +821,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         IsLowVisible = true;
         IsCloseVisible = true;
         IsVolumeVisible = true;
-        
+
         DateText = DisplayFormat.Timestamp(candle.Timestamp);
 
         OpenText = DisplayFormat.Price(candle.Open);
@@ -831,24 +832,24 @@ public partial class DataWindowViewModel : ViewModelBase,
 
         if (drawn == null && candles != null && globalIndex > 0 && globalIndex < candles.Count)
         {
-             previousClose = candles[globalIndex - 1].Close;
+            previousClose = candles[globalIndex - 1].Close;
         }
 
         if (previousClose.HasValue)
         {
-             var change = PriceChange.FromCloses(changeClose ?? candle.Close, previousClose.Value);
-             var diff = change.Amount;
-             var ratio = change.Percent;
-             YesterdayChangeText = DisplayFormat.ChangeAmount(diff);
-             YesterdayChangeRatioText = DisplayFormat.ChangeRatio(ratio);
-             var theme = _chartViewModel.ThemeManager.CurrentTheme;
-             YesterdayChangeColor = diff > 0 ? theme.SemanticPlus : (diff < 0 ? theme.SemanticMinus : theme.SemanticNeutral);
-             YesterdayChangeRatioColor = YesterdayChangeColor;
+            var change = PriceChange.FromCloses(changeClose ?? candle.Close, previousClose.Value);
+            var diff = change.Amount;
+            var ratio = change.Percent;
+            YesterdayChangeText = DisplayFormat.ChangeAmount(diff);
+            YesterdayChangeRatioText = DisplayFormat.ChangeRatio(ratio);
+            var theme = _chartViewModel.ThemeManager.CurrentTheme;
+            YesterdayChangeColor = diff > 0 ? theme.SemanticPlus : (diff < 0 ? theme.SemanticMinus : theme.SemanticNeutral);
+            YesterdayChangeRatioColor = YesterdayChangeColor;
         }
         else
         {
-             YesterdayChangeText = string.Empty;
-             YesterdayChangeRatioText = string.Empty;
+            YesterdayChangeText = string.Empty;
+            YesterdayChangeRatioText = string.Empty;
         }
 
         // WebAI: Use the latest/hovered point for Reverse Watch texts
@@ -856,7 +857,7 @@ public partial class DataWindowViewModel : ViewModelBase,
         {
             ReverseWatchValueText = DisplayFormat.Price(_lastRwPoint.PriceAverage);
             ReverseWatchVolumeText = DisplayFormat.Volume(_lastRwPoint.VolumeAverage);
-            
+
             // If in Reverse Watch mode, the OHLCV relative to the point should be shown
             DateText = DisplayFormat.Date(_lastRwPoint.Date);
             OpenText = DisplayFormat.Price(_lastRwPoint.Open);
@@ -1168,7 +1169,7 @@ public partial class DataWindowViewModel : ViewModelBase,
     private void UpdateIndicatorItems(IEnumerable<CoreIndicatorSettings>? settings, IReadOnlyDictionary<string, IIndicatorResult>? results)
     {
         if (_isSyncing || _chartViewModel == null || settings == null || results == null) return;
-        
+
         // Guard against flickering in specialized modes where right panel is managed by mouse-move
         // Specification: Do not show indicators in Comparison or Reverse Watch modes
         if (_chartViewModel.ChartType == ChartType.ReverseWatch || _chartViewModel.ChartType == ChartType.RelativePerformance)
@@ -1185,14 +1186,14 @@ public partial class DataWindowViewModel : ViewModelBase,
         {
             // Lookup index logic
             var snapshot = _chartViewModel.CurrentSnapshot;
-            bool useSnapshotResults = snapshot?.ChartType.IsIndexBased() == true 
+            bool useSnapshotResults = snapshot?.ChartType.IsIndexBased() == true
                                       && snapshot.IndicatorResults != null;
-            
+
             int lookupIndex = -1;
             if (_lastCrosshairData != null && _lastCrosshairData.CandleIndex >= 0)
             {
-                lookupIndex = useSnapshotResults 
-                    ? _lastCrosshairData.CandleIndex 
+                lookupIndex = useSnapshotResults
+                    ? _lastCrosshairData.CandleIndex
                     : _lastCrosshairData.CandleIndex + _chartViewModel.VisibleStartIndex;
             }
             else
@@ -1208,7 +1209,7 @@ public partial class DataWindowViewModel : ViewModelBase,
             {
                 string indicatorName = indicator.ShortDisplayName;
                 if (string.IsNullOrEmpty(indicatorName)) indicatorName = indicator.DisplayName;
-                
+
                 string indicatorBaseName = indicatorName;
                 int parenIndex = indicatorBaseName.IndexOf('(');
                 if (parenIndex > 0) indicatorBaseName = indicatorBaseName.Substring(0, parenIndex).Trim();
@@ -1225,7 +1226,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                         {
                             if (IndicatorSeriesNames.IsDirectionalSignalSeries(n))
                                 continue;
-                            
+
                             if (IndicatorChartSuppression.IsDataWindowSuppressed(indicator.TypeEnum, n))
                                 continue;
 
@@ -1409,7 +1410,7 @@ public partial class DataWindowViewModel : ViewModelBase,
             {
                 var val = values[localIndex];
                 string valStr;
-                
+
                 if (val.HasValue)
                 {
                     valStr = DisplayFormat.ComparisonValue(mode, val.Value);
@@ -1421,7 +1422,7 @@ public partial class DataWindowViewModel : ViewModelBase,
 
                 int colorIndex = _chartViewModel.SeriesColorIndex.GetOrAdd(symbol);
                 var color = _comparisonColors[colorIndex % _comparisonColors.Length];
-                
+
                 string displayName = symbol;
                 if (symbol == _chartViewModel.ComparisonData?.PrimarySymbol && (mode == ComparisonMode.Ratio || mode == ComparisonMode.Spread))
                 {
@@ -1438,9 +1439,9 @@ public partial class DataWindowViewModel : ViewModelBase,
         int specializedEnd = itemIndex;
         while (IndicatorItems.Count > specializedEnd && (IndicatorItems[specializedEnd].AssociateId == null || !Guid.TryParse(IndicatorItems[specializedEnd].AssociateId, out _)))
         {
-             // Remove items that are not indicators (e.g. leftover comparison items from a larger list)
-             // In Comparison mode, specialized items don't have GUID AssociateIds.
-             IndicatorItems.RemoveAt(specializedEnd);
+            // Remove items that are not indicators (e.g. leftover comparison items from a larger list)
+            // In Comparison mode, specialized items don't have GUID AssociateIds.
+            IndicatorItems.RemoveAt(specializedEnd);
         }
     }
 
@@ -1454,9 +1455,9 @@ public partial class DataWindowViewModel : ViewModelBase,
 
     private void UpdateFloatingTooltip(CrosshairPositionData data)
     {
-        if (_chartViewModel.ChartType != ChartType.RelativePerformance || 
-            !_chartViewModel.ShowFloatingTooltip || 
-            !data.ScreenX.HasValue || !data.ScreenY.HasValue || 
+        if (_chartViewModel.ChartType != ChartType.RelativePerformance ||
+            !_chartViewModel.ShowFloatingTooltip ||
+            !data.ScreenX.HasValue || !data.ScreenY.HasValue ||
             data.CandleIndex < 0)
         {
             IsComparisonTooltipVisible = false;
@@ -1497,13 +1498,13 @@ public partial class DataWindowViewModel : ViewModelBase,
 
         int itemIndex = 0;
         var mode = _chartViewModel.ComparisonMode;
-        
+
         foreach (var kvp in snapshot.ComparisonSeries)
         {
             var symbol = kvp.Key;
             var values = kvp.Value;
             if (values == null || data.CandleIndex >= values.Length) continue;
-            
+
             var val = values[data.CandleIndex];
             if (val.HasValue)
             {
@@ -1520,7 +1521,7 @@ public partial class DataWindowViewModel : ViewModelBase,
 
                 int colorIndex = _chartViewModel.SeriesColorIndex.GetOrAdd(symbol);
                 var color = _comparisonColors[colorIndex % _comparisonColors.Length];
-                
+
                 string displayName = symbol;
                 if (symbol == comparisonData.PrimarySymbol && (mode == ComparisonMode.Ratio || mode == ComparisonMode.Spread))
                 {
@@ -1664,26 +1665,26 @@ public partial class DataWindowViewModel : ViewModelBase,
             {
                 var closes = adapter.Closes.Span;
                 var opens = adapter.Opens.Span;
-                
+
                 bool isUp = closes[globalIndex] >= opens[globalIndex];
-                
+
                 int currentSequenceStart = globalIndex;
                 while (currentSequenceStart > 0 && (closes[currentSequenceStart - 1] >= opens[currentSequenceStart - 1]) == isUp)
                 {
                     currentSequenceStart--;
                 }
-                
+
                 int count = globalIndex - currentSequenceStart + 1;
                 RenkoCountText = DisplayFormat.Count(count);
-                
+
                 decimal brickHigh = System.Math.Max(opens[globalIndex], closes[globalIndex]);
                 decimal brickLow = System.Math.Min(opens[globalIndex], closes[globalIndex]);
                 decimal brickSize = _chartViewModel.EffectiveRenkoBrickSize;
-                decimal reversalRequirement = _chartViewModel.RenkoReversal; 
-                
+                decimal reversalRequirement = _chartViewModel.RenkoReversal;
+
                 decimal reversalPrice = isUp ? brickLow - (reversalRequirement * brickSize) : brickHigh + (reversalRequirement * brickSize);
                 decimal nextBrickPrice = isUp ? brickHigh + brickSize : brickLow - brickSize;
-                
+
                 RenkoReversalText = DisplayFormat.Price(reversalPrice);
                 RenkoUpdateText = DisplayFormat.Price(nextBrickPrice);
             }
@@ -1699,7 +1700,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                 var highs = adapter.Highs.Span;
                 var lows = adapter.Lows.Span;
                 var boxSize = _chartViewModel.EffectivePnfBoxSize;
-                
+
                 if (boxSize > 0)
                 {
                     int trendCount = System.Math.Max(1, (int)System.Math.Round((double)((highs[globalIndex] - lows[globalIndex]) / boxSize)) + 1);
@@ -1722,7 +1723,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                     _cachedLineCount = lineCount;
                     _cachedMinMove = minMove;
                 }
-                
+
                 var blocks = _cachedBlocks;
                 // Nothing hovered: the newest block (it may end before the newest candle when that candle added no block).
                 int targetBlockIndex = hoveredCandle == null ? blocks.Length - 1 : -1;
@@ -1734,19 +1735,19 @@ public partial class DataWindowViewModel : ViewModelBase,
                         break;
                     }
                 }
-                
+
                 if (targetBlockIndex >= 0 && targetBlockIndex < blocks.Length)
                 {
                     var targetBlock = blocks[targetBlockIndex];
                     bool currentIsUp = targetBlock.IsUp;
-                    
+
                     int count = 1;
                     for (int i = targetBlockIndex - 1; i >= 0; i--)
                     {
                         if (blocks[i].IsUp == currentIsUp) count++; else break;
                     }
                     ThreeLineBreakCountText = DisplayFormat.Count(count);
-                    
+
                     decimal reversalPrice = 0;
                     if (targetBlockIndex >= lineCount)
                     {
@@ -1772,7 +1773,7 @@ public partial class DataWindowViewModel : ViewModelBase,
                     {
                         reversalPrice = currentIsUp ? targetBlock.Low : targetBlock.High;
                     }
-                    
+
                     ThreeLineBreakReversalText = DisplayFormat.Price(reversalPrice);
                 }
             }

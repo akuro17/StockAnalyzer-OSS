@@ -104,7 +104,7 @@ public static class ChartTypeCapabilitiesRegistry
         [ChartType.ReverseWatch] = new ChartTypeCapabilities
         {
             IsCompactType = true,
-            SupportsIndicators = false, 
+            SupportsIndicators = false,
             CanToggleIndicators = true,
         },
         [ChartType.RelativePerformance] = new ChartTypeCapabilities

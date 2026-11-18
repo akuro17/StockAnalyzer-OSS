@@ -56,9 +56,9 @@ namespace StockAnalyzer.Core.Tests.Services
             {
                 scope.Import("pandas", "pd");
                 scope.Import("pyarrow");
-                
+
                 scope.Set("arrow_bytes", arrowBytes);
-                
+
                 scope.Exec(@"
 import io
 import pyarrow.ipc
@@ -89,12 +89,12 @@ except Exception:
 
             // Assert
             _output.WriteLine($"Result: {result}");
-            
+
             // Allow small precision difference for Open
             var openStr = result.Split(',')[0].Split(':')[1];
             double openVal = double.Parse(openStr, System.Globalization.CultureInfo.InvariantCulture);
             Assert.True(Math.Abs((double)candles[0].Open - openVal) < 0.0001, $"Open value mismatch. Expected {candles[0].Open}, Actual {openVal}");
-            
+
             Assert.Contains($"Vol:{candles[0].Volume}", result);
             Assert.Contains($"Count:{candles.Count}", result);
         }
@@ -112,7 +112,7 @@ except Exception:
             long csvMs = 0;
 
             // 1. Arrow Benchmark
-            try 
+            try
             {
                 Stopwatch swArrow = Stopwatch.StartNew();
                 byte[] arrowBytes = await ArrowConverter.ConvertToArrowIpcAsync(candles);
@@ -149,7 +149,7 @@ df = table.to_pandas()
                         sb.AppendLine($"{c.Timestamp.Ticks},{c.Open},{c.High},{c.Low},{c.Close},{c.Volume}");
                     }
                     string csvData = sb.ToString();
-                    
+
                     scope.Set("csv_data", csvData);
                     scope.Exec(@"
 import io
@@ -172,14 +172,14 @@ df_csv = pd.read_csv(io.StringIO(csv_data))
             try
             {
                 Stopwatch swMmf = Stopwatch.StartNew();
-                
+
                 // Create MMF
                 string mapName = "StockAnalyzer_ArrowTest_" + Guid.NewGuid().ToString();
                 // Estimate size: 100k rows. 
                 // Timestamp(8) + 4*Double(8) + Volume(8) = 48 bytes * 100k = 4.8MB. plus overhead. 
                 // Let's allocate 10MB safely.
                 long capacity = 20 * 1024 * 1024;
-                
+
                 using (var mmf = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateNew(mapName, capacity))
                 {
                     using (var stream = mmf.CreateViewStream())
@@ -191,7 +191,7 @@ df_csv = pd.read_csv(io.StringIO(csv_data))
                     await _pythonService.RunAsync(scope =>
                     {
                         scope.Set("map_name", mapName);
-                        scope.Set("data_size", capacity); 
+                        scope.Set("data_size", capacity);
                         scope.Exec(@"
 import mmap
 import pyarrow.ipc
@@ -215,15 +215,15 @@ shmem.close()
 ");
                     });
                 }
-                
+
                 swMmf.Stop();
                 arrowMmfMs = swMmf.ElapsedMilliseconds;
                 _output.WriteLine($"Arrow MMF Transfer ({dataSize} rows): {arrowMmfMs} ms");
             }
             catch (Exception ex)
             {
-                 _output.WriteLine($"Arrow MMF Benchmark Failed: {ex}");
-                 throw;
+                _output.WriteLine($"Arrow MMF Benchmark Failed: {ex}");
+                throw;
             }
 
             // Assert Arrow MMF is faster than CSV

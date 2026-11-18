@@ -104,7 +104,7 @@ namespace StockAnalyzer.Core.Optimization
             // Note: This is a loose check as specific limits depend on the app's context
             // For Phase 1, we imply a "safe" reduction if heap turn-over is high, 
             // but absent detailed telemetry, we'll stick to core-based logic primarily.
-            
+
             // Apply bounds
             RecommendedParallelism = Math.Max(1, Math.Min(baseParallelism, 128)); // Cap at 128 for sanity
 
@@ -121,7 +121,7 @@ namespace StockAnalyzer.Core.Optimization
                     ParallelizationThreshold = 1000;
                     break;
                 case ExecutionMode.Balanced:
-                    ParallelizationThreshold = 2000; 
+                    ParallelizationThreshold = 2000;
                     break;
                 case ExecutionMode.LowImpact:
                     ParallelizationThreshold = 5000;
@@ -146,7 +146,7 @@ namespace StockAnalyzer.Core.Optimization
             const int MinChunkSize = 100;
 
             int split = dataCount / RecommendedParallelism;
-            
+
             // If the split is too small, reduce parallelism implicitly by increasing chunk size
             return Math.Max(MinChunkSize, split);
         }

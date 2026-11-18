@@ -19,7 +19,8 @@ public sealed partial class ModelGenerationRegistry
                 .ThenBy(g => g.ModelId, System.StringComparer.Ordinal).Select(CloneRl).ToImmutableArray();
             return new(generations, _rlPointerError is null ? _rlPointer.ActiveId : null,
                 _rlContinuousPointerError is null ? _rlContinuousPointer.ActiveId : null,
-                _rlPointerError is not null, _rlContinuousPointerError is not null) { Capabilities = Capabilities };
+                _rlPointerError is not null, _rlContinuousPointerError is not null)
+            { Capabilities = Capabilities };
         }
     }
 }

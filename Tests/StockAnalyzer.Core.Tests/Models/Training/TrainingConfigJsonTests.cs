@@ -155,8 +155,11 @@ public class TrainingConfigJsonTests
     {
         var config = new TrainingJobConfig
         {
-            Symbols = new[] { "7203-T" }, Architecture = "lstm", WindowSize = 60,
-            Horizon = 5, FixedZScore = enabled,
+            Symbols = new[] { "7203-T" },
+            Architecture = "lstm",
+            WindowSize = 60,
+            Horizon = 5,
+            FixedZScore = enabled,
         };
         var json = TrainingConfigJson.Serialize(config);
         using var document = JsonDocument.Parse(json);
@@ -181,8 +184,11 @@ public class TrainingConfigJsonTests
 
         var config = new TrainingJobConfig
         {
-            Symbols = new[] { "7203-T" }, Architecture = "lstm", WindowSize = 60,
-            Horizon = 5, FixedZScore = enabled,
+            Symbols = new[] { "7203-T" },
+            Architecture = "lstm",
+            WindowSize = 60,
+            Horizon = 5,
+            FixedZScore = enabled,
         };
         var file = Path.Combine(Path.GetTempPath(), $"sa_training_wire_{Guid.NewGuid():N}.json");
         try
@@ -214,8 +220,12 @@ public class TrainingConfigJsonTests
         var limits = TrainingResourceGuard.Resolve(new TrainingResourceOverrides(7, 2, 23));
         var config = new TrainingJobConfig
         {
-            Symbols = new[] { "7203-T" }, Architecture = "lstm", WindowSize = 60, Horizon = 5,
-            ResourceLimits = limits, RemainingRunBudgetSeconds = 60,
+            Symbols = new[] { "7203-T" },
+            Architecture = "lstm",
+            WindowSize = 60,
+            Horizon = 5,
+            ResourceLimits = limits,
+            RemainingRunBudgetSeconds = 60,
         };
         var file = Path.Combine(Path.GetTempPath(), $"sa_training_resources_{Guid.NewGuid():N}.json");
         try

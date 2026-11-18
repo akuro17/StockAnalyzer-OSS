@@ -254,8 +254,8 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
     }
 
     public DrawingObjectsViewModel(
-        IDispatcherService dispatcherService, 
-        IDialogService? dialogService = null, 
+        IDispatcherService dispatcherService,
+        IDialogService? dialogService = null,
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null,
         IDrawingLayerService? layerService = null,
         IDrawingToolPresetService? presetService = null,
@@ -274,9 +274,9 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
     }
 
     public DrawingObjectsViewModel(
-        ChartViewModel chartViewModel, 
-        IDispatcherService dispatcherService, 
-        IDialogService? dialogService = null, 
+        ChartViewModel chartViewModel,
+        IDispatcherService dispatcherService,
+        IDialogService? dialogService = null,
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null,
         IDrawingLayerService? layerService = null,
         IDrawingToolPresetService? presetService = null,
@@ -287,9 +287,9 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
     }
 
     public DrawingObjectsViewModel(
-        ChartObjectManager objectManager, 
-        IDispatcherService dispatcherService, 
-        IDialogService? dialogService = null, 
+        ChartObjectManager objectManager,
+        IDispatcherService dispatcherService,
+        IDialogService? dialogService = null,
         StockAnalyzer.Avalonia.Services.Drawing.IIconDrawingService? iconDrawingService = null,
         IDrawingLayerService? layerService = null,
         IDrawingToolPresetService? presetService = null,

@@ -28,7 +28,7 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
 
             var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
             var emaData = new List<decimal>();
-            for(int i = 0; i < candles.Count; i++)
+            for (int i = 0; i < candles.Count; i++)
             {
                 if (i < lag)
                 {
@@ -52,7 +52,7 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
                 if (zlema == null)
                 {
                     decimal sum = 0;
-                    for(int j = 0; j < Period; j++)
+                    for (int j = 0; j < Period; j++)
                     {
                         sum += emaData[i - j];
                     }

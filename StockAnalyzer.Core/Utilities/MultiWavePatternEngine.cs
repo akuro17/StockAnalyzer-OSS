@@ -30,7 +30,7 @@ public class MultiWavePatternEngine
     private decimal _currentHigh;
     private decimal _currentLow;
     private decimal _currentTotalDistance;
-    
+
     // To prevent emitting the same signal multiple times during a growing wave
     private int _lastSignalWaveIndex = -1;
 
@@ -95,7 +95,7 @@ public class MultiWavePatternEngine
 
             // Optimistic update of the active wave
             _waves[_waves.Count - 1] = new WaveNode(_currentDirection, _startIndex, _currentIndex, _currentHigh, _currentLow, blockCount, purity, momentum);
-            
+
             // Check if this wave update triggers any patterns
             CheckForPatternsOnActiveWave();
         }
@@ -107,9 +107,9 @@ public class MultiWavePatternEngine
             _currentHigh = block.High;
             _currentLow = block.Low;
             _currentTotalDistance = blockDistance;
-            
+
             _waves.Add(new WaveNode(_currentDirection, _startIndex, _currentIndex, _currentHigh, _currentLow, 1, 1.0, (double)blockDistance));
-            
+
             // Determine phase transition:
             // A reversal often means moving from Accumulation -> Pullback, or Breakout -> Pullback
             if (_signals.Count > 0 && _signals[_signals.Count - 1].TriggerIndex >= _startIndex - 5)
@@ -120,7 +120,7 @@ public class MultiWavePatternEngine
             {
                 CurrentPhase = MultiWavePhase.Accumulation;
             }
-            
+
             // Check for patterns immediately on the new unit 1-block wave
             CheckForPatternsOnActiveWave();
         }
@@ -218,13 +218,13 @@ public class MultiWavePatternEngine
         if (_waves.Count < 3) return;
 
         int i = _waves.Count - 1;
-        
+
         // Ensure we don't emit multiple signals for the exact same wave (no duplicate breakouts)
         if (_lastSignalWaveIndex == i) return;
 
         var wave = _waves[i];
         var prev2 = _waves[i - 2];
-        
+
         if (wave.IsBullish)
         {
             if (wave.High > prev2.High)
@@ -241,7 +241,7 @@ public class MultiWavePatternEngine
                         // TripleTop weights: W=(0.35, 0.35, 0.30) — strength and pullback equally valued, breakout matters
                         decimal impulseRange = prev2.High - System.Math.Min(prev1.Low, prev3.Low);
                         decimal pullbackRange = System.Math.Max(prev1.High - prev1.Low, prev3.High - prev3.Low);
-                        decimal breakoutDist  = wave.High - prev2.High;
+                        decimal breakoutDist = wave.High - prev2.High;
                         double ws = ComputeWaveStrength(wave.BlockCount + prev2.BlockCount + prev4.BlockCount, Weights.TriplePatternRefBlocks);
                         double ps = ComputePullbackShallowness(impulseRange, pullbackRange);
                         double bw = ComputeBreakoutWidth(breakoutDist, impulseRange);
@@ -260,7 +260,7 @@ public class MultiWavePatternEngine
                         // BullishTriangle weights: W=(0.30, 0.40, 0.30) — pullback shallowness is critical for converging triangle
                         decimal impulseRange = prev4.High - System.Math.Min(prev3.Low, prev1.Low);
                         decimal pullbackRange = prev1.High - prev1.Low;
-                        decimal breakoutDist  = wave.High - prev2.High;
+                        decimal breakoutDist = wave.High - prev2.High;
                         double ws = ComputeWaveStrength(wave.BlockCount + prev2.BlockCount, Weights.DoublePatternRefBlocks);
                         double ps = ComputePullbackShallowness(impulseRange, pullbackRange);
                         double bw = ComputeBreakoutWidth(breakoutDist, impulseRange);
@@ -275,7 +275,7 @@ public class MultiWavePatternEngine
                     }
                 }
 
-                if (_lastSignalWaveIndex != i) 
+                if (_lastSignalWaveIndex != i)
                 {
                     bool isCatapult = false;
                     if (i >= 6)
@@ -288,7 +288,7 @@ public class MultiWavePatternEngine
                             // BullishCatapult weights: W=(0.35, 0.30, 0.35) — breakout power + wave strength equally dominant
                             decimal impulseRange = wave.High - prev1.Low;
                             decimal pullbackRange = prev1.High - prev1.Low;
-                            decimal breakoutDist  = wave.High - prev2.High;
+                            decimal breakoutDist = wave.High - prev2.High;
                             double ws = ComputeWaveStrength(wave.BlockCount + prev2.BlockCount + prev4.BlockCount, Weights.TriplePatternRefBlocks);
                             double ps = ComputePullbackShallowness(impulseRange, pullbackRange);
                             double bw = ComputeBreakoutWidth(breakoutDist, impulseRange);
@@ -308,7 +308,7 @@ public class MultiWavePatternEngine
                         // DoubleTop weights: W=(0.40, 0.40, 0.20) — strength and pullback depth are equally key
                         decimal impulseRange = prev2.High - prev1.Low;
                         decimal pullbackRange = prev1.High - prev1.Low;
-                        decimal breakoutDist  = wave.High - prev2.High;
+                        decimal breakoutDist = wave.High - prev2.High;
                         double ws = ComputeWaveStrength(wave.BlockCount + prev2.BlockCount, Weights.DoublePatternRefBlocks);
                         double ps = ComputePullbackShallowness(impulseRange, pullbackRange);
                         double bw = ComputeBreakoutWidth(breakoutDist, impulseRange);
@@ -340,7 +340,7 @@ public class MultiWavePatternEngine
                         // TripleBottom weights: W=(0.35, 0.35, 0.30)
                         decimal impulseRange = System.Math.Max(prev1.High, prev3.High) - prev2.Low;
                         decimal pullbackRange = System.Math.Max(prev1.High - prev1.Low, prev3.High - prev3.Low);
-                        decimal breakoutDist  = prev2.Low - wave.Low;
+                        decimal breakoutDist = prev2.Low - wave.Low;
                         double ws = ComputeWaveStrength(wave.BlockCount + prev2.BlockCount + prev4.BlockCount, Weights.TriplePatternRefBlocks);
                         double ps = ComputePullbackShallowness(impulseRange, pullbackRange);
                         double bw = ComputeBreakoutWidth(breakoutDist, impulseRange);
@@ -359,7 +359,7 @@ public class MultiWavePatternEngine
                         // BearishTriangle weights: W=(0.30, 0.40, 0.30)
                         decimal impulseRange = System.Math.Max(prev3.High, prev1.High) - prev4.Low;
                         decimal pullbackRange = prev1.High - prev1.Low;
-                        decimal breakoutDist  = prev2.Low - wave.Low;
+                        decimal breakoutDist = prev2.Low - wave.Low;
                         double ws = ComputeWaveStrength(wave.BlockCount + prev2.BlockCount, Weights.DoublePatternRefBlocks);
                         double ps = ComputePullbackShallowness(impulseRange, pullbackRange);
                         double bw = ComputeBreakoutWidth(breakoutDist, impulseRange);
@@ -387,7 +387,7 @@ public class MultiWavePatternEngine
                             // BearishCatapult weights: W=(0.35, 0.30, 0.35)
                             decimal impulseRange = prev1.High - wave.Low;
                             decimal pullbackRange = prev1.High - prev1.Low;
-                            decimal breakoutDist  = prev2.Low - wave.Low;
+                            decimal breakoutDist = prev2.Low - wave.Low;
                             double ws = ComputeWaveStrength(wave.BlockCount + prev2.BlockCount + prev4.BlockCount, Weights.TriplePatternRefBlocks);
                             double ps = ComputePullbackShallowness(impulseRange, pullbackRange);
                             double bw = ComputeBreakoutWidth(breakoutDist, impulseRange);
@@ -407,7 +407,7 @@ public class MultiWavePatternEngine
                         // DoubleBottom weights: W=(0.40, 0.40, 0.20)
                         decimal impulseRange = prev1.High - prev2.Low;
                         decimal pullbackRange = prev1.High - prev1.Low;
-                        decimal breakoutDist  = prev2.Low - wave.Low;
+                        decimal breakoutDist = prev2.Low - wave.Low;
                         double ws = ComputeWaveStrength(wave.BlockCount + prev2.BlockCount, Weights.DoublePatternRefBlocks);
                         double ps = ComputePullbackShallowness(impulseRange, pullbackRange);
                         double bw = ComputeBreakoutWidth(breakoutDist, impulseRange);

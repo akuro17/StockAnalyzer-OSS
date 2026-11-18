@@ -22,8 +22,14 @@ public sealed class RlContinuousSessionTests
         return new(bars, "NUMERIC_FIXTURE", TimeFrame.D1, BacktestInput.CurrentDataVersion, Start, Start.AddDays(bars.Length), 0, RlContract.WindowLength - 1);
     }
     private static BacktestConfiguration Costs(decimal capital = 1000m, decimal flat = 0m, decimal perUnit = 0m)
-        => RlContract.CreateConfiguration(new BacktestConfiguration { InitialCapital = capital, CommissionFlat = flat, CommissionPerUnit = perUnit,
-            SizingModel = BacktestDefaults.SizingModel, SizingParameter = BacktestDefaults.SizingParameter });
+        => RlContract.CreateConfiguration(new BacktestConfiguration
+        {
+            InitialCapital = capital,
+            CommissionFlat = flat,
+            CommissionPerUnit = perUnit,
+            SizingModel = BacktestDefaults.SizingModel,
+            SizingParameter = BacktestDefaults.SizingParameter
+        });
     private static BacktestEngine Engine() => new(IndicatorFactory.Default);
 
     [Theory]
@@ -39,13 +45,16 @@ public sealed class RlContinuousSessionTests
         Assert.Equal(decimal.Parse(distance, System.Globalization.CultureInfo.InvariantCulture), mapped.StopDistance);
     }
     [Theory]
-    [InlineData(float.NaN)] [InlineData(float.PositiveInfinity)] [InlineData(float.NegativeInfinity)]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    [InlineData(float.NegativeInfinity)]
     public void Nonfinite_IsRejectedBeforeAnyTransition(float value)
     {
         using var session = Engine().CreateRlContinuousSession(Input(), Costs()); session.Reset();
         Assert.Throws<ArgumentException>(() => session.Step(RlAction.Buy, value, 0)); Assert.Empty(session.GetResult().Orders);
     }
-    [Fact] public void Stop_IsSubmittedAtActualFillCloseAndCannotExecuteOnTheFillBar()
+    [Fact]
+    public void Stop_IsSubmittedAtActualFillCloseAndCannotExecuteOnTheFillBar()
     {
         using var session = Engine().CreateRlContinuousSession(Input(i => i == 64 ? Bar(i, low: 90m) : Bar(i, low: 94m)), Costs());
         session.Reset(); var fill = session.Step(RlAction.Buy, 1, 1);
@@ -57,7 +66,8 @@ public sealed class RlContinuousSessionTests
         Assert.Equal(0m, exit.Snapshot.RetainedStopDistance); Assert.Null(exit.Snapshot.ActiveStopPrice);
         Assert.Equal(95m, session.GetResult().Fills.Last().Price);
     }
-    [Fact] public void Sell_CancelsStopThenSubmitsFullMarketAtNextCloseAndCannotBeRevoked()
+    [Fact]
+    public void Sell_CancelsStopThenSubmitsFullMarketAtNextCloseAndCannotBeRevoked()
     {
         using var session = Engine().CreateRlContinuousSession(Input(), Costs()); session.Reset();
         session.Step(RlAction.Buy, 1, 1);
@@ -71,14 +81,16 @@ public sealed class RlContinuousSessionTests
         Assert.Equal(new[] { 64, 66 }, session.GetResult().Fills.Select(f => f.BarIndex));
         Assert.Equal(OrderStatus.Cancelled, session.GetResult().Orders.Single(o => o.Type == OrderType.Stop).Status);
     }
-    [Fact] public void FixedBaselineUsesExactTwoPercentAndLongControlsCannotResizeOrChangeStop()
+    [Fact]
+    public void FixedBaselineUsesExactTwoPercentAndLongControlsCannotResizeOrChangeStop()
     {
         using var session = Engine().CreateRlContinuousSession(Input(), Costs()); session.Reset();
         var first = session.StepFixedControl(RlAction.Buy); Assert.Equal(98m, first.Snapshot.ActiveStopPrice);
         var next = session.Step(RlAction.Buy, -1, 1); Assert.Equal(3m, next.Snapshot.Quantity); Assert.Equal(98m, next.Snapshot.ActiveStopPrice);
         Assert.Equal(.02m, next.Snapshot.RetainedStopDistance); Assert.Equal(RlActionOutcome.AlreadyLong, next.Outcome);
     }
-    [Fact] public void QuantityCap_RejectsWithoutSilentCappingAndZeroSuppressesEntry()
+    [Fact]
+    public void QuantityCap_RejectsWithoutSilentCappingAndZeroSuppressesEntry()
     {
         using var session = Engine().CreateRlContinuousSession(Input(), Costs(capital: 10000000m)); session.Reset();
         Assert.Equal(RlActionOutcome.NoEntry, session.Step(RlAction.Buy, -1, 0).Outcome);
@@ -87,14 +99,16 @@ public sealed class RlContinuousSessionTests
         Assert.Equal(RejectedReason.QuantityCapExceeded, cap.RejectionReason); Assert.Equal(0m, cap.Snapshot.Quantity);
         Assert.Null(cap.Snapshot.ActiveStopPrice); Assert.Equal(30000m, session.GetResult().Orders.Single().Quantity);
     }
-    [Fact] public void SharedPercentBudgetUsesSignalCloseCostsAndDoesNotResizeAtFutureOpen()
+    [Fact]
+    public void SharedPercentBudgetUsesSignalCloseCostsAndDoesNotResizeAtFutureOpen()
     {
         using var session = Engine().CreateRlContinuousSession(Input(i => i == 64 ? Bar(i, open: 400m, low: 399m, close: 400m) : Bar(i)), Costs(flat: 2m, perUnit: .5m));
         session.Reset(); var step = session.Step(RlAction.Buy, 1, 1);
         Assert.Equal(2m, session.GetResult().Orders.First().Quantity); Assert.Equal(800m, step.Snapshot.EquityPoint.HeldMargin);
         Assert.Equal(400m, step.Snapshot.EntryPrice); Assert.Equal(380m, step.Snapshot.ActiveStopPrice);
     }
-    [Fact] public void HorizonExpiresStopWithoutInventingSaleOrAnotherBar()
+    [Fact]
+    public void HorizonExpiresStopWithoutInventingSaleOrAnotherBar()
     {
         using var session = Engine().CreateRlContinuousSession(Input(), Costs()); session.Reset();
         var step = session.Step(RlAction.Buy, 1, 1);
@@ -104,7 +118,8 @@ public sealed class RlContinuousSessionTests
         Assert.Throws<InvalidOperationException>(() => session.Step(RlAction.Hold, 0, 0));
     }
 
-    [Fact] public void CombinedStopAndDeferredExit_MatchExistingRunForIdenticalCanonicalIntents()
+    [Fact]
+    public void CombinedStopAndDeferredExit_MatchExistingRunForIdenticalCanonicalIntents()
     {
         var input = Input(); var costs = Costs(flat: 1m, perUnit: .1m); var engine = Engine();
         var full = engine.Run(input, costs, new CanonicalStrategy());

@@ -22,7 +22,7 @@ namespace StockAnalyzer.Avalonia.ViewModels.Dialogs
         public string TitleKey => "Settings_Python";
         public string IconKey => "SettingsPythonIcon";
 
-        [ObservableProperty] [NotifyPropertyChangedFor(nameof(IsModified))] private bool _selectedShowUpdateConfirmationDialog = true;
+        [ObservableProperty][NotifyPropertyChangedFor(nameof(IsModified))] private bool _selectedShowUpdateConfirmationDialog = true;
 
         [ObservableProperty] private string? _statusMessage;
 

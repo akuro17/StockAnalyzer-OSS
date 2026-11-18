@@ -148,7 +148,7 @@ public static class PathDiscovery
 
         string resolvedPath = "";
         string? fallbackDataDir = null;
-        
+
         // 3. Fallback: Search upwards for project root (contains 'Data' folder or '.sln')
         var current = baseDir;
         while (!string.IsNullOrEmpty(current))

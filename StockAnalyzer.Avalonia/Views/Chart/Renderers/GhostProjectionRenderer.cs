@@ -22,16 +22,16 @@ public sealed class GhostProjectionRenderer : System.IDisposable
     {
         _bullishProjectionPaint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
         _bearishProjectionPaint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
-        _dashedProjectionPaint = new SKPaint 
-        { 
-            Style = SKPaintStyle.Stroke, 
-            IsAntialias = true, 
+        _dashedProjectionPaint = new SKPaint
+        {
+            Style = SKPaintStyle.Stroke,
+            IsAntialias = true,
             StrokeWidth = 1f,
             PathEffect = SKPathEffect.CreateDash(new float[] { 4f, 4f }, 0)
         };
-        _textPaint = new SKPaint 
-        { 
-            Color = SKColors.White, 
+        _textPaint = new SKPaint
+        {
+            Color = SKColors.White,
             IsAntialias = true,
             TextSize = 11,
             Typeface = SKTypeface.FromFamilyName("Arial")
@@ -51,15 +51,15 @@ public sealed class GhostProjectionRenderer : System.IDisposable
         var theme = config.ThemeManager?.CurrentTheme ?? new Core.Theme.ThemeColors();
         var baseBullish = theme.Bullish;
         var baseBearish = theme.Bearish;
-        
+
         var t = config.Transform;
         double x0 = t.ChartToScreen(new ChartPoint(new System.DateTime(0), 0)).X;
         double x1 = t.ChartToScreen(new ChartPoint(new System.DateTime(1), 0)).X;
         float columnWidth = (float)(x1 - x0);
-        
+
         float mouseX = (float)config.MousePosition.X;
         float mouseY = (float)config.MousePosition.Y;
-        
+
         var signals = snapshot.MultiWaveSignals;
         for (int s = 0; s < signals.Count; s++)
         {
@@ -188,7 +188,7 @@ public sealed class GhostProjectionRenderer : System.IDisposable
     {
         _markerPaint.Color = color;
         _markerShadowPaint.Color = SKColors.Black.WithAlpha(128);
-        
+
         float size = _textPaint.TextSize * 0.8f;
         _markerPath.Reset();
         if (isBullish)
@@ -214,18 +214,18 @@ public sealed class GhostProjectionRenderer : System.IDisposable
     {
         string patternName = signal.DisplayPatternName ?? "Unknown Pattern";
         string priceText = signal.DisplayPriceRange ?? "N/A";
-        
+
         float centerY = (minY + maxY) / 2f;
         float w1 = _textPaint.MeasureText(patternName);
         float w2 = _textPaint.MeasureText(priceText);
         float maxWidth = System.Math.Max(w1, w2);
-        
+
         float textSize = _textPaint.TextSize;
         float textHeight = textSize * 2 + 2; // 2 lines + 2px gap
         var textBounds = new SKRect(x - maxWidth / 2f - 6, centerY - textHeight / 2f - 4, x + maxWidth / 2f + 6, centerY + textHeight / 2f + 4);
-        
+
         canvas.DrawRoundRect(textBounds, 4, 4, _bgPaint);
-        
+
         float startY = centerY - textHeight / 2f + textSize;
         canvas.DrawText(patternName, x - w1 / 2f, startY, _textPaint);
         canvas.DrawText(priceText, x - w2 / 2f, startY + textSize + 2, _textPaint);

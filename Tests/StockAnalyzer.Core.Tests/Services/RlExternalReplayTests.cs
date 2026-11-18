@@ -59,28 +59,28 @@ public sealed partial class RlGenerationAndQValueTests
         var anchor = ExternalFirst.AddDays(block.StartIndex + RlContract.WindowLength - 1);
 
         foreach (string policy in RlReplayPolicies.For(generation))
-        foreach (int decisions in new[] { 0, 3, RlContract.EpisodeHorizon - 1 })
-        {
-            var segment = await service.ReplayAsync(new RlReplayRequest(generation.ModelId, candidate.Directory, block.Id, decisions, policy));
-            var external = await service.ReplayExternalAsync(new RlExternalReplayRequest(generation.ModelId, Symbol, anchor, decisions, policy));
-            string label = $"{policy} @ {decisions}";
-            Assert.True(segment.QValues.SequenceEqual(external.Snapshot.QValues), label);
-            Assert.Equal(segment.SelectedAction, external.Snapshot.SelectedAction);
-            Assert.Equal(segment.Anchor, external.Snapshot.Anchor);
-            Assert.Equal(segment.PolicyId, external.Snapshot.PolicyId);
-            Assert.Equal(segment.Symbol, external.Snapshot.Symbol);
-            Assert.Equal(Serialize(segment.Account), Serialize(external.Snapshot.Account));
-            Assert.Equal(anchor, external.RequestedAnchorDate);
-            Assert.Equal(anchor, external.ResolvedAnchorDate);
-            Assert.Equal(RlReplayScope.SameInstrumentOverlapsTraining, external.Snapshot.ReplayScope);
-            Assert.Empty(external.Snapshot.ScalerFindings);
-            Assert.StartsWith(RlFiles.Disclosure, external.Snapshot.Disclosure);
-            Assert.EndsWith(QValueService.ExternalWindowDisclosure, external.Snapshot.Disclosure);
-            // The segment replay keeps its original, unmarked result.
-            Assert.Equal(RlReplayScope.TrainingSource, segment.ReplayScope);
-            Assert.Empty(segment.ScalerFindings);
-            Assert.DoesNotContain("ExternalWindow", segment.Disclosure);
-        }
+            foreach (int decisions in new[] { 0, 3, RlContract.EpisodeHorizon - 1 })
+            {
+                var segment = await service.ReplayAsync(new RlReplayRequest(generation.ModelId, candidate.Directory, block.Id, decisions, policy));
+                var external = await service.ReplayExternalAsync(new RlExternalReplayRequest(generation.ModelId, Symbol, anchor, decisions, policy));
+                string label = $"{policy} @ {decisions}";
+                Assert.True(segment.QValues.SequenceEqual(external.Snapshot.QValues), label);
+                Assert.Equal(segment.SelectedAction, external.Snapshot.SelectedAction);
+                Assert.Equal(segment.Anchor, external.Snapshot.Anchor);
+                Assert.Equal(segment.PolicyId, external.Snapshot.PolicyId);
+                Assert.Equal(segment.Symbol, external.Snapshot.Symbol);
+                Assert.Equal(Serialize(segment.Account), Serialize(external.Snapshot.Account));
+                Assert.Equal(anchor, external.RequestedAnchorDate);
+                Assert.Equal(anchor, external.ResolvedAnchorDate);
+                Assert.Equal(RlReplayScope.SameInstrumentOverlapsTraining, external.Snapshot.ReplayScope);
+                Assert.Empty(external.Snapshot.ScalerFindings);
+                Assert.StartsWith(RlFiles.Disclosure, external.Snapshot.Disclosure);
+                Assert.EndsWith(QValueService.ExternalWindowDisclosure, external.Snapshot.Disclosure);
+                // The segment replay keeps its original, unmarked result.
+                Assert.Equal(RlReplayScope.TrainingSource, segment.ReplayScope);
+                Assert.Empty(segment.ScalerFindings);
+                Assert.DoesNotContain("ExternalWindow", segment.Disclosure);
+            }
         Assert.Empty(Directory.EnumerateDirectories(ExternalReplayFolder));
     }
 
@@ -234,8 +234,8 @@ public sealed partial class RlGenerationAndQValueTests
         RlSourceFixture.WriteVaryingSymbol(ExternalDataRoot, "VARY", ExternalFirst, count);
         var original = new Dictionary<(string Policy, int K), RlQSnapshot>();
         foreach (string policy in policies)
-        foreach (int k in decisions)
-            original[(policy, k)] = await Replay(k, policy);
+            foreach (int k in decisions)
+                original[(policy, k)] = await Replay(k, policy);
 
         // The shown state after k decisions has seen the bars up to index anchorIndex + k; everything later (even inside the 192-bar episode) is rewritten.
         foreach (int k in decisions)
@@ -464,7 +464,8 @@ public sealed partial class RlGenerationAndQValueTests
         }
         public ModelGenerationLease? AcquireRlActive() => null;
         public RlGeneration? GetRlGeneration(string modelId) => new(modelId, "CONT", Revision2, contractHash ?? RlContinuousContract.ContractHash, Revision2, 0m, 0m,
-            new Dictionary<string, string>(), DateTimeOffset.UnixEpoch) { Target = target ?? RlContinuousContract.Target, FrozenDirectionModelId = "direction" };
+            new Dictionary<string, string>(), DateTimeOffset.UnixEpoch)
+        { Target = target ?? RlContinuousContract.Target, FrozenDirectionModelId = "direction" };
         private const string Revision2 = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
     }
 }

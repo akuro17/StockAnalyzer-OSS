@@ -24,7 +24,7 @@ public sealed class RlPortfolioObservationTests
     private static readonly FixedScaler Identity = RlPortfolioScaler.Create(Enumerable.Repeat(new FixedScalerStatistic(0d, 1d, -100d, 100d), 5).ToArray());
 
     private static BacktestConfiguration Costs() => RlContract.CreateConfiguration(new BacktestConfiguration
-        { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
+    { SizingModel = PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 10_000m });
 
     private static RlPanelBarsFixture Bars() => RlPanelBarsFixture.Flat(new[] { 100m, 50m },
         new System.Collections.Generic.Dictionary<(int, int), (decimal, decimal)> { [(0, 63)] = (110m, 100m) });

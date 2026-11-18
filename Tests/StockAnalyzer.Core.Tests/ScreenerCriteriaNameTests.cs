@@ -15,12 +15,12 @@ public class ScreenerCriteriaNameTests
         string custom,
         IndicatorType type = IndicatorType.SMA,
         ScreenerItemCategoryType category = ScreenerItemCategoryType.Criteria) => new()
-    {
-        OutputName = output,
-        CustomDisplayName = custom,
-        IndicatorType = type,
-        CategoryType = category
-    };
+        {
+            OutputName = output,
+            CustomDisplayName = custom,
+            IndicatorType = type,
+            CategoryType = category
+        };
 
     [Theory]
     [InlineData("Morning Star", "3-Candle Bullish Reversal", "Morning Star")]

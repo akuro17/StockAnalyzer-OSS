@@ -87,7 +87,7 @@ public partial class LogViewerViewModel : ViewModelBase
 
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
-            filtered = filtered.Where(x => x.Message.Contains(SearchText, StringComparison.OrdinalIgnoreCase) || 
+            filtered = filtered.Where(x => x.Message.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                                            (x.Exception?.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ?? false));
         }
 
@@ -99,7 +99,7 @@ public partial class LogViewerViewModel : ViewModelBase
     {
         var targetFile = fileInfo ?? SelectedLogFile;
         if (targetFile == null) return;
-        
+
         var targetPath = await _dialogService.ShowSaveFileDialogAsync(
             LocalizationManager.Instance["LogViewer_Dialog_ExportTitle"],
             "log",
@@ -113,13 +113,13 @@ public partial class LogViewerViewModel : ViewModelBase
             {
                 await _logService.ExportLogAsync(targetFile.Name, targetPath);
                 await _dialogService.ShowAlertAsync(
-                    LocalizationManager.Instance["LogViewer_Dialog_Success"], 
+                    LocalizationManager.Instance["LogViewer_Dialog_Success"],
                     string.Format(LocalizationManager.Instance["LogViewer_Dialog_ExportSuccess"], targetPath));
             }
             catch (Exception ex)
             {
                 await _dialogService.ShowAlertAsync(
-                    LocalizationManager.Instance["LogViewer_Dialog_Error"], 
+                    LocalizationManager.Instance["LogViewer_Dialog_Error"],
                     string.Format(LocalizationManager.Instance["LogViewer_Dialog_ExportError"], ex.Message));
             }
         }
@@ -130,9 +130,9 @@ public partial class LogViewerViewModel : ViewModelBase
     {
         if (Logs.Count == 0) return;
 
-        var text = string.Join(Environment.NewLine, Logs.Select(x => 
+        var text = string.Join(Environment.NewLine, Logs.Select(x =>
             $"{x.Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{x.Level}] {x.Message}{(string.IsNullOrEmpty(x.Exception) ? "" : "\n" + x.Exception)}"));
-        
+
         await SetClipboardTextAsync(text, LocalizationManager.Instance["LogViewer_Dialog_ClipboardContent"]);
     }
 
@@ -159,7 +159,7 @@ public partial class LogViewerViewModel : ViewModelBase
         catch (Exception ex)
         {
             await _dialogService.ShowAlertAsync(
-                LocalizationManager.Instance["LogViewer_Dialog_Error"], 
+                LocalizationManager.Instance["LogViewer_Dialog_Error"],
                 string.Format(LocalizationManager.Instance["LogViewer_Dialog_CopyContentError"], ex.Message));
         }
     }
@@ -171,10 +171,10 @@ public partial class LogViewerViewModel : ViewModelBase
         if (targetFile == null) return;
 
         var newName = await _dialogService.ShowInputAsync(
-            LocalizationManager.Instance["LogViewer_Dialog_RenameTitle"], 
-            LocalizationManager.Instance["LogViewer_Dialog_RenameLabel"], 
+            LocalizationManager.Instance["LogViewer_Dialog_RenameTitle"],
+            LocalizationManager.Instance["LogViewer_Dialog_RenameLabel"],
             targetFile.Name);
-            
+
         if (!string.IsNullOrEmpty(newName) && newName != targetFile.Name)
         {
             try
@@ -182,13 +182,13 @@ public partial class LogViewerViewModel : ViewModelBase
                 await _logService.RenameLogAsync(targetFile.Name, newName);
                 LoadLogFiles();
                 await _dialogService.ShowAlertAsync(
-                    LocalizationManager.Instance["LogViewer_Dialog_Success"], 
+                    LocalizationManager.Instance["LogViewer_Dialog_Success"],
                     LocalizationManager.Instance["LogViewer_Dialog_RenameSuccess"]);
             }
             catch (Exception ex)
             {
                 await _dialogService.ShowAlertAsync(
-                    LocalizationManager.Instance["LogViewer_Dialog_Error"], 
+                    LocalizationManager.Instance["LogViewer_Dialog_Error"],
                     string.Format(LocalizationManager.Instance["LogViewer_Dialog_RenameError"], ex.Message));
             }
         }
@@ -201,9 +201,9 @@ public partial class LogViewerViewModel : ViewModelBase
         if (targetFile == null) return;
 
         bool confirm = await _dialogService.ShowConfirmationAsync(
-            LocalizationManager.Instance["LogViewer_Dialog_DeleteTitle"], 
+            LocalizationManager.Instance["LogViewer_Dialog_DeleteTitle"],
             string.Format(LocalizationManager.Instance["LogViewer_Dialog_DeleteConfirm"], targetFile.Name));
-            
+
         if (confirm)
         {
             try
@@ -215,13 +215,13 @@ public partial class LogViewerViewModel : ViewModelBase
                 }
                 LoadLogFiles();
                 await _dialogService.ShowAlertAsync(
-                    LocalizationManager.Instance["LogViewer_Dialog_Success"], 
+                    LocalizationManager.Instance["LogViewer_Dialog_Success"],
                     LocalizationManager.Instance["LogViewer_Dialog_DeleteSuccess"]);
             }
             catch (Exception ex)
             {
                 await _dialogService.ShowAlertAsync(
-                    LocalizationManager.Instance["LogViewer_Dialog_Error"], 
+                    LocalizationManager.Instance["LogViewer_Dialog_Error"],
                     string.Format(LocalizationManager.Instance["LogViewer_Dialog_DeleteError"], ex.Message));
             }
         }
@@ -231,7 +231,7 @@ public partial class LogViewerViewModel : ViewModelBase
     {
         await _clipboardService.SetTextAsync(text);
         await _dialogService.ShowAlertAsync(
-            LocalizationManager.Instance["LogViewer_Dialog_ClipboardTitle"], 
+            LocalizationManager.Instance["LogViewer_Dialog_ClipboardTitle"],
             successMessage);
     }
 }

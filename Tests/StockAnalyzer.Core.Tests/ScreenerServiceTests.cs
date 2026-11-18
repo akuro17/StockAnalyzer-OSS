@@ -435,7 +435,7 @@ public class ScreenerServiceTests : IDisposable
         });
         var condition = new MockScreeningCondition(_ => true);
         var service = new ScreenerService(dataService, _stubSettings, Enumerable.Empty<IMarketDataProvider>());
-        
+
         // Progress<int> posts every report to the thread pool, so two reports can arrive out of order (the last one was 50 in about 8% of runs).
         // The service reports 100 after all work finished; a receiver that records on the reporting thread keeps that order.
         var progress = new SynchronousProgress();
@@ -767,7 +767,7 @@ public class ScreenerServiceTests : IDisposable
         Assert.Equal(1, countNetDebtEbitdaPositive); // Only MSFT (+2.5 > 0)
 
         // Act 2: Verify ALL 93 Watchlist columns using their exact UI DisplayNames
-        var stringColumns = new HashSet<string> { 
+        var stringColumns = new HashSet<string> {
             "IsChecked", "Symbol", "Name", "Sector", "Industry", "Country", "Region", "Exchange", "QuoteType", "Currency", "FinancialCurrency",
             "LongBusinessSummary", "City", "State", "Zip", "Website", "Phone", "Address1", "Address2", "FullTimeEmployees",
             "ExDividendDate", "LastFiscalYearEnd", "MostRecentQuarter", "ExchangeTimezoneName", "ExchangeTimezoneShortName", "GmtOffSetMilliseconds", "RecommendationKey",

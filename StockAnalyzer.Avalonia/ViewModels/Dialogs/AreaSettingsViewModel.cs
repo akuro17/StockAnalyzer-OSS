@@ -48,7 +48,7 @@ public partial class AreaSettingsViewModel : BaseChartSettingsViewModel
         };
     }
 
-    public override bool IsModified => 
+    public override bool IsModified =>
         ShowAreaMarkers != _initialShowAreaMarkers ||
         AreaBaseColor != _initialAreaBaseColor;
 }

@@ -43,7 +43,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
             {
                 TenkanPeriod = p.TenkanSample;
                 KijunPeriod = p.KijunSample;
-                SenkouPeriod = p.SenkouBSample; 
+                SenkouPeriod = p.SenkouBSample;
                 Displacement = p.Offset;
             }
         }
@@ -99,20 +99,20 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
             // 3. Senkou Spans (Leading Spans)
             // Plotted Displacement periods ahead (Shifted Right; default 26).
             // Current value (derived from Today) is plotted at Today + Displacement.
-            
+
             // We need to generate values for:
             // 1. The existing candle range (0 to count-1) -> shifted to (Displacement to count+Displacement-1)
             // 2. We do NOT calculate "future" values from non-existent candles.
             //    We only project WHAT WE KNOW.
             //    The last known candle is at index `count-1`.
             //    Its Senkou Span value is plotted at `count-1 + Displacement`.
-            
+
             // The renderer iterates up to `VisibleCandleCount`.
             // If we have `count` candles, the data list should ideally have `count + Displacement` entries.
             // But `SenkouSpanA/B` lists align with the Source Candles in basic structure?
             // NO, `IndicatorRenderer` uses `i` as the index.
             // If `IndicatorRenderer` iterates `i` from 0 to `count + Displacement`, it expects `SenkouSpanA[i]` to exist.
-            
+
             // So we must pad the BEGINNING with nulls (Displacement nulls)?
             // AND we must extend the END (Displacement values past count)?
             // "Current value is plotted Displacement periods ahead."
@@ -121,7 +121,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
             // Let's create a sparse array or list big enough.
             int shift = Displacement; // official definition: 26 (independent of the Kijun period)
             int totalArrSize = count + shift;
-            
+
             var spanA = new decimal?[totalArrSize];
             var spanB = new decimal?[totalArrSize];
 
@@ -139,7 +139,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
 
                 // Span B: Midpoint(52)
                 if (i >= SenkouPeriod - 1)
-                     valB = CalculateMidpoint(candles, i, SenkouPeriod);
+                    valB = CalculateMidpoint(candles, i, SenkouPeriod);
 
                 // Store at shifted position
                 if (i + shift < totalArrSize)
@@ -148,12 +148,12 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
                     spanB[i + shift] = valB;
                 }
             }
-            
+
             SenkouSpanA.AddRange(spanA);
             SenkouSpanB.AddRange(spanB);
 
             _values.AddRange(TenkanSen);
-            
+
             // Create result with all series
             var series = new Dictionary<string, IReadOnlyList<decimal?>>
             {

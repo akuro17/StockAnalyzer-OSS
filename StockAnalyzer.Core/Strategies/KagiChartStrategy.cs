@@ -49,7 +49,7 @@ namespace StockAnalyzer.Core.Strategies
 
                 var param = new KagiParameters(reversalAmount, (ChartRoundingMode)parameters.RoundingMode);
                 var adapter = KagiCalculator.Calculate(zeroAllocCandles.AsMemory(0, candleList.Count), param);
-                
+
                 return new ChartStrategyResult(adapter, reversalAmount);
             }
             finally

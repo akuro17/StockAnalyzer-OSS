@@ -648,8 +648,8 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
     private readonly Dictionary<IndicatorType, CoreIndicatorSettings> _userDefaultSettingsCache = new();
 
     public IndicatorSettingsDialogViewModel(
-        IDialogService dialogService, 
-        IIndicatorFactory indicatorFactory, 
+        IDialogService dialogService,
+        IIndicatorFactory indicatorFactory,
         IToastNotificationService toastService,
         ITemplateService templateService,
         IIndicatorUserDefaultService? userDefaultService = null,
@@ -670,7 +670,7 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
         _sourceIndicatorService = sourceIndicatorService;
         _dynamicPeriodDriverService = dynamicPeriodDriverService;
         _logger = logger ?? NullLogger<IndicatorSettingsDialogViewModel>.Instance;
-        
+
         WeakReferenceMessenger.Default.Register<SingleIndicatorSettingsChangedMessage>(this);
 
         // Build the dynamic system default settings cache
@@ -765,7 +765,7 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
                 }
             }
         }
-        
+
         SyncMasterIndicatorsFromPartitions();
 
         if (Indicators.Any())
@@ -957,7 +957,7 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
             LibraryIndicatorPreviewName = baseName;
         }
     }
-    
+
     partial void OnIsLibraryModeChanged(bool value)
     {
         OnPropertyChanged(nameof(IsTemplatesCategory));
@@ -1183,9 +1183,9 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
             }
             SyncMasterIndicatorsFromPartitions();
             SelectedIndicator = newSettings;
-            
+
             ToastService.ShowNotification($"{newSettings.DisplayName} {LocalizationManager.Instance["Msg_Added"] ?? "Added"}");
-            
+
             // Auto-apply immediately to Main Window when added from library
             Apply();
         }
@@ -1277,7 +1277,7 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
             // Fallback: Send message to update Main Window
             WeakReferenceMessenger.Default.Send(new IndicatorSettingsChangedMessage(Indicators.ToList()));
         }
-        
+
         DialogResult = true;
         RequestClose?.Invoke(true);
     }
@@ -1310,14 +1310,14 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
         if (IsActiveMode)
         {
             if (SelectedIndicator == null || SelectedIndicator.TypeEnum == null) return;
-            
+
             var sysDefault = GetSystemDefaultSettings(SelectedIndicator.TypeEnum.Value);
             var index = Indicators.IndexOf(SelectedIndicator);
             if (index >= 0)
             {
                 sysDefault.IsEnabled = true;
                 sysDefault.UpdateDisplayName();
-                
+
                 Indicators[index] = sysDefault;
                 SelectedIndicator = sysDefault;
 
@@ -1362,10 +1362,10 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
                 if (index >= 0)
                 {
                     bool wasSelected = (SelectedIndicator?.Id == message.Value.Id);
-                    
+
                     // Replace the item in the collection
                     Indicators[index] = message.Value;
-                    
+
                     if (wasSelected)
                     {
                         // Explicitly assigning triggers property changed for Avalonia bindings

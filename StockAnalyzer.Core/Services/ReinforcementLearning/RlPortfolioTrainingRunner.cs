@@ -68,19 +68,38 @@ public sealed class RlPortfolioTrainingRunner
         string? freezeName = request.Transfer is null ? null : RlPortfolioFreezes.Name(request.Transfer.Freeze);
         DateOnly firstValidation = request.Transfer is null ? default : RlPortfolioTransferAdmission.FirstValidationDate(panel);
         var baseRun = request.Transfer is null ? null : RlPortfolioTransferAdmission.Admit(baseStore, request.Transfer.BaseRunId, firstValidation, layout);
-        var identityFields = new { panel.Manifest.UniverseSha256, panel.Manifest.CalendarSha256, costs, slots,
-            request.SmokeOnly, request.Mode, contract_hash = layout.ContractHash };
+        var identityFields = new
+        {
+            panel.Manifest.UniverseSha256,
+            panel.Manifest.CalendarSha256,
+            costs,
+            slots,
+            request.SmokeOnly,
+            request.Mode,
+            contract_hash = layout.ContractHash
+        };
         // A run without a plan keeps its identity byte for byte; a plan adds its method and block counts (the bars it came from do not change the run).
         string runIdentity = plan is null ? JsonSerializer.Serialize(identityFields, RlFiles.Json)
-            : JsonSerializer.Serialize(new { run = identityFields, partition_mode = RlPortfolioPartitionEvidence.ModeName(plan.Mode),
-                train_blocks = plan.Requirement.TrainBlocks, validation_blocks = plan.Requirement.ValidationBlocks, test_blocks = plan.Requirement.TestBlocks }, RlFiles.Json);
+            : JsonSerializer.Serialize(new
+            {
+                run = identityFields,
+                partition_mode = RlPortfolioPartitionEvidence.ModeName(plan.Mode),
+                train_blocks = plan.Requirement.TrainBlocks,
+                validation_blocks = plan.Requirement.ValidationBlocks,
+                test_blocks = plan.Requirement.TestBlocks
+            }, RlFiles.Json);
         // Another run-level seed is another run; offset zero adds nothing, so the identity of every earlier run stays.
         if (request.SeedOffset != 0)
             runIdentity = JsonSerializer.Serialize(new { run_sha256 = ContentHash.OfText(runIdentity), seed_offset = request.SeedOffset }, RlFiles.Json);
         // A fine-tune is another run than a scratch run on the same panel, and another run for each base model and freeze.
         string identity = ContentHash.OfText(baseRun is null ? runIdentity
-            : JsonSerializer.Serialize(new { run_sha256 = ContentHash.OfText(runIdentity), base_model_sha256 = baseRun.ModelSha256, freeze = freezeName,
-                transfer_contract_hash = RlPortfolioTransferContract.ContractHash }, RlFiles.Json));
+            : JsonSerializer.Serialize(new
+            {
+                run_sha256 = ContentHash.OfText(runIdentity),
+                base_model_sha256 = baseRun.ModelSha256,
+                freeze = freezeName,
+                transfer_contract_hash = RlPortfolioTransferContract.ContractHash
+            }, RlFiles.Json));
         using var lease = _gate.AcquireIdentity(identity);
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(Math.Min(limits.MaxRunDurationSeconds, RlContract.JobDeadlineSeconds)));
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
@@ -108,7 +127,10 @@ public sealed class RlPortfolioTrainingRunner
             }
             var files = new Dictionary<string, string>
             {
-                ["model"] = RlFiles.Model, ["native"] = RlFiles.Native, ["parity"] = RlFiles.Parity, ["dependencies"] = RlFiles.Dependencies,
+                ["model"] = RlFiles.Model,
+                ["native"] = RlFiles.Native,
+                ["parity"] = RlFiles.Parity,
+                ["dependencies"] = RlFiles.Dependencies,
             };
             var metadata = new Dictionary<string, string>
             {
@@ -125,13 +147,22 @@ public sealed class RlPortfolioTrainingRunner
             };
             var wire = new Dictionary<string, object?>
             {
-                ["run_id"] = runId.ToString("N"), ["parent_pid"] = Environment.ProcessId,
-                ["contract_hash"] = layout.ContractHash, ["defaults"] = RlContract.ToWireDefaults(),
-                ["ppo_defaults"] = RlContinuousContract.ToWireDefaults(), ["portfolio_defaults"] = RlPortfolioContract.ToWireDefaults(),
-                ["resource_limits"] = limits, ["n_max"] = slots, ["symbol_count"] = panel.Symbols.Length,
-                ["observation_length"] = RlPortfolioResources.ObservationLength(slots, layout), ["symbols"] = panel.Symbols,
-                ["artifact_directory"] = directory, ["smoke_only"] = request.SmokeOnly, ["files"] = files,
-                ["trainer_script"] = TrainerScript, ["strict_dependencies"] = false, // the strict file-level identity guards continuation across restarts (T16 resumable runs only); D14 excludes it here
+                ["run_id"] = runId.ToString("N"),
+                ["parent_pid"] = Environment.ProcessId,
+                ["contract_hash"] = layout.ContractHash,
+                ["defaults"] = RlContract.ToWireDefaults(),
+                ["ppo_defaults"] = RlContinuousContract.ToWireDefaults(),
+                ["portfolio_defaults"] = RlPortfolioContract.ToWireDefaults(),
+                ["resource_limits"] = limits,
+                ["n_max"] = slots,
+                ["symbol_count"] = panel.Symbols.Length,
+                ["observation_length"] = RlPortfolioResources.ObservationLength(slots, layout),
+                ["symbols"] = panel.Symbols,
+                ["artifact_directory"] = directory,
+                ["smoke_only"] = request.SmokeOnly,
+                ["files"] = files,
+                ["trainer_script"] = TrainerScript,
+                ["strict_dependencies"] = false, // the strict file-level identity guards continuation across restarts (T16 resumable runs only); D14 excludes it here
                 ["metadata"] = metadata,
                 ["catalog"] = new
                 {
@@ -147,7 +178,9 @@ public sealed class RlPortfolioTrainingRunner
                 // Only a fine-tune job carries these keys, so the job file of a scratch run is unchanged.
                 wire["transfer"] = new Dictionary<string, object?>
                 {
-                    ["init_weights"] = RlPortfolioTransferContract.InitWeightsFile, ["init_weights_sha256"] = baseRun.NativeSha256, ["freeze"] = freezeName,
+                    ["init_weights"] = RlPortfolioTransferContract.InitWeightsFile,
+                    ["init_weights_sha256"] = baseRun.NativeSha256,
+                    ["freeze"] = freezeName,
                 };
                 wire["transfer_defaults"] = RlPortfolioTransferContract.ToWireDefaults();
             }

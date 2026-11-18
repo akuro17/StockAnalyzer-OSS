@@ -25,21 +25,21 @@ public sealed class CrosshairRenderer : IDisposable
     private const float LabelHeight = ChartTheme.CrosshairLabelHeight;
 
     private readonly SKPaint _labelBorderPaint;
-    
+
     // String caching to avoid per-frame allocations in mouse-tracking hot paths
     private decimal _lastPrice;
     private string _lastPriceText = string.Empty;
     private PriceScaleType? _lastPriceScale;
-    
+
     private decimal _lastVol;
     private string _lastVolText = string.Empty;
-    
+
     private decimal _lastRwPrice;
     private string _lastRwPriceText = string.Empty;
-    
+
     private decimal _lastPanelValue;
     private string _lastPanelValueText = string.Empty;
-    
+
     private decimal _lastCompValue;
     private ComparisonMode _lastCompMode;
     private string _lastCompValueText = string.Empty;
@@ -78,7 +78,7 @@ public sealed class CrosshairRenderer : IDisposable
 
         _labelFont = new SKFont(SKTypeface.Default, 12);
     }
-    
+
     private void UpdateTheme(IChartRenderConfig config)
     {
         var theme = config.ThemeManager.CurrentTheme;
@@ -152,7 +152,7 @@ public sealed class CrosshairRenderer : IDisposable
             }
             float textWidth = MeasureTextWidth(_lastPriceText);
             float labelWidth = textWidth + LabelPadding * 2;
-            
+
             float labelX = (float)chartArea.Right + 2f;
             DrawLabel(canvas, _lastPriceText, labelX, mouseY - LabelHeight / 2, true, config);
         }
@@ -181,9 +181,9 @@ public sealed class CrosshairRenderer : IDisposable
 
         float mouseX = (float)mousePosition.X;
         float mouseY = (float)mousePosition.Y;
-        
+
         // Ensure mouse is within chart area for drawing lines/labels
-        
+
         // Draw Crosshair Lines
         // Vertical Line
         canvas.DrawLine(MathF.Floor(mouseX) + 0.5f, (float)chartArea.Top, MathF.Floor(mouseX) + 0.5f, (float)chartArea.Bottom, _linePaint);
@@ -193,7 +193,7 @@ public sealed class CrosshairRenderer : IDisposable
 
         // Labels Setup
         // Using existing paints and constants
-        
+
         // X-Axis Label (Volume)
         // Position: Bottom of chart area (or x-axis usage area)
         // Logic from ChartBaseControl:
@@ -286,7 +286,7 @@ public sealed class CrosshairRenderer : IDisposable
 
         float mouseX = (float)mousePosition.X;
         float mouseY = (float)mousePosition.Y;
-        
+
         if (config.Transform is not ICoordinateTransform transform) return;
 
         // 1. Draw Vertical Crosshair Line
@@ -357,7 +357,7 @@ public sealed class CrosshairRenderer : IDisposable
                 bool isDark = config.ThemeManager.CurrentTheme.IsDark;
                 int colorIndex = config.SeriesColorIndex.GetOrAdd(symbol);
                 _markerPaint.Color = ChartColorPalette.Get(colorIndex, isDark).ToSkColor();
-                
+
                 canvas.DrawCircle(markerX, markerY, 5, _markerPaint);
             }
             symbolIndex++;
@@ -389,7 +389,7 @@ public sealed class CrosshairRenderer : IDisposable
             float snappedYPanel = MathF.Floor(mouseY) + 0.5f;
             canvas.DrawLine((float)panelArea.Left, snappedYPanel, (float)panelArea.Right, snappedYPanel, _linePaint);
 
-                // Calculate value at mouse Y position
+            // Calculate value at mouse Y position
             if (priceRange > 0)
             {
                 float relativeY = mouseY - (float)panelArea.Top;
@@ -400,10 +400,10 @@ public sealed class CrosshairRenderer : IDisposable
                     _lastPanelValue = value;
                     _lastPanelValueText = value.ToString("F2");
                 }
-                
+
                 float textWidth = MeasureTextWidth(_lastPanelValueText);
                 float labelWidth = textWidth + LabelPadding * 2;
-                
+
                 // Draw label outside the right side of panel
                 float labelX = (float)panelArea.Right + 2f;
                 DrawLabel(canvas, _lastPanelValueText, labelX, mouseY - LabelHeight / 2, true, config);

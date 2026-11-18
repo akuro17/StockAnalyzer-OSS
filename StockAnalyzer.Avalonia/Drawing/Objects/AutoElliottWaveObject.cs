@@ -26,7 +26,7 @@ public class AutoElliottWaveObject : IChartObject, IDisposable, IDrawingCalculat
     private bool _disposed;
     public Guid Id { get; } = Guid.NewGuid();
     public ChartObjectType Type => ChartObjectType.AutoElliottWave;
-    
+
     public List<ChartPoint> Points { get; } = new(2);
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
@@ -66,7 +66,7 @@ public class AutoElliottWaveObject : IChartObject, IDisposable, IDrawingCalculat
     [Category("Detection")]
     [CoreParameterRange(1.0, 15.0)]
     public decimal? ZigZagThreshold { get; set; } = null;
-    
+
     /// <summary>
     /// Cached detection results within the defined window.
     /// The renderer reads this to draw the wave patterns.

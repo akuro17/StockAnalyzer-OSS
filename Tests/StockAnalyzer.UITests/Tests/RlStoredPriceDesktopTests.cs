@@ -97,114 +97,143 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         Assert.False(pointer.RootElement.GetProperty("resumable").GetBoolean());
         Assert.True(File.Exists(Path.Combine(run, RlFiles.Model + RlFiles.EvaluationSuffix)));
         File.WriteAllText(Path.Combine(evidence, "r09_desktop_evidence.json"), JsonSerializer.Serialize(new
-        { real_ppo = true, safe_boundary_pause = true, reviewed_owned_checkpoint = true, confirmation_required = true,
-            explicit_resume_completed = true, smoke_not_activated = true, run_id = Path.GetFileName(run) }));
+        {
+            real_ppo = true,
+            safe_boundary_pause = true,
+            reviewed_owned_checkpoint = true,
+            confirmation_required = true,
+            explicit_resume_completed = true,
+            smoke_not_activated = true,
+            run_id = Path.GetFileName(run)
+        }));
         window.Close();
     }
 
     [QualifiedEvidenceFact(EvidenceDirectoryVariable, RecoveryConfigVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
     public void R08_DefaultSettingsRequiredRetentionSmokeAndExplicitCleanupThroughDesktop()
     {
-        string evidence=Environment.GetEnvironmentVariable(EvidenceDirectoryVariable) ?? throw new InvalidOperationException("Owned evidence output required.");
-        using var config=JsonDocument.Parse(File.ReadAllText(Environment.GetEnvironmentVariable(RecoveryConfigVariable)!));
-        string actorDirectory=config.RootElement.GetProperty("LaterActor").GetString()!;
-        string expiredRun="", expiredDirectory="";
-        LaunchApplication(root=>
+        string evidence = Environment.GetEnvironmentVariable(EvidenceDirectoryVariable) ?? throw new InvalidOperationException("Owned evidence output required.");
+        using var config = JsonDocument.Parse(File.ReadAllText(Environment.GetEnvironmentVariable(RecoveryConfigVariable)!));
+        string actorDirectory = config.RootElement.GetProperty("LaterActor").GetString()!;
+        string expiredRun = "", expiredDirectory = "";
+        LaunchApplication(root =>
         {
-            string metadata=PathDiscovery.ResolveDataPath(null,MarketDataSettings.DefaultMetadataDataPath);
-            File.Copy(Path.Combine(actorDirectory,RlFiles.MetadataParquet),Path.Combine(metadata,Symbol+".meta.parquet"));
-            using var registry=new ModelGenerationRegistry(); var settings=new RlArtifactSettings();
-            registry.ConfigureRlArtifacts(root,settings);
-            registry.SaveRlArtifactPolicyAsync(new(MinimumFreeGiB:FixtureMinimumFreeGiB,NonactiveRetentionDays:0,NonactiveKeepCount:0)).GetAwaiter().GetResult(); // admits the fixture run on the small work drive; the defaults are restored below
-            Guid id=Guid.NewGuid(); expiredRun=id.ToString("N");
-            using(var run=registry.BeginRlArtifactRunAsync(id,root).GetAwaiter().GetResult())
+            string metadata = PathDiscovery.ResolveDataPath(null, MarketDataSettings.DefaultMetadataDataPath);
+            File.Copy(Path.Combine(actorDirectory, RlFiles.MetadataParquet), Path.Combine(metadata, Symbol + ".meta.parquet"));
+            using var registry = new ModelGenerationRegistry(); var settings = new RlArtifactSettings();
+            registry.ConfigureRlArtifacts(root, settings);
+            registry.SaveRlArtifactPolicyAsync(new(MinimumFreeGiB: FixtureMinimumFreeGiB, NonactiveRetentionDays: 0, NonactiveKeepCount: 0)).GetAwaiter().GetResult(); // admits the fixture run on the small work drive; the defaults are restored below
+            Guid id = Guid.NewGuid(); expiredRun = id.ToString("N");
+            using (var run = registry.BeginRlArtifactRunAsync(id, root).GetAwaiter().GetResult())
             {
-                expiredDirectory=run!.Directory; File.WriteAllText(Path.Combine(run.Directory,"owned_failure.log"),"owned failure fixture");
+                expiredDirectory = run!.Directory; File.WriteAllText(Path.Combine(run.Directory, "owned_failure.log"), "owned failure fixture");
                 run.FinishAsync(RlArtifactRunState.Failed).GetAwaiter().GetResult();
             }
-            string descriptor=Path.Combine(expiredDirectory,"owned_run.json");
-            var node=System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(descriptor))!;
-            node["startedUtc"]=DateTimeOffset.UtcNow.AddDays(-9); node["finishedUtc"]=DateTimeOffset.UtcNow.AddDays(-8);
-            File.WriteAllText(descriptor,node.ToJsonString());
+            string descriptor = Path.Combine(expiredDirectory, "owned_run.json");
+            var node = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(descriptor))!;
+            node["startedUtc"] = DateTimeOffset.UtcNow.AddDays(-9); node["finishedUtc"] = DateTimeOffset.UtcNow.AddDays(-8);
+            File.WriteAllText(descriptor, node.ToJsonString());
             registry.SaveRlArtifactPolicyAsync(new()).GetAwaiter().GetResult();
         });
-        Window window=new MainWindowPage(MainWindow!,this).OpenRlTrainingWindow();
+        Window window = new MainWindowPage(MainWindow!, this).OpenRlTrainingWindow();
         window.Patterns.Window.Pattern.SetWindowVisualState(FlaUI.Core.Definitions.WindowVisualState.Maximized);
-        var panel=WaitForElement(()=>window.FindFirstDescendant(cf=>cf.ByAutomationId(RlUiConstants.StorageSettings))
-            ?? window.FindAllDescendants().FirstOrDefault(e=>Localized("Rl.Storage.Title").Contains(e.Properties.Name.ValueOrDefault)),
-            errorMessage:"RL artifact settings header unavailable");
-        string previousHeader=""; int stableHeader=0;
-        WaitUntil(()=> {
-            string bounds=panel.BoundingRectangle.ToString();
-            stableHeader=!panel.IsOffscreen && bounds==previousHeader ? stableHeader+1 : 0;
-            previousHeader=bounds; return stableHeader>=StableLayoutSamples;
-        },errorMessage:"Artifact settings header layout did not stabilize");
-        LogInfo("Storage header: "+panel.ControlType+" "+panel.BoundingRectangle+" expand="+panel.Patterns.ExpandCollapse.IsSupported);
-        if(panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Expand(); else panel.Click();
-        File.WriteAllText(Path.Combine(evidence,"r08_storage_automation.json"),JsonSerializer.Serialize(window.FindAllDescendants().Select(e=>new {
-            id=e.Properties.AutomationId.ValueOrDefault,name=e.Properties.Name.ValueOrDefault,type=e.ControlType.ToString(),rect=e.BoundingRectangle.ToString() })));
-        SaveScreenshot(window,"sa_T16_R08_desktop_settings.png");
+        var panel = WaitForElement(() => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.StorageSettings))
+            ?? window.FindAllDescendants().FirstOrDefault(e => Localized("Rl.Storage.Title").Contains(e.Properties.Name.ValueOrDefault)),
+            errorMessage: "RL artifact settings header unavailable");
+        string previousHeader = ""; int stableHeader = 0;
+        WaitUntil(() =>
+        {
+            string bounds = panel.BoundingRectangle.ToString();
+            stableHeader = !panel.IsOffscreen && bounds == previousHeader ? stableHeader + 1 : 0;
+            previousHeader = bounds; return stableHeader >= StableLayoutSamples;
+        }, errorMessage: "Artifact settings header layout did not stabilize");
+        LogInfo("Storage header: " + panel.ControlType + " " + panel.BoundingRectangle + " expand=" + panel.Patterns.ExpandCollapse.IsSupported);
+        if (panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Expand(); else panel.Click();
+        File.WriteAllText(Path.Combine(evidence, "r08_storage_automation.json"), JsonSerializer.Serialize(window.FindAllDescendants().Select(e => new
+        {
+            id = e.Properties.AutomationId.ValueOrDefault,
+            name = e.Properties.Name.ValueOrDefault,
+            type = e.ControlType.ToString(),
+            rect = e.BoundingRectangle.ToString()
+        })));
+        SaveScreenshot(window, "sa_T16_R08_desktop_settings.png");
         AutomationElement Editor(string id)
         {
-            return WaitForElement(()=> {
-                var control=window.FindFirstDescendant(cf=>cf.ByAutomationId(id)) ?? window.FindFirstDescendant(cf=>cf.ByAutomationId(id+RlUiConstants.NumericEditorSuffix)); // the numeric editor publishes its own id
-                if(control is not null) return control.FindFirstDescendant(cf=>cf.ByControlType(FlaUI.Core.Definitions.ControlType.Edit)) ?? control;
-                string key=id switch {
-                    RlUiConstants.StorageQuota=>"Rl.Storage.Quota", RlUiConstants.StorageMinimumFree=>"Rl.Storage.MinimumFree",
-                    RlUiConstants.StorageFailedDays=>"Rl.Storage.FailedDays", RlUiConstants.StorageNonactiveDays=>"Rl.Storage.NonactiveDays",
-                    RlUiConstants.StorageKeepCount=>"Rl.Storage.KeepCount", _=>throw new ArgumentException("Unknown storage editor") };
-                var children=window.FindAllDescendants();
-                var label=children.FirstOrDefault(e=>e.ControlType==FlaUI.Core.Definitions.ControlType.Text && Localized(key).Contains(e.Name));
-                if(label is null) return null;
-                var bounds=label.BoundingRectangle;
+            return WaitForElement(() =>
+            {
+                var control = window.FindFirstDescendant(cf => cf.ByAutomationId(id)) ?? window.FindFirstDescendant(cf => cf.ByAutomationId(id + RlUiConstants.NumericEditorSuffix)); // the numeric editor publishes its own id
+                if (control is not null) return control.FindFirstDescendant(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Edit)) ?? control;
+                string key = id switch
+                {
+                    RlUiConstants.StorageQuota => "Rl.Storage.Quota",
+                    RlUiConstants.StorageMinimumFree => "Rl.Storage.MinimumFree",
+                    RlUiConstants.StorageFailedDays => "Rl.Storage.FailedDays",
+                    RlUiConstants.StorageNonactiveDays => "Rl.Storage.NonactiveDays",
+                    RlUiConstants.StorageKeepCount => "Rl.Storage.KeepCount",
+                    _ => throw new ArgumentException("Unknown storage editor")
+                };
+                var children = window.FindAllDescendants();
+                var label = children.FirstOrDefault(e => e.ControlType == FlaUI.Core.Definitions.ControlType.Text && Localized(key).Contains(e.Name));
+                if (label is null) return null;
+                var bounds = label.BoundingRectangle;
                 // NumericUpDown exposes its template editor rather than the outer automation id.
-                return children.FirstOrDefault(e=>e.ControlType==FlaUI.Core.Definitions.ControlType.Edit
-                    && e.BoundingRectangle.Left>=bounds.Right && e.BoundingRectangle.Top==bounds.Top);
-            },errorMessage:"Missing labeled artifact editor "+id);
+                return children.FirstOrDefault(e => e.ControlType == FlaUI.Core.Definitions.ControlType.Edit
+                    && e.BoundingRectangle.Left >= bounds.Right && e.BoundingRectangle.Top == bounds.Top);
+            }, errorMessage: "Missing labeled artifact editor " + id);
         }
-        void Number(string id,string value) { var edit=Editor(id).AsTextBox(); edit.Text=value; edit.Focus(); Keyboard.Press(VirtualKeyShort.TAB); }
-        Assert.Equal("10",Editor(RlUiConstants.StorageQuota).AsTextBox().Text);
-        Assert.Equal("5",Editor(RlUiConstants.StorageMinimumFree).AsTextBox().Text);
-        Assert.Equal("7",Editor(RlUiConstants.StorageFailedDays).AsTextBox().Text);
-        Assert.Equal("",Editor(RlUiConstants.StorageNonactiveDays).AsTextBox().Text);
-        Assert.Equal("",Editor(RlUiConstants.StorageKeepCount).AsTextBox().Text);
-        Assert.True(Localized("Rl.Storage.Incomplete").Contains(Element(window,RlUiConstants.StorageSummary).Name));
-        if(panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Collapse(); else panel.Click();
-        Text(window,RlUiConstants.Symbol,Symbol); Text(window,RlUiConstants.StartDate,"2002-01-01"); Text(window,RlUiConstants.EndDate,"2026-10-04");
-        Element(window,RlUiConstants.Smoke).AsCheckBox().IsChecked=true;
+        void Number(string id, string value) { var edit = Editor(id).AsTextBox(); edit.Text = value; edit.Focus(); Keyboard.Press(VirtualKeyShort.TAB); }
+        Assert.Equal("10", Editor(RlUiConstants.StorageQuota).AsTextBox().Text);
+        Assert.Equal("5", Editor(RlUiConstants.StorageMinimumFree).AsTextBox().Text);
+        Assert.Equal("7", Editor(RlUiConstants.StorageFailedDays).AsTextBox().Text);
+        Assert.Equal("", Editor(RlUiConstants.StorageNonactiveDays).AsTextBox().Text);
+        Assert.Equal("", Editor(RlUiConstants.StorageKeepCount).AsTextBox().Text);
+        Assert.True(Localized("Rl.Storage.Incomplete").Contains(Element(window, RlUiConstants.StorageSummary).Name));
+        if (panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Collapse(); else panel.Click();
+        Text(window, RlUiConstants.Symbol, Symbol); Text(window, RlUiConstants.StartDate, "2002-01-01"); Text(window, RlUiConstants.EndDate, "2026-10-04");
+        Element(window, RlUiConstants.Smoke).AsCheckBox().IsChecked = true;
         // The window still offers Start with an incomplete retention policy; the run is refused at admission (no run folder is created) and the window reports a failed operation.
-        Invoke(window,RlUiConstants.Train); WaitState(window,"Failed",CompletionTimeoutMs);
+        Invoke(window, RlUiConstants.Train); WaitState(window, "Failed", CompletionTimeoutMs);
         Assert.Single(Directory.EnumerateDirectories(Path.GetDirectoryName(expiredDirectory)!));
-        if(panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Expand(); else panel.Click();
-        Number(RlUiConstants.StorageNonactiveDays,"0"); Number(RlUiConstants.StorageKeepCount,"1");
-        Number(RlUiConstants.StorageMinimumFree,FixtureMinimumFreeGiB.ToString(CultureInfo.InvariantCulture)); // the default reserve was asserted above; the small work drive cannot keep it
+        if (panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Expand(); else panel.Click();
+        Number(RlUiConstants.StorageNonactiveDays, "0"); Number(RlUiConstants.StorageKeepCount, "1");
+        Number(RlUiConstants.StorageMinimumFree, FixtureMinimumFreeGiB.ToString(CultureInfo.InvariantCulture)); // the default reserve was asserted above; the small work drive cannot keep it
         // No Save button any more: Train saves the retention values of this window first (RlTrainingDialogViewModel.TrainAsync).
-        if(panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Collapse(); else panel.Click();
-        Invoke(window,RlUiConstants.Train); WaitState(window,"Succeeded",CompletionTimeoutMs);
-        Assert.Equal("",ActiveModelName(window));
-        var descriptors=Directory.EnumerateFiles(Path.GetDirectoryName(expiredDirectory)!,"owned_run.json",SearchOption.AllDirectories).ToArray();
-        Assert.Equal(2,descriptors.Length);
-        string completed=descriptors.Single(p=>Path.GetDirectoryName(p)!=expiredDirectory);
-        using var finished=JsonDocument.Parse(File.ReadAllText(completed));
-        Assert.Equal((int)RlArtifactRunState.Completed,finished.RootElement.GetProperty("state").GetInt32());
-        Assert.Equal(10m,finished.RootElement.GetProperty("policy").GetProperty("quotaGiB").GetDecimal());
-        if(panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Expand(); else panel.Click();
-        Invoke(window,RlUiConstants.StorageInspect);
-        WaitUntil(()=>Element(window,RlUiConstants.StorageEntries).FindAllDescendants().Any(e=>e.Name.Contains(expiredRun)),CompletionTimeoutMs);
-        Assert.True(Directory.Exists(expiredDirectory)); Assert.False(Element(window,RlUiConstants.StorageCleanup).IsEnabled);
-        SaveScreenshot(window,"sa_T16_R08_desktop_review.png");
-        Element(window,RlUiConstants.StorageConfirm).AsCheckBox().IsChecked=true;
-        WaitUntil(()=>Element(window,RlUiConstants.StorageCleanup).IsEnabled);
-        Invoke(window,RlUiConstants.StorageCleanup);
-        WaitUntil(()=>!Directory.Exists(expiredDirectory),CompletionTimeoutMs,"Reviewed failed run was not explicitly removed");
+        if (panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Collapse(); else panel.Click();
+        Invoke(window, RlUiConstants.Train); WaitState(window, "Succeeded", CompletionTimeoutMs);
+        Assert.Equal("", ActiveModelName(window));
+        var descriptors = Directory.EnumerateFiles(Path.GetDirectoryName(expiredDirectory)!, "owned_run.json", SearchOption.AllDirectories).ToArray();
+        Assert.Equal(2, descriptors.Length);
+        string completed = descriptors.Single(p => Path.GetDirectoryName(p) != expiredDirectory);
+        using var finished = JsonDocument.Parse(File.ReadAllText(completed));
+        Assert.Equal((int)RlArtifactRunState.Completed, finished.RootElement.GetProperty("state").GetInt32());
+        Assert.Equal(10m, finished.RootElement.GetProperty("policy").GetProperty("quotaGiB").GetDecimal());
+        if (panel.Patterns.ExpandCollapse.IsSupported) panel.Patterns.ExpandCollapse.Pattern.Expand(); else panel.Click();
+        Invoke(window, RlUiConstants.StorageInspect);
+        WaitUntil(() => Element(window, RlUiConstants.StorageEntries).FindAllDescendants().Any(e => e.Name.Contains(expiredRun)), CompletionTimeoutMs);
+        Assert.True(Directory.Exists(expiredDirectory)); Assert.False(Element(window, RlUiConstants.StorageCleanup).IsEnabled);
+        SaveScreenshot(window, "sa_T16_R08_desktop_review.png");
+        Element(window, RlUiConstants.StorageConfirm).AsCheckBox().IsChecked = true;
+        WaitUntil(() => Element(window, RlUiConstants.StorageCleanup).IsEnabled);
+        Invoke(window, RlUiConstants.StorageCleanup);
+        WaitUntil(() => !Directory.Exists(expiredDirectory), CompletionTimeoutMs, "Reviewed failed run was not explicitly removed");
         // Once nothing is left to delete the cleanup action is no longer shown; absent counts as not enabled.
-        WaitUntil(()=>window.FindFirstDescendant(cf=>cf.ByAutomationId(RlUiConstants.StorageCleanup)) is not { IsEnabled: true });
+        WaitUntil(() => window.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.StorageCleanup)) is not { IsEnabled: true });
         Assert.True(File.Exists(completed));
-        File.WriteAllText(Path.Combine(evidence,"r08_desktop_evidence.json"),JsonSerializer.Serialize(new {
-            defaults_quota_gib=10,defaults_minimum_free_gib=5,defaults_failed_days=7,nonactive_initially_unset=true,
-            incomplete_policy_start_rejected=true,real_smoke_completed=true,run_policy_frozen=true,
-            explicit_review_confirm_delete=true,completed_unregistered_smoke_retained=true,expiredRun,original_store_untouched=true }));
-        SaveScreenshot(window,"sa_T16_R08_desktop_cleaned.png"); window.Close();
+        File.WriteAllText(Path.Combine(evidence, "r08_desktop_evidence.json"), JsonSerializer.Serialize(new
+        {
+            defaults_quota_gib = 10,
+            defaults_minimum_free_gib = 5,
+            defaults_failed_days = 7,
+            nonactive_initially_unset = true,
+            incomplete_policy_start_rejected = true,
+            real_smoke_completed = true,
+            run_policy_frozen = true,
+            explicit_review_confirm_delete = true,
+            completed_unregistered_smoke_retained = true,
+            expiredRun,
+            original_store_untouched = true
+        }));
+        SaveScreenshot(window, "sa_T16_R08_desktop_cleaned.png"); window.Close();
     }
 
     [QualifiedEvidenceFact(EvidenceDirectoryVariable, RecoveryConfigVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
@@ -264,9 +293,16 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
             Assert.Equal(restoredId, reopened.RlContinuousActiveId); Assert.Null(reopened.RlActiveId);
         }
         finally { Environment.SetEnvironmentVariable(PathDiscovery.UiTestDataRootEnvironmentVariable, previousRoot); }
-        File.WriteAllText(Path.Combine(evidence, "r07_desktop_evidence.json"), JsonSerializer.Serialize(new {
-            restoredId, healthyId, explicit_candidate_review = true, no_automatic_restore = true, healthy_recovery_disabled = true,
-            verified_backup_preserved = true, original_active_untouched = true }));
+        File.WriteAllText(Path.Combine(evidence, "r07_desktop_evidence.json"), JsonSerializer.Serialize(new
+        {
+            restoredId,
+            healthyId,
+            explicit_candidate_review = true,
+            no_automatic_restore = true,
+            healthy_recovery_disabled = true,
+            verified_backup_preserved = true,
+            original_active_untouched = true
+        }));
         SaveScreenshot(window, "sa_T16_R07_desktop_recovered.png");
         window.Close();
     }
@@ -342,10 +378,19 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         page.ChangeTimeFrame("Weekly");
         WaitUntil(() => MainWindow!.FindFirstDescendant(cf => cf.ByAutomationId(RlUiConstants.QPanel)) is not { IsOffscreen: false },
             errorMessage: "Timeframe retained all-block replay presentation");
-        File.WriteAllText(Path.Combine(evidenceDirectory, "r06_desktop_evidence.json"), JsonSerializer.Serialize(new {
-            actorId, latest_oos = source.Catalog.Oos[^1].Id, anchor, validation_blocks = 6, oos_blocks = 6,
-            explicit_option_default_off = true, smoke_option_consumed = true, report_visible = true, stale_presentation_cleared = true,
-            original_active_untouched = true }));
+        File.WriteAllText(Path.Combine(evidenceDirectory, "r06_desktop_evidence.json"), JsonSerializer.Serialize(new
+        {
+            actorId,
+            latest_oos = source.Catalog.Oos[^1].Id,
+            anchor,
+            validation_blocks = 6,
+            oos_blocks = 6,
+            explicit_option_default_off = true,
+            smoke_option_consumed = true,
+            report_visible = true,
+            stale_presentation_cleared = true,
+            original_active_untouched = true
+        }));
     }
 
     [QualifiedEvidenceFact(QualifiedDirectoryVariable, ContinuousDirectoryVariable, Timeout = UiTestLimits.TestTimeLimitMs)]
@@ -373,9 +418,13 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         SelectFirst(Element(window, RlUiConstants.Models).AsComboBox());
         WaitUntilEvaluationDetails(window, "R04 blocks not loaded");
         SaveScreenshot(window, "sa_T16_R04_desktop_before_report.png");
-        var tree = window.FindAllDescendants().Select(e => new { AutomationId = e.Properties.AutomationId.ValueOrDefault,
-            Name = e.Properties.Name.ValueOrDefault, ControlType = e.Properties.ControlType.ValueOrDefault.ToString(),
-            IsOffscreen = e.Properties.IsOffscreen.ValueOrDefault }).ToArray();
+        var tree = window.FindAllDescendants().Select(e => new
+        {
+            AutomationId = e.Properties.AutomationId.ValueOrDefault,
+            Name = e.Properties.Name.ValueOrDefault,
+            ControlType = e.Properties.ControlType.ValueOrDefault.ToString(),
+            IsOffscreen = e.Properties.IsOffscreen.ValueOrDefault
+        }).ToArray();
         string? evidenceDirectory = Environment.GetEnvironmentVariable(EvidenceDirectoryVariable);
         if (evidenceDirectory is not null) File.WriteAllText(Path.Combine(evidenceDirectory, "r04_dialog_automation.json"), JsonSerializer.Serialize(tree));
         var details = WaitForElement(() => FindEvaluationDetails(window));
@@ -613,7 +662,9 @@ public sealed partial class RlStoredPriceDesktopTests(ITestOutputHelper output) 
         errorMessage: "Missing RL element " + id);
     private static readonly Dictionary<string, string> CompositeFieldLabels = new()
     {
-        [RlUiConstants.Symbol] = "Rl.Symbol", [RlUiConstants.StartDate] = "Rl.StartDate", [RlUiConstants.EndDate] = "Rl.EndDate",
+        [RlUiConstants.Symbol] = "Rl.Symbol",
+        [RlUiConstants.StartDate] = "Rl.StartDate",
+        [RlUiConstants.EndDate] = "Rl.EndDate",
     };
     private void Invoke(Window window, string id) => Element(window, id).Patterns.Invoke.Pattern.Invoke();
     /// <summary>Selects the first option and closes the list through UI Automation: an Escape key would close the whole window when the list is already closed.</summary>

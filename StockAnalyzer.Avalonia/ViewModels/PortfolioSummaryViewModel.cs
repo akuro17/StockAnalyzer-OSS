@@ -71,10 +71,10 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
     private TreeNode? _rootNode;
 
     private decimal InitialCash => AppDomain.CurrentDomain.GetAssemblies()
-        .Any(a => a.FullName != null && 
-                 (a.FullName.StartsWith("xunit", StringComparison.OrdinalIgnoreCase) || 
-                  a.FullName.StartsWith("StockAnalyzer.Tests", StringComparison.OrdinalIgnoreCase) || 
-                  a.FullName.StartsWith("StockAnalyzer.Core.Tests", StringComparison.OrdinalIgnoreCase) || 
+        .Any(a => a.FullName != null &&
+                 (a.FullName.StartsWith("xunit", StringComparison.OrdinalIgnoreCase) ||
+                  a.FullName.StartsWith("StockAnalyzer.Tests", StringComparison.OrdinalIgnoreCase) ||
+                  a.FullName.StartsWith("StockAnalyzer.Core.Tests", StringComparison.OrdinalIgnoreCase) ||
                   a.FullName.StartsWith("StockAnalyzer.Avalonia.Tests", StringComparison.OrdinalIgnoreCase))) ? 100000m : 0m;
 
     private readonly List<string> _symbolsBuffer = new();
@@ -101,7 +101,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
     [ObservableProperty]
     private bool _isStopLossColumnVisible = true;
 
-    [ObservableProperty] 
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NetAssets))]
     [NotifyPropertyChangedFor(nameof(TotalPnL))]
     [NotifyPropertyChangedFor(nameof(IsTotalProfit))]
@@ -195,13 +195,13 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
         _dialogViewModelFactory = dialogViewModelFactory ?? throw new ArgumentNullException(nameof(dialogViewModelFactory));
         _designTimeDetector = designTimeDetector ?? throw new ArgumentNullException(nameof(designTimeDetector));
         _localizationService = localizationService ?? throw new ArgumentNullException(nameof(localizationService));
-        
+
         _messenger.Register<TickerSelectedMessage>(this);
         _messenger.Register<ColumnChooserAppliedMessage>(this);
         _currentPortfolio = _designTimeDetector.IsDesignMode ? PortfolioFactory.CreateDefaultMock() : PortfolioFactory.Empty;
 
         _watchlistManager.WatchlistsChanged += OnWatchlistsChanged;
-        
+
         BuildGroups();
         RefreshNodes();
         StartUpdateLoop();
@@ -218,7 +218,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
         _dispatcherService.Post(static vm =>
         {
             vm.Groups.Clear();
-            
+
             // Root Node
             var rootId = Guid.Parse("11111111-1111-1111-1111-111111111111");
             var localizedRootName = StockAnalyzer.Avalonia.Services.LocalizationManager.Instance["Portfolio_Groups_Root"];
@@ -241,7 +241,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
     private void RefreshNodes()
     {
         var portfolios = _watchlistManager.GetAllProfiles().Where(p => p.IsPortfolio).ToList();
-        
+
         _dispatcherService.Post(static state =>
         {
             var vm = state.Vm;
@@ -317,8 +317,8 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                 if (isTickerNode)
                 {
                     history = saved.History
-                        .Where(t => t.Type == TransactionType.Deposit || 
-                                    t.Type == TransactionType.Withdrawal || 
+                        .Where(t => t.Type == TransactionType.Deposit ||
+                                    t.Type == TransactionType.Withdrawal ||
                                     string.Equals(t.Ticker, node.Name, StringComparison.OrdinalIgnoreCase))
                         .ToList();
                 }
@@ -354,7 +354,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
         // Publish selected message to other tabs
         var type = node.IsAggregate ? PortfolioSelectionType.Aggregate : PortfolioSelectionType.SingleProfile;
         var message = new PortfolioSelectedMessage(node.NodeId, _currentPortfolio, type, DateTimeOffset.UtcNow);
-        
+
         _dispatcherService.Post(static state =>
         {
             state.Messenger.Send(state.Message);
@@ -403,7 +403,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
     private void StartUpdateLoop()
     {
         // Initial load with jitter to prevent startup congestion
-        _ = Task.Run(async () => 
+        _ = Task.Run(async () =>
         {
             await Task.Delay(Random.Shared.Next(LayoutConstants.PortfolioJitterMinMs, LayoutConstants.PortfolioJitterMaxMs));
             try
@@ -549,7 +549,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                         vm._currentKeysBuffer.Add(ticker);
                     }
                 }
-                
+
                 // Remove tickers no longer in portfolio
                 vm._toRemoveBuffer.Clear();
                 foreach (var p in vm.Positions)
@@ -607,7 +607,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
                     bool hideSymbol = pos.IsShort && vm._tickersWithBothBuffer.Contains(pos.Ticker);
                     var displaySymbol = hideSymbol ? "" : pos.Ticker;
-                    
+
                     var evaluation = new PositionEvaluation(
                         pos.Ticker,
                         pos.Quantity,
@@ -625,7 +625,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                         pvm = new PortfolioPositionViewModel();
                         vm._positionVmCache.Add(compositeKey, pvm);
                     }
-                    
+
                     pvm.IsHedged = vm._tickersWithBothBuffer.Contains(pos.Ticker);
                     pvm.UpdateFrom(evaluation);
                     pvm.IsConversionUnavailable = unconverted != null && unconverted.Contains(pos.AverageCost.Currency);
@@ -738,7 +738,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to refresh portfolio data.");
-            _dispatcherService.Post(static vm => 
+            _dispatcherService.Post(static vm =>
             {
                 vm.HasError = true;
                 vm.IsLoading = false; // Prevent getting stuck on "Evaluating Portfolio..."
@@ -789,7 +789,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                 {
                     vm.Ticker = SelectedPosition.Symbol;
                 }
-                
+
                 var result = await _dialogService.ShowEditTransactionDialogAsync(vm);
                 if (result != null)
                 {
@@ -925,7 +925,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                 vm.Notes = transaction.Notes;
                 vm.TargetPrice = transaction.TargetPrice;
                 vm.StopLoss = transaction.StopLoss;
-                
+
                 var result = await _dialogService.ShowEditTransactionDialogAsync(vm);
                 if (result != null)
                 {
@@ -1056,7 +1056,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                 {
                     var globalPortfolio = await _portfolioManager.LoadPortfolioAsync() ?? PortfolioFactory.Empty;
                     var history = globalPortfolio.History.ToList();
-                    
+
                     int removedCount = 0;
                     foreach (var transaction in list)
                     {

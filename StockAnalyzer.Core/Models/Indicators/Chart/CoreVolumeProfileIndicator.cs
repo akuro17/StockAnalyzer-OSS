@@ -34,7 +34,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
                 }
             };
         }
-        
+
         public int RowCount { get; set; } = 50;
         public int Period { get; set; } = 200;
         public VolumeDistributionMode Mode { get; set; } = VolumeDistributionMode.Proportional;
@@ -66,9 +66,9 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
 
             if (ProfileData.Count == 0)
             {
-                 // Fallback
-                 for(int i = 0; i < candles.Count; i++) _values.Add(null);
-                 return IndicatorResult.Success(_values);
+                // Fallback
+                for (int i = 0; i < candles.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
             }
 
             // Calculate POC (Point of Control) for time series display
@@ -76,7 +76,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Chart
             var maxVol = ProfileData.Max(b => b.TotalVolume);
             var pocBin = ProfileData.FirstOrDefault(b => b.TotalVolume == maxVol);
             decimal poc = pocBin?.Price ?? 0;
-            
+
             // Populate _values with POC (Horizontal Line)
 
             for (int i = 0; i < candles.Count; i++)

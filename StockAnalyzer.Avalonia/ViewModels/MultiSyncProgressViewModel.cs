@@ -38,7 +38,7 @@ public partial class MultiSyncProgressViewModel : ViewModelBase
 
         Items = new ObservableCollection<SyncItemViewModel>();
         Items.CollectionChanged += (s, e) => UpdateSummary();
-        
+
         StopAllCommand = new RelayCommand(OnStopAll);
         StartAllCommand = new AsyncRelayCommand(OnStartAll);
         CloseCommand = new RelayCommand(OnClose);
@@ -294,7 +294,7 @@ public partial class MultiSyncProgressViewModel : ViewModelBase
         CompletedCount = Items.Count(x => x.Status == SyncStatus.Completed);
         SyncingCount = Items.Count(x => x.Status == SyncStatus.Syncing);
         ErrorCount = Items.Count(x => x.Status == SyncStatus.Error);
-        
+
         var manager = LocalizationManager.Instance;
 
         if (SyncingCount > 0)

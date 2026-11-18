@@ -58,7 +58,7 @@ public class GeometricPatternObject : IChartObject, IDrawingCalculatedValuesProv
     public bool ShowTriangles { get => _showTriangles; set { _showTriangles = value; InvalidateCalculatedValues(); } }
     public bool ShowPennantsAndFlags { get => _showPennantsAndFlags; set { _showPennantsAndFlags = value; InvalidateCalculatedValues(); } }
     public bool ShowMegaphone { get => _showMegaphone; set { _showMegaphone = value; InvalidateCalculatedValues(); } }
-    
+
     // Detection Settings
     /// <summary>
     /// If set to a value, overrides multi-scale detection and uses this fixed threshold.
@@ -93,7 +93,7 @@ public class GeometricPatternObject : IChartObject, IDrawingCalculatedValuesProv
             {
                 if (!ShouldRender(formation.Type)) continue;
                 if (!formation.IsBrokenOut) continue;
-                
+
                 RenderFormation(canvas, transform, formation);
             }
         }
@@ -111,7 +111,7 @@ public class GeometricPatternObject : IChartObject, IDrawingCalculatedValuesProv
         // 1. Calculate screen coordinates for the bounded lines
         var resStartScreen = transform.ChartToScreen(new ChartPoint(formation.StartTime, (decimal)formation.UpperPriceAt(formation.StartIndex)));
         var resEndScreen = transform.ChartToScreen(new ChartPoint(formation.EndTime, (decimal)formation.UpperPriceAt(formation.EndIndex)));
-        
+
         var supStartScreen = transform.ChartToScreen(new ChartPoint(formation.StartTime, (decimal)formation.LowerPriceAt(formation.StartIndex)));
         var supEndScreen = transform.ChartToScreen(new ChartPoint(formation.EndTime, (decimal)formation.LowerPriceAt(formation.EndIndex)));
 
@@ -170,23 +170,23 @@ public class GeometricPatternObject : IChartObject, IDrawingCalculatedValuesProv
                 return true;
             }
         }
-        
+
         if (Formations == null || Formations.Count == 0) return false;
 
         // A full polygon hit-test or distance to line segments could be implemented here.
         // For simplicity, we just return true if it's within the bounding box of any formation.
-        foreach(var formation in Formations)
+        foreach (var formation in Formations)
         {
             if (!ShouldRender(formation.Type)) continue;
-            
+
             var resStart = transform.ChartToScreen(new ChartPoint(formation.StartTime, (decimal)formation.UpperPriceAt(formation.StartIndex)));
             var supEnd = transform.ChartToScreen(new ChartPoint(formation.EndTime, (decimal)formation.LowerPriceAt(formation.EndIndex)));
-            
+
             double minX = Math.Min(resStart.X, supEnd.X);
             double maxX = Math.Max(resStart.X, supEnd.X);
             double minY = Math.Min(resStart.Y, supEnd.Y);
             double maxY = Math.Max(resStart.Y, supEnd.Y);
-            
+
             if (screenPoint.X >= minX - tolerance && screenPoint.X <= maxX + tolerance &&
                 screenPoint.Y >= minY - tolerance && screenPoint.Y <= maxY + tolerance)
             {
@@ -200,13 +200,13 @@ public class GeometricPatternObject : IChartObject, IDrawingCalculatedValuesProv
     public void Recalculate(IEnumerable<StockAnalyzer.Core.Models.CandleData> candles)
     {
         if (Points.Count == 0 || candles == null) return;
-        
+
         try
         {
             var candleDataList = candles
                 .Where(c => c.Timestamp >= Points[0].Time)
                 .ToList();
-                
+
             var thresholds = ZigZagThreshold.HasValue ? new[] { ZigZagThreshold.Value } : null;
             var formations = StockAnalyzer.Core.Models.GeometricPattern.GeometricPatternDetector.Detect(candleDataList, thresholds);
             Formations = formations;
@@ -228,10 +228,10 @@ public class GeometricPatternObject : IChartObject, IDrawingCalculatedValuesProv
         {
             Points[i] = new ChartPoint(Points[i].Time.Add(timeDelta), Points[i].Price + priceDelta);
         }
-        
+
         // Re-detection happens via Recalculate called by the controller
     }
-    
+
     /// <summary>
     /// Data Window rows for the formations that are drawn (<see cref="DetectedFormation.IsBrokenOut"/> and enabled by the display
     /// filters): the count plus the latest <see cref="MaxListedFormations"/> formations (newest end time first, then highest confidence).
@@ -294,24 +294,24 @@ public class GeometricPatternObject : IChartObject, IDrawingCalculatedValuesProv
             case GeometricFormationType.AscendingChannel:
             case GeometricFormationType.DescendingChannel:
                 return ShowChannels;
-                
+
             case GeometricFormationType.SymmetricalTriangle:
             case GeometricFormationType.AscendingTriangle:
             case GeometricFormationType.DescendingTriangle:
                 return ShowTriangles;
-                
+
             case GeometricFormationType.Megaphone:
                 return ShowMegaphone;
-                
+
             case GeometricFormationType.BullishFlag:
             case GeometricFormationType.BearishFlag:
             case GeometricFormationType.Pennant:
                 return ShowPennantsAndFlags;
-                
+
             case GeometricFormationType.RisingWedge:
             case GeometricFormationType.FallingWedge:
                 return ShowWedges;
-                
+
             default:
                 return true;
         }

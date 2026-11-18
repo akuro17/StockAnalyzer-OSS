@@ -198,7 +198,7 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
         CancellationToken ct)
     {
         progress?.Report(0);
-        
+
         // Try to find if we have a provider that can handle optimized screening
         var provider = _marketDataProviders.OfType<ParquetMarketDataProvider>().FirstOrDefault();
         if (provider != null)
@@ -211,7 +211,7 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
         // Fallback or multiple condition screening would go here
         // For now, if no parquet provider, we might need to fallback to something else
         // or just return empty if this specific "Fast" path is requested.
-        
+
         return new List<string>();
     }
 

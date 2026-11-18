@@ -68,7 +68,7 @@ public class ArrowObject : RelativeGeometricRenderer, IDrawingCalculatedValuesPr
 
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
-        
+
         // Distance from point to line segment
         double dist = DistancePointToSegment(screenPoint, p1, p2);
         return dist <= tolerance;

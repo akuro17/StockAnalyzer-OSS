@@ -31,10 +31,10 @@ public class SubWindowCoordinateTransform : ICoordinateTransform
     {
         // X comes from the main chart (already handles Mode, Padding, TimeMap, etc.)
         double x = _mainTransform.ChartToScreen(new ChartPoint(chartPoint.Time, 0)).X;
-        
+
         // Y comes from the local panel transform
         double y = YTransform.ChartToScreen(new ChartPoint(DateTime.MinValue, chartPoint.Price)).Y;
-        
+
         return new global::Avalonia.Point(x, y);
     }
 
@@ -42,7 +42,7 @@ public class SubWindowCoordinateTransform : ICoordinateTransform
     {
         var mainPoint = _mainTransform.ScreenToChart(new global::Avalonia.Point(screenPoint.X, 0));
         var yPoint = YTransform.ScreenToChart(new global::Avalonia.Point(0, screenPoint.Y));
-        
+
         return new ChartPoint(mainPoint.Time, yPoint.Price);
     }
 
@@ -72,13 +72,13 @@ public class SubWindowCoordinateTransform : ICoordinateTransform
     public System.Collections.Generic.IReadOnlyList<DateTime>? TimeMap => _mainTransform.TimeMap;
 
     public double CanvasWidth => _mainTransform.CanvasWidth;
-    
+
     public double CanvasHeight => YTransform.CanvasHeight;
-    
+
     public global::Avalonia.Rect ScreenRect => new global::Avalonia.Rect(0, 0, CanvasWidth, CanvasHeight);
-    
+
     public double ViewportX => _mainTransform.ViewportX;
-    
+
     public double ViewportWidth => _mainTransform.ViewportWidth;
 
     public double ScaleX => _mainTransform.ScaleX;

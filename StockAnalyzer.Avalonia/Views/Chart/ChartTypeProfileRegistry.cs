@@ -37,7 +37,7 @@ public static class ChartTypeProfileRegistry
         {
             return profile;
         }
-        
+
         return _profiles[ChartType.Candlestick];
     }
 }

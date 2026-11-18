@@ -61,7 +61,7 @@ public sealed record GlobalChartSettings
     public ComparisonMode RelativePerformanceMode { get; init; } = ComparisonMode.Performance;
     public int ComparisonZScorePeriod { get; init; } = ComparisonSeriesDefaults.DefaultZScorePeriod;
     public bool ShowTickerInsteadOfValue { get; init; } = false;
-    
+
     // --- Layout & Visuals ---
     public float TopMargin { get; init; } = 0f;
     public float BottomMargin { get; init; } = 30f;
@@ -287,7 +287,7 @@ public sealed record GlobalChartSettings
         }
 
         // GS-3-2: Migration/Auto-Heal: Detect old rainbow defaults for Reverse Watch and replace with semantic ones
-        bool IsOld(string? val, string target) 
+        bool IsOld(string? val, string target)
         {
             if (string.IsNullOrEmpty(val)) return false;
             string t6 = target.ToUpperInvariant();
@@ -296,7 +296,7 @@ public sealed record GlobalChartSettings
             return v == t6 || v == t8;
         }
 
-        bool isOldRainbow = 
+        bool isOldRainbow =
             IsOld(ReverseWatchPhase1Color, "#FF0000") &&
             IsOld(ReverseWatchPhase2Color, "#FFA500") &&
             IsOld(ReverseWatchPhase3Color, "#FFFF00") &&
@@ -329,8 +329,8 @@ public sealed record GlobalChartSettings
             snapDistance = ChartSettingsConstants.DefaultSmartGuideSnapDistance;
         }
 
-        var result = this with 
-        { 
+        var result = this with
+        {
             DefaultStrokeThickness = thickness,
             DrawingFontSize = Math.Clamp(DrawingFontSize, ChartSettingsConstants.MinDrawingFontSize, ChartSettingsConstants.MaxDrawingFontSize),
             DrawingIconFontSize = Math.Clamp(DrawingIconFontSize, ChartSettingsConstants.MinDrawingIconFontSize, ChartSettingsConstants.MaxDrawingIconFontSize),

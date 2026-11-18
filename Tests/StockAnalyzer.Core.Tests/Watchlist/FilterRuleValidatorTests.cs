@@ -19,28 +19,48 @@ public sealed class FilterRuleValidatorTests
 
     private static readonly Dictionary<string, string> NumericVectors = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["=="] = "FTF", ["="] = "FTF", ["Equals"] = "FTF",
-        ["!="] = "TFT", ["NotEquals"] = "TFT",
-        [">"] = "TFF", ["GreaterThan"] = "TFF",
-        [">="] = "TTF", ["GreaterThanOrEqual"] = "TTF",
-        ["<"] = "FFT", ["LessThan"] = "FFT",
-        ["<="] = "FTT", ["LessThanOrEqual"] = "FTT",
+        ["=="] = "FTF",
+        ["="] = "FTF",
+        ["Equals"] = "FTF",
+        ["!="] = "TFT",
+        ["NotEquals"] = "TFT",
+        [">"] = "TFF",
+        ["GreaterThan"] = "TFF",
+        [">="] = "TTF",
+        ["GreaterThanOrEqual"] = "TTF",
+        ["<"] = "FFT",
+        ["LessThan"] = "FFT",
+        ["<="] = "FTT",
+        ["LessThanOrEqual"] = "FTT",
     };
 
     private static readonly Dictionary<string, string> TextVectors = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["*="] = "TTF", ["Contains"] = "TTF",
-        ["!*="] = "FFT", ["NotContains"] = "FFT", ["!Contains"] = "FFT",
-        ["=="] = "FTF", ["="] = "FTF", ["Equals"] = "FTF",
-        ["!="] = "TFT", ["NotEquals"] = "TFT",
+        ["*="] = "TTF",
+        ["Contains"] = "TTF",
+        ["!*="] = "FFT",
+        ["NotContains"] = "FFT",
+        ["!Contains"] = "FFT",
+        ["=="] = "FTF",
+        ["="] = "FTF",
+        ["Equals"] = "FTF",
+        ["!="] = "TFT",
+        ["NotEquals"] = "TFT",
     };
 
     private static readonly Dictionary<string, string> TagVectors = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["*="] = "TFF", ["Contains"] = "TFF", ["ContainsTag"] = "TFF",
-        ["!*="] = "FTT", ["NotContains"] = "FTT", ["!Contains"] = "FTT",
-        ["=="] = "FTF", ["="] = "FTF", ["Equals"] = "FTF",
-        ["!="] = "TFT", ["NotEquals"] = "TFT",
+        ["*="] = "TFF",
+        ["Contains"] = "TFF",
+        ["ContainsTag"] = "TFF",
+        ["!*="] = "FTT",
+        ["NotContains"] = "FTT",
+        ["!Contains"] = "FTT",
+        ["=="] = "FTF",
+        ["="] = "FTF",
+        ["Equals"] = "FTF",
+        ["!="] = "TFT",
+        ["NotEquals"] = "TFT",
     };
 
     private static string Vector(string field, string op, params string[] values)

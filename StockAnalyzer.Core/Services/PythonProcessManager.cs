@@ -41,7 +41,7 @@ namespace StockAnalyzer.Core.Services
         {
             _settings = settings;
             _pipeName = $"{settings.PipeName}_{Guid.NewGuid():N}";
-            
+
             // Script directory from settings (or default)
             var baseDir = AppDomain.CurrentDomain.BaseDirectory;
             var scriptDir = Path.Combine(baseDir, _settings.PythonScriptDirectory);
@@ -160,7 +160,7 @@ namespace StockAnalyzer.Core.Services
                 {
                     // If script doesn't exist yet, we can't run it. Caller should ensure it exists.
                     // For now, checks are strict.
-                     throw new FileNotFoundException($"Python server script not found at {_pythonScriptPath}");
+                    throw new FileNotFoundException($"Python server script not found at {_pythonScriptPath}");
                 }
 
                 // Start Python Process securely using ArgumentList
@@ -201,14 +201,16 @@ namespace StockAnalyzer.Core.Services
                 }
 
                 _pythonProcess = new Process { StartInfo = startInfo };
-                _pythonProcess.OutputDataReceived += (s, e) => { 
-                    if (!string.IsNullOrEmpty(e.Data)) 
+                _pythonProcess.OutputDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
                     {
                         Debug.WriteLine($"[Python OUT]: {e.Data}");
                     }
                 };
-                _pythonProcess.ErrorDataReceived += (s, e) => { 
-                    if (!string.IsNullOrEmpty(e.Data)) 
+                _pythonProcess.ErrorDataReceived += (s, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
                     {
                         Debug.WriteLine($"[Python ERR]: {e.Data}");
                     }
@@ -330,18 +332,18 @@ namespace StockAnalyzer.Core.Services
 
         public Task<string> WaitForResponseAsync(CancellationToken cancellationToken = default)
         {
-             return ExecuteWithResilienceAsync(
-                 static async (context, manager) =>
-                 {
-                     return await manager.WithRequestTimeoutAsync(context.CancellationToken, async token =>
-                     {
-                         var responseJson = await manager._pipeReader!.ReadLineAsync(token);
-                         if (string.IsNullOrEmpty(responseJson)) throw new IOException("Received empty response.");
-                         return responseJson;
-                     });
-                 },
-                 this,
-                 cancellationToken);
+            return ExecuteWithResilienceAsync(
+                static async (context, manager) =>
+                {
+                    return await manager.WithRequestTimeoutAsync(context.CancellationToken, async token =>
+                    {
+                        var responseJson = await manager._pipeReader!.ReadLineAsync(token);
+                        if (string.IsNullOrEmpty(responseJson)) throw new IOException("Received empty response.");
+                        return responseJson;
+                    });
+                },
+                this,
+                cancellationToken);
         }
 
         public Task SendBinaryDataAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
@@ -471,7 +473,7 @@ namespace StockAnalyzer.Core.Services
         private void CleanupConnection()
         {
             _isConnected = false;
-            
+
             _pipeReader = null;
 
             try { _pipeWriter?.Dispose(); } catch { }
@@ -479,7 +481,7 @@ namespace StockAnalyzer.Core.Services
 
             try { _pipeClient?.Dispose(); } catch { }
             _pipeClient = null;
-            
+
             if (_pythonProcess != null)
             {
                 if (!IsProcessDead())
@@ -510,8 +512,8 @@ namespace StockAnalyzer.Core.Services
         public async ValueTask DisposeAsync()
         {
             _healthCheckCts?.Cancel();
-            try 
-            { 
+            try
+            {
                 if (_healthCheckTask != null)
                 {
                     var timeoutTask = Task.Delay(_settings.DisposeWaitMs);
@@ -521,7 +523,7 @@ namespace StockAnalyzer.Core.Services
                         Debug.WriteLine("[PythonProcessManager] Health check task did not complete nicely within timeout, forcing cleanup.");
                     }
                 }
-            } 
+            }
             catch { }
 
             CleanupConnection();

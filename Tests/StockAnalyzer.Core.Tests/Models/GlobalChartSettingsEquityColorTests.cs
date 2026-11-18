@@ -230,15 +230,15 @@ public class GlobalChartSettingsEquityColorTests
         string fallback = ChartSettingsConstants.DefaultBacktestEquityLineColor;
         var channels = Enumerable.Range(0, 18).Select(i => Math.Min(i * 15, 255)).Append(255).Distinct().ToArray();
         foreach (int alpha in new[] { 0x00, 0x01, 0x80, 0xFF })
-        foreach (int r in channels)
-        foreach (int g in channels)
-        foreach (int b in channels)
-        {
-            string hex = $"#{alpha:X2}{r:X2}{g:X2}{b:X2}";
-            string once = BacktestEquityLineStyle.ResolveHsv(hex, fallback).ToHtml();
-            string twice = BacktestEquityLineStyle.ResolveHsv(once, fallback).ToHtml();
-            Assert.True(once == twice, $"{hex} -> {once} -> {twice}");
-        }
+            foreach (int r in channels)
+                foreach (int g in channels)
+                    foreach (int b in channels)
+                    {
+                        string hex = $"#{alpha:X2}{r:X2}{g:X2}{b:X2}";
+                        string once = BacktestEquityLineStyle.ResolveHsv(hex, fallback).ToHtml();
+                        string twice = BacktestEquityLineStyle.ResolveHsv(once, fallback).ToHtml();
+                        Assert.True(once == twice, $"{hex} -> {once} -> {twice}");
+                    }
     }
 
     [Fact]

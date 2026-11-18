@@ -243,13 +243,13 @@ public class DetachedTabInfo
 {
     public string TabId { get; set; } = string.Empty;
     public string? OriginalPanelName { get; set; }
-    
+
     /// <summary>
     /// The ID of the detached window container this tab belongs to.
     /// Tabs with the same ContainerId will be grouped together upon restoration.
     /// </summary>
     public string? ContainerId { get; set; }
-    
+
     /// <summary>
     /// Whether the tab was an independent window (factory-spawned).
     /// </summary>
@@ -259,7 +259,7 @@ public class DetachedTabInfo
     /// Whether this tab synchronizes its state with the main active chart.
     /// </summary>
     public bool IsSyncEnabled { get; set; } = true;
-    
+
     /// <summary>
     /// State properties for independent or non-synced chart windows
     /// </summary>

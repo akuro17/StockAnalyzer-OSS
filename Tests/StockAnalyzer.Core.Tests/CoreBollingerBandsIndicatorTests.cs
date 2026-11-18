@@ -84,11 +84,11 @@ public class CoreBollingerBandsIndicatorTests
         // StdDev: Sqrt(((10-12)^2 + (12-12)^2 + (14-12)^2) / 3) = Sqrt((4 + 0 + 4) / 3) = Sqrt(8/3) = Sqrt(2.666) ~= 1.633
         // Upper: 12 + 2 * 1.633 = 15.266
         // Lower: 12 - 2 * 1.633 = 8.734
-        
+
         Assert.Equal(12m, middle[2]);
         Assert.NotNull(upper[2]);
         Assert.NotNull(lower[2]);
-        
+
         // Use precision for float comparison
         Assert.Equal(15.266m, upper[2].Value, 3);
         Assert.Equal(8.734m, lower[2].Value, 3);
@@ -99,7 +99,7 @@ public class CoreBollingerBandsIndicatorTests
     {
         var indicator = new CoreBollingerBandsIndicator { Period = 5 };
         var result = indicator.Calculate(new List<CoreCandleData>());
-        
+
         Assert.True(result.IsSuccessful);
         Assert.Empty(result.MainValues);
     }

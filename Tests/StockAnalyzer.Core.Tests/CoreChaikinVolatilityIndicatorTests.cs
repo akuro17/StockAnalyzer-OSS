@@ -16,7 +16,7 @@ public class CoreChaikinVolatilityIndicatorTests
         for (int i = 0; i < count; i++)
         {
             var (high, low) = priceFunc(i);
-            candles.Add(new CoreCandleData(date.AddDays(i), low, high, low, (high+low)/2, 100));
+            candles.Add(new CoreCandleData(date.AddDays(i), low, high, low, (high + low) / 2, 100));
         }
         return candles;
     }
@@ -35,13 +35,13 @@ public class CoreChaikinVolatilityIndicatorTests
         Assert.Equal(30, result.MainValues.Count);
 
         // Initial nulls = period - 1 (for EMA) + rocPeriod
-        int expectedNulls = period -1 + rocPeriod;
+        int expectedNulls = period - 1 + rocPeriod;
         // Wait, logically checking nulls.
         // Ema needs period items. So index period-1 is first valid.
         // ROC needs current EMA and EMA[i-rocPeriod]. 
         // So i-rocPeriod >= period-1 => i >= period-1 + rocPeriod.
         // So first valid index is period - 1 + rocPeriod.
-        
+
         Assert.True(result.MainValues.Take(expectedNulls).All(v => v == null));
 
         Assert.NotNull(result.MainValues[expectedNulls]);
@@ -57,7 +57,7 @@ public class CoreChaikinVolatilityIndicatorTests
         var indicator = new CoreChaikinVolatilityIndicator { Period = 10, RocPeriod = 10 };
         var result = indicator.Calculate(candles);
 
-        int expectedNulls = 10 -1 + 10;
+        int expectedNulls = 10 - 1 + 10;
         Assert.NotNull(result.MainValues[expectedNulls]);
         // With constant spread, the change (ROC) should be zero
         Assert.Equal(0, result.MainValues[expectedNulls].Value, 4);

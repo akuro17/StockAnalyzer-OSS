@@ -39,12 +39,12 @@ public partial class ReverseWatchCurveWindow : Window
     public ReverseWatchCurveWindow()
     {
         InitializeComponent();
-        
+
         // Create a dedicated rendering control and insert at index 0
         // so it renders behind the header text elements
         _chartPanel = new ChartPanel(this);
         MainGrid.Children.Insert(0, _chartPanel);
-        
+
         _chartPanel.PointerMoved += OnPointerMoved;
         _chartPanel.PointerExited += OnPointerExited;
 
@@ -61,13 +61,13 @@ public partial class ReverseWatchCurveWindow : Window
         _hoveredPoint = null;
 
         PeriodLabel.Text = $"Period: {data.Period} days";
-        
+
         // Initial Header Update (Show Latest Data)
         if (_data.Points.Count > 0)
         {
             UpdateHeaderInfo(_data.Points[^1]);
         }
-        
+
         _chartPanel.InvalidateVisual();
     }
 
@@ -81,13 +81,13 @@ public partial class ReverseWatchCurveWindow : Window
 
         // Get position relative to the chart panel (same coordinate space as rendering)
         _mousePosition = e.GetPosition(_chartPanel);
-        
+
         var chartWidth = (float)_chartPanel.Bounds.Width - 2 * MARGIN;
         var chartHeight = (float)_chartPanel.Bounds.Height - 2 * MARGIN - TIME_AXIS_HEIGHT;
-        
+
         var scale = CalculateScaleContext(chartWidth, chartHeight);
         if (!scale.IsValid) return;
-        
+
         _lastBuildScale = scale;
         var nearestPoint = LinearSearchNearestPoint(_mousePosition, scale);
 
@@ -102,13 +102,13 @@ public partial class ReverseWatchCurveWindow : Window
     private void OnPointerExited(object? sender, PointerEventArgs e)
     {
         _hoveredPoint = null;
-        
+
         // Reset Header to Latest on Exit
         if (_data != null && _data.Points.Count > 0)
         {
             UpdateHeaderInfo(_data.Points[^1]);
         }
-        
+
         _chartPanel.InvalidateVisual();
     }
 
@@ -274,7 +274,7 @@ public partial class ReverseWatchCurveWindow : Window
                 // Bounds are in logical pixels. Using Size to ignore any Control X/Y layout offsets
                 // since Skia canvas (Inner operation) is strictly Local Coordinates.
                 var logicalBounds = new global::Avalonia.Rect(new global::Avalonia.Point(0, 0), Bounds.Size);
-                
+
                 context.Custom(new ChartDrawOperation(
                     logicalBounds, _owner._data, _owner._hoveredPoint, _owner._mousePosition, themeColors,
                     _bgPaint, _gridPaint, _axisPaint, _textPaint, _textFont, _pointPaint, _pathPaint, _curvePath, _hoverPaint,
@@ -309,8 +309,8 @@ public partial class ReverseWatchCurveWindow : Window
         private const float HOVER_POINT_RADIUS = 6f;
 
         public ChartDrawOperation(
-            global::Avalonia.Rect bounds, ReverseWatchCurveData data, 
-            ReverseWatchCurvePoint? hoveredPoint, global::Avalonia.Point mousePosition, 
+            global::Avalonia.Rect bounds, ReverseWatchCurveData data,
+            ReverseWatchCurvePoint? hoveredPoint, global::Avalonia.Point mousePosition,
             ThemeColors themeColors,
             SKPaint bgPaint, SKPaint gridPaint, SKPaint axisPaint, SKPaint textPaint, SKFont textFont,
             SKPaint pointPaint, SKPaint pathPaint, SKPath curvePath, SKPaint hoverPaint,
@@ -337,7 +337,7 @@ public partial class ReverseWatchCurveWindow : Window
         public bool Equals(ICustomDrawOperation? other) => false;
         public override bool Equals(object? obj) => Equals(obj as ICustomDrawOperation);
         public override int GetHashCode() => _bounds.GetHashCode();
-        
+
         // Hover pointer coordinates (p) come from Avalonia in logical pixels.
         // Compare directly with logical _bounds.
         public bool HitTest(global::Avalonia.Point p) => _bounds.Contains(p);
@@ -349,12 +349,12 @@ public partial class ReverseWatchCurveWindow : Window
 
             using var lease = feature.Lease();
             var canvas = lease.SkCanvas;
-            
+
             canvas.Save();
-            
+
             // Reverted manual `canvas.Scale(scaleF, scaleF)` as Avalonia 11 provides a pre-scaled
             // canvas lease on Windows/WPF hosts. Applying it manually causes double-scaling.
-            
+
             // Width and Height for our drawing logic must be the LOGICAL bounds,
             // because our calculations use the Avalonia logical sizes from layout.
             var logicalWidth = (float)_bounds.Width;
@@ -362,12 +362,13 @@ public partial class ReverseWatchCurveWindow : Window
 
             _bgPaint.Color = _themeColors.RwChartBackground.ToSkColor();
             canvas.DrawRect(0, 0, logicalWidth, logicalHeight, _bgPaint);
-            
+
             var chartWidth = logicalWidth - 2 * MARGIN;
             var chartHeight = logicalHeight - 2 * MARGIN - TIME_AXIS_HEIGHT;
 
             var scale = CalculateScale(chartWidth, chartHeight);
-            if (!scale.IsValid) {
+            if (!scale.IsValid)
+            {
                 canvas.Restore();
                 return;
             }
@@ -379,7 +380,7 @@ public partial class ReverseWatchCurveWindow : Window
 
             if (_hoveredPoint != null)
                 DrawHoverPoint(canvas, scale);
-                
+
             canvas.Restore();
         }
 
@@ -461,7 +462,7 @@ public partial class ReverseWatchCurveWindow : Window
             _textPaint.Color = _themeColors.RwAxisText.ToSkColor();
 
             var axisY = height - MARGIN - TIME_AXIS_HEIGHT;
-            
+
             var minVolText = _data.Bounds.MinVolume.ToString("N0");
             var maxVolText = _data.Bounds.MaxVolume.ToString("N0");
             canvas.DrawText(minVolText, MARGIN, axisY + 14, _textFont, _textPaint);
@@ -486,7 +487,7 @@ public partial class ReverseWatchCurveWindow : Window
             canvas.DrawText("Old", legendX, legendY, textFont, textPaint);
             canvas.DrawText("New", legendX + 95, legendY, textFont, textPaint);
 
-            var colors = new[] { 
+            var colors = new[] {
                 SKColor.FromHsv(240, 80, 80),
                 SKColor.FromHsv(180, 80, 80),
                 SKColor.FromHsv(120, 80, 80),
@@ -527,9 +528,9 @@ public partial class ReverseWatchCurveWindow : Window
         private void DrawHoverPoint(SKCanvas canvas, ScaleContext scale)
         {
             if (_hoveredPoint == null) return;
-            
+
             _hoverPaint.Color = _themeColors.RwHoverPoint.ToSkColor();
-            
+
             var coords = ToScreenCoordinates(_hoveredPoint, scale);
             canvas.DrawCircle(coords.X, coords.Y, HOVER_POINT_RADIUS, _hoverPaint);
         }

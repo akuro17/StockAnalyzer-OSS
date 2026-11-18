@@ -192,11 +192,11 @@ public partial class LayoutStateStore : ObservableObject
         // Apply default sizes from LayoutConstants and specify initial visibility
         LeftPanel = new PanelDimensions(LayoutConstants.DefaultLeftWidth, DefaultLeftPanelVisible, LayoutConstants.MaxPanelWidthClamp);
         RightPanel = new PanelDimensions(LayoutConstants.DefaultRightWidth, DefaultRightPanelVisible, LayoutConstants.MaxPanelWidthClamp);
-        
+
         // Hydrate TopPanel fallback dimensions since it defaults to 0.0 (hidden)
         double initialTopSize = LayoutConstants.DefaultTopHeight > 0.0 ? LayoutConstants.DefaultTopHeight : 200.0;
         TopPanel = new PanelDimensions(initialTopSize, DefaultTopPanelVisible, LayoutConstants.MaxPanelHeightClamp);
-        
+
         BottomPanel = new PanelDimensions(LayoutConstants.DefaultBottomHeight, DefaultBottomPanelVisible, LayoutConstants.MaxPanelHeightClamp);
 
         // Pre-populate dictionary for all PanelRegion enum values with direct keys (zero allocations)

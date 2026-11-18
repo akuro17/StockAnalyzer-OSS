@@ -9,9 +9,13 @@ public sealed class NativeCheckpointContractTests
 {
     private static TrainingJobConfig Config() => new()
     {
-        Symbols = new[] { "X" }, Architecture = "lstm", WindowSize = 4, Horizon = 1,
+        Symbols = new[] { "X" },
+        Architecture = "lstm",
+        WindowSize = 4,
+        Horizon = 1,
         InitializationMode = TrainingInitializationMode.FineTune,
-        CheckpointPath = "best.json", ParentModelId = new string('a', 64),
+        CheckpointPath = "best.json",
+        ParentModelId = new string('a', 64),
         FreezePaths = new[] { "lstm", "head" },
     };
 
@@ -53,8 +57,13 @@ public sealed class NativeCheckpointContractTests
     public void Resume_RejectsNewLineageOrFreezeControls()
     {
         Assert.Throws<InvalidOperationException>((Config() with { InitializationMode = TrainingInitializationMode.Resume }).Validate);
-        (Config() with { InitializationMode = TrainingInitializationMode.Resume, ParentModelId = null,
-                        FreezePaths = Array.Empty<string>(), CheckpointPath = "run.json" }).Validate();
+        (Config() with
+        {
+            InitializationMode = TrainingInitializationMode.Resume,
+            ParentModelId = null,
+            FreezePaths = Array.Empty<string>(),
+            CheckpointPath = "run.json"
+        }).Validate();
     }
 
     [Fact]

@@ -37,13 +37,13 @@ public partial class MainWindowViewModel
         _themeManager = new ThemeManager();
         _settings = new Services.MockStockAnalyzerSettings();
         _pythonService = new PythonService(_settings, null!);
-        _dispatcherService = new Services.DispatcherService(); 
+        _dispatcherService = new Services.DispatcherService();
         _watchlistManager = new StockAnalyzer.Core.Services.WatchlistManager();
         _panelTabFactory = new PanelTabFactory(null!, new TabRegistry());
-        
+
         // During designer execution, completely block external dependencies (DuckDB/Parquet) and use Mocks for stability
         _marketDataProvider = new Services.MockMarketDataProvider();
-        
+
         _logger = NullLogger<MainWindowViewModel>.Instance;
         _chartViewModelFactory = () => new ChartViewModel { DialogService = _dialogService };
         ChartViewModel = new ChartViewModel { DialogService = _dialogService };
@@ -51,23 +51,23 @@ public partial class MainWindowViewModel
         DataWindowViewModel = new DataWindowViewModel(ChartViewModel);
         DrawingObjectsViewModel = new DrawingObjectsViewModel(ChartViewModel, _dispatcherService);
         TickerListViewModel = new TickerListViewModel(
-            _marketDataProvider, 
-            _pythonService, 
-            WeakReferenceMessenger.Default, 
-            _dispatcherService, 
-            _watchlistManager, 
-            new StockAnalyzer.Core.Services.PortfolioManager(), 
-            _dialogService, 
+            _marketDataProvider,
+            _pythonService,
+            WeakReferenceMessenger.Default,
+            _dispatcherService,
+            _watchlistManager,
+            new StockAnalyzer.Core.Services.PortfolioManager(),
+            _dialogService,
             new StockAnalyzer.Core.Services.TickerImportService(NullLogger<StockAnalyzer.Core.Services.TickerImportService>.Instance),
             new StockAnalyzer.Avalonia.Services.MockChartSettingsManager(),
             NullLogger<TickerListViewModel>.Instance);
-        
+
         _workspaceCoordinator = new WorkspaceCoordinator(
-            _stateStore, 
-            _serializationService, 
-            _watchlistManager, 
-            Microsoft.Extensions.Options.Options.Create(new WorkspaceCoordinatorOptions()), 
-            _dispatcherService, 
+            _stateStore,
+            _serializationService,
+            _watchlistManager,
+            Microsoft.Extensions.Options.Options.Create(new WorkspaceCoordinatorOptions()),
+            _dispatcherService,
             NullLogger<WorkspaceCoordinator>.Instance);
         _workspaceCoordinator.Bind(this);
 
@@ -82,10 +82,10 @@ public partial class MainWindowViewModel
         public System.Collections.Generic.IReadOnlyList<WorkspaceViewItem> DetachedTabs => System.Array.Empty<WorkspaceViewItem>();
         public bool RegisterActiveDetachedTab(WorkspaceViewItem item) => false;
         public bool RemoveActiveDetachedTab(WorkspaceViewItem item) => false;
-        public void Restore(StockAnalyzer.Core.Models.Settings.WorkspaceSettings settings) {}
-        public void Capture(System.Collections.Generic.List<StockAnalyzer.Core.Models.Settings.DetachedTabInfo> destination, System.Collections.Generic.IReadOnlyList<StockAnalyzer.Core.Models.CoreIndicatorSettings>? fallbackIndicators = null) {}
+        public void Restore(StockAnalyzer.Core.Models.Settings.WorkspaceSettings settings) { }
+        public void Capture(System.Collections.Generic.List<StockAnalyzer.Core.Models.Settings.DetachedTabInfo> destination, System.Collections.Generic.IReadOnlyList<StockAnalyzer.Core.Models.CoreIndicatorSettings>? fallbackIndicators = null) { }
         public bool ReorderContainerItems(string containerId, System.Collections.Generic.IReadOnlyList<WorkspaceViewItem> orderedItems) => false;
-        public void Dispose() {}
+        public void Dispose() { }
     }
 
     private class DesignTimeLocalizationService : ILocalizationService

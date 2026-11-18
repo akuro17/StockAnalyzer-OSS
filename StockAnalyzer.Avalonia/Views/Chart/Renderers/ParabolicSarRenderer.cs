@@ -13,14 +13,14 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 public class ParabolicSarRenderer
 {
     private readonly SKPaint _paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
-    public void Render(SKCanvas canvas, Rect chartArea, 
-        IReadOnlyList<decimal?> values, 
+    public void Render(SKCanvas canvas, Rect chartArea,
+        IReadOnlyList<decimal?> values,
         IReadOnlyList<decimal?> trendStates,
-        CoreIndicatorSettings setting, 
+        CoreIndicatorSettings setting,
         decimal minVal, decimal maxVal,
         int visibleCandles, int offset, int startIndex,
-        IReadOnlyList<CoreCandleData> candles, 
-        TimeSpan interval, 
+        IReadOnlyList<CoreCandleData> candles,
+        TimeSpan interval,
         ICoordinateTransform? transform)
     {
         if (values == null || values.Count == 0) return;
@@ -29,17 +29,17 @@ public class ParabolicSarRenderer
         var downColor = new SKColor(setting.DownColor.R, setting.DownColor.G, setting.DownColor.B, setting.DownColor.A);
         var mainColor = new SKColor(setting.Color.R, setting.Color.G, setting.Color.B, setting.Color.A);
 
-        
+
         float candleWidth;
         if (transform != null && candles != null && candles.Count > 0)
         {
-             double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
-             double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
-             candleWidth = (float)(x1 - x0);
+            double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
+            double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
+            candleWidth = (float)(x1 - x0);
         }
         else
         {
-             candleWidth = (float)(chartArea.Width / visibleCandles);
+            candleWidth = (float)(chartArea.Width / visibleCandles);
         }
 
         decimal range = maxVal - minVal;
@@ -62,18 +62,18 @@ public class ParabolicSarRenderer
             float x;
             if (transform is GenericCoordinateTransform gct && gct.Mode == ChartAxisMode.Index)
             {
-                 x = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i)), 0)).X;
+                x = (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + i)), 0)).X;
             }
             else if (transform != null && candles != null)
             {
-                 var t = GetCandleTime(i, candles, interval);
-                 x = (float)transform.ChartToScreen(new ChartPoint(t, 0)).X;
+                var t = GetCandleTime(i, candles, interval);
+                x = (float)transform.ChartToScreen(new ChartPoint(t, 0)).X;
             }
             else
             {
-                 x = (float)chartArea.Left + i * candleWidth;
+                x = (float)chartArea.Left + i * candleWidth;
             }
-            
+
             float centerX = x + candleWidth / 2f;
             float y = (float)((transform?.ChartToScreen(new ChartPoint(DateTime.MinValue, val.Value)).Y ?? 0) + (double)chartArea.Top);
 
@@ -97,12 +97,12 @@ public class ParabolicSarRenderer
     private DateTime GetCandleTime(int index, IReadOnlyList<CoreCandleData> candles, TimeSpan interval)
     {
         if (candles.Count == 0) return DateTime.MinValue;
-        
+
         if (index < candles.Count)
         {
             return candles[index].Timestamp;
         }
-        
+
         var lastCandle = candles[candles.Count - 1];
         int diff = index - (candles.Count - 1);
         return lastCandle.Timestamp.AddTicks(interval.Ticks * diff);

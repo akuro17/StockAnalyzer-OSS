@@ -21,7 +21,7 @@ public sealed class RenkoRenderer : IChartRenderer, IDisposable
 
     public RenkoRenderer()
     {
-        _upPaint = new SKPaint { Style = SKPaintStyle.StrokeAndFill }; 
+        _upPaint = new SKPaint { Style = SKPaintStyle.StrokeAndFill };
         _downPaint = new SKPaint { Style = SKPaintStyle.StrokeAndFill };
         _borderPaint = new SKPaint { Color = SKColors.Black, Style = SKPaintStyle.Stroke, StrokeWidth = LayoutConstants.DefaultStrokeWidth };
     }
@@ -37,7 +37,7 @@ public sealed class RenkoRenderer : IChartRenderer, IDisposable
         double x0 = t.ChartToScreen(new ChartPoint(new DateTime(0), 0)).X;
         double x1 = t.ChartToScreen(new ChartPoint(new DateTime(1), 0)).X;
         float columnWidth = (float)(x1 - x0);
-        float bodyWidth = Math.Max(1f, columnWidth * 0.9f); 
+        float bodyWidth = Math.Max(1f, columnWidth * 0.9f);
 
         // Update paints with context colors
         _upPaint.Color = config.RenkoBullishColor.ToSkColor();
@@ -63,21 +63,21 @@ public sealed class RenkoRenderer : IChartRenderer, IDisposable
         {
             var brick = snapshot.Candles[i];
             int absoluteIndex = snapshot.StartIndex + i;
-            
+
             float x = (float)t.ChartToScreen(new ChartPoint(new DateTime(absoluteIndex), 0)).X + (float)chartArea.Left;
             float centerX = x + columnWidth / 2f;
 
             float yOpen = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, brick.Open)).Y + (float)chartArea.Top;
             float yClose = (float)t.ChartToScreen(new ChartPoint(DateTime.MinValue, brick.Close)).Y + (float)chartArea.Top;
-            
+
             float top = Math.Min(yOpen, yClose);
             float bottom = Math.Max(yOpen, yClose);
-            
+
             var rect = new SKRect(centerX - bodyWidth / 2f, top, centerX + bodyWidth / 2f, bottom);
 
             bool isUp = brick.Close >= brick.Open;
             var paint = isUp ? _upPaint : _downPaint;
-            
+
             if (drawAsLines)
             {
                 // Draw as a vertical line for extreme zoom out
@@ -94,7 +94,7 @@ public sealed class RenkoRenderer : IChartRenderer, IDisposable
 
                 // Draw Fill
                 canvas.DrawRect(rect, paint);
-                
+
                 // Draw Border
                 if (drawBorders)
                 {

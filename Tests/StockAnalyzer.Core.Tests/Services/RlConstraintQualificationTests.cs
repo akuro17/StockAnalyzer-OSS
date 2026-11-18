@@ -32,7 +32,8 @@ public sealed class RlConstraintQualificationTests
     }
     [ConstraintQualification] public async Task ActualSmokeConstraints() => await Qualify(true);
     [ConstraintQualification] public async Task ActualFullConstraints() => await Qualify(false);
-    [ConstraintQualification] public async Task RevalidateExistingFullConstraints()
+    [ConstraintQualification]
+    public async Task RevalidateExistingFullConstraints()
     {
         string output = Environment.GetEnvironmentVariable(OutputVariable) ?? throw new InvalidOperationException("Explicit output required.");
         string directionDirectory = Environment.GetEnvironmentVariable(RlContinuousQualificationTests.DirectionDirectoryVariable)
@@ -146,12 +147,19 @@ public sealed class RlConstraintQualificationTests
             await legacy.RegisterRlAsync(directionDirectory); var old = await legacy.RegisterRlAsync(previousDirectory);
             Assert.NotNull(old); Assert.Equal(RlContinuousContract.ContractHash, old.ContractHash);
         }
-        await File.WriteAllTextAsync(Path.Combine(output, "constraint_qualification_evidence.json"), JsonSerializer.Serialize(new {
-            result, constraints = report.GetProperty("constraint_diagnostics"), rejections,
-            score_unchanged_vs_r03 = previousDirectory is not null, original_active_untouched = true,
-            supplemental_train_block = trainBlock.Id, supplemental_train_transitions = state.CompletedDecisions,
+        await File.WriteAllTextAsync(Path.Combine(output, "constraint_qualification_evidence.json"), JsonSerializer.Serialize(new
+        {
+            result,
+            constraints = report.GetProperty("constraint_diagnostics"),
+            rejections,
+            score_unchanged_vs_r03 = previousDirectory is not null,
+            original_active_untouched = true,
+            supplemental_train_block = trainBlock.Id,
+            supplemental_train_transitions = state.CompletedDecisions,
             supplemental_train_constraints = RlConstraintEvaluation.ToWire(supplementalConstraints),
             supplemental_excluded_from_selection_and_job_ledger = true,
-            own_active_unchanged_on_rejection = true, registry_root = Path.Combine(root, "Generations") }, RlFiles.Json));
+            own_active_unchanged_on_rejection = true,
+            registry_root = Path.Combine(root, "Generations")
+        }, RlFiles.Json));
     }
 }

@@ -21,13 +21,13 @@ public class LineIndicatorRenderer : IDisposable
         _path.Dispose();
     }
 
-    public void Render(SKCanvas canvas, Rect chartArea, 
-        IReadOnlyList<decimal?> values, 
-        CoreIndicatorSettings setting, 
+    public void Render(SKCanvas canvas, Rect chartArea,
+        IReadOnlyList<decimal?> values,
+        CoreIndicatorSettings setting,
         decimal minVal, decimal maxVal,
         int visibleCandles, int offset, int startIndex,
-        IReadOnlyList<CoreCandleData> candles, 
-        TimeSpan interval, 
+        IReadOnlyList<CoreCandleData> candles,
+        TimeSpan interval,
         ICoordinateTransform? transform,
         SKColor? overrideColor = null,
         float xOffset = 0f)
@@ -35,19 +35,19 @@ public class LineIndicatorRenderer : IDisposable
         if (values == null || values.Count == 0) return;
 
         _paint.StrokeWidth = (float)setting.Thickness;
-        
+
         SKColor mainColor = overrideColor ?? new SKColor(setting.Color.R, setting.Color.G, setting.Color.B, setting.Color.A);
 
         float candleWidth;
         if (transform != null && candles != null && candles.Count > 0)
         {
-             double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
-             double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
-             candleWidth = (float)(x1 - x0);
+            double x0 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0)).X;
+            double x1 = transform.ChartToScreen(new ChartPoint(candles[0].Timestamp + interval, 0)).X;
+            candleWidth = (float)(x1 - x0);
         }
         else
         {
-             candleWidth = (float)(chartArea.Width / visibleCandles);
+            candleWidth = (float)(chartArea.Width / visibleCandles);
         }
 
         decimal range = maxVal - minVal;
@@ -146,17 +146,17 @@ public class LineIndicatorRenderer : IDisposable
     {
         if (transform is GenericCoordinateTransform gct && gct.Mode == ChartAxisMode.Index)
         {
-             return (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + index)), 0)).X + xOffset;
+            return (float)transform.ChartToScreen(new ChartPoint(new DateTime(Math.Max(0, startIndex + index)), 0)).X + xOffset;
         }
 
         if (transform != null && candles != null)
         {
-             var t = GetCandleTime(index, candles, interval);
-             return (float)transform.ChartToScreen(new ChartPoint(t, 0)).X + xOffset;
+            var t = GetCandleTime(index, candles, interval);
+            return (float)transform.ChartToScreen(new ChartPoint(t, 0)).X + xOffset;
         }
         else
         {
-             return (float)chartArea.Left + index * candleWidth + xOffset;
+            return (float)chartArea.Left + index * candleWidth + xOffset;
         }
     }
 

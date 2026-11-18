@@ -407,8 +407,8 @@ public class RiskAdjustedMetricsCalculatorTests
     [InlineData(500, 1000, false)]  // exactly half of an even total -> sufficient (matches ">= half").
     [InlineData(499, 1000, true)]   // one below half of an even total -> insufficient.
     [InlineData(500, 1001, true)]   // 500/1001 (49.95%) is fractionally under half of an odd total; the
-                                     // pre-fix `count < bootstrapIterations / 2` (integer division: 1001/2=500)
-                                     // evaluated `500 < 500` as false and incorrectly treated this as sufficient.
+                                    // pre-fix `count < bootstrapIterations / 2` (integer division: 1001/2=500)
+                                    // evaluated `500 < 500` as false and incorrectly treated this as sufficient.
     [InlineData(501, 1001, false)]  // 501/1001 (50.05%) clears half of the same odd total -> sufficient.
     public void HasInsufficientValidReplicates_HalfBoundary_ExactForOddAndEvenTotals(
         int validReplicateCount, int bootstrapIterations, bool expectedInsufficient)

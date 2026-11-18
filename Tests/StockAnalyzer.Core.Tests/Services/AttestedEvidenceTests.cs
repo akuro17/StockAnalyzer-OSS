@@ -159,7 +159,8 @@ public sealed class AttestedEvidenceTests : IDisposable
         var snapshot = Snapshot(3);
         var without = snapshot with
         {
-            Candles = snapshot.Candles.RemoveAt(InsideWindow), Evidence = snapshot.Evidence.RemoveAt(InsideWindow),
+            Candles = snapshot.Candles.RemoveAt(InsideWindow),
+            Evidence = snapshot.Evidence.RemoveAt(InsideWindow),
             Tombstones = [new BarTombstone(anchor, anchor.AddDays(1), "deleted")],
         };
         without = without with { SourceRevision = PredictionLogService.SourceRevision(without.Candles) };

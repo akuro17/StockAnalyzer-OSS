@@ -262,7 +262,7 @@ public class ParameterViewBuilder
 
             if (prop.PropertyType == typeof(int))
             {
-                 binding.Converter = new DecimalToIntConverter();
+                binding.Converter = new DecimalToIntConverter();
             }
 
             nud.Bind(NumericUpDown.ValueProperty, binding);
@@ -277,14 +277,14 @@ public class ParameterViewBuilder
                 Margin = new Thickness(12, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            
+
             var binding = new Binding(prop.Name)
             {
                 Source = parameterObject,
                 Mode = BindingMode.TwoWay
             };
             checkBox.Bind(CheckBox.IsCheckedProperty, binding);
-            
+
             inputControl = checkBox;
         }
         else if (prop.PropertyType.IsEnum)

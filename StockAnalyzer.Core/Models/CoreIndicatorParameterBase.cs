@@ -54,7 +54,7 @@ public abstract class CoreIndicatorParameterBase : System.ComponentModel.INotify
     {
         var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
         var context = new System.ComponentModel.DataAnnotations.ValidationContext(this);
-        
+
         // Validate all properties
         System.ComponentModel.DataAnnotations.Validator.TryValidateObject(this, context, results, true);
 

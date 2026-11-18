@@ -31,8 +31,8 @@ public class CoreRollingVwapIndicatorTests
         var indicator = new CoreRollingVwapIndicator { Period = 3 };
         var candles = CreateTestCandles(
             new decimal[] { 10, 11, 12, 14 },
-            new decimal[] { 8,  9,  10, 12 },
-            new decimal[] { 9,  10, 11, 13 },
+            new decimal[] { 8, 9, 10, 12 },
+            new decimal[] { 9, 10, 11, 13 },
             new decimal[] { 100, 150, 200, 100 }
         );
 
@@ -68,7 +68,7 @@ public class CoreRollingVwapIndicatorTests
         var indicator = new CoreRollingVwapIndicator { Period = 1 };
         var candles = CreateTestCandles(
             new decimal[] { 11, 22, 33 },
-            new decimal[] { 9,  18, 27 },
+            new decimal[] { 9, 18, 27 },
             new decimal[] { 10, 20, 30 },
             new decimal[] { 100, 200, 300 }
         );
@@ -88,9 +88,9 @@ public class CoreRollingVwapIndicatorTests
         var indicator = new CoreRollingVwapIndicator { Period = 2 };
         var candles = CreateTestCandles(
             new decimal[] { 10, 12, 14 },
-            new decimal[] { 8,  10, 12 },
-            new decimal[] { 9,  11, 13 },
-            new decimal[] { 0,  0,  0 }
+            new decimal[] { 8, 10, 12 },
+            new decimal[] { 9, 11, 13 },
+            new decimal[] { 0, 0, 0 }
         );
 
         indicator.Calculate(candles);
@@ -105,8 +105,8 @@ public class CoreRollingVwapIndicatorTests
         var indicator = new CoreRollingVwapIndicator { Period = 5 };
         var candles = CreateTestCandles(
             new decimal[] { 10, 12, 14 },
-            new decimal[] { 8,  10, 12 },
-            new decimal[] { 9,  11, 13 },
+            new decimal[] { 8, 10, 12 },
+            new decimal[] { 9, 11, 13 },
             new decimal[] { 100, 100, 100 }
         );
 
@@ -181,8 +181,8 @@ public class CoreRollingVwapIndicatorTests
     {
         var candles = CreateTestCandles(
             new decimal[] { 20, 22, 24 },
-            new decimal[] { 8,  9,  10 },
-            new decimal[] { 9,  10, 11 },
+            new decimal[] { 8, 9, 10 },
+            new decimal[] { 9, 10, 11 },
             new decimal[] { 100, 100, 100 }
         );
 

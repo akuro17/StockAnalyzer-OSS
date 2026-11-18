@@ -23,7 +23,7 @@ public class CoreWilliamsVixFixIndicatorTests
     public void Calculate_WithValidData_ReturnsExpectedValues()
     {
         var candles = GenerateCandleData(30, i =>
-            new CoreCandleData(DateTime.Today.AddDays(i), 100-i, 102-i, 98-i, 100-i, 1000));
+            new CoreCandleData(DateTime.Today.AddDays(i), 100 - i, 102 - i, 98 - i, 100 - i, 1000));
         var indicator = new CoreWilliamsVixFixIndicator { Period = 22 };
         var result = indicator.Calculate(candles).MainValues;
 
@@ -90,7 +90,7 @@ public class CoreWilliamsVixFixIndicatorTests
     [Fact]
     public void Calculate_WithInsufficientData_ReturnsNullValues()
     {
-        var candles = GenerateCandleData(21, i => new CoreCandleData(DateTime.Today,100,100,100,100,100));
+        var candles = GenerateCandleData(21, i => new CoreCandleData(DateTime.Today, 100, 100, 100, 100, 100));
         var indicator = new CoreWilliamsVixFixIndicator { Period = 22 };
         var result = indicator.Calculate(candles).MainValues;
 

@@ -13,7 +13,7 @@ public partial class PanelDimensions : ObservableObject
 {
     private readonly double _maxClamp;
     private double _widthOrHeight;
-    
+
     [ObservableProperty]
     private bool _isVisible;
 

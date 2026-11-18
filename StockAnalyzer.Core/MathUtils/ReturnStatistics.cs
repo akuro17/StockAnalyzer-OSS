@@ -14,7 +14,14 @@ namespace StockAnalyzer.Core.MathUtils;
 /// <param name="Beta">OLS regression slope Cov(i, b) / Var(b); null when benchmark variance is zero.</param>
 /// <param name="Alpha">OLS regression intercept mean_i - Beta * mean_b (per bar return, not annualized); null when Beta is null.</param>
 /// <param name="RSquared">Coefficient of determination rho_ib^2; null when correlation is undefined.</param>
-public readonly record struct BetaAlphaEntry(string Symbol, double? Beta, double? Alpha, double? RSquared);
+public readonly record struct BetaAlphaEntry(string Symbol, double? Beta, double? Alpha, double? RSquared)
+{
+    /// <summary>Conditional beta on the dates with a strictly negative benchmark return (see <see cref="AsymmetricRiskMath.ConditionalBeta"/>); only set by <see cref="CrossAssetDistributionStatistics.WithConditionalBetas"/>.</summary>
+    public double? DownsideBeta { get; init; }
+
+    /// <summary>Conditional beta on the dates with a strictly positive benchmark return; only set by <see cref="CrossAssetDistributionStatistics.WithConditionalBetas"/>.</summary>
+    public double? UpsideBeta { get; init; }
+}
 
 /// <summary>
 /// Record describing a symbol excluded from cross-asset calculations and the reason.
@@ -43,15 +50,29 @@ public sealed class CrossAssetStatsResult
     /// <summary>
     /// Number of common return dates whose returns do not cover the same holding period in every series: for at least one series the previous bar
     /// of its own is not the previous common date (a market traded on a day another market was closed). 0 when fewer than
-    /// <see cref="ReturnStatistics.MinCommonDates"/> dates are common. Diagnostic only; the statistics use these returns unchanged.
+    /// <see cref="ReturnStatistics.MinCommonDates"/> dates are common. Counted on the common dates before the mode is applied; with
+    /// <see cref="HoldingPeriodAlignmentMode.IncludeAll"/> the statistics use these returns unchanged, with
+    /// <see cref="HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod"/> they are excluded (<see cref="ExcludedMultiBarDateCount"/>).
     /// </summary>
     public int MultiBarReturnCount { get; init; }
+
+    /// <summary>The mode the statistics were calculated with.</summary>
+    public HoldingPeriodAlignmentMode HoldingPeriodMode { get; init; } = HoldingPeriodAlignmentMode.IncludeAll;
+
+    /// <summary>
+    /// Number of common return dates left out of the statistics because their returns cover different holding periods: <see cref="MultiBarReturnCount"/> with
+    /// <see cref="HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod"/>, 0 with <see cref="HoldingPeriodAlignmentMode.IncludeAll"/>. <see cref="CommonDateCount"/> is what remains.
+    /// </summary>
+    public int ExcludedMultiBarDateCount { get; init; }
 
     /// <summary>The common return dates, oldest first (<see cref="CommonDateCount"/> entries); empty when fewer than <see cref="ReturnStatistics.MinCommonDates"/> are common.</summary>
     public IReadOnlyList<DateTime> CommonDates { get; init; } = Array.Empty<DateTime>();
 
     /// <summary>The aligned return series of <see cref="Symbols"/> (same order), one value per entry of <see cref="CommonDates"/>; empty when there are no common dates. Unit: ratio.</summary>
     public IReadOnlyList<decimal[]> AlignedReturns { get; init; } = Array.Empty<decimal[]>();
+
+    /// <summary>The benchmark's returns on the same dates as <see cref="CommonDates"/> (same basis and unit as <see cref="AlignedReturns"/>); null when there is no usable benchmark or fewer than <see cref="ReturnStatistics.MinCommonDates"/> dates are common.</summary>
+    public decimal[]? BenchmarkAlignedReturns { get; init; }
 }
 
 /// <summary>
@@ -77,8 +98,13 @@ public static class ReturnStatistics
     /// <param name="benchmarkCandles">Optional external benchmark candles when benchmarkSymbol is not in symbolCandles.</param>
     /// <param name="timeFrame">
     /// Time frame of the bars. D1 (default) matches bars by their exact date. For W1 and MN1 the bars of different markets are matched by the
-    /// period they belong to (<see cref="TimeFrameAggregator.PeriodStart"/>: the Monday of the ISO week, the 1st of the month), because a bar is dated by
-    /// its first trading day and two markets with different holidays date the same period differently; the dates of the result are those period starts.
+    /// period they belong to (<see cref="TimeFrameAggregator.PeriodStart"/>: the Monday of the ISO week, the 1st of the month), so a bar that a source dates
+    /// by its first trading day still meets the bar of another market with different holidays; the dates of the result are those period starts.
+    /// </param>
+    /// <param name="holdingPeriodMode">
+    /// <see cref="HoldingPeriodAlignmentMode.IncludeAll"/> (default) uses every common return date and only counts the ones with different holding periods;
+    /// <see cref="HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod"/> leaves those dates out. The dates are chosen once, on the common dates before any is left out
+    /// (<see cref="FindMultiBarDates"/>), never again on the remaining dates.
     /// </param>
     /// <returns>CrossAssetStatsResult containing matrices and benchmark regressions.</returns>
     public static CrossAssetStatsResult Calculate(
@@ -87,7 +113,8 @@ public static class ReturnStatistics
         bool includeCovariance = false,
         string returnBasis = SimpleReturnBasis,
         IReadOnlyList<CandleData>? benchmarkCandles = null,
-        TimeFrame timeFrame = TimeFrame.D1)
+        TimeFrame timeFrame = TimeFrame.D1,
+        HoldingPeriodAlignmentMode holdingPeriodMode = HoldingPeriodAlignmentMode.IncludeAll)
     {
         ArgumentNullException.ThrowIfNull(symbolCandles);
 
@@ -169,7 +196,8 @@ public static class ReturnStatistics
                 CommonDateCount = 0,
                 ReturnBasis = effectiveReturnBasis,
                 ExcludedSymbols = excludedSymbols,
-                Notes = notes
+                Notes = notes,
+                HoldingPeriodMode = holdingPeriodMode
             };
         }
 
@@ -207,12 +235,10 @@ public static class ReturnStatistics
                 EndDate = T > 0 ? commonDates[^1] : null,
                 ReturnBasis = effectiveReturnBasis,
                 ExcludedSymbols = excludedSymbols,
-                Notes = notes
+                Notes = notes,
+                HoldingPeriodMode = holdingPeriodMode
             };
         }
-
-        DateTime startDate = commonDates[0];
-        DateTime endDate = commonDates[^1];
 
         var joinedSeries = new List<SymbolReturns>(universeSymbols.Count + 1);
         foreach (string sym in universeSymbols)
@@ -225,13 +251,55 @@ public static class ReturnStatistics
             joinedSeries.Add(benchmarkSeries);
         }
 
-        int multiBarReturnCount = CountMultiBarPairs(commonDates, joinedSeries);
+        bool[] isMultiBar = FindMultiBarDates(commonDates, joinedSeries);
+        int multiBarReturnCount = isMultiBar.Count(flag => flag);
+        int commonDateCountBeforeMode = T;
+        int excludedMultiBarDateCount = 0;
+        if (holdingPeriodMode == HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod && multiBarReturnCount > 0)
+        {
+            var keptDates = new List<DateTime>(T - multiBarReturnCount);
+            for (int j = 0; j < T; j++)
+            {
+                if (!isMultiBar[j])
+                {
+                    keptDates.Add(commonDates[j]);
+                }
+            }
+
+            commonDates = keptDates;
+            T = keptDates.Count;
+            excludedMultiBarDateCount = multiBarReturnCount;
+        }
+
         if (multiBarReturnCount > 0)
         {
-            notes.Add(
-                $"{multiBarReturnCount} of {T} common return dates combine returns over different holding periods: a market traded on a day another market was closed, " +
-                "so its return covers fewer bars than the other. They are used unchanged in the correlation, covariance, beta and alpha.");
+            notes.Add(holdingPeriodMode == HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod
+                ? $"{multiBarReturnCount} of {commonDateCountBeforeMode} common return dates were left out because they combine returns over different holding periods " +
+                  $"(a market traded on a day another market was closed); {T} remain (mode {HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod})."
+                : $"{multiBarReturnCount} of {T} common return dates combine returns over different holding periods: a market traded on a day another market was closed, " +
+                  "so its return covers fewer bars than the other. They are used unchanged in the correlation, covariance, beta and alpha.");
         }
+
+        if (T < MinCommonDates)
+        {
+            // Only reachable when the strict mode left out so many dates that fewer than MinCommonDates remain.
+            return new CrossAssetStatsResult
+            {
+                Symbols = universeSymbols,
+                CommonDateCount = T,
+                StartDate = T > 0 ? commonDates[0] : null,
+                EndDate = T > 0 ? commonDates[^1] : null,
+                ReturnBasis = effectiveReturnBasis,
+                ExcludedSymbols = excludedSymbols,
+                Notes = notes,
+                MultiBarReturnCount = multiBarReturnCount,
+                HoldingPeriodMode = holdingPeriodMode,
+                ExcludedMultiBarDateCount = excludedMultiBarDateCount
+            };
+        }
+
+        DateTime startDate = commonDates[0];
+        DateTime endDate = commonDates[^1];
 
         // 4. Build aligned vectors and compute means in decimal
         int N = universeSymbols.Count;
@@ -349,9 +417,11 @@ public static class ReturnStatistics
 
         // 6. Compute Benchmark Beta & Alpha
         var betaAlphaList = new List<BetaAlphaEntry>();
+        decimal[]? benchmarkAligned = null;
         if (hasBenchmark)
         {
             var rBench = new decimal[T];
+            benchmarkAligned = rBench;
             decimal sumBench = 0m;
 
             for (int t = 0; t < T; t++)
@@ -429,40 +499,41 @@ public static class ReturnStatistics
             ExcludedSymbols = excludedSymbols,
             Notes = notes,
             MultiBarReturnCount = multiBarReturnCount,
+            HoldingPeriodMode = holdingPeriodMode,
+            ExcludedMultiBarDateCount = excludedMultiBarDateCount,
             CommonDates = commonDates,
-            AlignedReturns = alignedReturns
+            AlignedReturns = alignedReturns,
+            BenchmarkAlignedReturns = benchmarkAligned
         };
     }
 
-    /// <summary>Stated in the notes of a W1/MN1 result: the dates of the result are calendar period starts, not the first trading day of single-symbol tools.</summary>
+    /// <summary>Stated in the notes of a W1/MN1 result: the dates of the result are calendar period starts, the label every W1 and MN1 bar carries in all tools.</summary>
     public const string PeriodStartDateNote =
         "With timeFrame W1 or MN1 the dates of this tool are calendar period starts (the Monday of the ISO week, the 1st of the month), " +
-        "so that holidays of different markets do not change them. Single-symbol tools date a W1 or MN1 bar by the first trading day of the period; " +
-        "the two labels differ after a holiday.";
+        "the same label a W1 or MN1 bar has in every tool, so that holidays of different markets do not change them. " +
+        "The first and last trading day of a period are not part of the date.";
 
     /// <summary>The return of each date of a series and, for each of those dates, the date of the series' own previous bar.</summary>
     private sealed record SymbolReturns(Dictionary<DateTime, decimal> Returns, Dictionary<DateTime, DateTime> PreviousBarDate);
 
     /// <summary>
-    /// Counts the common dates c_j whose returns do not span the same holding period in every series. A return always spans one bar of its own series,
-    /// so the bar count cannot show it; instead, for j &gt;= 1 the date is counted when some series' previous bar is not the previous common date c_(j-1)
-    /// (that series traded on a day not every series traded, and the previous common date is never later than any series' previous bar);
-    /// for j = 0 there is no previous common date and it is counted when the series' previous bars are not all the same date.
+    /// Marks the common dates c_j whose returns do not span the same holding period in every series (the one definition: the count of the marks is
+    /// <see cref="CrossAssetStatsResult.MultiBarReturnCount"/> and <see cref="HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod"/> leaves the marked dates out).
+    /// A return always spans one bar of its own series, so the bar count cannot show it; instead, for j &gt;= 1 the date is marked when some series' previous bar
+    /// is not the previous common date c_(j-1) (that series traded on a day not every series traded, and the previous common date is never later than any
+    /// series' previous bar); for j = 0 there is no previous common date and it is marked when the series' previous bars are not all the same date.
     /// </summary>
-    private static int CountMultiBarPairs(IReadOnlyList<DateTime> commonDates, IReadOnlyList<SymbolReturns> series)
+    private static bool[] FindMultiBarDates(IReadOnlyList<DateTime> commonDates, IReadOnlyList<SymbolReturns> series)
     {
-        int count = 0;
+        var marked = new bool[commonDates.Count];
         for (int j = 0; j < commonDates.Count; j++)
         {
             DateTime date = commonDates[j];
             DateTime reference = j == 0 ? series[0].PreviousBarDate[date] : commonDates[j - 1];
-            if (series.Any(s => s.PreviousBarDate[date] != reference))
-            {
-                count++;
-            }
+            marked[j] = series.Any(s => s.PreviousBarDate[date] != reference);
         }
 
-        return count;
+        return marked;
     }
 
     private static SymbolReturns ComputeReturns(IReadOnlyList<CandleData> candles, bool isLogReturn, TimeFrame timeFrame)

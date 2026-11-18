@@ -57,7 +57,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
                 decimal prevClose = candles[i - 1].Close;
 
                 // If this is the first valid value, initialize bands
-                if(upperBand == null)
+                if (upperBand == null)
                 {
                     upperBand = basicUpperBand;
                     lowerBand = basicLowerBand;

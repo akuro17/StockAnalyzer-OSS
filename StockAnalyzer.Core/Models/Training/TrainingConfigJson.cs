@@ -62,7 +62,10 @@ public static class TrainingConfigJson
         // Only the initializers of the listed members are read; the required members are placeholders that are never compared.
         var defaults = new TrainingJobConfig
         {
-            Symbols = Array.Empty<string>(), Architecture = string.Empty, WindowSize = 1, Horizon = 1,
+            Symbols = Array.Empty<string>(),
+            Architecture = string.Empty,
+            WindowSize = 1,
+            Horizon = 1,
         };
         foreach (var member in OmittedWhileDefault)
         {

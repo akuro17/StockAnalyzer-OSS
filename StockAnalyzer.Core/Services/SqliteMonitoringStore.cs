@@ -55,7 +55,9 @@ internal sealed class SqliteMonitoringStore
         _busyMilliseconds = (int)settings.BusyTimeout.TotalMilliseconds;
         _connectionString = new SqliteConnectionStringBuilder
         {
-            DataSource = DatabasePath, Mode = SqliteOpenMode.ReadWriteCreate, Pooling = false,
+            DataSource = DatabasePath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false,
             DefaultTimeout = Math.Max(1, (int)Math.Ceiling(settings.BusyTimeout.TotalSeconds)),
         }.ToString();
     }

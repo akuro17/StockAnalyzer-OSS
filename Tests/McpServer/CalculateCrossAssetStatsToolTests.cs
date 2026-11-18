@@ -227,4 +227,120 @@ public sealed class CalculateCrossAssetStatsToolTests : IDisposable
         Assert.Equal(Sym2, betaAlpha[1].GetProperty("symbol").GetString());
         Assert.True(betaAlpha[1].TryGetProperty("beta", out JsonElement b2) && b2.ValueKind == JsonValueKind.Number);
     }
+
+    // ---- statistical functions plan, Run R8 (M2): includeDistributionStats ----------------------------------------------------------
+
+    private static readonly string[] DefaultTopLevelKeys =
+    {
+        "symbols", "commonDateCount", "multiBarReturnCount", "startDate", "endDate", "returnBasis", "covarianceDegreesOfFreedom", "correlation", "betaAlpha", "excludedSymbols", "notes",
+    };
+
+    private static readonly string[] DefaultBetaAlphaKeys = { "symbol", "beta", "alpha", "rSquared" };
+
+    [Fact]
+    public async Task WithoutTheFlagTheOutputIsTheKnownShape_AndFalseEqualsOmitted()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        string args = $$"""{"symbols":["{{Sym1}}","{{Sym2}}"],"benchmark":"{{Sym1}}","timeFrame":"D1"}""";
+        string argsFalse = $$"""{"symbols":["{{Sym1}}","{{Sym2}}"],"benchmark":"{{Sym1}}","timeFrame":"D1","includeDistributionStats":false}""";
+
+        JsonElement omitted = await CallAsync(dispatcher, args);
+        JsonElement explicitFalse = await CallAsync(dispatcher, argsFalse);
+
+        Assert.Equal(DefaultTopLevelKeys, omitted.EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(DefaultBetaAlphaKeys, omitted.GetProperty("betaAlpha")[0].EnumerateObject().Select(p => p.Name).ToArray());
+        Assert.Equal(omitted.GetRawText(), explicitFalse.GetRawText());
+    }
+
+    [Fact]
+    public async Task WithTheFlagTheBetaEntriesAndASymbolStatsArrayAreAdded_AndEveryExistingFieldIsUnchanged()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        string baseArgs = $$"""{"symbols":["{{Sym1}}","{{Sym2}}"],"benchmark":"{{Sym1}}","includeCovariance":true""";
+        JsonElement plain = await CallAsync(dispatcher, baseArgs + "}");
+        JsonElement rich = await CallAsync(dispatcher, baseArgs + ""","includeDistributionStats":true}""");
+
+        // Existing content: the same values in the same order (the new keys are only added).
+        foreach (string key in DefaultTopLevelKeys.Where(k => k != "betaAlpha"))
+        {
+            Assert.Equal(plain.GetProperty(key).GetRawText(), rich.GetProperty(key).GetRawText());
+        }
+
+        Assert.Equal(plain.GetProperty("covariance").GetRawText(), rich.GetProperty("covariance").GetRawText());
+        JsonElement plainBeta = plain.GetProperty("betaAlpha");
+        JsonElement richBeta = rich.GetProperty("betaAlpha");
+        for (int i = 0; i < plainBeta.GetArrayLength(); i++)
+        {
+            foreach (string key in DefaultBetaAlphaKeys)
+            {
+                Assert.Equal(plainBeta[i].GetProperty(key).GetRawText(), richBeta[i].GetProperty(key).GetRawText());
+            }
+
+            Assert.Equal(DefaultBetaAlphaKeys.Concat(new[] { "downsideBeta", "upsideBeta" }).ToArray(), richBeta[i].EnumerateObject().Select(p => p.Name).ToArray());
+        }
+
+        // The benchmark's conditional betas on itself are 1.
+        Assert.Equal(1.0, richBeta[0].GetProperty("downsideBeta").GetDouble(), 9);
+        Assert.Equal(1.0, richBeta[0].GetProperty("upsideBeta").GetDouble(), 9);
+
+        JsonElement stats = rich.GetProperty("symbolStats");
+        Assert.Equal(2, stats.GetArrayLength());
+        Assert.Equal(Sym1, stats[0].GetProperty("symbol").GetString());
+        Assert.Equal(Sym2, stats[1].GetProperty("symbol").GetString());
+        Assert.Equal(
+            new[] { "symbol", "mean", "stdDev", "downsideDeviation", "skewness", "excessKurtosis", "jarqueBeraStat", "jarqueBeraPValue", "cornishFisherVar95" },
+            stats[0].EnumerateObject().Select(p => p.Name).ToArray());
+
+        // The sample standard deviation is the square root of the diagonal of the sample covariance matrix of the same result (divisor N - 1).
+        JsonElement cov = rich.GetProperty("covariance");
+        for (int i = 0; i < 2; i++)
+        {
+            double sd = stats[i].GetProperty("stdDev").GetDouble();
+            Assert.Equal(cov[i][i].GetDouble(), sd * sd, 12);
+            Assert.True(stats[i].GetProperty("downsideDeviation").GetDouble() >= 0.0);
+            double p = stats[i].GetProperty("jarqueBeraPValue").GetDouble();
+            Assert.InRange(p, 0.0, 1.0);
+            Assert.Equal(Math.Exp(-stats[i].GetProperty("jarqueBeraStat").GetDouble() / 2.0), p, 12);
+        }
+    }
+
+    [Fact]
+    public async Task WithoutABenchmarkTheFlagStillAddsSymbolStats_AndNoBetaEntries()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        JsonElement result = await CallAsync(dispatcher, $$"""{"symbols":["{{Sym1}}","{{Sym2}}","{{Sym3}}"],"includeDistributionStats":true}""");
+
+        Assert.False(result.TryGetProperty("betaAlpha", out _));
+        JsonElement stats = result.GetProperty("symbolStats");
+        Assert.Equal(new[] { Sym1, Sym2, Sym3 }, stats.EnumerateArray().Select(e => e.GetProperty("symbol").GetString()!).ToArray());
+    }
+
+    [Fact]
+    public async Task TheStatsFollowTheReturnBasis()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        string Args(string basis) => $$"""{"symbols":["{{Sym1}}","{{Sym2}}"],"returnBasis":"{{basis}}","includeDistributionStats":true}""";
+
+        JsonElement simple = await CallAsync(dispatcher, Args("SimpleReturn"));
+        JsonElement log = await CallAsync(dispatcher, Args("LogReturn"));
+
+        Assert.Equal("LogReturn", log.GetProperty("returnBasis").GetString());
+        Assert.NotEqual(simple.GetProperty("symbolStats")[0].GetProperty("mean").GetRawText(), log.GetProperty("symbolStats")[0].GetProperty("mean").GetRawText());
+    }
+
+    [Fact]
+    public async Task TheSchemaAndTheDescriptionNameTheFlagAndTheSignOfTheVar()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        using var list = JsonDocument.Parse((await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":3,"method":"tools/list"}""", CancellationToken.None))!);
+
+        JsonElement tool = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().First(t => t.GetProperty("name").GetString() == Tool);
+        JsonElement flag = tool.GetProperty("inputSchema").GetProperty("properties").GetProperty("includeDistributionStats");
+        Assert.Equal("boolean", flag.GetProperty("type").GetString());
+        Assert.Contains("negative", flag.GetProperty("description").GetString());
+        string description = tool.GetProperty("description").GetString()!;
+        Assert.Contains("includeDistributionStats", description);
+        Assert.Contains("LOSS IS NEGATIVE", description);
+        Assert.Contains("valueAtRisk", description);
+    }
 }

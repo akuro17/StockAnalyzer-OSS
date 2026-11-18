@@ -110,7 +110,7 @@ public sealed class RlPanelSnapshotTests : IDisposable
         var block = panel.Catalog.CellBlocks(RlPortfolioContract.ValidationPartition, RlPanelSymbolGroup.Holdout).Single();
         var holdout = panel.Catalog.EligibleIn(block, RlPanelSymbolGroup.Holdout);
         var costs = RlContract.CreateConfiguration(new StockAnalyzer.Core.Models.Backtest.Engine.BacktestConfiguration
-            { SizingModel = StockAnalyzer.Core.Models.Backtest.Engine.PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 100_000m });
+        { SizingModel = StockAnalyzer.Core.Models.Backtest.Engine.PositionSizingModel.FixedQuantity, SizingParameter = 1m, InitialCapital = 100_000m });
         using var session = new RlPortfolioSession(bars, block, holdout, costs);
         session.Reset();
         // Constant fixture prices: holding half of the account in each holdout symbol keeps equity at the initial capital.

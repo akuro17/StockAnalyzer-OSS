@@ -24,7 +24,11 @@ public sealed class RlExternalWindowEquivalenceTests
         }).ToImmutableArray();
 
     [Theory]
-    [InlineData(0)] [InlineData(1)] [InlineData(17)] [InlineData(100)] [InlineData(208)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(17)]
+    [InlineData(100)]
+    [InlineData(208)]
     public void SmaSignalsOfACutWindowEqualTheSignalsOfTheFullHistoryAtEveryDecision(int start)
     {
         var history = Bars(400);
@@ -140,7 +144,10 @@ public sealed class RlExternalWindowEquivalenceTests
         => new(bar.Timestamp, bar.Open * factor, bar.High * factor, bar.Low * factor, bar.Close * factor, bar.Volume);
 
     [Theory]
-    [InlineData(0)] [InlineData(5)] [InlineData(63)] [InlineData(126)]
+    [InlineData(0)]
+    [InlineData(5)]
+    [InlineData(63)]
+    [InlineData(126)]
     public void TheObservationAndTheAccountAfterKDecisionsDoNotDependOnAnyLaterBar(int decisions)
     {
         var bars = Bars(RlContract.SupportLength);

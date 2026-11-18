@@ -24,7 +24,7 @@ public sealed class BackgroundRenderer : System.IDisposable
     public void Render(SKCanvas canvas, ChartLayoutContext layout, IChartRenderConfig config)
     {
         _backgroundPaint.Color = config.ThemeManager.CurrentTheme.ChartBackground.ToSkColor();
-        
+
         // Fill the entire control area (0, 0 to Width, Height) with the background color
         // This ensures margins are also covered by the chart background theme.
         canvas.DrawRect(new SKRect(0, 0, (float)layout.TotalBounds.Width, (float)layout.TotalBounds.Height), _backgroundPaint);

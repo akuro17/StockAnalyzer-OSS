@@ -65,19 +65,19 @@ public class TimeCyclesObject : IChartObject, IDrawingCalculatedValuesProvider
         // Draw Forward
         float currentX = startX;
         int count = 0;
-        
+
         // Draw brackets. A bracket connects currentX to currentX + intervalX.
         // It's a semi-ellipse? Or semi-circle (if aspect ratio allows).
         // Standard Cycle Bracket is a semi-circle visually.
         // Bounds: Rect(currentX, baseY - radius, intervalX, radius*2) ? 
         // Arc start 180 sweep 180?
-        
+
         while (count < 100)
         {
             if (currentX > bounds.Right) break;
-            
+
             float nextX = currentX + intervalX;
-            
+
             if (nextX >= bounds.Left)
             {
                 // Draw arc
@@ -87,16 +87,16 @@ public class TimeCyclesObject : IChartObject, IDrawingCalculatedValuesProvider
                 // Let's assume standard is UP (Arch).
                 // Screen Y is down. So Top half is negative Y relative to center.
                 // Draw Arc: StartAngle 180, Sweep 180.
-                
+
                 using var path = new SKPath();
                 path.AddArc(rect, 180, 180);
                 canvas.DrawPath(path, paint);
             }
-            
+
             currentX = nextX;
             count++;
         }
-        
+
         // Draw Backward
         currentX = startX;
         count = 0;
@@ -104,19 +104,19 @@ public class TimeCyclesObject : IChartObject, IDrawingCalculatedValuesProvider
         {
             if (currentX < bounds.Left) break;
             float prevX = currentX - intervalX;
-            
-             if (currentX >= bounds.Left || prevX <= bounds.Right) // Visible
+
+            if (currentX >= bounds.Left || prevX <= bounds.Right) // Visible
             {
-                 var rect = new SKRect(prevX, baseY - intervalX / 2, currentX, baseY + intervalX / 2);
-                 using var path = new SKPath();
-                 path.AddArc(rect, 180, 180);
-                 canvas.DrawPath(path, paint);
+                var rect = new SKRect(prevX, baseY - intervalX / 2, currentX, baseY + intervalX / 2);
+                using var path = new SKPath();
+                path.AddArc(rect, 180, 180);
+                canvas.DrawPath(path, paint);
             }
-            
+
             currentX = prevX;
             count++;
         }
-        
+
         if (IsSelected)
         {
             SelectionHandleRenderer.Draw(canvas, p1, AnchorPointIndex == 0 ? DrawingThemeContext.AnchorPointColor : (SKColor?)null, radius: ChartConstants.SelectedHandleRadius);
@@ -130,29 +130,29 @@ public class TimeCyclesObject : IChartObject, IDrawingCalculatedValuesProvider
 
         var p1 = transform.ChartToScreen(Points[0]);
         var p2 = transform.ChartToScreen(Points[1]);
-        
+
         float startX = (float)p1.X;
         float baseY = (float)p1.Y;
         float intervalX = Math.Abs((float)(p2.X - p1.X));
-        
+
         if (intervalX < 1f) return false;
 
         // Check which Cycle we are in
         // cycle_index = floor((x - startX) / interval)
-        
+
         double k = Math.Floor((screenPoint.X - startX) / intervalX);
         float cycleStartX = startX + (float)k * intervalX;
         float cycleEndX = cycleStartX + intervalX;
         float centerX = (cycleStartX + cycleEndX) / 2f;
         float radius = intervalX / 2f;
-        
+
         // Check distance to arc
         // Arc center is (centerX, baseY).
         // Distance from center
         double dx = screenPoint.X - centerX;
         double dy = screenPoint.Y - baseY;
-        double dist = Math.Sqrt(dx*dx + dy*dy);
-        
+        double dist = Math.Sqrt(dx * dx + dy * dy);
+
         // Check if dist is close to radius
         if (Math.Abs(dist - radius) <= tolerance)
         {
@@ -161,7 +161,7 @@ public class TimeCyclesObject : IChartObject, IDrawingCalculatedValuesProvider
             if (screenPoint.Y <= baseY + tolerance) // Allow tolerance near base
                 return true;
         }
-        
+
         return false;
     }
 

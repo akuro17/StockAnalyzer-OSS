@@ -57,7 +57,7 @@ public abstract partial class TickerGroupNode : ObservableObject, IEquatable<Tic
     }
 
     public override bool Equals(object? obj) => Equals(obj as TickerGroupNode);
-    
+
     public override int GetHashCode() => Id.GetHashCode();
 
     public static bool operator ==(TickerGroupNode? left, TickerGroupNode? right) => Equals(left, right);
@@ -132,7 +132,7 @@ public sealed partial class PortfolioNode : TickerGroupNode
 public sealed partial class FilterNode : TickerGroupNode
 {
     public StockAnalyzer.Core.Models.Settings.FilterSettings Settings { get; private set; }
-    
+
     public FilterNode(StockAnalyzer.Core.Models.Settings.FilterSettings settings) : base(settings.Id, settings.Name)
     {
         Settings = settings;

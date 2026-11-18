@@ -11,10 +11,10 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
     {
         public override string Name => $"StdDev({Period})";
         private int _period = 20;
-        public int Period 
-        { 
-            get => _period; 
-            set => _period = Math.Max(1, value); 
+        public int Period
+        {
+            get => _period;
+            set => _period = Math.Max(1, value);
         }
 
         public bool IsPopulation { get; set; } = false;
@@ -28,7 +28,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
             }
             else if (parameters is CoreSmaParameter p)
             {
-                Period = p.Period; 
+                Period = p.Period;
             }
         }
 
@@ -63,8 +63,8 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
                     decimal diff = (priceSeries[start + j] ?? 0m) - mean;
                     sumSqDiff += diff * diff;
                 }
-                decimal variance = Period <= 1 
-                    ? 0m 
+                decimal variance = Period <= 1
+                    ? 0m
                     : (IsPopulation ? sumSqDiff / Period : sumSqDiff / (Period - 1));
                 _values.Add((decimal)System.Math.Sqrt((double)variance));
             }

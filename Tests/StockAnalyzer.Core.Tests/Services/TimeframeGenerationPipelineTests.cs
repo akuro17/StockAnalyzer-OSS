@@ -38,9 +38,14 @@ public sealed class TimeframeGenerationPipelineTests
     {
         var start = new ProcessStartInfo(python)
         {
-            WorkingDirectory = workingDirectory, UseShellExecute = false, CreateNoWindow = true,
-            RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
-            StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8,
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (string argument in arguments) start.ArgumentList.Add(argument);
         start.Environment["PYTHONIOENCODING"] = "utf-8";

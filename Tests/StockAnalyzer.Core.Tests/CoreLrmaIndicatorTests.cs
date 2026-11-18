@@ -34,12 +34,12 @@ public class CoreLrmaIndicatorTests
         Assert.True(result.MainValues.Take(period - 1).All(v => v == null));
 
         Assert.NotNull(result.MainValues[13]);
-        
+
         decimal sumX = 0, sumY = 0, sumXy = 0, sumX2 = 0;
         for (int j = 0; j < period; j++)
         {
-            decimal y = candles[13 - j].Close; 
-            decimal x = j;                     
+            decimal y = candles[13 - j].Close;
+            decimal x = j;
             sumX += x;
             sumY += y;
             sumXy += x * y;
@@ -49,10 +49,10 @@ public class CoreLrmaIndicatorTests
         decimal b = (n * sumXy - sumX * sumY) / (n * sumX2 - sumX * sumX);
         decimal a = (sumY - b * sumX) / n;
 
-        Assert.Equal(a, result.MainValues[13].Value, 4); 
+        Assert.Equal(a, result.MainValues[13].Value, 4);
 
         Assert.NotNull(result.MainValues[19]);
-        Assert.InRange(result.MainValues[19].Value, candles[19-period+1].Close, candles[19].Close + (decimal)period/2);
+        Assert.InRange(result.MainValues[19].Value, candles[19 - period + 1].Close, candles[19].Close + (decimal)period / 2);
     }
 
     [Fact]

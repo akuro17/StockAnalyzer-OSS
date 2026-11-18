@@ -19,7 +19,7 @@ public static class ColorHelper
         try
         {
             if (string.IsNullOrWhiteSpace(colorString)) return SKColors.Gray;
-            
+
             // Use Avalonia's parser which supports names and hex
             var avaColor = Color.Parse(colorString);
             return new SKColor(avaColor.R, avaColor.G, avaColor.B, avaColor.A);

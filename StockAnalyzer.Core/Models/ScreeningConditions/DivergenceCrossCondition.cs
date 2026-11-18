@@ -67,7 +67,7 @@ public class DivergenceCrossCondition : IScreeningCondition
 
         // Get the main series
         var sourceValues = result.MainValues;
-        
+
         // Ensure sizes match
         if (sourceValues.Count != candles.Count)
             return false;
@@ -86,8 +86,8 @@ public class DivergenceCrossCondition : IScreeningCondition
             var divergences = DivergenceCrossDetector.DetectDivergences(
                 highs, lows, sourceValues, _parameter.PivotLookback);
 
-            return divergences.Any(d => 
-                d.Type == _targetSignal && 
+            return divergences.Any(d =>
+                d.Type == _targetSignal &&
                 d.PriceEndIndex >= startIndex);
         }
 
@@ -97,7 +97,7 @@ public class DivergenceCrossCondition : IScreeningCondition
             // The user requested to use the RAW source values, not SMA.
             // If the indicator returns multiple series (like MACD: MACD Line and Signal Line), cross them.
             // If it returns only one (like RSI), cross the value against the ShortMaPeriod parameter treated as a threshold line.
-            
+
             IReadOnlyList<decimal?> series1 = sourceValues;
             IReadOnlyList<decimal?> series2;
 
@@ -116,8 +116,8 @@ public class DivergenceCrossCondition : IScreeningCondition
 
             var crosses = DivergenceCrossDetector.DetectCrosses(series1, series2);
 
-            return crosses.Any(c => 
-                c.Type == _targetSignal && 
+            return crosses.Any(c =>
+                c.Type == _targetSignal &&
                 c.CrossIndex >= startIndex);
         }
 

@@ -64,7 +64,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
         {
             if (EditingSettings == null || string.IsNullOrEmpty(EditingSettings.SourceIndicatorId))
                 return AvailableSourceIndicators.FirstOrDefault();
-            return AvailableSourceIndicators.FirstOrDefault(o => o.Id == EditingSettings.SourceIndicatorId) 
+            return AvailableSourceIndicators.FirstOrDefault(o => o.Id == EditingSettings.SourceIndicatorId)
                    ?? AvailableSourceIndicators.FirstOrDefault();
         }
         set
@@ -242,8 +242,8 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
     public Action<CoreIndicatorSettings>? OnApplyCallback { get; set; }
 
     public IndicatorPropertiesViewModel(
-        CoreIndicatorSettings indicator, 
-        IMessenger messenger, 
+        CoreIndicatorSettings indicator,
+        IMessenger messenger,
         IDispatcherService dispatcherService,
         IEnumerable<CoreIndicatorSettings>? allIndicators = null,
         IDialogService? dialogService = null,
@@ -366,7 +366,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
     private void Apply()
     {
         if (_isDisposed) return;
-        
+
         if (OnApplyCallback != null)
         {
             OnApplyCallback.Invoke(EditingSettings);
@@ -382,7 +382,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
     private void Ok()
     {
         if (_isDisposed) return;
-        
+
         if (OnApplyCallback != null)
         {
             OnApplyCallback.Invoke(EditingSettings);
@@ -392,7 +392,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
             _messenger.Send(
                 new SingleIndicatorSettingsChangedMessage(EditingSettings));
         }
-        
+
         DialogResult = true;
         RequestClose?.Invoke(true);
     }
@@ -444,7 +444,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
             $"{prefix} F"
         };
     }
-    
+
     public void Dispose()
     {
         if (_isDisposed) return;

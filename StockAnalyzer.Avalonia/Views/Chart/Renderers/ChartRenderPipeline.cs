@@ -165,22 +165,22 @@ public sealed class ChartRenderPipeline : IDisposable
         // Use antialias: true to enforce exact pixel clipping on stroke boundaries.
         canvas.ClipRect(SKRect.Create((float)chartArea.Left, (float)chartArea.Top, (float)chartArea.Width - 0.5f, (float)chartArea.Height), SKClipOperation.Intersect, true);
         canvas.Translate((float)chartArea.Left, 0);
-        
+
         // Localized rect for renderer
         var localizedChartArea = new global::Avalonia.Rect(0, chartArea.Y, chartArea.Width, chartArea.Height);
         mainRenderer.Render(canvas, localizedChartArea, snapshot, renderConfig);
-        
+
         // 3.5 Render MultiWave Patterns overlay on main chart
         if (renderConfig.ShowMultiWavePatterns)
         {
             _multiWavePatternRenderer.Render(canvas, localizedChartArea, snapshot, renderConfig);
         }
-        
+
         if (renderConfig.ShowGhostProjections)
         {
             _ghostProjectionRenderer.Render(canvas, localizedChartArea, snapshot, renderConfig);
         }
-        
+
         canvas.Restore();
 
         // 4. Render Volume (Deprecated: Now rendered as an indicator)
@@ -321,7 +321,7 @@ public sealed class ChartRenderPipeline : IDisposable
             {
                 float mouseX = (float)renderConfig.MousePosition.X;
                 float mouseY = (float)renderConfig.MousePosition.Y;
-                
+
                 int pointCount = data.Points.Count;
                 int configCount = rwConfig.ReverseWatchDataCount;
                 int renderCount = configCount > 0 ? Math.Min(pointCount, configCount) : pointCount;
@@ -354,7 +354,7 @@ public sealed class ChartRenderPipeline : IDisposable
         else if (snapshot.Candles.Count > 0)
         {
             var theme = renderConfig.ThemeManager?.CurrentTheme ?? new Core.Theme.ThemeColors();
-            var globalLatestCandle = (snapshot.AllCandles != null && snapshot.AllCandles.Count > 0) 
+            var globalLatestCandle = (snapshot.AllCandles != null && snapshot.AllCandles.Count > 0)
                 ? snapshot.AllCandles[snapshot.AllCandles.Count - 1] : snapshot.Candles[snapshot.Candles.Count - 1];
 
             bool isGlobalBullish = globalLatestCandle.Close >= globalLatestCandle.Open;
@@ -440,7 +440,7 @@ public sealed class ChartRenderPipeline : IDisposable
                     {
                         // Match the index logic in IndicatorRenderer (taking Offset into account)
                         int valIdx = _visibleIndicatorIndex - setting.Offset;
-                        
+
                         decimal? displayValue = null;
                         if (valIdx >= 0 && valIdx < result.MainValues.Count)
                         {
@@ -713,7 +713,7 @@ public sealed class ChartRenderPipeline : IDisposable
                         {
                             minVal = realRange.Min;
                             maxVal = realRange.Max;
-                            
+
                             // Add same margin applied by panel renderer (if any... actually ChartHelpers handles raw value, 
                             // but gridRenderer adds margin. Let's add 10% margin manually to match grid rendering for non-overlay)
                             decimal rangePrice = maxVal - minVal;
@@ -725,7 +725,7 @@ public sealed class ChartRenderPipeline : IDisposable
                         canvas.Save();
                         canvas.Translate(0, (float)pa.Y);
                         canvas.ClipRect(SKRect.Create(0, 0, (float)pa.Width, (float)pa.Height), SKClipOperation.Intersect, true);
-                        
+
                         Rect relativeRect = new Rect(0, 0, pa.Width, pa.Height);
 
                         _crossMarkerRenderer.Render(
@@ -733,7 +733,7 @@ public sealed class ChartRenderPipeline : IDisposable
                             shortSeries, longSeries,
                             minVal, maxVal,
                             snapshot.Candles, TimeSpan.FromDays(1), renderConfig.Transform, renderConfig);
-                            
+
                         canvas.Restore();
                     }
                 }
@@ -763,10 +763,10 @@ public sealed class ChartRenderPipeline : IDisposable
     }
 
     private void RenderSingleIndicatorPass(
-        SKCanvas canvas, 
-        ChartLayoutContext layout, 
-        ChartDataSnapshot snapshot, 
-        IChartRenderConfig renderConfig, 
+        SKCanvas canvas,
+        ChartLayoutContext layout,
+        ChartDataSnapshot snapshot,
+        IChartRenderConfig renderConfig,
         CoreIndicatorSettings setting,
         bool isSubWindowContext,
         int panelIndex = -1,
@@ -791,7 +791,7 @@ public sealed class ChartRenderPipeline : IDisposable
                     var (minVal, maxVal) = overrideMinValue.HasValue && overrideMaxValue.HasValue
                         ? (overrideMinValue.Value, overrideMaxValue.Value)
                         : PanelValueRangeCalculator.Calculate(snapshot, setting);
-                    
+
                     if (panelRanges != null)
                     {
                         panelRanges[targetPanelIdx] = (minVal, maxVal);
@@ -836,14 +836,14 @@ public sealed class ChartRenderPipeline : IDisposable
     }
 
     private void RenderCrosshair(
-        SKCanvas canvas, 
-        ChartLayoutContext layout, 
-        global::Avalonia.Rect chartArea, 
-        global::Avalonia.Rect volumeArea, 
-        global::Avalonia.Point mousePosition, 
-        ChartDataSnapshot snapshot, 
-        global::Avalonia.Rect controlBounds, 
-        IChartRenderConfig renderConfig, 
+        SKCanvas canvas,
+        ChartLayoutContext layout,
+        global::Avalonia.Rect chartArea,
+        global::Avalonia.Rect volumeArea,
+        global::Avalonia.Point mousePosition,
+        ChartDataSnapshot snapshot,
+        global::Avalonia.Rect controlBounds,
+        IChartRenderConfig renderConfig,
         ChartType chartType)
     {
         if (chartType == ChartType.ReverseWatch && renderConfig is IReverseWatchRenderConfig rwConfig)

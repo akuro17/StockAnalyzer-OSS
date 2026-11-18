@@ -47,7 +47,7 @@ public class MagnetSnapService : IMagnetSnapService
             if (idx >= 0 && idx < candles.Count)
             {
                 var candle = candles[idx];
-                
+
                 // Calculate screen position of the candidate
                 var candleCenterChartPoint = new ChartPoint(candle.Timestamp, candle.Close);
                 var candleScreenPt = coordinateTransform.ChartToScreen(candleCenterChartPoint);
@@ -56,36 +56,36 @@ public class MagnetSnapService : IMagnetSnapService
                 // We use a more generous threshold for "Magnet" feeling in Time Mode, 
                 // allowing snapping across gaps (like weekends) if reasonable.
                 // Dynamic threshold: Min 50px or 0.75 * CandleWidth (for zoom)
-                double threshold = 50.0; 
-                
+                double threshold = 50.0;
+
                 // Calculate approximate candle width for dynamic threshold
                 if (candles.Count > 1 && idx < candles.Count - 1)
                 {
                     var p1 = coordinateTransform.ChartToScreen(new ChartPoint(candles[idx].Timestamp, 0));
-                    var p2 = coordinateTransform.ChartToScreen(new ChartPoint(candles[idx+1].Timestamp, 0));
+                    var p2 = coordinateTransform.ChartToScreen(new ChartPoint(candles[idx + 1].Timestamp, 0));
                     double width = Math.Abs(p2.X - p1.X);
                     threshold = Math.Max(50.0, width * 0.75);
                 }
                 else if (candles.Count > 1 && idx > 0)
                 {
-                     var p1 = coordinateTransform.ChartToScreen(new ChartPoint(candles[idx-1].Timestamp, 0));
-                     var p2 = coordinateTransform.ChartToScreen(new ChartPoint(candles[idx].Timestamp, 0));
-                     double width = Math.Abs(p2.X - p1.X);
-                     threshold = Math.Max(50.0, width * 0.75);
+                    var p1 = coordinateTransform.ChartToScreen(new ChartPoint(candles[idx - 1].Timestamp, 0));
+                    var p2 = coordinateTransform.ChartToScreen(new ChartPoint(candles[idx].Timestamp, 0));
+                    double width = Math.Abs(p2.X - p1.X);
+                    threshold = Math.Max(50.0, width * 0.75);
                 }
 
-                
+
                 if (Math.Abs(candleScreenPt.X - mouseScreenPoint.X) <= threshold)
                 {
-                   // Find best OHLC match within this candle
-                   var match = FindBestOHLCMatch(candle, mouseScreenPoint, coordinateTransform, MagnetRadius);
-                   if (match.IsSnapped)
-                   {
-                       return match;
-                   }
+                    // Find best OHLC match within this candle
+                    var match = FindBestOHLCMatch(candle, mouseScreenPoint, coordinateTransform, MagnetRadius);
+                    if (match.IsSnapped)
+                    {
+                        return match;
+                    }
                 }
             }
-            
+
             // If binary search found nothing close, return unsnapped
             return (chartPoint, mouseScreenPoint, false);
         }
@@ -103,11 +103,11 @@ public class MagnetSnapService : IMagnetSnapService
         double dynamicThreshold = MagnetRadius;
         if (candles.Count > 1)
         {
-             var p1 = coordinateTransform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0));
-             var p2 = coordinateTransform.ChartToScreen(new ChartPoint(candles[1].Timestamp, 0));
-             double intervalWidth = Math.Abs(p2.X - p1.X);
-             // Ensure we snap if cursor is anywhere within the candle's time slot
-             dynamicThreshold = Math.Max(MagnetRadius, intervalWidth / 2.0);
+            var p1 = coordinateTransform.ChartToScreen(new ChartPoint(candles[0].Timestamp, 0));
+            var p2 = coordinateTransform.ChartToScreen(new ChartPoint(candles[1].Timestamp, 0));
+            double intervalWidth = Math.Abs(p2.X - p1.X);
+            // Ensure we snap if cursor is anywhere within the candle's time slot
+            dynamicThreshold = Math.Max(MagnetRadius, intervalWidth / 2.0);
         }
 
         // Iterate visible candles to find nearest OHLC point
@@ -116,7 +116,7 @@ public class MagnetSnapService : IMagnetSnapService
             // Optimization: First check horizontal distance (Pixel X)
             var candleCenterChartPoint = new ChartPoint(candle.Timestamp, candle.Close);
             var candleCenterX = coordinateTransform.ChartToScreen(candleCenterChartPoint).X;
-            
+
             if (Math.Abs(candleCenterX - mouseScreenPoint.X) > dynamicThreshold)
                 continue;
 
@@ -138,7 +138,7 @@ public class MagnetSnapService : IMagnetSnapService
     {
         int min = 0;
         int max = candles.Count - 1;
-        
+
         if (targetTime <= candles[min].Timestamp) return min;
         if (targetTime >= candles[max].Timestamp) return max;
 
@@ -166,13 +166,13 @@ public class MagnetSnapService : IMagnetSnapService
     }
 
     private (ChartPoint SnappedChartPoint, global::Avalonia.Point SnappedScreenPoint, bool IsSnapped) FindBestOHLCMatch(
-        CoreCandleData candle, 
-        global::Avalonia.Point mouseScreenPoint, 
-        ICoordinateTransform coordinateTransform, 
+        CoreCandleData candle,
+        global::Avalonia.Point mouseScreenPoint,
+        ICoordinateTransform coordinateTransform,
         double maxDistance)
     {
         decimal[] prices = { candle.Open, candle.High, candle.Low, candle.Close };
-        
+
         global::Avalonia.Point bestScreen = mouseScreenPoint;
         ChartPoint bestChart = new ChartPoint(candle.Timestamp, 0);
         bool anyFound = false;
@@ -195,7 +195,7 @@ public class MagnetSnapService : IMagnetSnapService
                 anyFound = true;
             }
         }
-        
+
         return (bestChart, bestScreen, anyFound);
     }
 }

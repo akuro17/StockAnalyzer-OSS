@@ -28,23 +28,23 @@ public class WindowBoundaryService : IWindowBoundaryService
         {
             var screens = desktop.MainWindow.Screens;
             var point = new PixelPoint((int)x, (int)y);
-            
+
             // Check if the top-left point is within ANY screen
             var currentScreen = screens.ScreenFromPoint(point);
-            
+
             if (currentScreen != null)
             {
                 // Found on a screen. Verify the majority of the window is visible.
                 // For simplicity, we ensure the top-left + a margin is visible.
                 return (x, y, width, height);
             }
-            
+
             // 3. Fallback to Primary Screen or first available screen
             var primary = screens.Primary;
             if (primary == null)
             {
                 // If primary is null, try getting screen at (0,0) as a safe bet
-                primary = screens.ScreenFromPoint(new PixelPoint(0,0));
+                primary = screens.ScreenFromPoint(new PixelPoint(0, 0));
             }
 
             if (primary != null)
@@ -55,7 +55,7 @@ public class WindowBoundaryService : IWindowBoundaryService
                 double newH = Math.Min(height, bounds.Height * 0.9);
                 double newX = bounds.X + (bounds.Width - newW) / 2;
                 double newY = bounds.Y + (bounds.Height - newH) / 2;
-                
+
                 return (newX, newY, newW, newH);
             }
         }

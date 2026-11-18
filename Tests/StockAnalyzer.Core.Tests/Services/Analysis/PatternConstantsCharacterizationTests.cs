@@ -11,6 +11,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Services.Analysis;
 
+[Collection("LongRunningMeasurement")]
 public class PatternConstantsCharacterizationTests
 {
     private static string ComputeCharacterizationHash()

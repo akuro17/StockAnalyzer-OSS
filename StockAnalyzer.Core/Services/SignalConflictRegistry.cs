@@ -69,7 +69,7 @@ public class SignalConflictRegistry<T> where T : ISemanticSignal
             for (int j = 0; j < outputBuffer.Count; j++)
             {
                 T existing = outputBuffer[j];
-                
+
                 for (int r = 0; r < _exclusionRules.Count; r++)
                 {
                     // If existing signal causes candidate to be excluded

@@ -127,7 +127,7 @@ public class IndicatorFactoryTests
         Assert.Equal(30m, indicator.Values[3]); // (20+30+40)/3
         Assert.Equal(40m, indicator.Values[4]); // (30+40+50)/3
     }
-    
+
     [Fact]
     public void StaticFallbacks_ShouldWorkCorrectly()
     {

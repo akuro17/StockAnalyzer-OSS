@@ -12,20 +12,20 @@ public class CoreBollingerBandsParameter : CoreIndicatorParameterBase
     [Range(1, 1000)]
     [DisplayName("Period")]
     [Description("Number of periods for the moving average.")]
-    public int Period 
-    { 
-        get => _period; 
-        set => SetProperty(ref _period, value); 
+    public int Period
+    {
+        get => _period;
+        set => SetProperty(ref _period, value);
     }
 
     [CoreParameterRange(0.1, 10.0)]
     [Range(0.1, 10.0)]
     [DisplayName("Std Dev Multiplier")]
     [Description("Standard Deviation multiplier for the bands.")]
-    public decimal StdDevMultiplier 
-    { 
-        get => _stdDevMultiplier; 
-        set => SetProperty(ref _stdDevMultiplier, value); 
+    public decimal StdDevMultiplier
+    {
+        get => _stdDevMultiplier;
+        set => SetProperty(ref _stdDevMultiplier, value);
     }
 
     public override string GetDisplayName(string type) => $"{type} ({Period}, {StdDevMultiplier})";
