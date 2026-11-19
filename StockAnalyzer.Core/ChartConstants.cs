@@ -38,6 +38,8 @@ public static class ChartConstants
     // P&F / Renko Defaults
     public const decimal DefaultBoxSize = 1.0m;
     public const int DefaultReversalAmount = 3;
+    /// <summary>The fewest boxes of a Point and Figure reversal; the calculator treats a smaller number as this one and the Data tab shows no reversal price below it.</summary>
+    public const int MinPnfReversalAmount = 1;
 
     // General Defaults
     public const decimal DefaultAtrMultiplier = 1.0m;

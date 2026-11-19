@@ -31,8 +31,7 @@ internal static class BacktestReportJson
 
     /// <summary>The schema text of <see cref="CompactReportArgument"/>, shared by every tool that offers it.</summary>
     public const string CompactReportDescription =
-        "Write every metric as its bare number (null when its status is not Valid) instead of {status, value, unit, reason}. " +
-        "The metrics that are not Valid are then listed in unavailableMetrics [{name, status, reason}] (only when there are any) and the unit of every Valid metric in metricUnits {name: unit}. Default false.";
+        "Write each metric as a bare number (null unless Valid), plus unavailableMetrics and metricUnits. Default false.";
 
     public static void Write(Utf8JsonWriter writer, BacktestReport report, bool compact = false)
     {

@@ -260,8 +260,11 @@ public sealed class CalculateIndicatorsCompleteBarsTests : IDisposable
         JsonElement tool = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
             .First(t => t.GetProperty("name").GetString() == "sa_calculate_indicators");
         string description = tool.GetProperty("description").GetString()!;
-        Assert.Contains("completeBarsOnly (W1 and MN1 only, ignored for D1; not given = the running last period is calculated as before and nothing about it is reported)", description, StringComparison.Ordinal);
-        Assert.Contains("the alignment only steps back one closed period", description, StringComparison.Ordinal);
+        Assert.Contains("completeBarsOnly", description, StringComparison.Ordinal);
+        Assert.Contains("docs/MCP/tools/sa_calculate_indicators.md", description, StringComparison.Ordinal);
+        string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_calculate_indicators.md"));
+        Assert.Contains("completeBarsOnly (W1 and MN1 only, ignored for D1; not given = the running last period is calculated as before and nothing about it is reported)", doc, StringComparison.Ordinal);
+        Assert.Contains("the alignment only steps back one closed period", doc, StringComparison.Ordinal);
         JsonElement schema = tool.GetProperty("inputSchema").GetProperty("properties").GetProperty("completeBarsOnly");
         Assert.Equal("boolean", schema.GetProperty("type").GetString());
         Assert.False(schema.TryGetProperty("default", out _), "absent must not be the same as false");

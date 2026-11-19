@@ -404,8 +404,8 @@ public sealed class BacktestCompactReportTests : IDisposable
     [Theory]
     [InlineData("sa_run_backtest", true)]
     [InlineData("sa_run_portfolio_backtest", true)]
-    [InlineData("sa_optimize_backtest", false)]
-    [InlineData("sa_run_walk_forward_analysis", false)]
+    [InlineData("sa_optimize_backtest", true)]
+    [InlineData("sa_run_walk_forward_analysis", true)]
     public async Task OnlyTheToolsThatWriteTheReportThroughTheReportWriterOfferCompactReport(string tool, bool offered)
     {
         McpMessageDispatcher dispatcher = await StartAsync();

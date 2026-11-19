@@ -36,29 +36,30 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
     private readonly ITickerGroupResolver _groupResolver;
     private readonly ErrorMessageSanitizer _sanitizer;
     private readonly McpLimits _limits;
+    private readonly McpResultHandleStore _resultHandles;
 
-    public CalculateIndicatorsBatchTool(CalculateIndicatorsTool indicators, SymbolResolver symbols, ITickerGroupResolver groupResolver, ErrorMessageSanitizer sanitizer, McpLimits limits)
+    public CalculateIndicatorsBatchTool(
+        CalculateIndicatorsTool indicators,
+        SymbolResolver symbols,
+        ITickerGroupResolver groupResolver,
+        ErrorMessageSanitizer sanitizer,
+        McpLimits limits,
+        McpResultHandleStore? resultHandles = null)
     {
         _indicators = indicators;
         _symbols = symbols;
         _groupResolver = groupResolver;
         _sanitizer = sanitizer;
         _limits = limits;
+        _resultHandles = resultHandles ?? new McpResultHandleStore();
     }
 
     public string Name => "sa_calculate_indicators_batch";
 
     public string Description =>
-        "Calculates the same technical indicators on many symbols in one call, with exactly the pipeline, arguments and per-indicator results of sa_calculate_indicators " +
-        "(call sa_get_capabilities first for type names, parameters and output series). " +
-        $"Name the symbols (1 to {_limits.MaxBatchIndicatorSymbols}) or one saved ticker group (groupId); not both. " +
-        $"The answer is compact by default: per symbol only the latest values (latestValues, leadingNullCount) are returned; includeSeries true adds the last outputTailCount bars (default {DefaultTailBars}, at most {_limits.MaxBatchIndicatorTailBars}) per series. " +
-        $"The calculation runs over lookbackBars stored bars per symbol (default {Math.Min(DefaultLookbackBars, _limits.MaxCandlesPerRequest)}, at most {_limits.MaxCandlesPerRequest}). " +
-        "Items come in the order of the request. A symbol that is not available or has no stored bars is reported in its own item (isSuccessful false, errorCode, errorMessage) and does not fail the call; " +
-        "an indicator that cannot be calculated is reported inside its result, as in sa_calculate_indicators. A malformed request (arguments, indicator parameters, a missing comparison symbol) fails the whole call before any symbol is evaluated. " +
-        $"Cross-ticker indicators (ComparisonSymbol): at most {_limits.MaxSecondarySymbolsPerCall} different comparison symbols per call; each is read once and shared by all symbols. " +
-        "Indicators with their own timeFrame, derived series, summary, trendBars, lookbackOffsets, decimalPlaces, endDate, completeBarsOnly and allowUnregistered work as in sa_calculate_indicators. " +
-        "Read-only; heavy (it uses the exclusive tool turn).";
+        $"Calculates technical indicators of sa_calculate_indicators across 1..{_limits.MaxBatchIndicatorSymbols} symbols (via symbols, groupId, or {McpResultHandleStore.SymbolsFromResultIdArgument}; call sa_get_capabilities first). " +
+        "Returns compact latestValues/leadingNullCount per symbol by default (includeSeries true adds trailing bars). Read-only (heavy). " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => true;
 
@@ -66,8 +67,9 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
         "{\"symbols\":[\"MSFT\",\"7203-T\"],\"timeFrame\":\"D1\",\"indicators\":[{\"id\":\"rsi\",\"type\":\"RSI\",\"parameters\":{\"Period\":14}}]}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .StringArray(SymbolsArgument, $"Symbols to evaluate (1 to {_limits.MaxBatchIndicatorSymbols}); '.' and '-' are interchangeable. Mutually exclusive with {GroupIdArgument}; one of them is required.", minItems: 1)
-        .String(GroupIdArgument, "Guid of a saved ticker group (from sa_list_ticker_groups) whose members are evaluated. Mutually exclusive with symbols.")
+        .StringArray(SymbolsArgument, $"Symbols to evaluate (1 to {_limits.MaxBatchIndicatorSymbols}); '.' and '-' are interchangeable. Mutually exclusive with {GroupIdArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}; one of the three is required.", minItems: 1)
+        .String(GroupIdArgument, $"Guid of a saved ticker group (from sa_list_ticker_groups) whose members are evaluated. Mutually exclusive with {SymbolsArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.")
+        .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle id from sa_run_screener or sa_filter_tickers ({McpResultHandleStore.StoreResultArgument} true). Mutually exclusive with {SymbolsArgument} and {GroupIdArgument}.")
         .String(TimeFrameArgument, $"Time frame of the bars. Supported: {ToolArgs.SupportedTimeFrameNames}.", required: true, allowedValues: Enum.GetNames<TimeFrame>())
         .ObjectArray(IndicatorsArgument, $"The indicators to calculate on every symbol (1 to {_limits.MaxIndicatorsPerCall}); the entries are those of sa_calculate_indicators.", IndicatorItemSchema(), required: true, minItems: 1)
         .ObjectArray(DerivedArgument, $"Optional series computed from two series of the call (at most {_limits.MaxDerivedSeriesPerCall}), as in sa_calculate_indicators. Omit or send [] for none.", DerivedItemSchema())
@@ -235,18 +237,27 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
         }
     }
 
-    /// <summary>The symbols of the call in request order, without repeats: the named ones (shape checked) or the members of the group. Exactly one of the two must be given.</summary>
+    /// <summary>The symbols of the call in request order, without repeats: named, group members, or a stored result handle. Exactly one of the three must be given.</summary>
     private async Task<(List<string> Symbols, string? GroupId)> ResolveRequestedSymbolsAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         IReadOnlyList<string>? named = ToolArgs.StringArray(arguments, SymbolsArgument);
         string? groupIdText = ToolArgs.String(arguments, GroupIdArgument)?.Trim();
-        if ((named is null) == (groupIdText is null))
+        string? resultId = ToolArgs.String(arguments, McpResultHandleStore.SymbolsFromResultIdArgument);
+        int sourceCount = (named is not null ? 1 : 0) + (groupIdText is not null ? 1 : 0) + (resultId is not null ? 1 : 0);
+        if (sourceCount != 1)
         {
+            string parameter = sourceCount > 1 && resultId is not null ? McpResultHandleStore.SymbolsFromResultIdArgument : SymbolsArgument;
             throw new ToolException(
                 ToolErrorCodes.InvalidArgument,
-                $"Send exactly one of '{SymbolsArgument}' and '{GroupIdArgument}'.",
-                SymbolsArgument,
-                "Name the symbols, or the group whose members are evaluated.");
+                $"Send exactly one of '{SymbolsArgument}', '{GroupIdArgument}' and '{McpResultHandleStore.SymbolsFromResultIdArgument}'.",
+                parameter,
+                "Name the symbols, the group, or a stored result handle.");
+        }
+
+        if (resultId is not null)
+        {
+            IReadOnlyList<string> stored = _resultHandles.ResolveSymbols(resultId, 1, _limits.MaxBatchIndicatorSymbols);
+            return (stored.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), null);
         }
 
         var distinct = new List<string>();

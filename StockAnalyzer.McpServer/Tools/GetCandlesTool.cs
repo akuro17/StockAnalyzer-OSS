@@ -38,18 +38,8 @@ internal sealed class GetCandlesTool : IMcpTool
     public string Name => "sa_get_candles";
 
     public string Description =>
-        "Returns OHLCV bars of one symbol in chronological order (oldest first), exactly as stored. " +
-        $"Supported time frames: {SupportedNames}; others return UNSUPPORTED_TIMEFRAME. " +
-        $"Without dates the latest 'count' bars are returned. With startDate and/or endDate (inclusive, {ToolJson.DateFormat}) the bars are filtered inside the " +
-        $"latest {_limits.MaxCandlesPerRequest} bars of the frame and then the latest 'count' of them are returned. " +
-        "For W1 and MN1 with endDate the daily bars are cut at endDate before the weekly or monthly bars are built, so no day after endDate reaches a returned bar " +
-        $"(the window is then the latest {_limits.MaxCandlesPerRequest} bars up to endDate). " +
-        "Timestamps are bar dates as stored (not UTC-qualified); for W1 and MN1 the timestamp is the start of the period (the Monday of the ISO week, the 1st of the month; a holiday does not move it) and the oldest bar may cover a partial period. " +
-        "The last W1 or MN1 bar is partial when its period (ISO week ending Sunday, calendar month) ends after referenceDate (endDate, or the last stored day); " +
-        "lastBarPartial says so, and completeBarsOnly=true drops such a bar (droppedPartialBar). " +
-        "Prices are in the instrument's price units; volume is in shares. " +
-        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds open, high, low and close (away from zero at the midpoint); volume is never rounded, and without it the prices are as stored. " +
-        $"{CompactRowsArgument} true returns candles as an empty array and the same bars as {CandleColumnsKey} (the column names) plus {CandleRowsKey} (one [timestamp, open, high, low, close, volume] row per bar) to save tokens; default false.";
+        $"Returns stored OHLCV bars for one symbol ({SupportedNames}) in chronological order, supporting startDate/endDate, completeBarsOnly, decimalPlaces, and compactRows ({CandleColumnsKey}/{CandleRowsKey}). Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

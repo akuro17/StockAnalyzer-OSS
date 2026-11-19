@@ -76,6 +76,20 @@ public sealed class McpServerProcessServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task RestartServerAsync_WhenExecutableMissing_ReturnsFailureCleanly()
+    {
+        var settingsManager = new McpServerSettingsManager(_testFilePath);
+        await settingsManager.SaveAsync(new McpServerSettings { EnableDiscussion = true, Toolset = "core,screener" });
+
+        using var service = new MissingExeProcessService(settingsManager);
+        var result = await service.RestartServerAsync();
+
+        Assert.False(result.Success);
+        Assert.Null(result.ProcessId);
+        Assert.Contains("StockAnalyzer.McpServer executable not found", result.Message);
+    }
+
+    [Fact]
     public void StopServer_WhenNotRunning_DoesNotThrow()
     {
         var settingsManager = new McpServerSettingsManager(_testFilePath);

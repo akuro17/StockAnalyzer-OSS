@@ -40,13 +40,15 @@ internal sealed class FilterTickersTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly ScreenerComparisonSymbolResolver _comparisonSymbols;
     private readonly McpLimits _limits;
+    private readonly McpResultHandleStore _resultHandles;
 
-    public FilterTickersTool(IReadOnlyStockAnalyzerGateway gateway, ITickerGroupResolver groupResolver, ScreenerConditionBinder binder, McpLimits limits)
+    public FilterTickersTool(IReadOnlyStockAnalyzerGateway gateway, ITickerGroupResolver groupResolver, ScreenerConditionBinder binder, McpLimits limits, McpResultHandleStore? resultHandles = null)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _groupResolver = groupResolver ?? throw new ArgumentNullException(nameof(groupResolver));
         _binder = binder ?? throw new ArgumentNullException(nameof(binder));
         _limits = limits ?? throw new ArgumentNullException(nameof(limits));
+        _resultHandles = resultHandles ?? new McpResultHandleStore();
         _symbols = new SymbolResolver(gateway);
         _comparisonSymbols = new ScreenerComparisonSymbolResolver(gateway, _symbols, limits);
     }
@@ -54,24 +56,9 @@ internal sealed class FilterTickersTool : IMcpTool
     public string Name => "sa_filter_tickers";
 
     public string Description =>
-        "Filters tickers with rules sent in the call, the same rules and evaluator as a Tickers-tab filter (no saved filter, group or template needed), and optionally a Screener condition. " +
-        "Universe: symbols (a list of symbols), or groupId (a saved ticker group), or neither (every registered symbol); symbols and groupId exclude each other. " +
-        $"The universe may hold at most {_limits.MaxFilterEvaluationSymbols} symbols (LIMIT_EXCEEDED, never cut). " +
-        $"rules: at most {_limits.MaxInlineFilterRules}, all must hold (AND). Each rule is {{field, operator, value, isCompareToField?}}. " +
-        "field is a ticker column name or alias as used by the Tickers tab (for example Close, ChangePercent, Sector, Tag, TrailingPE, MarketCap); an unknown field is INVALID_ARGUMENT, never an empty result. " +
-        "With isCompareToField true, value is another field of the same kind (number with number, text with text). " +
-        $"Numeric fields accept: {string.Join(" ", FilterRuleValidator.OperatorsFor(FilterFieldKind.Numeric))}, and value must be a number. " +
-        $"Text fields accept: {string.Join(" ", FilterRuleValidator.OperatorsFor(FilterFieldKind.Text))} (text comparison ignores case). " +
-        $"The Tag field accepts: {string.Join(" ", FilterRuleValidator.OperatorsFor(FilterFieldKind.Tag))} (tags are separated by comma or semicolon). " +
-        "A field that depends on daily bars (Open, High, Low, Close, Volume, Change, ChangePercent, valuation ratios built on the price) uses the latest stored daily bar and the one before it; a symbol without stored bars has no price, so it matches no such rule. " +
-        "Values keep the unit of the Tickers-tab column: ChangePercent is a percent value (1.5 means 1.5 %), prices are in the currency of the stored data. " +
-        "screener is {conditionTree} in the grammar of sa_run_screener (see its description and sa_get_capabilities with includeScreenerCatalog true); it is applied after the rules, to the symbols the rules kept, " +
-        $"on the latest daily bar exactly as sa_run_screener does, and at most {_limits.MaxScreenerSymbols} symbols may reach it (LIMIT_EXCEEDED: narrow the universe or the rules). " +
-        "Matches are sorted by symbol (ordinal, ascending) and paged with offset and limit. includeFields adds those columns to each returned match (null when the value is not available). " +
-        "Without rules and screener the whole universe is returned. " +
-        $"Without {SymbolResolver.AllowUnregisteredArgument}, symbols that are not in the ticker list are counted in universe.unregisteredCount and left out. " +
-        $"{SymbolResolver.AllowUnregisteredArgument} true evaluates the listed symbols that are not in the ticker list but have stored daily bars (named in warnings); a listed symbol without stored bars is SYMBOL_NOT_FOUND. It applies to symbols only, not to groupId or the whole-list universe. " +
-        $"{SnapshotNotice}";
+        $"Filters up to {_limits.MaxFilterEvaluationSymbols} tickers with inline rules (Tickers-tab evaluator) and an optional screener condition (at most {_limits.MaxScreenerSymbols} symbols); supports {McpResultHandleStore.StoreResultArgument}. " +
+        "The result is a snapshot of today's stored data; for past dates use sa_run_screener with asOfDate. " +
+        ToolJson.DocLink(Name);
 
     /// <summary>The one sentence that says the result is today's snapshot (used in the description; the hint of a date argument says the same in other words).</summary>
     private const string SnapshotNotice =
@@ -111,6 +98,7 @@ internal sealed class FilterTickersTool : IMcpTool
         .Integer(OffsetArgument, "Number of matches to skip. Default 0.", defaultValue: 0, minimum: 0)
         .Integer(LimitArgument, $"Page size. Default {_limits.DefaultTickerPageSize}, at most {_limits.MaxTickersPerPage}.", defaultValue: _limits.DefaultTickerPageSize, minimum: 1, maximum: _limits.MaxTickersPerPage)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Evaluate listed symbols that are not in the ticker list but have stored daily bars. Applies to symbols only. Default false.")
+        .Boolean(McpResultHandleStore.StoreResultArgument, $"Store returned match symbols in memory and return {McpResultHandleStore.ResultIdKey} for downstream tools. Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -118,6 +106,7 @@ internal sealed class FilterTickersTool : IMcpTool
         int offset = ToolArgs.NonNegativeWithin(arguments, OffsetArgument, 0, int.MaxValue);
         int limit = ToolArgs.PositiveWithin(arguments, LimitArgument, _limits.DefaultTickerPageSize, _limits.MaxTickersPerPage);
         bool allowUnregistered = ToolArgs.Boolean(arguments, SymbolResolver.AllowUnregisteredArgument) ?? false;
+        bool storeResult = ToolArgs.Boolean(arguments, McpResultHandleStore.StoreResultArgument) ?? false;
         IReadOnlyList<FilterRule> rules = ReadRules(arguments);
         IReadOnlyList<string> includeFields = ReadIncludeFields(arguments);
 
@@ -158,6 +147,7 @@ internal sealed class FilterTickersTool : IMcpTool
         }
 
         List<string> page = matches.Skip(offset).Take(limit).ToList();
+        string? storedResultId = storeResult ? _resultHandles.Store(Name, page).ResultId : null;
         var rows = new Dictionary<string, TickerRow>(StringComparer.Ordinal);
         if (includeFields.Count > 0)
         {
@@ -198,6 +188,10 @@ internal sealed class FilterTickersTool : IMcpTool
             writer.WriteNumber("limit", limit);
             writer.WriteNumber("returnedCount", page.Count);
             writer.WriteBoolean("hasMore", (long)offset + page.Count < matches.Count);
+            if (storedResultId is not null)
+            {
+                writer.WriteString(McpResultHandleStore.ResultIdKey, storedResultId);
+            }
             writer.WriteStartArray("matches");
             foreach (string symbol in page)
             {

@@ -42,13 +42,8 @@ internal sealed class BuildTemplateTool : IMcpTool
     public string Name => "sa_build_template";
 
     public string Description =>
-        "Builds a new StockAnalyzer template (ScreenerIndicatorTemplate or BacktestConditionTemplate) or merges new conditions into an existing saved template (baseTemplateId), " +
-        "returning both the normalized MCP query representation and the complete persisted StockAnalyzer Template JSON (template object and templateJson string). " +
-        "When saved by the user into Data/Templates/Screener/{id}.json or Data/Templates/BacktestCondition/{id}.json, it functions immediately and seamlessly in the Screener or Backtest modules. " +
-        "templateType selects screener (default) or backtestCondition. " +
-        "For screener: give conditionTree (and optional baseTemplateId, mergeMode appendAnd|appendOr|replace). " +
-        "For backtestCondition: give conditions and/or riskManagement (and optional baseTemplateId, mergeMode appendAnd|appendOr|replace). " +
-        "The tool is strictly read-only and never writes to disk.";
+        "Builds or merges a StockAnalyzer screener or backtestCondition template JSON in memory (appendAnd, appendOr, replace) for Data/Templates without writing to disk. Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

@@ -1,3 +1,7 @@
+using StockAnalyzer.Core.Models.Settings;
+using StockAnalyzer.McpServer.Catalog;
+using StockAnalyzer.McpServer.Execution;
+
 namespace StockAnalyzer.McpServer.CommandLine;
 
 /// <summary>What the process was asked to do.</summary>
@@ -19,7 +23,12 @@ internal abstract record McpCommand
     public sealed record Invalid(string Message) : McpCommand;
 }
 
-internal sealed record McpCommandLineResult(McpCommand Command, bool EnableExecution, bool EnableDiscussion = false);
+internal sealed record McpCommandLineResult(
+    McpCommand Command,
+    bool EnableExecution,
+    bool EnableDiscussion = false,
+    IReadOnlyList<string>? Toolsets = null,
+    McpResponseFormat ResponseFormat = McpResponseFormat.Dual);
 
 /// <summary>
 /// Reads the command-line arguments. A pure function: it touches no stream and starts nothing, so it can run before the
@@ -30,7 +39,11 @@ internal static class McpCommandLine
     public const string HelpToken = "--help";
     public const string VersionToken = "--version";
     public const string EnableExecutionToken = "--enable-execution";
-    public const string EnableDiscussionToken = "--enable-discussion";
+    public const string EnableDiscussionToken = McpToolsetProfiles.EnableDiscussionToken;
+    public const string ToolsetToken = McpToolsetProfiles.ToolsetToken;
+    public const string ResponseFormatToken = "--response-format";
+    public const string DualFormat = "dual";
+    public const string TextOnlyFormat = "text-only";
 
     /// <summary>Exit code of a normal end.</summary>
     public const int ExitOk = 0;
@@ -55,6 +68,8 @@ internal static class McpCommandLine
         bool enableExecution = false;
         bool enableDiscussion = false;
         string? toolName = null;
+        IReadOnlyList<string>? toolsets = null;
+        McpResponseFormat? responseFormat = null;
         int processed = 0;
 
         for (int index = 0; index < args.Length; index++)
@@ -96,6 +111,54 @@ internal static class McpCommandLine
             {
                 enableDiscussion = true;
             }
+            else if (string.Equals(token, ToolsetToken, StringComparison.Ordinal))
+            {
+                if (toolsets is not null)
+                {
+                    return Invalid(token);
+                }
+
+                if (index + 1 >= args.Length)
+                {
+                    return InvalidMessage(InvalidToolsetMessage(string.Empty));
+                }
+
+                string rawToolsets = args[++index];
+                processed++;
+                if (!McpToolsetCatalog.TryParse(rawToolsets, out IReadOnlyList<string> parsedToolsets))
+                {
+                    return InvalidMessage(InvalidToolsetMessage(rawToolsets));
+                }
+
+                toolsets = parsedToolsets;
+            }
+            else if (string.Equals(token, ResponseFormatToken, StringComparison.Ordinal))
+            {
+                if (responseFormat is not null)
+                {
+                    return Invalid(token);
+                }
+
+                if (index + 1 >= args.Length)
+                {
+                    return InvalidMessage(InvalidResponseFormatMessage(string.Empty));
+                }
+
+                string rawFormat = args[++index];
+                processed++;
+                if (string.Equals(rawFormat, DualFormat, StringComparison.Ordinal))
+                {
+                    responseFormat = McpResponseFormat.Dual;
+                }
+                else if (string.Equals(rawFormat, TextOnlyFormat, StringComparison.Ordinal))
+                {
+                    responseFormat = McpResponseFormat.TextOnly;
+                }
+                else
+                {
+                    return InvalidMessage(InvalidResponseFormatMessage(rawFormat));
+                }
+            }
             else
             {
                 return Invalid(token);
@@ -105,24 +168,30 @@ internal static class McpCommandLine
         }
 
         McpCommand command = version ? new McpCommand.Version() : help ? new McpCommand.Help(toolName) : new McpCommand.Run();
-        return new McpCommandLineResult(command, enableExecution, enableDiscussion);
+        return new McpCommandLineResult(command, enableExecution, enableDiscussion, toolsets, responseFormat ?? McpResponseFormat.Dual);
     }
 
     /// <summary>The one-line message for an argument that is not accepted; an over-long token is cut so the line stays short.</summary>
     public static string UnknownArgumentMessage(string token)
-    {
-        string echoed = token.Length > MaxEchoedTokenChars ? token[..MaxEchoedTokenChars] + EchoEllipsis : token;
-        return $"Unknown argument '{echoed}'. Run with {HelpToken}.";
-    }
+        => $"Unknown argument '{TruncateForEcho(token)}'. Run with {HelpToken}.";
 
     public static string UnknownToolMessage(string name)
-    {
-        string echoed = name.Length > MaxEchoedTokenChars ? name[..MaxEchoedTokenChars] + EchoEllipsis : name;
-        return $"Unknown tool '{echoed}'. Run with {HelpToken}.";
-    }
+        => $"Unknown tool '{TruncateForEcho(name)}'. Run with {HelpToken}.";
+
+    public static string InvalidToolsetMessage(string value)
+        => $"Invalid {ToolsetToken} value '{TruncateForEcho(value)}'. Allowed: {string.Join(", ", McpToolsetCatalog.AllowedProfiles)}. Run with {HelpToken}.";
+
+    public static string InvalidResponseFormatMessage(string value)
+        => $"Invalid {ResponseFormatToken} value '{TruncateForEcho(value)}'. Allowed: {DualFormat}, {TextOnlyFormat}. Run with {HelpToken}.";
+
+    private static string TruncateForEcho(string token)
+        => token.Length > MaxEchoedTokenChars ? token[..MaxEchoedTokenChars] + EchoEllipsis : token;
 
     private static bool StartsLikeOption(string token) => token.StartsWith('-') || token.StartsWith('/');
 
     private static McpCommandLineResult Invalid(string token)
-        => new(new McpCommand.Invalid(UnknownArgumentMessage(token)), EnableExecution: false);
+        => InvalidMessage(UnknownArgumentMessage(token));
+
+    private static McpCommandLineResult InvalidMessage(string message)
+        => new(new McpCommand.Invalid(message), EnableExecution: false);
 }

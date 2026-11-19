@@ -302,6 +302,53 @@ internal sealed class BacktestSweep
         writer.WriteEndObject();
     }
 
+    /// <summary>
+    /// Writes <paramref name="metric"/> as its bare decimal number when Valid, or JSON null otherwise, recording any non-Valid metric in <paramref name="unavailable"/>.
+    /// </summary>
+    public static void WriteCompactMetric(System.Text.Json.Utf8JsonWriter writer, string name, MetricValue? metric, List<(string Name, MetricStatus Status)>? unavailable)
+    {
+        if (metric is { Status: MetricStatus.Valid, Value: { } number })
+        {
+            writer.WriteNumber(name, number);
+            return;
+        }
+
+        writer.WriteNull(name);
+        if (unavailable is null)
+        {
+            return;
+        }
+
+        if (metric is { Status: not MetricStatus.Valid } nonValid)
+        {
+            unavailable.Add((name, nonValid.Status));
+        }
+        else if (metric is { Status: MetricStatus.Valid })
+        {
+            unavailable.Add((name, MetricStatus.NotApplicable));
+        }
+    }
+
+    /// <summary>Writes <c>unavailableMetrics[{name, status}]</c> when at least one metric was not Valid.</summary>
+    public static void WriteUnavailableMetrics(System.Text.Json.Utf8JsonWriter writer, IReadOnlyList<(string Name, MetricStatus Status)> unavailable)
+    {
+        if (unavailable.Count == 0)
+        {
+            return;
+        }
+
+        writer.WriteStartArray("unavailableMetrics");
+        foreach ((string name, MetricStatus status) in unavailable)
+        {
+            writer.WriteStartObject();
+            writer.WriteString("name", name);
+            writer.WriteString("status", status.ToString());
+            writer.WriteEndObject();
+        }
+
+        writer.WriteEndArray();
+    }
+
     /// <summary>The value of a metric when it is Valid, otherwise null.</summary>
     public static decimal? ValidValue(MetricValue? metric) => metric is { Status: MetricStatus.Valid } valid ? valid.Value : null;
 

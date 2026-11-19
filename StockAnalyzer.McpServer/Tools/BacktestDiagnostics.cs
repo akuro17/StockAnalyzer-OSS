@@ -31,6 +31,8 @@ internal sealed class BacktestDiagnostics
     /// <summary>Result key listing the requested parts that could not be calculated: [{part (the argument name), reason}].</summary>
     public const string UnavailableKey = "diagnosticsUnavailable";
 
+    private static readonly string[] EquityCurveColumns = { "date", "equity", "drawdownRatio", "reason" };
+
     private readonly BacktestDiagnosticsRequest _request;
     private readonly ImmutableArray<EquityCurvePoint> _curve;
     private readonly ImmutableArray<RankedDrawdownEpisode> _episodes;
@@ -190,11 +192,11 @@ internal sealed class BacktestDiagnostics
     private bool IsUnavailable(string part) => _unavailable.Any(entry => entry.Part == part);
 
     /// <summary>Writes the requested parts as properties of the enclosing result object; nothing is written for a part that was not requested or could not be calculated.</summary>
-    public void Write(Utf8JsonWriter writer)
+    public void Write(Utf8JsonWriter writer, bool compactRows = false)
     {
         if (_request.Curve is { } resolution && !IsUnavailable(EquityCurveArgument))
         {
-            WriteEquityCurve(writer, resolution, _curve);
+            WriteEquityCurve(writer, resolution, _curve, compactRows);
         }
 
         if (_request.EpisodeCount > 0 && !IsUnavailable(DrawdownEpisodesArgument))
@@ -267,27 +269,47 @@ internal sealed class BacktestDiagnostics
         writer.WriteEndArray();
     }
 
-    internal static void WriteEquityCurve(Utf8JsonWriter writer, EquityCurveResolution resolution, ImmutableArray<EquityCurvePoint> curve)
+    internal static void WriteEquityCurve(Utf8JsonWriter writer, EquityCurveResolution resolution, ImmutableArray<EquityCurvePoint> curve, bool compactRows = false)
     {
         writer.WriteStartObject("equityCurve");
         writer.WriteString("resolution", resolution.ToString());
         writer.WriteNumber("pointCount", curve.Length);
         writer.WriteStartArray("points");
-        foreach (EquityCurvePoint point in curve)
+        if (!compactRows)
         {
-            writer.WriteStartObject();
-            writer.WriteString("date", ToolJson.FormatDate(point.Timestamp));
-            writer.WriteNumber("equity", point.Equity);
-            ToolJson.WriteNullableNumber(writer, "drawdownRatio", point.DrawdownRatio);
-            if (point.DrawdownReason is { } reason)
+            foreach (EquityCurvePoint point in curve)
             {
-                writer.WriteString("reason", reason);
-            }
+                writer.WriteStartObject();
+                writer.WriteString("date", ToolJson.FormatDate(point.Timestamp));
+                writer.WriteNumber("equity", point.Equity);
+                ToolJson.WriteNullableNumber(writer, "drawdownRatio", point.DrawdownRatio);
+                if (point.DrawdownReason is { } reason)
+                {
+                    writer.WriteString("reason", reason);
+                }
 
-            writer.WriteEndObject();
+                writer.WriteEndObject();
+            }
         }
 
         writer.WriteEndArray();
+        if (compactRows)
+        {
+            ToolJson.WriteStringArray(writer, "columns", EquityCurveColumns);
+            writer.WriteStartArray("rows");
+            foreach (EquityCurvePoint point in curve)
+            {
+                writer.WriteStartArray();
+                writer.WriteStringValue(ToolJson.FormatDate(point.Timestamp));
+                writer.WriteNumberValue(point.Equity);
+                ToolJson.WriteNullableValue(writer, point.DrawdownRatio);
+                ToolJson.WriteNullableValue(writer, point.DrawdownReason);
+                writer.WriteEndArray();
+            }
+
+            writer.WriteEndArray();
+        }
+
         writer.WriteEndObject();
     }
 

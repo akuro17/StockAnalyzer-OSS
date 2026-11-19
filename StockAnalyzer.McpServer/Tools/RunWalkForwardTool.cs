@@ -52,22 +52,9 @@ internal sealed class RunWalkForwardTool : IMcpTool
     public string Name => "sa_run_walk_forward_analysis";
 
     public string Description =>
-        "Walk-forward analysis of a backtest: for every window it runs the grid of sa_optimize_backtest (conditions with {\"$param\": name} placeholders, parameterRanges, objective, objectiveDirection, account, riskManagement, report: exactly the same meaning and checks) on the in-sample part, takes the best combination (best objective, ties by combination number) and runs only that one on the out-of-sample part. " +
-        "It uses the application's own backtest engine; no formula is defined here. " +
-        "windows is exactly one of generator and list. generator {mode, inSampleBars, outOfSampleBars, stepBars} cuts the evaluated period (startDate to endDate, default the stored history) into windows measured in bars of the time frame, never in calendar time: " +
-        "Rolling keeps the in-sample length and moves the window by stepBars, Anchored keeps the first bar and lets the in-sample part grow by stepBars; the out-of-sample part is the next outOfSampleBars bars, and a window whose out-of-sample part would run past the last bar is not made. " +
-        "list [{inSampleStart, inSampleEnd, outOfSampleStart, outOfSampleEnd}] (yyyy-MM-dd, inclusive) gives the windows yourself; inSampleEnd must be before outOfSampleStart, and startDate and endDate must then be omitted. " +
-        $"At most {_limits.MaxWalkForwardWindows} windows (more is LIMIT_EXCEEDED, never cut) and, per window, the limits of sa_optimize_backtest ({_limits.MaxOptimizationCombinations} combinations, {_limits.MaxOptimizationParameters} ranges). A generator that gives no window is INVALID_ARGUMENT. " +
-        "Each window lists bestParameters, and for the in-sample (is...) and out-of-sample (oos...) part the objective, barSharpe, totalReturn and maxDrawdown as {status, value} (value null unless Valid) and the total trades. " +
-        $"minInSampleTrades (default {_limits.DefaultMinInSampleTrades}) is the fewest trades a combination must make in the in-sample part to be eligible as the best one: a combination without trades is never chosen, because its objective (for example totalReturn 0) says nothing. " +
-        $"A window has a status: Evaluated, or isInsufficientData with {StatusNoBars} (the in-sample part holds no stored bar), {StatusNoTrades} (no combination made minInSampleTrades trades there, for example near the start of the stored history, where an indicator has no earlier bars to start from) or {StatusNoValidObjective} (some combination traded enough but none has a Valid objective); such a window has no best combination, is not run out of sample and is left out of the aggregate. " +
-        $"{StatusNoOutOfSampleBars} means the best combination exists but the out-of-sample part holds no stored bar: its oos values are null and the window is not used for the out-of-sample means. " +
-        "Every run lets its indicators start on the stored bars before its first day, so a window is too short for its indicators only where the stored history itself begins. The tool cannot see how many bars an indicator needs before it is defined, so that case shows up only as few or no trades. " +
-        "aggregate (null when no window was evaluated) has meanIsObjective and meanOosObjective (simple means over the evaluated windows whose value is Valid; isObjectiveWindowCount and oosObjectiveWindowCount say how many windows each mean has, they can differ), meanIsBarSharpe, meanOosBarSharpe and barSharpeEfficiency = meanOosBarSharpe / meanIsBarSharpe, " +
-        "taken over the windows in which both BarSharpe values are Valid (barSharpeWindowCount); it is null, with barSharpeEfficiencyReason, when no window qualifies or meanIsBarSharpe is not greater than 0. There is no threshold on the denominator. " +
-        "Each window also has positiveInfinityCombinationCount (in-sample runs whose objective is infinite, for example a profit factor without a losing trade: not eligible, counted only); a warning names windows whose out-of-sample ranges overlap, because those bars count more than once in the aggregate. " +
-        "No deflated Sharpe ratio, probability of backtest overfitting or shuffled confidence interval is computed. " +
-        $"The cost grows with windows x combinations x in-sample bars; a call that runs out of time ({_limits.HeavyToolTimeoutSeconds} s) or is cancelled returns an error, never a partial result. The tool never changes anything and never fetches data.";
+        $"Walk-forward backtest optimization over up to {_limits.MaxWalkForwardWindows} windows (Rolling/Anchored generator or explicit date list), evaluating the best valid in-sample combination (with >= minInSampleTrades) out-of-sample. " +
+        $"Supports {BacktestReportJson.CompactReportArgument}. Read-only; never mutates Data. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => true;
 
@@ -110,6 +97,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
         .FreeObject(BacktestSettingsBinder.RiskArgument, "{stopLossRatio, takeProfitRatio, dynamicExits}, as for sa_run_backtest; numbers may be placeholders.")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings, as for sa_run_backtest; numbers may be placeholders.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
+        .Boolean(BacktestReportJson.CompactReportArgument, "Write every window metric (is*/oos*) as its bare number (null when its status is not Valid) and list non-Valid ones of evaluated windows in unavailableMetrics [{name, status}] (only when any exist). Default false.")
         .Build();
 
     /// <summary>One window as the run plans it: its mode label and the first and last day of both parts.</summary>
@@ -132,6 +120,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
         ObjectiveMetric objective = OptimizationObjectives.Resolve(ToolArgs.String(arguments, ObjectiveArgument)!, ObjectiveArgument);
         bool minimize = string.Equals(ToolArgs.String(arguments, DirectionArgument), Minimize, StringComparison.Ordinal);
         int minInSampleTrades = ToolArgs.NonNegativeWithin(arguments, MinTradesArgument, _limits.DefaultMinInSampleTrades, NoUpperBound);
+        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? false;
         JsonElement windowsElement = arguments.GetProperty(WindowsArgument);
         bool hasGenerator = windowsElement.TryGetProperty(GeneratorKey, out JsonElement generator);
         bool hasList = windowsElement.TryGetProperty(ListKey, out JsonElement list);
@@ -261,7 +250,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
         }
 
         return ToolJson.Build(writer => Write(
-            writer, resolved.Symbol, timeFrame, objective, minimize, hasList ? ModeList : mode.ToString(), grid, results, firstDay, lastDay, hasGenerator ? barCount : null, minInSampleTrades, warnings));
+            writer, resolved.Symbol, timeFrame, objective, minimize, hasList ? ModeList : mode.ToString(), grid, results, firstDay, lastDay, hasGenerator ? barCount : null, minInSampleTrades, warnings, compactReport));
     }
 
     // ---- windows -----------------------------------------------------------------------------------------------------------------------
@@ -384,7 +373,8 @@ internal sealed class RunWalkForwardTool : IMcpTool
         DateOnly? lastDay,
         int? barCount,
         int minInSampleTrades,
-        IReadOnlyList<string> warnings)
+        IReadOnlyList<string> warnings,
+        bool compactReport)
     {
         writer.WriteStartObject();
         writer.WriteString("symbol", symbol);
@@ -409,7 +399,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
         writer.WriteStartArray("windows");
         foreach (WindowResult result in results)
         {
-            WriteWindow(writer, objective, grid, result);
+            WriteWindow(writer, objective, grid, result, compactReport);
         }
 
         writer.WriteEndArray();
@@ -419,7 +409,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
         writer.WriteEndObject();
     }
 
-    private static void WriteWindow(Utf8JsonWriter writer, ObjectiveMetric objective, BacktestParameterGrid grid, WindowResult result)
+    private static void WriteWindow(Utf8JsonWriter writer, ObjectiveMetric objective, BacktestParameterGrid grid, WindowResult result, bool compactReport)
     {
         PlannedWindow window = result.Window;
         writer.WriteStartObject();
@@ -452,19 +442,48 @@ internal sealed class RunWalkForwardTool : IMcpTool
             writer.WriteNull("bestParameters");
         }
 
-        WritePart(writer, "is", objective, result.InSample?.Report);
-        WritePart(writer, "oos", objective, result.OutOfSample?.Report);
+        List<(string Name, MetricStatus Status)>? unavailable = compactReport && result.Best >= 0 ? new List<(string, MetricStatus)>() : null;
+        WritePart(writer, "is", objective, result.InSample?.Report, compactReport, unavailable);
+        WritePart(writer, "oos", objective, result.OutOfSample?.Report, compactReport, unavailable);
+        if (unavailable is not null)
+        {
+            BacktestSweep.WriteUnavailableMetrics(writer, unavailable);
+        }
+
         writer.WriteEndObject();
     }
 
     /// <summary>The objective, BarSharpe, TotalReturn, MaxDrawdown and trade count of one part of a window, each null when the part has no report.</summary>
-    private static void WritePart(Utf8JsonWriter writer, string prefix, ObjectiveMetric objective, BacktestReport? report)
+    private static void WritePart(
+        Utf8JsonWriter writer,
+        string prefix,
+        ObjectiveMetric objective,
+        BacktestReport? report,
+        bool compactReport,
+        List<(string Name, MetricStatus Status)>? unavailable)
     {
-        BacktestSweep.WriteMetric(writer, prefix + "Objective", report is null ? null : objective.Read(report));
-        BacktestSweep.WriteMetric(writer, prefix + "BarSharpe", BacktestSweep.Metric(report, nameof(BacktestReport.BarSharpe)));
-        BacktestSweep.WriteMetric(writer, prefix + "TotalReturn", BacktestSweep.Metric(report, nameof(BacktestReport.TotalReturn)));
-        BacktestSweep.WriteMetric(writer, prefix + "MaxDrawdown", BacktestSweep.Metric(report, nameof(BacktestReport.MaxDrawdown)));
+        WriteMetric(writer, prefix + "Objective", report is null ? null : objective.Read(report), compactReport, unavailable);
+        WriteMetric(writer, prefix + "BarSharpe", BacktestSweep.Metric(report, nameof(BacktestReport.BarSharpe)), compactReport, unavailable);
+        WriteMetric(writer, prefix + "TotalReturn", BacktestSweep.Metric(report, nameof(BacktestReport.TotalReturn)), compactReport, unavailable);
+        WriteMetric(writer, prefix + "MaxDrawdown", BacktestSweep.Metric(report, nameof(BacktestReport.MaxDrawdown)), compactReport, unavailable);
         ToolJson.WriteNullableNumber(writer, prefix + "TotalTrades", (long?)report?.TotalTrades);
+    }
+
+    private static void WriteMetric(
+        Utf8JsonWriter writer,
+        string name,
+        MetricValue? metric,
+        bool compactReport,
+        List<(string Name, MetricStatus Status)>? unavailable)
+    {
+        if (compactReport)
+        {
+            BacktestSweep.WriteCompactMetric(writer, name, metric, unavailable);
+        }
+        else
+        {
+            BacktestSweep.WriteMetric(writer, name, metric);
+        }
     }
 
     private static void WriteAggregate(Utf8JsonWriter writer, IReadOnlyList<WindowResult> results)

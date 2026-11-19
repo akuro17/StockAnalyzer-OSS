@@ -45,15 +45,8 @@ internal sealed class GetChartDrawingsTool : IMcpTool
     public string Name => "sa_get_chart_drawings";
 
     public string Description =>
-        "Returns the drawings the user saved in StockAnalyzer for a symbol on a daily, weekly or monthly chart: the layers and every object (type, panel, control points, saved style and parameters). " +
-        "For the drawing tools sa_calculate_drawing_values can calculate (time-based control points), calculatedValues holds the values the chart's Data tab shows, evaluated at the last stored bar " +
-        $"(or the last bar on or before endDate; the bars read are at most {_limits.MaxCandlesPerRequest}), using the options saved with the drawing, and valuesSupported is true. " +
-        "Every other object (text, rectangles, objects drawn on a non-time axis ...) is returned with its full metadata and control points, valuesSupported false and calculatedValues empty. " +
-        "A LongPosition or ShortPosition whose Entry, Stop and Target are not in the valid order is still calculated and a warning says so. " +
-        "With endDate every object also carries lookAheadSuspect: true when a control point is dated after endDate (compared by calendar date), so the points and calculatedValues of that object use a later point; the object is still returned and a warning counts them. " +
-        "The file stores no creation time, so false does not prove the object was known at endDate. Without endDate nothing is checked and the field is absent. " +
-        "No drawing file: drawingFileFound false. A legacy (V1) file is not read and not converted: legacyFormat true, no layers or objects, and a warning tells to open and save it in the application. " +
-        "context selects the drawing context of the file (default Standard); availableContexts lists the ones the file holds. Read-only.";
+        "Returns saved chart layers, drawing objects, control points, and Data-tab calculatedValues (for supported time-based tools, with optional as-of lookAheadSuspect detection) for one symbol/timeFrame/context. Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

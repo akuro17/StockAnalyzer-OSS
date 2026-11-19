@@ -1,5 +1,8 @@
 using System;
+using System.ComponentModel;
 using System.IO;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels.Dialogs;
@@ -173,5 +176,140 @@ public sealed class McpServerSettingsViewModelTests : IDisposable
         Assert.True(mcpIndex >= 0, "McpServer category should exist");
         Assert.Equal(backtestIndex + 1, mcpIndex);
         Assert.Empty(categories[backtestIndex].Children);
+    }
+
+    [Fact]
+    public async Task ViewModel_ToolsetCheckboxesAndValidation_WorkEndToEnd()
+    {
+        var manager = new McpServerSettingsManager(_testFilePath);
+        using var vm = new McpServerSettingsViewModel(manager);
+        await vm.LoadTask;
+
+        Assert.True(vm.UseAllToolsets);
+        Assert.Equal(string.Empty, vm.Toolset);
+        Assert.True(string.IsNullOrEmpty(vm.ToolsetError));
+
+        vm.UseCoreToolset = true;
+        vm.UseBacktestToolset = true;
+
+        Assert.False(vm.UseAllToolsets);
+        Assert.Equal("core,backtest", vm.Toolset);
+        Assert.True(vm.IsModified);
+        Assert.True(vm.IsValid);
+        Assert.Equal("--toolset core,backtest", vm.LaunchArgumentsPreview);
+
+        // Invalid toolset profile fails validation
+        vm.Toolset = "core,unknown_profile";
+        Assert.False(vm.IsValid);
+        Assert.False(string.IsNullOrEmpty(vm.ToolsetError));
+
+        await vm.SaveChangesAsync();
+        Assert.False(string.IsNullOrEmpty(vm.ValidationMessage));
+
+        // Clicking All restores empty default and clears domain flags
+        vm.UseAllToolsets = true;
+        Assert.Equal(string.Empty, vm.Toolset);
+        Assert.False(vm.UseCoreToolset);
+        Assert.False(vm.UseBacktestToolset);
+        Assert.True(vm.IsValid);
+    }
+
+    [Fact]
+    public async Task ViewModel_StopAndRestartCommands_ManageServerLifecycleAndPersistValidChanges()
+    {
+        var manager = new McpServerSettingsManager(_testFilePath);
+        var processService = new FakeMcpServerProcessService(manager);
+        using var vm = new McpServerSettingsViewModel(manager, processService: processService);
+        await vm.LoadTask;
+
+        Assert.False(vm.IsServerRunning);
+        Assert.False(vm.StopServerCommand.CanExecute(null));
+        Assert.True(vm.RestartServerCommand.CanExecute(null));
+
+        vm.EnableDiscussion = true;
+        vm.Toolset = "core,screener";
+
+        // Restart saves pending valid edits first and starts with updated arguments
+        await vm.RestartServerCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsServerOperationInProgress);
+        Assert.False(string.IsNullOrEmpty(vm.ServerActionMessage));
+        Assert.Equal(1, processService.RestartCallCount);
+        Assert.True(vm.IsServerRunning);
+        Assert.Equal(4242, vm.ServerProcessId);
+        Assert.Contains("4242", vm.ServerStatusText, StringComparison.Ordinal);
+        Assert.Equal("--enable-discussion --toolset core,screener", processService.LastArguments);
+        Assert.Contains("--enable-discussion --toolset core,screener", vm.LaunchArgumentsDisplay, StringComparison.Ordinal);
+        Assert.False(vm.IsModified);
+        Assert.True(vm.StopServerCommand.CanExecute(null));
+
+        // Stop shuts down managed process
+        vm.StopServerCommand.Execute(null);
+        Assert.False(vm.IsServerOperationInProgress);
+        Assert.Equal(1, processService.StopCallCount);
+        Assert.False(vm.IsServerRunning);
+        Assert.Null(vm.ServerProcessId);
+        Assert.False(vm.StopServerCommand.CanExecute(null));
+
+        // Invalid settings prevent restart
+        vm.Toolset = "not_a_profile";
+        await vm.RestartServerCommand.ExecuteAsync(null);
+        Assert.False(vm.IsServerOperationInProgress);
+        Assert.Equal(1, processService.RestartCallCount);
+        Assert.False(string.IsNullOrEmpty(vm.ValidationMessage));
+    }
+
+    private sealed class FakeMcpServerProcessService : IMcpServerProcessService
+    {
+        private static readonly string FakeExePath = OperatingSystem.IsWindows() ? "StockAnalyzer.McpServer.exe" : "StockAnalyzer.McpServer";
+        private readonly IMcpServerSettingsManager _settingsManager;
+
+        public FakeMcpServerProcessService(IMcpServerSettingsManager settingsManager)
+        {
+            _settingsManager = settingsManager;
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public bool IsRunning { get; private set; }
+        public int? ProcessId => IsRunning ? 4242 : null;
+        public int StopCallCount { get; private set; }
+        public int RestartCallCount { get; private set; }
+        public string LastArguments { get; private set; } = string.Empty;
+
+        public string? ResolveExecutablePath() => FakeExePath;
+
+        public async Task<McpServerLaunchResult> StartServerAsync(CancellationToken cancellationToken = default)
+        {
+            var settings = await _settingsManager.LoadAsync(cancellationToken).ConfigureAwait(false);
+            LastArguments = settings.BuildLaunchArguments();
+            IsRunning = true;
+            NotifyState();
+            return new McpServerLaunchResult(true, ProcessId, "Started.", FakeExePath, LastArguments);
+        }
+
+        public async Task<McpServerLaunchResult> RestartServerAsync(CancellationToken cancellationToken = default)
+        {
+            RestartCallCount++;
+            IsRunning = false;
+            return await StartServerAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public void StopServer()
+        {
+            StopCallCount++;
+            IsRunning = false;
+            NotifyState();
+        }
+
+        public void Dispose()
+        {
+        }
+
+        private void NotifyState([CallerMemberName] string? _ = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRunning)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ProcessId)));
+        }
     }
 }

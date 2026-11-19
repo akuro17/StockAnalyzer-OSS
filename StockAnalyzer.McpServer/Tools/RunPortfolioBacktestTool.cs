@@ -46,32 +46,29 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly BacktestConditionBinder _conditions;
     private readonly McpLimits _limits;
+    private readonly McpResultHandleStore _resultHandles;
 
     public RunPortfolioBacktestTool(
         IReadOnlyStockAnalyzerGateway gateway,
         ITickerGroupResolver groupResolver,
         SymbolResolver symbols,
         BacktestConditionBinder conditions,
-        McpLimits limits)
+        McpLimits limits,
+        McpResultHandleStore? resultHandles = null)
     {
         _gateway = gateway;
         _groupResolver = groupResolver;
         _symbols = symbols;
         _conditions = conditions;
         _limits = limits;
+        _resultHandles = resultHandles ?? new McpResultHandleStore();
     }
 
     public string Name => "sa_run_portfolio_backtest";
 
     public string Description =>
-        "Runs an independent-sleeves portfolio backtest across multiple symbols with equal capital allocation, reporting individual sleeve results and composite portfolio performance. " +
-        "Give either symbols (1 to " + _limits.MaxPortfolioBacktestSymbols + " tickers) or groupId (mutually exclusive). " +
-        "Give either conditions or templateId (mutually exclusive). " +
-        "Capital is equally divided across sleeves: sleeveCapital = initialCapital / N (decimal precision). " +
-        "Each sleeve runs independently through the core backtest engine. Symbols with insufficient data remain as cash. " +
-        "Outputs individual sleeve metrics and composite portfolio equity, return, drawdown and pooled trade statistics. " +
-        "allocation defaults to 'Equal'; maxConcurrentPositions is not accepted in the independent sleeves model. " +
-        $"{BacktestReportJson.CompactReportArgument} true writes each symbol's five metrics as bare numbers (null when not Valid) and adds unavailableMetrics [{{name, status, reason}}] and metricUnits to every symbol result; the numbers are the same.";
+        $"Runs an independent-sleeves equal-capital portfolio backtest across 1..{_limits.MaxPortfolioBacktestSymbols} symbols (symbols, groupId, or {McpResultHandleStore.SymbolsFromResultIdArgument}) using conditions or templateId; supports {BacktestReportJson.CompactReportArgument}. Read-only (heavy). " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => true;
 
@@ -79,21 +76,22 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         "{\"symbols\":[\"AAPL\",\"MSFT\"],\"timeFrame\":\"D1\",\"conditions\":{\"entryLong\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"GreaterThan\",\"right\":{\"price\":\"Close\",\"offset\":1}},\"exitLong\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"LessThan\",\"right\":{\"price\":\"Close\",\"offset\":1}}}}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .StringArray(SymbolsArgument, $"Symbols to test (1 to {_limits.MaxPortfolioBacktestSymbols}). Mutually exclusive with groupId.", minItems: 1)
-        .String(GroupIdArgument, "Guid of a saved ticker group (from sa_list_ticker_groups) to test. Mutually exclusive with symbols.")
+        .StringArray(SymbolsArgument, $"Symbols to test (1 to {_limits.MaxPortfolioBacktestSymbols}). Mutually exclusive with {GroupIdArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.", minItems: 1)
+        .String(GroupIdArgument, $"Guid of a saved ticker group (from sa_list_ticker_groups) to test. Mutually exclusive with {SymbolsArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.")
+        .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle id from sa_run_screener or sa_filter_tickers ({McpResultHandleStore.StoreResultArgument} true). Mutually exclusive with {SymbolsArgument} and {GroupIdArgument}.")
         .FreeObject(ConditionsArgument, "The entry, exit and reverse conditions. Exactly one of conditions and templateId.")
         .String(TemplateIdArgument, "Id of a saved backtest-condition template (sa_list_templates with templateType backtestCondition). Exactly one of conditions and templateId.")
         .String(AllocationArgument, "Capital allocation model across symbols. Only 'Equal' is supported.", allowedValues: new[] { "Equal" })
         .String(StartArgument, "First evaluated day, yyyy-MM-dd. Default: start of stored history.")
         .String(EndArgument, "Last evaluated day, yyyy-MM-dd. Default: latest stored bar.")
         .String(TimeFrameArgument, $"Time frame of the bars ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
-        .FreeObject(BacktestSettingsBinder.AccountArgument, $"Account capital, cost, sizing and margin settings, and the execution-realism keys ({string.Join(", ", McpBacktestSettingsExposure.ExecutionRealismKeys)}), as for sa_run_backtest. initialCapital represents total portfolio funds.")
+        .FreeObject(BacktestSettingsBinder.AccountArgument, "Account capital, cost, sizing, margin and execution-realism settings (applied equally per sleeve).")
         .FreeObject(BacktestSettingsBinder.RiskArgument, "Optional stop-loss, take-profit and dynamic exits: {stopLossRatio, takeProfitRatio, dynamicExits}.")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings: {annualRiskFreeRate, annualMar, annualPeriodsD1, bootstrapSeed, bootstrapIterations}.")
         .Integer(MaxTradesPerSymbolArgument, $"Most trades to list per symbol (default 0; maximum {_limits.MaxReturnedTrades}).", defaultValue: 0, minimum: 0, maximum: _limits.MaxReturnedTrades)
         .String(EquityCurveArgument, "Add composite equity curve: None (default), Weekly or Monthly.", allowedValues: AllowedEquityCurveResolutions)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept symbols that are not in the ticker list but have stored bars. Default false.")
-        .Boolean(BacktestReportJson.CompactReportArgument, "Per symbol, write totalReturn, winRate, profitFactor, annualizedSharpe and maxDrawdown as bare numbers (null when not Valid) and add unavailableMetrics / metricUnits to the symbol result. " + BacktestReportJson.CompactReportDescription)
+        .Boolean(BacktestReportJson.CompactReportArgument, BacktestReportJson.CompactReportDescription)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -602,18 +600,27 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
     {
         IReadOnlyList<string>? requested = ToolArgs.StringArray(arguments, SymbolsArgument);
         string? groupIdRaw = ToolArgs.String(arguments, GroupIdArgument)?.Trim();
+        string? resultId = ToolArgs.String(arguments, McpResultHandleStore.SymbolsFromResultIdArgument);
 
-        if (requested is not null && groupIdRaw is not null)
+        int sourceCount = (requested is not null ? 1 : 0) + (groupIdRaw is not null ? 1 : 0) + (resultId is not null ? 1 : 0);
+        if (sourceCount > 1)
         {
-            throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{SymbolsArgument}' and '{GroupIdArgument}' cannot be combined.", GroupIdArgument, "Send one of them.");
+            string parameter = resultId is not null ? McpResultHandleStore.SymbolsFromResultIdArgument : GroupIdArgument;
+            throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{SymbolsArgument}', '{GroupIdArgument}' and '{McpResultHandleStore.SymbolsFromResultIdArgument}' cannot be combined.", parameter, "Send one of them.");
         }
 
-        if (requested is null && groupIdRaw is null)
+        if (sourceCount == 0)
         {
-            throw new ToolException(ToolErrorCodes.InvalidArgument, $"Give exactly one of '{SymbolsArgument}' or '{GroupIdArgument}'.", SymbolsArgument);
+            throw new ToolException(ToolErrorCodes.InvalidArgument, $"Give exactly one of '{SymbolsArgument}', '{GroupIdArgument}' or '{McpResultHandleStore.SymbolsFromResultIdArgument}'.", SymbolsArgument);
         }
 
         var warnings = new List<string>();
+
+        if (resultId is not null)
+        {
+            IReadOnlyList<string> stored = _resultHandles.ResolveSymbols(resultId, 1, _limits.MaxPortfolioBacktestSymbols);
+            return (stored.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), warnings);
+        }
 
         if (requested is not null)
         {

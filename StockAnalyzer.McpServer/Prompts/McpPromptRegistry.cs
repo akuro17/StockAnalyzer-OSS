@@ -195,13 +195,13 @@ internal sealed class McpPromptRegistry
         var text = new StringBuilder();
         text.AppendLine($"Diagnose {symbol} on the {frame} time frame from the stored bars of the StockAnalyzer MCP server. Use only the tools below, in this order, and take every number from a tool result (never from a picture).");
         text.AppendLine();
-        text.AppendLine($"1. sa_get_candles with symbol {symbol} and timeFrame {frame}: the latest bars. Note the last bar date; every later step uses it as the end of the data and nothing after it may be assumed.");
-        text.AppendLine("2. sa_calculate_indicators on the same symbol and time frame: a trend average pair (for example SMA or EMA), a momentum oscillator (for example RSI), MACD and a volatility measure (for example ATR). Type names and parameters come from sa_get_capabilities.");
+        text.AppendLine($"1. sa_get_candles with symbol {symbol} and timeFrame {frame}: the latest bars. Note the last bar date; every later step uses it as the end of the data and nothing after it may be assumed. Pass compactRows true and decimalPlaces 4 to reduce token usage.");
+        text.AppendLine("2. sa_calculate_indicators on the same symbol and time frame: a trend average pair (for example SMA or EMA), a momentum oscillator (for example RSI), MACD and a volatility measure (for example ATR). Type names and parameters come from sa_get_capabilities. Pass includeSeries false, summary true and decimalPlaces 4 to receive compact statistics instead of full bar arrays.");
         text.AppendLine("3. sa_analyze_market_structure: the swing highs and lows with the date each was confirmed, and the current structure (higher highs and lows, or the reverse).");
         text.AppendLine("4. sa_find_support_resistance: the nearest levels above and below the last close.");
         text.AppendLine("5. sa_detect_candle_patterns and sa_detect_chart_patterns: patterns that ended on or near the last bar.");
         text.AppendLine("6. sa_detect_divergences: divergences between price and the oscillators of step 2.");
-        text.AppendLine("7. Optional: sa_render_chart_image with the same symbol and time frame, only as a reading aid; the numbers still come from the tools above.");
+        text.AppendLine("7. Optional: sa_render_chart_image with the same symbol and time frame, only as a reading aid; the numbers still come from the tools above. Pass includeBarCoordinates false when calling sa_render_chart_image.");
         text.AppendLine();
         text.AppendLine("Report, in this order: trend (direction and strength, with the average values and the date), momentum, key levels (price and distance from the last close in percent), patterns and divergences (with their dates), and the risks that would invalidate the reading (a level that, if broken, changes the picture).");
         text.AppendLine("State the unit of every number (price, percent, oscillator value) and the date it refers to. If a tool returns an error or no data, say so and continue with the remaining steps instead of filling the gap.");
@@ -227,8 +227,8 @@ internal sealed class McpPromptRegistry
         }
 
         string group = groupId ?? "each chosen group";
-        text.AppendLine($"2. sa_calculate_market_breadth with groupId {group}, timeFrame {DefaultTimeFrame} and lookbackBars {bars}: advancers and decliners, the share above its moving average, new highs and lows, and the McClellan values. Compare the groups on the same dates.");
-        text.AppendLine($"3. sa_calculate_relative_performance with a benchmark symbol that you choose as symbol (for example the index ETF of the market) and the strongest and weakest members of {group} as comparisonSymbols, timeFrame {DefaultTimeFrame} and lookbackBars {bars}. Choose the mode (Performance, Ratio, ZScore or Spread; the tool default is Performance) that answers the question best. Name the benchmark and the mode you chose and why.");
+        text.AppendLine($"2. sa_calculate_market_breadth with groupId {group}, timeFrame {DefaultTimeFrame} and lookbackBars {bars}: advancers and decliners, the share above its moving average, new highs and lows, and the McClellan values. Compare the groups on the same dates. Pass outputTailCount 20 to return only the recent breadth tail.");
+        text.AppendLine($"3. sa_calculate_relative_performance with a benchmark symbol that you choose as symbol (for example the index ETF of the market) and the strongest and weakest members of {group} as comparisonSymbols, timeFrame {DefaultTimeFrame} and lookbackBars {bars}. Choose the mode (Performance, Ratio, ZScore or Spread; the tool default is Performance) that answers the question best. Name the benchmark and the mode you chose and why. Pass outputTailCount 20 and decimalPlaces 4.");
         text.AppendLine();
         text.AppendLine("Report: for each group, the breadth trend (improving, stable or deteriorating, with the start and end values and dates), the leaders and laggards by relative strength, and the rotation you see (which groups gain strength while others lose it). Mark a conclusion as weak when the groups hold few symbols or the windows contain missing data.");
         text.AppendLine("State the unit of every number and the first and last date of the window. If a tool returns an error, say so and continue.");
@@ -245,7 +245,7 @@ internal sealed class McpPromptRegistry
         text.AppendLine($"Audit the backtest template {templateId} on {symbol} for overfitting, using the StockAnalyzer MCP server. Use only the tools below, in this order; take every number from a tool result.");
         text.AppendLine();
         text.AppendLine($"1. sa_get_template_detail with templateType backtestCondition and templateId {templateId}: the entry and exit conditions, their numeric parameters and the risk management. Count the free numeric parameters.");
-        text.AppendLine($"2. sa_run_backtest with symbol {symbol}, timeFrame {DefaultTimeFrame} and templateId {templateId} over the whole stored history: the baseline (number of trades, win rate, profit factor, maximum drawdown, total return).");
+        text.AppendLine($"2. sa_run_backtest with symbol {symbol}, timeFrame {DefaultTimeFrame} and templateId {templateId} over the whole stored history: the baseline (number of trades, win rate, profit factor, maximum drawdown, total return). Pass compactReport true and maxReturnedTrades 0.");
         text.AppendLine($"3. sa_run_walk_forward_analysis with symbol {symbol}, the conditions of step 1 with {{\"$param\": name}} placeholders where the numbers go, parameterRanges (for each placeholder a name, start, end and step; the range must contain the template's own value with room on both sides), an objective chosen from the list that sa_get_capabilities gives, and windows (a generator with mode Rolling or Anchored, inSampleBars, outOfSampleBars and stepBars, or a list of dated windows). Compare the in-sample and out-of-sample results window by window.");
         text.AppendLine("4. sa_optimize_backtest with the same conditions, parameterRanges and objective, and an outOfSampleStartDate that leaves a meaningful part of the history out of sample: how much the best parameters differ from the template and how fast the result falls when a parameter moves a little.");
         text.AppendLine();

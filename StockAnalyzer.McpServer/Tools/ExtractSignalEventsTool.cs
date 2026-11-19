@@ -34,6 +34,14 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
     private const string OrderArgument = "order";
     private const string IncludeBooleanSeriesArgument = "includeBooleanSeries";
     private const string IncludeEventStudyArgument = "includeEventStudy";
+    private const string CompactRowsArgument = "compactRows";
+    private const string EventColumnsKey = "eventColumns";
+    private const string EventRowsKey = "eventRows";
+
+    private static readonly string[] EventColumns =
+    {
+        "barIndex", "timestamp", "close", "barsSincePreviousEvent", "comparisons", "forwardReturns", "forwardReturnsFromNextOpen", "lookAheadDiagnostic",
+    };
 
     private const string EveryTrueBarMode = "EveryTrueBar";
     private const string FirstTrueBarOfRunMode = "FirstTrueBarOfRun";
@@ -68,12 +76,8 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
     public string Name => "sa_extract_signal_events";
 
     public string Description =>
-        "Extracts bars where a user-defined condition evaluates to true (same syntax as sa_run_backtest conditions root). " +
-        "Returns the matching bars with timestamps, close prices, leaf-level comparison breakdowns, elapsed bars since previous event, " +
-        "forward return diagnostics (close-to-close and next-open-to-close), and optional full boolean series across the evaluation window. " +
-        $"{IncludeEventStudyArgument} true (needs {ForwardBarsArgument}) adds eventStudy: for every horizon and both bases, over ALL events of the call (also those {MaxEventsArgument} cuts off), " +
-        "count, missingCount (events without that horizon), mean, median, stdDev (population, divisor n), min, max and positiveRatio (share of returns above 0); the figures are ratios (0.05 = 5%) and null when there is no value. " +
-        "Events of EveryTrueBar overlap, so the figures are descriptive, not a significance test.";
+        $"Extracts bars matching a backtest condition tree (supports {string.Join(", ", ConditionOperatorExpander.ExpandedComparisonNames)}), with leaf comparisons, forward return diagnostics, optional {IncludeEventStudyArgument}, booleanSeries, and {CompactRowsArgument}. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
@@ -92,6 +96,7 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
         .Integer(MaxEventsArgument, $"Most events to return. Default and maximum {_limits.MaxReturnedEvents}.", defaultValue: _limits.MaxReturnedEvents, minimum: 1, maximum: _limits.MaxReturnedEvents)
         .String(OrderArgument, $"Output ordering: {OldestFirstOrder} (default) or {NewestFirstOrder}.", allowedValues: OrderValues)
         .Boolean(IncludeBooleanSeriesArgument, "Include boolean series for every bar in the evaluation window. Default false.")
+        .Boolean(CompactRowsArgument, $"true returns 'events' as [] and writes '{EventColumnsKey}' plus '{EventRowsKey}' (one row per event, comparisons as [path, left, right, result]). Default false.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();
 
@@ -119,6 +124,7 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
 
         int maxEvents = ToolArgs.PositiveWithin(arguments, MaxEventsArgument, _limits.MaxReturnedEvents, _limits.MaxReturnedEvents);
         bool includeBooleanSeries = ToolArgs.Boolean(arguments, IncludeBooleanSeriesArgument) ?? false;
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
 
         IReadOnlyList<int> forwardBars = ParseForwardBars(arguments);
         bool includeEventStudy = ToolArgs.Boolean(arguments, IncludeEventStudyArgument) ?? false;
@@ -336,52 +342,74 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
             }
 
             writer.WriteStartArray("events");
-            foreach (ExtractedSignalEvent ev in returnedEvents)
+            if (!compactRows)
             {
-                writer.WriteStartObject();
-                writer.WriteNumber("barIndex", ev.BarIndex);
-                writer.WriteString("timestamp", ev.Timestamp);
-                writer.WriteNumber("close", ev.Close);
-
-                if (ev.BarsSincePreviousEvent.HasValue)
-                {
-                    writer.WriteNumber("barsSincePreviousEvent", ev.BarsSincePreviousEvent.Value);
-                }
-                else
-                {
-                    writer.WriteNull("barsSincePreviousEvent");
-                }
-
-                writer.WriteStartArray("comparisons");
-                foreach (LeafComparisonDetail comp in ev.Comparisons)
+                foreach (ExtractedSignalEvent ev in returnedEvents)
                 {
                     writer.WriteStartObject();
-                    writer.WriteString("path", comp.Path);
-                    if (comp.Left.HasValue) writer.WriteNumber("left", comp.Left.Value); else writer.WriteNull("left");
-                    if (comp.Right.HasValue) writer.WriteNumber("right", comp.Right.Value); else writer.WriteNull("right");
-                    writer.WriteBoolean("result", comp.Result);
+                    writer.WriteNumber("barIndex", ev.BarIndex);
+                    writer.WriteString("timestamp", ev.Timestamp);
+                    writer.WriteNumber("close", ev.Close);
+
+                    if (ev.BarsSincePreviousEvent.HasValue)
+                    {
+                        writer.WriteNumber("barsSincePreviousEvent", ev.BarsSincePreviousEvent.Value);
+                    }
+                    else
+                    {
+                        writer.WriteNull("barsSincePreviousEvent");
+                    }
+
+                    writer.WriteStartArray("comparisons");
+                    foreach (LeafComparisonDetail comp in ev.Comparisons)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteString("path", comp.Path);
+                        if (comp.Left.HasValue) writer.WriteNumber("left", comp.Left.Value); else writer.WriteNull("left");
+                        if (comp.Right.HasValue) writer.WriteNumber("right", comp.Right.Value); else writer.WriteNull("right");
+                        writer.WriteBoolean("result", comp.Result);
+                        writer.WriteEndObject();
+                    }
+                    writer.WriteEndArray();
+
+                    WriteForwardReturnObject(writer, "forwardReturns", ev.ForwardReturns);
+                    WriteForwardReturnObject(writer, "forwardReturnsFromNextOpen", ev.ForwardReturnsFromNextOpen);
+
+                    writer.WriteBoolean("lookAheadDiagnostic", true);
                     writer.WriteEndObject();
                 }
-                writer.WriteEndArray();
-
-                writer.WriteStartObject("forwardReturns");
-                foreach ((string k, decimal? val) in ev.ForwardReturns)
-                {
-                    if (val.HasValue) writer.WriteNumber(k, val.Value); else writer.WriteNull(k);
-                }
-                writer.WriteEndObject();
-
-                writer.WriteStartObject("forwardReturnsFromNextOpen");
-                foreach ((string k, decimal? val) in ev.ForwardReturnsFromNextOpen)
-                {
-                    if (val.HasValue) writer.WriteNumber(k, val.Value); else writer.WriteNull(k);
-                }
-                writer.WriteEndObject();
-
-                writer.WriteBoolean("lookAheadDiagnostic", true);
-                writer.WriteEndObject();
             }
             writer.WriteEndArray();
+
+            if (compactRows)
+            {
+                ToolJson.WriteStringArray(writer, EventColumnsKey, EventColumns);
+                writer.WriteStartArray(EventRowsKey);
+                foreach (ExtractedSignalEvent ev in returnedEvents)
+                {
+                    writer.WriteStartArray();
+                    writer.WriteNumberValue(ev.BarIndex);
+                    writer.WriteStringValue(ev.Timestamp);
+                    writer.WriteNumberValue(ev.Close);
+                    ToolJson.WriteNullableValue(writer, ev.BarsSincePreviousEvent);
+                    writer.WriteStartArray();
+                    foreach (LeafComparisonDetail comp in ev.Comparisons)
+                    {
+                        writer.WriteStartArray();
+                        writer.WriteStringValue(comp.Path);
+                        ToolJson.WriteNullableValue(writer, comp.Left);
+                        ToolJson.WriteNullableValue(writer, comp.Right);
+                        writer.WriteBooleanValue(comp.Result);
+                        writer.WriteEndArray();
+                    }
+                    writer.WriteEndArray();
+                    WriteForwardReturnObjectValue(writer, ev.ForwardReturns);
+                    WriteForwardReturnObjectValue(writer, ev.ForwardReturnsFromNextOpen);
+                    writer.WriteBooleanValue(true);
+                    writer.WriteEndArray();
+                }
+                writer.WriteEndArray();
+            }
 
             if (includeEventStudy)
             {
@@ -488,6 +516,28 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
         }
 
         return result;
+    }
+
+    private static void WriteForwardReturnObject(Utf8JsonWriter writer, string propertyName, IReadOnlyDictionary<string, decimal?> returns)
+    {
+        writer.WriteStartObject(propertyName);
+        WriteForwardReturnEntries(writer, returns);
+        writer.WriteEndObject();
+    }
+
+    private static void WriteForwardReturnObjectValue(Utf8JsonWriter writer, IReadOnlyDictionary<string, decimal?> returns)
+    {
+        writer.WriteStartObject();
+        WriteForwardReturnEntries(writer, returns);
+        writer.WriteEndObject();
+    }
+
+    private static void WriteForwardReturnEntries(Utf8JsonWriter writer, IReadOnlyDictionary<string, decimal?> returns)
+    {
+        foreach ((string k, decimal? val) in returns)
+        {
+            if (val.HasValue) writer.WriteNumber(k, val.Value); else writer.WriteNull(k);
+        }
     }
 
     private sealed record ExtractedSignalEvent(

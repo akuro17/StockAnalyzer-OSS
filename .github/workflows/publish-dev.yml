@@ -99,6 +99,24 @@ jobs:
         }
         Write-Host "Verified docs/MCP_SERVER_COMMAND_REFERENCE.md in publish directory." -ForegroundColor Green
 
+    - name: Ensure MCP Tool Documentation in publish output
+      run: |
+        $dest = "./publish/docs/MCP"
+        if (-not (Test-Path (Join-Path $dest "README.md"))) {
+          if (Test-Path "docs/MCP/README.md") {
+            New-Item -ItemType Directory -Path $dest -Force | Out-Null
+            Copy-Item -Path "docs/MCP/*" -Destination $dest -Recurse -Force
+            Write-Host "Copied docs/MCP to $dest"
+          } else {
+            Write-Error "docs/MCP source directory not found in repository."
+            exit 1
+          }
+        }
+        if (-not (Test-Path (Join-Path $dest "README.md"))) {
+          Write-Error "docs/MCP/README.md is missing from $dest"; exit 1
+        }
+        Write-Host "Verified docs/MCP in publish directory." -ForegroundColor Green
+
     - name: Create ZIP archive
       run: |
         Compress-Archive -Path ./publish/* -DestinationPath ./StockAnalyzer-${{ matrix.rid }}-${{ matrix.mode }}.zip

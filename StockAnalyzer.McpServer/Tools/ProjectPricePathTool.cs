@@ -64,11 +64,8 @@ internal sealed class ProjectPricePathTool : IMcpTool
         "so consecutive dates are exactly 7 days (W1) or one calendar month (MN1) apart.";
 
     public string Description =>
-        $"Generates multi-step mathematical price projection trajectories (ARIMA, FFT, SSA, HMM) with lower/upper bands (the projected value plus or minus confidenceMultiplier model standard deviations; " +
-        $"a model-based band, not a statistical confidence interval of the price). " +
-        $"{McpDisclaimerConstants.ResearchNotAdvice} Causal as of endDate: a projection is computed only from bars dated on or before endDate, so later bars never change it. " +
-        $"Future dates of D1 are consecutive calendar days from asOfDate; for W1 and MN1 they are calendar period starts (Monday of each week, 1st of each month). {PeriodStartDateNote} " +
-        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds the written value, lower and upper of every point (away from zero at the midpoint); the projection and its bands are calculated unrounded.";
+        $"Generates causal multi-step mathematical price projections (Arima, Fft, Ssa, Hmm) with model bands (+/- confidenceMultiplier std devs) and {SeriesOutputOptions.DecimalPlacesArgument}. {McpDisclaimerConstants.ResearchNotAdvice} " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

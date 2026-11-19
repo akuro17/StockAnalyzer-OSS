@@ -3,6 +3,7 @@ using System.Text.Json;
 using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Limits;
 
 namespace StockAnalyzer.McpServer.Tools;
@@ -28,38 +29,29 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly ITickerGroupResolver _groupResolver;
     private readonly McpLimits _limits;
+    private readonly McpResultHandleStore _resultHandles;
     private readonly CandleWindowLoader _loader;
 
     public CalculateCrossAssetStatsTool(
         IReadOnlyStockAnalyzerGateway gateway,
         SymbolResolver symbols,
         ITickerGroupResolver groupResolver,
-        McpLimits limits)
+        McpLimits limits,
+        McpResultHandleStore? resultHandles = null)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
         _groupResolver = groupResolver ?? throw new ArgumentNullException(nameof(groupResolver));
         _limits = limits ?? throw new ArgumentNullException(nameof(limits));
+        _resultHandles = resultHandles ?? new McpResultHandleStore();
         _loader = new CandleWindowLoader(gateway);
     }
 
     public string Name => "sa_calculate_cross_asset_stats";
 
     public string Description =>
-        $"Calculates cross-asset return statistics across 2 to {_limits.MaxCrossAssetSymbols} symbols: " +
-        "correlation matrix, sample covariance matrix (N-1 degrees of freedom), and benchmark Beta, Alpha, and R2. " +
-        "Aligns bars using an inner join on common trading dates. " +
-        "With timeFrame W1 or MN1 the bars are matched by period. " +
-        $"{ReturnStatistics.PeriodStartDateNote} " +
-        "multiBarReturnCount counts the common dates whose returns cover different holding periods because a market traded on a day another was closed. " +
-        $"{HoldingPeriodModeArgument} {nameof(HoldingPeriodAlignmentMode.IncludeAll)} (default) uses those dates unchanged; {nameof(HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod)} leaves them out and calculates on the rest, " +
-        $"and then adds holdingPeriodMode and excludedMultiBarDateCount to the result (commonDateCount is what remains; with fewer than {ReturnStatistics.MinCommonDates} left the call fails with INSUFFICIENT_MARKET_DATA). " +
-        "Supports returnBasis 'SimpleReturn' (default) or 'LogReturn'. " +
-        $"{IncludeDistributionStatsArgument} true (default false) adds downsideBeta and upsideBeta to every betaAlpha entry (the OLS beta inside the dates with a strictly negative / strictly positive benchmark return; a zero benchmark return belongs to neither; null below 3 such dates or without benchmark variance there) " +
-        "and a symbolStats array in symbols order: mean, stdDev (sample, N-1), downsideDeviation (target 0), skewness (G1, 3+ returns), excessKurtosis (G2, 4+), jarqueBeraStat and jarqueBeraPValue (8+; p = exp(-JB/2)), " +
-        "cornishFisherVar95 (4+; the 5 % lower-tail return quantile with the Cornish-Fisher correction: a LOSS IS NEGATIVE, so it equals minus the positive valueAtRisk convention of sa_analyze_portfolio_risk; null where the expansion is not monotone). " +
-        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds every written statistic (away from zero at the midpoint; output only, the statistics are calculated unrounded); counts and dates are never rounded. " +
-        "Statistics that are undefined for the data (a flat series, too few returns) are null. Read-only.";
+        $"Calculates inner-joined correlation matrix, sample covariance matrix (N-1), benchmark Beta/Alpha/R2, holdingPeriodMode alignment, includeDistributionStats (cornishFisherVar95 is a negative loss vs sa_analyze_portfolio_risk positive valueAtRisk), and decimalPlaces across 2..{_limits.MaxCrossAssetSymbols} symbols. Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
@@ -67,8 +59,9 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         "{\"symbols\":[\"MSFT\",\"7203-T\"],\"timeFrame\":\"D1\",\"benchmark\":\"MSFT\",\"returnBasis\":\"SimpleReturn\"}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .StringArray(SymbolsArgument, $"Universe ticker symbols to analyze (2 to {_limits.MaxCrossAssetSymbols}). Mutually exclusive with groupId.", minItems: 2)
-        .String(GroupIdArgument, "Guid of a saved ticker group (from sa_list_ticker_groups) to analyze. Mutually exclusive with symbols.")
+        .StringArray(SymbolsArgument, $"Universe ticker symbols to analyze (2 to {_limits.MaxCrossAssetSymbols}). Mutually exclusive with {GroupIdArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.", minItems: 2)
+        .String(GroupIdArgument, $"Guid of a saved ticker group (from sa_list_ticker_groups) to analyze. Mutually exclusive with {SymbolsArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.")
+        .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle id from sa_run_screener or sa_filter_tickers ({McpResultHandleStore.StoreResultArgument} true). Mutually exclusive with {SymbolsArgument} and {GroupIdArgument}.")
         .String(BenchmarkArgument, "Optional benchmark symbol to compute Beta, Alpha, and R2 against.")
         .String(TimeFrameArgument, $"Time frame of the bars. Supported: {ToolArgs.SupportedTimeFrameNames}. Default {TimeFrame.D1}.", allowedValues: Enum.GetNames<TimeFrame>())
         .Integer(LookbackArgument, $"Stored bars each symbol evaluates, newest last. Default {_limits.DefaultCandleCount}, maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.DefaultCandleCount, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
@@ -330,10 +323,19 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
     {
         IReadOnlyList<string>? requested = ToolArgs.StringArray(arguments, SymbolsArgument);
         string? groupIdRaw = ToolArgs.String(arguments, GroupIdArgument)?.Trim();
+        string? resultId = ToolArgs.String(arguments, McpResultHandleStore.SymbolsFromResultIdArgument);
 
-        if (requested is not null && groupIdRaw is not null)
+        int sourceCount = (requested is not null ? 1 : 0) + (groupIdRaw is not null ? 1 : 0) + (resultId is not null ? 1 : 0);
+        if (sourceCount > 1)
         {
-            throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{SymbolsArgument}' and '{GroupIdArgument}' cannot be combined.", GroupIdArgument, "Send one of them, or neither for every registered symbol.");
+            string parameter = resultId is not null ? McpResultHandleStore.SymbolsFromResultIdArgument : GroupIdArgument;
+            throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{SymbolsArgument}', '{GroupIdArgument}' and '{McpResultHandleStore.SymbolsFromResultIdArgument}' cannot be combined.", parameter, "Send one of them, or neither for every registered symbol.");
+        }
+
+        if (resultId is not null)
+        {
+            IReadOnlyList<string> stored = _resultHandles.ResolveSymbols(resultId, 2, _limits.MaxCrossAssetSymbols);
+            return stored.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         if (requested is not null)

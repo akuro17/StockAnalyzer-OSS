@@ -72,29 +72,9 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
     public string Name => "sa_calculate_drawing_values";
 
     public string Description =>
-        "Calculates the values the chart's Data tab shows for a drawing tool (for example Fibonacci levels, trend line price, channel lines) " +
-        "from virtual control points, without drawing anything or saving anything. Read-only. The values are produced by the same code as the " +
-        "chart's drawing objects. Control points are chosen by anchorMode: RangeExtremes (two-point tools: the lowest low and the highest high " +
-        "inside the last anchorBars bars, the earlier bar is the first point), RangeEndpoints (the first and the last bar of that window, price taken " +
-        "from priceField; one- and two-point tools), AutoPivots (confirmed swing highs and lows of the last anchorBars bars: a two- or three-point tool takes " +
-        "the latest alternating pivots in time order, a one-point tool the latest pivot or, with pivotPreference High or Low, the latest pivot of that kind; " +
-        "pivotLeftStrength and pivotRightStrength are the bars each side a swing must dominate; not for LongPosition and ShortPosition), or Explicit (points: one " +
-        "{date, price or priceField} per control point; the only mode for LongPosition, ShortPosition and the other three-point tools). " +
-        "LongPosition points are Entry, Stop, Target with Stop < Entry < Target; ShortPosition points are Entry, Stop, Target with Target < Entry < Stop. " +
-        "RegressionTrend, AnchoredVWAP and ClassicPivotPoints are calculated from the loaded bars with the default options of the chart tool " +
-        "(RegressionTrend: 2 standard deviations, not extended; AnchoredVWAP: no bands, typical price; ClassicPivotPoints: daily, no extension); RegressionTrend ignores the prices of its two points (only their dates matter) " +
-        "and AnchoredVWAP and ClassicPivotPoints use only the date of their point. DatePriceRange is calculated from the loaded bars between its two dates (price change, bar count, volume, highest high, lowest low, maximum drawdown, volatility; " +
-        "volatility is in percent per bar and is not annualised); CrossLine has one point and gives the values of a horizontal line and a vertical line at it. anchorBars counts bars of the chosen timeFrame, not calendar days; left out, it is every loaded bar. Values are evaluated at evaluationDates " +
-        "(default: the last loaded bar); a date without a stored bar is allowed and only extends the geometry (hasBar false, no current price). " +
-        "Time math is calendar time (price change per 24 hours), not bar count. Causal as of endDate (bars after it are never read). " +
-        "FibonacciRetracement: level 0 is the second point and level 1 the first point. " +
-        "GannFan: AxB means A time units to B price units (slope factor B/A); 1x1 runs through both points. " +
-        "SineLine: the first point is the centre line and the start of the wave; the second price sets the amplitude and the second date the period; " +
-        "the curve reaches the second price a quarter period after the first date, not at the second date. " +
-        "TimeCycles: a date on a cycle boundary starts a new cycle (phase 0%); NextCycle is the first boundary strictly after the date. " +
-        "Weekly and monthly bars are dated by the first day of their period; an evaluation date is matched to a bar only by exact date. " +
-        "For W1 and MN1 droppedLeadingBar says whether the oldest, partial period was left out; completeBarsOnly adds the partial-bar keys of sa_get_candles. " +
-        "controlPoints in the answer lists the points that were used.";
+        "Calculates chart Data-tab values for a drawing tool (e.g. Fibonacci, TrendLine, CrossLine, DatePriceRange, AnchoredVWAP) from virtual control points chosen by anchorMode (RangeExtremes, RangeEndpoints, AutoPivots, Explicit). " +
+        "Read-only; respects causal endDate and completeBarsOnly. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
@@ -106,22 +86,22 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
         .String(TimeFrameArgument, $"Time frame of the bars ({ToolArgs.SupportedTimeFrameNames}).", required: true, allowedValues: Enum.GetNames<TimeFrame>())
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, bars up to this date are loaded.")
         .Integer(LookbackArgument, $"Stored bars loaded up to endDate, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
-        .String(ToolArgument, $"Drawing tool: {string.Join(", ", DrawingValueCatalog.All.Select(d => $"{d.Name} ({d.PointCount} point{(d.PointCount == 1 ? string.Empty : "s")})"))}.", required: true, allowedValues: DrawingValueCatalog.All.Select(d => d.Name))
-        .String(AnchorModeArgument, $"How the control points are chosen: RangeExtremes (two-point tools), RangeEndpoints (one- and two-point tools), {AutoPivotsMode} (confirmed swing pivots; not {LongPositionTool} and {ShortPositionTool}) or Explicit (every tool, required for three-point tools that are not chosen by {AutoPivotsMode}).", required: true, allowedValues: AnchorModes)
-        .Integer(AnchorBarsArgument, $"RangeExtremes, RangeEndpoints and AutoPivots only (refused with Explicit): size of the anchor window in bars, counted back from the last loaded bar. Default uses all loaded bars (at most {_limits.MaxCandlesPerRequest}). RangeExtremes needs at least {MinRangeExtremesBars}; AutoPivots needs at least pivotLeftStrength + pivotRightStrength + 1; 1..{_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
-        .Integer(PivotLeftArgument, $"{AutoPivotsMode} only: bars to the left of a swing that must be strictly lower (high) or higher (low). Default {DefaultPivotStrength}; 1..{_limits.MaxPivotStrength}.", defaultValue: DefaultPivotStrength, minimum: 1, maximum: _limits.MaxPivotStrength)
-        .Integer(PivotRightArgument, $"{AutoPivotsMode} only: bars to the right of a swing that must be strictly lower (high) or higher (low); the newest bars cannot hold a confirmed pivot. Default {DefaultPivotStrength}; 1..{_limits.MaxPivotStrength}.", defaultValue: DefaultPivotStrength, minimum: 1, maximum: _limits.MaxPivotStrength)
-        .String(PivotPreferenceArgument, $"{AutoPivotsMode} with a one-point tool only: {LatestPivot} (default) the latest pivot of either kind, {HighPivot} the latest swing high, {LowPivot} the latest swing low. {HighPivot} and {LowPivot} are refused for tools with two or three points (they take the latest alternating pivots).", allowedValues: PivotPreferences)
-        .String(PriceFieldArgument, "Bar price used by RangeEndpoints and by an Explicit point that has no price. Default Close. Refused with RangeExtremes and AutoPivots.", allowedValues: PriceFields)
-        .ObjectArray(PointsArgument, "Explicit only (required there, refused otherwise): exactly one item per control point of the tool, in order. Give price, or priceField, or neither (then the top-level priceField, default Close, of the bar on that date is used).",
+        .String(ToolArgument, "Drawing tool name.", required: true, allowedValues: DrawingValueCatalog.All.Select(d => d.Name))
+        .String(AnchorModeArgument, $"Anchor selection mode: RangeExtremes, RangeEndpoints, {AutoPivotsMode}, or Explicit.", required: true, allowedValues: AnchorModes)
+        .Integer(AnchorBarsArgument, $"Lookback window in bars for non-Explicit modes (1..{_limits.MaxCandlesPerRequest}). Default: all loaded bars.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
+        .Integer(PivotLeftArgument, $"{AutoPivotsMode} only: bars to the left of a swing (1..{_limits.MaxPivotStrength}). Default {DefaultPivotStrength}.", defaultValue: DefaultPivotStrength, minimum: 1, maximum: _limits.MaxPivotStrength)
+        .Integer(PivotRightArgument, $"{AutoPivotsMode} only: bars to the right of a swing (1..{_limits.MaxPivotStrength}). Default {DefaultPivotStrength}.", defaultValue: DefaultPivotStrength, minimum: 1, maximum: _limits.MaxPivotStrength)
+        .String(PivotPreferenceArgument, $"{AutoPivotsMode} 1-point tools only: {LatestPivot} (default), {HighPivot}, or {LowPivot}.", allowedValues: PivotPreferences)
+        .String(PriceFieldArgument, "Bar price for RangeEndpoints and Explicit points without price. Default Close.", allowedValues: PriceFields)
+        .ObjectArray(PointsArgument, "Explicit only: one {date, price?, priceField?} item per control point of the tool.",
             ToolSchema.Object()
-                .String(PointDateKey, $"Date of the point ({ToolJson.DateFormat}); the latest stored bar on or before it is used (a warning names the bar date).", required: true)
-                .Number(PointPriceKey, "Price of the point. Not allowed together with priceField.")
-                .String(PriceFieldArgument, "Bar price to use for this point. Not allowed together with price.", allowedValues: PriceFields))
-        .StringArray(EvaluationDatesArgument, $"Dates ({ToolJson.DateFormat}) to evaluate the tool at, 1..{_limits.MaxDrawingEvaluationDates}, without duplicates. Default: the date of the last loaded bar.")
-        .Boolean(ShowExtensionsArgument, $"{FibonacciRetracementTool} only: true uses the extension level table. false is accepted for every tool and changes nothing; true is refused for other tools.")
-        .String(PitchforkKindArgument, $"{PitchforkTool} only: {string.Join(", ", PitchforkKindNames)} (case-sensitive, default {nameof(PitchforkKind.Andrews)}). {nameof(PitchforkKind.Andrews)} is accepted for every tool and changes nothing; the other kinds are refused for other tools.", allowedValues: PitchforkKindNames)
-        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1 and MN1 only (ignored for D1). true leaves out a running last week or month before the control points and the default evaluation date are chosen; false keeps it and says so. Not given: the running period is used as before and the partial-bar keys are not written.")
+                .String(PointDateKey, $"Date of the point ({ToolJson.DateFormat}).", required: true)
+                .Number(PointPriceKey, "Price of the point (excludes priceField).")
+                .String(PriceFieldArgument, "Bar price for this point (excludes price).", allowedValues: PriceFields))
+        .StringArray(EvaluationDatesArgument, $"Dates ({ToolJson.DateFormat}) to evaluate at (1..{_limits.MaxDrawingEvaluationDates}). Default: last loaded bar.")
+        .Boolean(ShowExtensionsArgument, $"{FibonacciRetracementTool} only: true uses extension levels.")
+        .String(PitchforkKindArgument, $"{PitchforkTool} only: {string.Join(", ", PitchforkKindNames)}. Default {nameof(PitchforkKind.Andrews)}.", allowedValues: PitchforkKindNames)
+        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1/MN1 only: true drops an incomplete last period, false keeps it; either adds partial-bar keys.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();
 

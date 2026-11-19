@@ -196,6 +196,18 @@ public partial class DataWindowViewModel : ViewModelBase,
     [ObservableProperty]
     private string _pointAndFigureCountText = string.Empty;
 
+    /// <summary>Point and Figure: the price at which the hovered column reverses (see <see cref="PointAndFigureLevels"/>); empty when it is not defined.</summary>
+    [ObservableProperty]
+    private string _pointAndFigureReversalText = string.Empty;
+
+    /// <summary>Point and Figure: the price of the next box of the hovered column (see <see cref="PointAndFigureLevels"/>); empty when it is not defined.</summary>
+    [ObservableProperty]
+    private string _pointAndFigureUpdateText = string.Empty;
+
+    /// <summary>Kagi: the price a close has to reach to reverse the hovered column (see <see cref="KagiLevels"/>); empty when it is not defined. <see cref="KagiReversalText"/> is the Move row, not this one.</summary>
+    [ObservableProperty]
+    private string _kagiReversalPriceText = string.Empty;
+
     /// <summary>Date the current trend was confirmed (Renko, Point and Figure, Kagi, Three Line Break); empty when there is none.</summary>
     [ObservableProperty]
     private string _trendReversalDateText = string.Empty;
@@ -731,6 +743,9 @@ public partial class DataWindowViewModel : ViewModelBase,
                 vm.RenkoReversalText = string.Empty;
                 vm.RenkoUpdateText = string.Empty;
                 vm.PointAndFigureCountText = string.Empty;
+                vm.PointAndFigureReversalText = string.Empty;
+                vm.PointAndFigureUpdateText = string.Empty;
+                vm.KagiReversalPriceText = string.Empty;
                 vm.IndicatorSectionTitle = vm._localizationService.GetString("DataWindow_Section_ReverseWatch");
                 return;
             }
@@ -887,6 +902,9 @@ public partial class DataWindowViewModel : ViewModelBase,
         RenkoReversalText = string.Empty;
         RenkoUpdateText = string.Empty;
         PointAndFigureCountText = string.Empty;
+        PointAndFigureReversalText = string.Empty;
+        PointAndFigureUpdateText = string.Empty;
+        KagiReversalPriceText = string.Empty;
         ReverseWatchValueText = string.Empty;
         ReverseWatchVolumeText = string.Empty;
 
@@ -1641,6 +1659,9 @@ public partial class DataWindowViewModel : ViewModelBase,
         RenkoReversalText = string.Empty;
         RenkoUpdateText = string.Empty;
         PointAndFigureCountText = string.Empty;
+        PointAndFigureReversalText = string.Empty;
+        PointAndFigureUpdateText = string.Empty;
+        KagiReversalPriceText = string.Empty;
         ReverseWatchValueText = string.Empty;
         ReverseWatchVolumeText = string.Empty;
 
@@ -1653,6 +1674,14 @@ public partial class DataWindowViewModel : ViewModelBase,
                 decimal startPrice = candles[colStart].Open;
                 decimal endPrice = candles[colEnd].Close;
                 KagiReversalText = DisplayFormat.Price(System.Math.Abs(endPrice - startPrice));
+
+                // The reversal price needs the threshold that produced the drawn segments: the effective threshold belongs to the adapter that came with it, a chart
+                // drawn from the fallback conversion (no adapter) has its own threshold, so nothing is shown for it.
+                if (_chartViewModel.KagiDataAdapter != null &&
+                    StockAnalyzer.Core.Utilities.KagiLevels.TryGetReversalPrice(candles, globalIndex, _chartViewModel.EffectiveKagiReversalAmount, out var kagiReversalPrice))
+                {
+                    KagiReversalPriceText = DisplayFormat.Price(kagiReversalPrice);
+                }
             }
             IsHighVisible = false;
             IsLowVisible = false;
@@ -1705,6 +1734,14 @@ public partial class DataWindowViewModel : ViewModelBase,
                 {
                     int trendCount = System.Math.Max(1, (int)System.Math.Round((double)((highs[globalIndex] - lows[globalIndex]) / boxSize)) + 1);
                     PointAndFigureCountText = DisplayFormat.Count(trendCount);
+                }
+
+                if (StockAnalyzer.Core.Utilities.PointAndFigureLevels.TryDescribe(
+                        adapter.Opens.Span, highs, lows, adapter.Closes.Span, globalIndex, boxSize, _chartViewModel.PnfReversal,
+                        out var pnfReversalPrice, out var pnfUpdatePrice))
+                {
+                    PointAndFigureReversalText = DisplayFormat.Price(pnfReversalPrice);
+                    PointAndFigureUpdateText = DisplayFormat.Price(pnfUpdatePrice);
                 }
             }
             IsVolumeVisible = false;

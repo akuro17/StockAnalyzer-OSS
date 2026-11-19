@@ -71,46 +71,10 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
     public string Name => "sa_calculate_indicators";
 
     public string Description =>
-        "Calculates technical indicators on the stored bars of one symbol with the application's own indicator pipeline (the same values the chart shows). " +
-        "Call sa_get_capabilities with indicatorTypeFilter first to learn the exact type names, parameter names with their ranges, and output series names. " +
-        $"Up to {_limits.MaxIndicatorsPerCall} indicators per call; each has a client-chosen unique id and the results are keyed by that id. " +
-        "Omitted parameters use the application defaults. All periods are in bars of the indicator's own time frame (the call's time frame unless the indicator carries its own timeFrame, then bars of that time frame, for example 5 weekly bars for W1; periodUnit is always bars). " +
-        $"The calculation runs over up to lookbackBars stored bars (default and maximum {_limits.MaxCandlesPerRequest}) so that long-period indicators are warmed up; " +
-        $"only the last outputTailCount bars (default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}) are returned, aligned with the timestamps array. " +
-        $"endDate ({ToolJson.DateFormat}, inclusive) ends the calculation at the last bar dated on or before it, so the latest bar and every value are as they were known on that date " +
-        "(for W1 and MN1 the daily bars are cut at endDate before the period bars are built; the window is then the latest lookbackBars bars up to endDate); " +
-        "comparison symbols are cut at the same date, no bar after it is read, and endDate is echoed in the result only when given. " +
-        $"{PartialBarOutput.CompleteBarsOnlyArgument} (W1 and MN1 only, ignored for D1; not given = the running last period is calculated as before and nothing about it is reported): true calculates on complete periods only, leaving out a running last period ({PartialBarOutput.DroppedPartialBarKey}); " +
-        $"true and false both add {PartialBarOutput.ReferenceDateKey}, {PartialBarOutput.LastBarPeriodEndKey}, {PartialBarOutput.LastBarPartialKey} and {PartialBarOutput.DroppedPartialBarKey}, which work as in sa_get_candles. " +
-        "A leading null means the indicator has not accumulated enough bars yet (leadingNullCount counts them over the whole calculated history). " +
-        "Some indicators (for example Ichimoku SenkouSpanA and SenkouSpanB) also project values beyond the last bar; those are returned in projectedValues and belong to no bar yet. " +
-        "nonCausalSeries lists series whose value at a bar depends on later bars. " +
-        "An indicator with its own timeFrame that lists nonCausalSeries still looks ahead by the indicator's own look-ahead after the alignment, because the alignment only steps back one closed period. " +
-        "Indicator on indicator: sourceIndicatorId feeds one output series (sourceOutputSeriesName) of another indicator of the same call as the price input, " +
-        "dynamicPeriodIndicatorId feeds one as adaptive periods; one upstream indicator can be asked for one series only. " +
-        "Cross-ticker indicators need the ComparisonSymbol parameter. " +
-        $"An indicator may carry its own {IndicatorTimeFrameKey} ({ToolArgs.SupportedTimeFrameNames}; the call's time frame or a coarser one, a finer one is UNSUPPORTED_TIMEFRAME): it is then calculated on the bars of that time frame " +
-        "(up to the last day of the call's window, at most the maximum number of bars; lookbackBars applies to the call's bars only) and aligned to the call's timestamps, so the value shown at a bar is that of the previous CLOSED period containing the bar " +
-        "(a W1 value at a daily bar is last week's, never the running week's; before the first closed period it is null). " +
-        $"One call can therefore return D1, W1 and MN1 values of an indicator on the daily timestamps. {AlignmentKey} {PreviousClosedPeriod} and the indicator's {IndicatorTimeFrameKey} are echoed for such an indicator; it has no projectedValues. " +
-        $"An indicator and the indicators it reads (sourceIndicatorId, dynamicPeriodIndicatorId) must have the same {IndicatorTimeFrameKey}, and a cross-ticker indicator keeps the call's time frame. " +
-        "allowUnregistered true also accepts a symbol (and comparison symbols) that is not in the ticker list but has stored daily bars; it is named in warnings, and a symbol without stored bars is SYMBOL_NOT_FOUND. " +
-        $"{DerivedArgument} (optional, at most {_limits.MaxDerivedSeriesPerCall}) adds series computed bar by bar from two series of the same call: {{{DerivedSeriesPlan.IdKey}, {DerivedSeriesPlan.OperationKey}, {DerivedSeriesPlan.LeftKey}, {DerivedSeriesPlan.RightKey}}} with {DerivedSeriesPlan.OperationKey} one of {string.Join(", ", Enum.GetNames<SeriesOperation>())} (exact names) " +
-        $"and each side {{\"{DerivedSeriesPlan.ReferenceKey}\":\"<id>\"}} (an indicator id, or a derived id declared before; {{\"{DerivedSeriesPlan.ReferenceKey}\":\"<id>\",\"{DerivedSeriesPlan.SeriesNameKey}\":\"<name>\"}} picks another output series of an indicator, default its main series) or {{\"{DerivedSeriesPlan.ConstantKey}\":<number>}}. " +
-        "A bar has no value (null) when either side has none, and Divide by zero gives null and is counted in divisionByZeroCount (never an infinite value). A derived series is returned in results under its id with type Derived, " +
-        "one series Main, latestValues, leadingNullCount, nonCausalSeries (Main when an input looks ahead) and unit null (the unit of a derived series is not defined); one whose input did not succeed reports isSuccessful false and names that input, the call itself still succeeds. " +
-        "Derived series are output only: they cannot be used in screener or backtest conditions. " +
-        $"{SeriesOutputOptions.SummaryArgument} true adds, per series, count (non-null values), latest (the last bar), mean, stdDev (population), zScoreOfLatest ((latest - mean) / stdDev; null when stdDev is below {ComparisonSeriesDefaults.FlatWindowDeviationEpsilon.ToString("0.#######E+0", CultureInfo.InvariantCulture)}, an absolute value, or latest is null), " +
-        "percentileRankOfLatest (percent, 0-100: earlier non-null values strictly smaller than latest / earlier non-null values; null without earlier values), trendSlope (least-squares slope per bar over the last trendBars bars, each value at its own bar position, null below two values) and trendBars; " +
-        $"mean, stdDev, latest and trendSlope are in the series' own unit, zScoreOfLatest has none and percentileRankOfLatest is a percentage; they are computed over the whole calculated window, not only the returned tail, unless {SeriesOutputOptions.SummaryBarsArgument} limits them to the last bars (the summary then also reports {SeriesOutputOptions.SummaryBarsArgument} and {SeriesOutputOptions.SummaryWindowBarsKey}; pastValues still read the whole window). " +
-        $"{SeriesOutputOptions.SummaryDistributionArgument} true (needs summary true) adds median, iqr, mad, skewness, excessKurtosis and robustTrendSlope to each summary; robustTrendSlope is null when trendBars is above {SeriesSummaryStatistics.MaxRobustTrendBars} (cost protection, not an error). " +
-        "trendBars and the offsets count bars of the call's time frame (an indicator with its own timeFrame is already aligned to those bars); a series listed in nonCausalSeries keeps its look-ahead in its summary and pastValues. " +
-        $"{SeriesOutputOptions.LookbackOffsetsArgument} adds pastValues (value k bars before the last calculated bar), {SeriesOutputOptions.IncludeSeriesArgument} false returns only the compact figures (latestValues, summary, pastValues) to save tokens. " +
-        "A call that runs out of time starts no further indicator, but the indicator running at that moment is not interrupted and keeps the server busy until it ends " +
-        "(a heavy type with a large Period can take a long time on its own): ask for few heavy indicators per call. " +
-        "The one exception is HiddenMarkovModel, which checks the cancellation in every window and stops within about 0.1 s (not when it takes another indicator as its source). " +
-        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds every decimal number of the result (series, projectedValues, latestValues, summary, pastValues; away from zero at the midpoint) to that many decimal places to save tokens; counts (count, trendBars, leadingNullCount, divisionByZeroCount) are never rounded, the calculation itself is not rounded, and without it the numbers are as calculated. " +
-        "Prices are in the instrument's units; the application stores no output unit per indicator (see unitUndefined in sa_get_capabilities).";
+        "Calculates technical indicators (and optional derived series) on one symbol's stored bars via the application's indicator pipeline. " +
+        "Call sa_get_capabilities first for type names, parameter ranges and output series. " +
+        $"Supports up to {_limits.MaxIndicatorsPerCall} indicators, per-indicator timeFrame (coarser alignment), endDate, completeBarsOnly, summary/pastValues, includeSeries, and decimalPlaces. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
@@ -137,15 +101,15 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         .Integer(LookbackArgument, $"Stored bars the calculation runs over, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Integer(TailArgument, $"Number of trailing bars returned per series. Default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, the latest bar is the last bar dated on or before it. Default: the latest stored bar.")
-        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, $"W1 and MN1 only (ignored for D1): true leaves out the last bar when its period has not ended yet, false keeps it; either value adds {PartialBarOutput.ReferenceDateKey}, {PartialBarOutput.LastBarPeriodEndKey}, {PartialBarOutput.LastBarPartialKey} and {PartialBarOutput.DroppedPartialBarKey} to the result. Not given: the last bar is kept and nothing about it is reported.")
-        .Boolean(SeriesOutputOptions.SummaryArgument, "true adds summary to every returned series of every result (indicators and derived): count, latest, mean, stdDev (population, divisor n), zScoreOfLatest, percentileRankOfLatest, trendSlope, trendBars, all over the whole calculated window. Default false.")
+        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1/MN1 only: true drops an incomplete last period, false keeps it; either adds partial-bar keys. Default: omitted (keep last bar, no keys).")
+        .Boolean(SeriesOutputOptions.SummaryArgument, "Add count, latest, mean, stdDev, zScoreOfLatest, percentileRankOfLatest, trendSlope and trendBars per series. Default false.")
         .Integer(SeriesOutputOptions.TrendBarsArgument, $"Trend window, in bars, of the summary's trendSlope (needs summary true). Default {McpLimitsContract.EffectiveDefaultTrendBars(_limits)}, from {SeriesSummaryStatistics.MinTrendBars} to {McpLimitsContract.EffectiveMaxTrendBars(_limits)}.", defaultValue: McpLimitsContract.EffectiveDefaultTrendBars(_limits), minimum: SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxTrendBars(_limits))
         .Integer(SeriesOutputOptions.SummaryBarsArgument, SeriesOutputOptions.SummaryBarsDescription(_limits), minimum: SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxSummaryBars(_limits))
         .Boolean(SeriesOutputOptions.SummaryDistributionArgument, SeriesOutputOptions.SummaryDistributionDescription)
-        .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Offsets (0 or more, at most {_limits.MaxLookbackOffsets}) of bars before the last calculated bar: adds pastValues with the value of every returned series that many bars back (0 = the last bar). A bar that does not exist or has no value gives null.")
-        .Boolean(SeriesOutputOptions.IncludeSeriesArgument, "false leaves out series, projectedValues and timestamps (latestValues, leadingNullCount, summary and pastValues stay); it needs summary true or lookbackOffsets, cannot be combined with outputTailCount, and returnedBarCount is then 0. Default true.")
+        .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Offsets (0..{_limits.MaxLookbackOffsets} items) of bars back from the last calculated bar to return in pastValues.")
+        .Boolean(SeriesOutputOptions.IncludeSeriesArgument, "false omits series/projectedValues/timestamps (needs summary true or lookbackOffsets; excludes outputTailCount). Default true.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol (and comparison symbols) that is not in the ticker list but has stored daily bars. Default false.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, $"Round every decimal number of the result to this many decimal places (0 to {SeriesOutputOptions.MaxDecimalPlaces}; away from zero at the midpoint). Counts are never rounded. Default: numbers as calculated.", minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every decimal number of the result"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     /// <summary>The schema of one entry of <c>indicators</c>: the one definition shared by sa_calculate_indicators and sa_calculate_indicators_batch.</summary>

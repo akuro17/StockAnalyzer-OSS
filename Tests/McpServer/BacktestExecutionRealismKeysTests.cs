@@ -372,11 +372,13 @@ public sealed class BacktestExecutionRealismKeysTests : IDisposable
         string description = listing.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
             .Single(t => t.GetProperty("name").GetString() == "sa_run_backtest").GetProperty("description").GetString()!;
 
-        Assert.All(McpBacktestSettingsExposure.ExecutionRealismKeys, key => Assert.Contains(key, description));
-        Assert.Contains($"has no effect without {McpBacktestSettingsExposure.MaxVolumeParticipationRatioKey}", description);
-        Assert.Contains("same reproducibilityHash", description);
-        Assert.Contains("same runFingerprint when the number is written with the same number of decimals", description);
-        Assert.Contains("the fingerprint encodes the decimal scale", description);
-        Assert.All(Enum.GetNames<VolumeConstraintMode>().Concat(Enum.GetNames<BorrowFeeBasisMode>()).Concat(Enum.GetNames<PriceLimitFillMode>()), name => Assert.Contains(name, description));
+        Assert.Contains("docs/MCP/tools/sa_run_backtest.md", description, StringComparison.Ordinal);
+        string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_run_backtest.md"));
+        Assert.All(McpBacktestSettingsExposure.ExecutionRealismKeys, key => Assert.Contains(key, doc));
+        Assert.Contains($"has no effect without {McpBacktestSettingsExposure.MaxVolumeParticipationRatioKey}", doc);
+        Assert.Contains("same reproducibilityHash", doc);
+        Assert.Contains("same runFingerprint when the number is written with the same number of decimals", doc);
+        Assert.Contains("the fingerprint encodes the decimal scale", doc);
+        Assert.All(Enum.GetNames<VolumeConstraintMode>().Concat(Enum.GetNames<BorrowFeeBasisMode>()).Concat(Enum.GetNames<PriceLimitFillMode>()), name => Assert.Contains(name, doc));
     }
 }

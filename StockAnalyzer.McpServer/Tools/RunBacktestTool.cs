@@ -29,6 +29,14 @@ internal sealed class RunBacktestTool : IMcpTool
     private const string EquityCurveArgument = BacktestDiagnostics.EquityCurveArgument;
     private const string DrawdownEpisodesArgument = BacktestDiagnostics.DrawdownEpisodesArgument;
     private const string PeriodicReturnsArgument = BacktestDiagnostics.PeriodicReturnsArgument;
+    private const string CompactRowsArgument = "compactRows";
+
+    private static readonly string[] TradeColumns =
+    {
+        "tradeId", "side", "entryDate", "entryPrice", "exitDate", "exitPrice", "quantity",
+        "closedGross", "closedNet", "entryFee", "exitFee", "holdingBars", "isForcedLiquidation",
+        "entrySignal", "exitReason", "stopLevelAtExit", "mfePrice", "maePrice", "mfePercent", "maePercent",
+    };
 
     /// <summary>The saved template a run used (its name is echoed with its id).</summary>
     private sealed record TemplateReference(Guid Id, string Name);
@@ -49,40 +57,9 @@ internal sealed class RunBacktestTool : IMcpTool
     public string Name => "sa_run_backtest";
 
     public string Description =>
-        "Runs one backtest on the stored bars of one symbol (daily D1, weekly W1 or monthly MN1) with the application's own backtest engine (the Backtest window's Legacy execution model) and returns the performance report, the trades and the run fingerprint. " +
-        "Call sa_get_capabilities first for indicator types, parameters and series; indicators that look ahead are not allowed. " +
-        "Give either conditions or templateId: templateId runs a saved backtest-condition template (ids from sa_list_templates with templateType backtestCondition) " +
-        "with its own conditions and risk settings; riskManagement must then be omitted, and the template's sides must use the evaluated time frame or a coarser one. " +
-        $"conditions has up to six roots: {string.Join(", ", BacktestConditionBinder.RootKeys)}. entryLong/entryShort open a long/short position, exitLong/exitShort close it, " +
-        "reverseLong flips a short position to long and reverseShort flips a long position to short (a reverse root acts only while a position is held). Give at least one root, normally an entry. " +
-        "A root is a group {operator: And|Or, children: [...]} of groups and comparisons, or one comparison. " +
-        $"A comparison is {{left: side, comparison: {string.Join("|", BacktestConditionBinder.ComparisonNames)}, right: number | side}}. " +
-        $"{ConditionOperatorExpander.Description} " +
-        "A side names exactly one of indicator (with optional parameters and outputSeriesName) or price (Close, Open, High, Low, ...), plus an optional offset (bars back from the evaluated bar, default 0) " +
-        $"and an optional frame ({string.Join("|", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}, the evaluated frame or a coarser one; a finer one is UNSUPPORTED_TIMEFRAME) that reads the side on that frame's bars: " +
-        "the value shown at a bar is that of the previous CLOSED period containing the bar (a W1 side on a daily bar is last week's value, never the running week's), and a bar with no closed period yet does not match. " +
-        "Example: {\"entryLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30}," +
-        "\"exitLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"GreaterThan\",\"right\":70}}. " +
-        "startDate and endDate (yyyy-MM-dd, inclusive) default to the stored history (at most the latest " + _limits.MaxCandlesPerRequest + " bars); bars before startDate warm the indicators up. " +
-        "account sets initialCapital, commissionFlat, commissionPerUnit, slippageRatio, sizingModel (FixedQuantity or PercentOfEquity), sizingParameter, initialMarginRatio, maintenanceMarginRatio and liquidationPenaltyRatio, " +
-        $"and the execution-realism keys {McpBacktestSettingsExposure.MaxVolumeParticipationRatioKey} (number in (0, 1], the most of a bar's volume an order may take; omitted means no limit), " +
-        $"{McpBacktestSettingsExposure.VolumeConstraintModeKey} ({string.Join(", ", Enum.GetNames<VolumeConstraintMode>())}; has no effect without {McpBacktestSettingsExposure.MaxVolumeParticipationRatioKey}), " +
-        $"{McpBacktestSettingsExposure.ShortBorrowAnnualRateKey} (simple annual borrow rate of a short position, 0 to 1, 0.02 = 2%; default 0), {McpBacktestSettingsExposure.BorrowFeeBasisModeKey} ({string.Join(", ", Enum.GetNames<BorrowFeeBasisMode>())}) " +
-        $"and {McpBacktestSettingsExposure.PriceLimitFillModeKey} ({string.Join(", ", Enum.GetNames<PriceLimitFillMode>())}); the result echoes these five only when the call names them, and naming one with its default value gives the same reproducibilityHash as leaving it out, and the same runFingerprint when the number is written with the same number of decimals (the fingerprint encodes the decimal scale: 0 and 0.0, or 0.02 and 0.020, differ); " +
-        "riskManagement sets stopLossRatio and takeProfitRatio of the entry price (0.05 = 5%), and dynamicExits (maxHoldingBars, atrStop, atrTarget, trailingStop); report sets annualRiskFreeRate, annualMar, annualPeriodsD1 (daily bars per year, for the annualised metrics), bootstrapSeed and bootstrapIterations (the report's bootstrap confidence intervals). " +
-        "Omitted values are the Backtest window's factory defaults, not the values saved in the window; the result echoes every effective value. " +
-        $"The supported time frames are {string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}; the Legacy execution model is used. " +
-        $"The result lists the first maxReturnedTrades trades in the order the engine closed them (default and maximum {_limits.MaxReturnedTrades}; totalTrades is the true count) and engine warnings by code. " +
-        "Each trade carries mfePrice and maePrice (largest favourable and adverse excursion from the entry price, in price units, never negative, measured on bar highs and lows so the order inside a bar is unknown, from the actual fill prices so slippage is already inside them and commissions are not included; prices that are certain to come after the exit are not counted) and mfePercent and maePercent (the same as percent of the entry price; null when the entry price is not positive), and stopLevelAtExit (stop price threshold at exit when exited via a stop; null otherwise). " +
-        $"Optional diagnostics, all off by default: includeEquityCurve ({string.Join("|", BacktestDiagnostics.CurveNames)}) adds equityCurve (equity in account currency per evaluated bar, or the last bar of each ISO week or calendar month, with drawdownRatio = equity / running high - 1, at most {McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} points, more is LIMIT_EXCEEDED); " +
-        $"includeDrawdownEpisodes (0 to {_limits.MaxDrawdownEpisodes}) adds the deepest drawdown episodes (depthRatio, dates, bar counts; recovery fields are null while still underwater); " +
-        "includePeriodicReturns adds monthly and yearly returnRatio (period-end equity / previous period-end equity - 1; isPartial marks a period the evaluated dates cut). " +
-        "includePeriodicReturns and includeEquityCurve Monthly are refused for timeFrame W1 (UNSUPPORTED_TIMEFRAME) because a weekly bar cannot be cut at a month end. " +
-        $"A part whose arithmetic fails is left out and named in {BacktestDiagnostics.UnavailableKey} with a reason. " +
-        "allowUnregistered true also accepts a symbol that is not in the ticker list but has stored bars; it is named in warnings, and a symbol without stored bars is SYMBOL_NOT_FOUND. " +
-        "Metrics keep status/value/unit/reason: a value is present only when status is Valid. " +
-        $"{BacktestReportJson.CompactReportArgument} true writes each report metric as its bare number instead (null when it is not Valid), lists the metrics that are not Valid in the report's unavailableMetrics [{{name, status, reason}}] and the unit of each Valid one in metricUnits; the numbers are the same, nothing is rounded. " +
-        "The tool never changes anything and never fetches data.";
+        $"Executes an in-memory backtest on stored bars ({string.Join("/", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}, Legacy model) using conditions ({string.Join(", ", BacktestConditionBinder.RootKeys)}) or saved templateId. " +
+        $"Call sa_get_capabilities first; supports {string.Join(", ", ConditionOperatorExpander.ExpandedComparisonNames)}, per-side frame, account, riskManagement, diagnostics, {BacktestReportJson.CompactReportArgument}, and {CompactRowsArgument}. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => true;
 
@@ -104,6 +81,7 @@ internal sealed class RunBacktestTool : IMcpTool
         .Integer(DrawdownEpisodesArgument, $"Add the deepest drawdown episodes. Default 0 adds none; maximum {_limits.MaxDrawdownEpisodes}.", defaultValue: 0, minimum: 0, maximum: _limits.MaxDrawdownEpisodes)
         .Boolean(PeriodicReturnsArgument, "Add monthly and yearly returns of the equity. Default false.")
         .Boolean(BacktestReportJson.CompactReportArgument, BacktestReportJson.CompactReportDescription)
+        .Boolean(CompactRowsArgument, "true returns trades.items (and equityCurve.points when requested) as [] and writes columns plus rows (one array per trade/point). Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -123,6 +101,7 @@ internal sealed class RunBacktestTool : IMcpTool
             ToolArgs.Boolean(arguments, PeriodicReturnsArgument) ?? false);
         BacktestDiagnostics.EnsureTimeFrameSupported(diagnosticsRequest, timeFrame);
         bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? false;
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
 
         // Everything the client sent is checked before any data is read.
         string? templateText = ToolArgs.String(arguments, TemplateIdArgument);
@@ -216,7 +195,7 @@ internal sealed class RunBacktestTool : IMcpTool
 
         BacktestDiagnostics? diagnostics = diagnosticsRequest.Any ? BacktestDiagnostics.Compute(artifact, diagnosticsRequest, _limits) : null;
         JsonElement? accountArguments = arguments.TryGetProperty(BacktestSettingsBinder.AccountArgument, out JsonElement accountElement) ? accountElement : null;
-        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, accountArguments, conditions, maxTrades, template, symbolWarnings, diagnostics, compactReport));
+        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, accountArguments, conditions, maxTrades, template, symbolWarnings, diagnostics, compactReport, compactRows));
     }
 
     internal static DateTime ToUtc(DateOnly date) => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
@@ -257,7 +236,8 @@ internal sealed class RunBacktestTool : IMcpTool
         TemplateReference? template,
         IReadOnlyList<string> symbolWarnings,
         BacktestDiagnostics? diagnostics,
-        bool compactReport)
+        bool compactReport,
+        bool compactRows)
     {
         BacktestResult result = artifact.Result;
         BacktestEvaluationMetadata metadata = artifact.Metadata;
@@ -312,9 +292,9 @@ internal sealed class RunBacktestTool : IMcpTool
             BacktestReportJson.Write(writer, report, compactReport);
         }
 
-        WriteTrades(writer, result, maxTrades);
+        WriteTrades(writer, result, maxTrades, compactRows);
         WriteEngineWarnings(writer, result);
-        diagnostics?.Write(writer);
+        diagnostics?.Write(writer, compactRows);
         var notes = new List<string>(symbolWarnings);
         notes.AddRange(conditions.Warnings);
         if (metadata.SampleCount == 0)
@@ -424,7 +404,7 @@ internal sealed class RunBacktestTool : IMcpTool
         writer.WriteEndArray();
     }
 
-    private void WriteTrades(System.Text.Json.Utf8JsonWriter writer, BacktestResult result, int maxTrades)
+    private void WriteTrades(System.Text.Json.Utf8JsonWriter writer, BacktestResult result, int maxTrades, bool compactRows)
     {
         int returned = Math.Min(maxTrades, result.Trades.Length);
         writer.WriteStartObject("trades");
@@ -433,34 +413,71 @@ internal sealed class RunBacktestTool : IMcpTool
         writer.WriteBoolean("truncated", returned < result.Trades.Length);
         writer.WriteString("order", "in the order the engine closed them");
         writer.WriteStartArray("items");
-        for (int i = 0; i < returned; i++)
+        if (!compactRows)
         {
-            BacktestTrade trade = result.Trades[i];
-            writer.WriteStartObject();
-            writer.WriteNumber("tradeId", trade.TradeId);
-            writer.WriteString("side", trade.Side.ToString());
-            writer.WriteString("entryDate", ToolJson.FormatDate(trade.EntryTime));
-            writer.WriteNumber("entryPrice", trade.EntryPrice);
-            writer.WriteString("exitDate", ToolJson.FormatDate(trade.ExitTime));
-            writer.WriteNumber("exitPrice", trade.ExitPrice);
-            writer.WriteNumber("quantity", trade.Quantity);
-            writer.WriteNumber("closedGross", trade.ClosedGross);
-            writer.WriteNumber("closedNet", trade.ClosedNet);
-            writer.WriteNumber("entryFee", trade.EntryFee);
-            writer.WriteNumber("exitFee", trade.ExitFee);
-            writer.WriteNumber("holdingBars", trade.HoldingBars);
-            writer.WriteBoolean("isForcedLiquidation", trade.IsForcedLiquidation);
-            writer.WriteString("entrySignal", trade.EntrySignal);
-            writer.WriteString("exitReason", trade.ExitReason);
-            ToolJson.WriteNullableNumber(writer, "stopLevelAtExit", trade.StopLevelAtExit);
-            writer.WriteNumber("mfePrice", trade.MfePrice);
-            writer.WriteNumber("maePrice", trade.MaePrice);
-            ToolJson.WriteNullableNumber(writer, "mfePercent", trade.MfePercent);
-            ToolJson.WriteNullableNumber(writer, "maePercent", trade.MaePercent);
-            writer.WriteEndObject();
+            for (int i = 0; i < returned; i++)
+            {
+                BacktestTrade trade = result.Trades[i];
+                writer.WriteStartObject();
+                writer.WriteNumber("tradeId", trade.TradeId);
+                writer.WriteString("side", trade.Side.ToString());
+                writer.WriteString("entryDate", ToolJson.FormatDate(trade.EntryTime));
+                writer.WriteNumber("entryPrice", trade.EntryPrice);
+                writer.WriteString("exitDate", ToolJson.FormatDate(trade.ExitTime));
+                writer.WriteNumber("exitPrice", trade.ExitPrice);
+                writer.WriteNumber("quantity", trade.Quantity);
+                writer.WriteNumber("closedGross", trade.ClosedGross);
+                writer.WriteNumber("closedNet", trade.ClosedNet);
+                writer.WriteNumber("entryFee", trade.EntryFee);
+                writer.WriteNumber("exitFee", trade.ExitFee);
+                writer.WriteNumber("holdingBars", trade.HoldingBars);
+                writer.WriteBoolean("isForcedLiquidation", trade.IsForcedLiquidation);
+                writer.WriteString("entrySignal", trade.EntrySignal);
+                writer.WriteString("exitReason", trade.ExitReason);
+                ToolJson.WriteNullableNumber(writer, "stopLevelAtExit", trade.StopLevelAtExit);
+                writer.WriteNumber("mfePrice", trade.MfePrice);
+                writer.WriteNumber("maePrice", trade.MaePrice);
+                ToolJson.WriteNullableNumber(writer, "mfePercent", trade.MfePercent);
+                ToolJson.WriteNullableNumber(writer, "maePercent", trade.MaePercent);
+                writer.WriteEndObject();
+            }
         }
 
         writer.WriteEndArray();
+        if (compactRows)
+        {
+            ToolJson.WriteStringArray(writer, "columns", TradeColumns);
+            writer.WriteStartArray("rows");
+            for (int i = 0; i < returned; i++)
+            {
+                BacktestTrade trade = result.Trades[i];
+                writer.WriteStartArray();
+                writer.WriteNumberValue(trade.TradeId);
+                writer.WriteStringValue(trade.Side.ToString());
+                writer.WriteStringValue(ToolJson.FormatDate(trade.EntryTime));
+                writer.WriteNumberValue(trade.EntryPrice);
+                writer.WriteStringValue(ToolJson.FormatDate(trade.ExitTime));
+                writer.WriteNumberValue(trade.ExitPrice);
+                writer.WriteNumberValue(trade.Quantity);
+                writer.WriteNumberValue(trade.ClosedGross);
+                writer.WriteNumberValue(trade.ClosedNet);
+                writer.WriteNumberValue(trade.EntryFee);
+                writer.WriteNumberValue(trade.ExitFee);
+                writer.WriteNumberValue(trade.HoldingBars);
+                writer.WriteBooleanValue(trade.IsForcedLiquidation);
+                writer.WriteStringValue(trade.EntrySignal);
+                writer.WriteStringValue(trade.ExitReason);
+                ToolJson.WriteNullableValue(writer, trade.StopLevelAtExit);
+                writer.WriteNumberValue(trade.MfePrice);
+                writer.WriteNumberValue(trade.MaePrice);
+                ToolJson.WriteNullableValue(writer, trade.MfePercent);
+                ToolJson.WriteNullableValue(writer, trade.MaePercent);
+                writer.WriteEndArray();
+            }
+
+            writer.WriteEndArray();
+        }
+
         writer.WriteEndObject();
     }
 

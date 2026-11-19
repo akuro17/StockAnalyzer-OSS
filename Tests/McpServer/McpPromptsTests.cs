@@ -343,4 +343,23 @@ public sealed class McpPromptsTests : IDisposable
             Assert.True(served[name], $"{prompt} names '{name}', which is not read-only.");
         });
     }
+
+    [Fact]
+    public async Task EveryPromptEmbedsTokenSavingArgumentDirectives()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+
+        string technical = await PromptTextAsync(dispatcher, "technical_diagnosis", """{"symbol":"MSFT"}""");
+        string sector = await PromptTextAsync(dispatcher, "sector_rotation_analysis");
+        string audit = await PromptTextAsync(dispatcher, "backtest_overfitting_audit", """{"symbol":"MSFT","templateId":"3f2b8a52-9c1d-4e6f-8a7b-0123456789ab"}""");
+
+        Assert.Contains("compactRows true", technical);
+        Assert.Contains("includeSeries false, summary true and decimalPlaces 4", technical);
+        Assert.Contains("includeBarCoordinates false", technical);
+
+        Assert.Contains("outputTailCount 20", sector);
+        Assert.Contains("decimalPlaces 4", sector);
+
+        Assert.Contains("compactReport true and maxReturnedTrades 0", audit);
+    }
 }

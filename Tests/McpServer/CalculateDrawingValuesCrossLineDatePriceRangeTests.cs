@@ -74,10 +74,12 @@ public sealed class CalculateDrawingValuesCrossLineDatePriceRangeTests : IDispos
         Assert.Equal(new[] { "ClassicPivotPoints", "CrossLine", "DatePriceRange" }, names[^3..]);
         string description = tool.GetProperty("description").GetString()!;
         Assert.Contains("DatePriceRange", description);
-        Assert.Contains("not annualised", description);
         Assert.Contains("CrossLine", description);
-        Assert.Contains("CrossLine (1 point)", tool.GetProperty("inputSchema").GetProperty("properties").GetProperty("tool").GetProperty("description").GetString());
-        Assert.Contains("DatePriceRange (2 points)", tool.GetProperty("inputSchema").GetProperty("properties").GetProperty("tool").GetProperty("description").GetString());
+        Assert.Contains("docs/MCP/tools/sa_calculate_drawing_values.md", description, StringComparison.Ordinal);
+        string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_calculate_drawing_values.md"));
+        Assert.Contains("not annualised", doc);
+        Assert.Contains("CrossLine (1 point)", doc);
+        Assert.Contains("DatePriceRange (2 points)", doc);
     }
 
     [Fact]

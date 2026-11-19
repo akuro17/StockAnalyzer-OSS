@@ -9,6 +9,7 @@ using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Limits;
 
 namespace StockAnalyzer.McpServer.Tools;
@@ -37,30 +38,29 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly ITickerGroupResolver _groupResolver;
     private readonly McpLimits _limits;
+    private readonly McpResultHandleStore _resultHandles;
     private readonly CandleWindowLoader _loader;
 
     public CalculateMarketBreadthTool(
         IReadOnlyStockAnalyzerGateway gateway,
         SymbolResolver symbols,
         ITickerGroupResolver groupResolver,
-        McpLimits limits)
+        McpLimits limits,
+        McpResultHandleStore? resultHandles = null)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
         _groupResolver = groupResolver ?? throw new ArgumentNullException(nameof(groupResolver));
         _limits = limits ?? throw new ArgumentNullException(nameof(limits));
+        _resultHandles = resultHandles ?? new McpResultHandleStore();
         _loader = new CandleWindowLoader(gateway);
     }
 
     public string Name => "sa_calculate_market_breadth";
 
     public string Description =>
-        $"Calculates market breadth and internal market structure across a universe of up to {_limits.MaxBreadthSymbols} symbols: " +
-        "Advancers, Decliners, Unchanged, A/D Line, A/D Ratio, McClellan Oscillator, Summation Index, " +
-        "% Above SMA, New Highs/Lows, TRIN, and CVI. " +
-        "Aligns bars on the union of trading days. " +
-        "With timeFrame W1 or MN1 the bars are matched by period. " +
-        $"{ReturnStatistics.PeriodStartDateNote} Read-only (heavy).";
+        $"Calculates market breadth (A/D Line, McClellan, % Above SMA, Highs/Lows, TRIN, CVI) across up to {_limits.MaxBreadthSymbols} symbols. Read-only (heavy). " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => true;
 
@@ -68,8 +68,9 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
         "{\"symbols\":[\"MSFT\",\"AAPL\"],\"timeFrame\":\"D1\",\"outputTailCount\":50}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .StringArray(SymbolsArgument, $"Universe ticker symbols to analyze (up to {_limits.MaxBreadthSymbols}). Mutually exclusive with groupId.", minItems: 1)
-        .String(GroupIdArgument, "Guid of a saved ticker group (from sa_list_ticker_groups) to analyze. Mutually exclusive with symbols.")
+        .StringArray(SymbolsArgument, $"Universe ticker symbols to analyze (up to {_limits.MaxBreadthSymbols}). Mutually exclusive with {GroupIdArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.", minItems: 1)
+        .String(GroupIdArgument, $"Guid of a saved ticker group (from sa_list_ticker_groups) to analyze. Mutually exclusive with {SymbolsArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.")
+        .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle id from sa_run_screener or sa_filter_tickers ({McpResultHandleStore.StoreResultArgument} true). Mutually exclusive with {SymbolsArgument} and {GroupIdArgument}.")
         .String(TimeFrameArgument, $"Time frame of the bars. Supported: {ToolArgs.SupportedTimeFrameNames}. Default {TimeFrame.D1}.", allowedValues: Enum.GetNames<TimeFrame>())
         .Integer(LookbackArgument, $"Stored bars each symbol evaluates, newest last. Default {_limits.DefaultCandleCount}, maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.DefaultCandleCount, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Integer(TailArgument, $"Number of trailing bars returned per series. Default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
@@ -279,10 +280,19 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
     {
         IReadOnlyList<string>? requested = ToolArgs.StringArray(arguments, SymbolsArgument);
         string? groupIdRaw = ToolArgs.String(arguments, GroupIdArgument)?.Trim();
+        string? resultId = ToolArgs.String(arguments, McpResultHandleStore.SymbolsFromResultIdArgument);
 
-        if (requested is not null && groupIdRaw is not null)
+        int sourceCount = (requested is not null ? 1 : 0) + (groupIdRaw is not null ? 1 : 0) + (resultId is not null ? 1 : 0);
+        if (sourceCount > 1)
         {
-            throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{SymbolsArgument}' and '{GroupIdArgument}' cannot be combined.", GroupIdArgument, "Send one of them, or neither for every registered symbol.");
+            string parameter = resultId is not null ? McpResultHandleStore.SymbolsFromResultIdArgument : GroupIdArgument;
+            throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{SymbolsArgument}', '{GroupIdArgument}' and '{McpResultHandleStore.SymbolsFromResultIdArgument}' cannot be combined.", parameter, "Send one of them, or neither for every registered symbol.");
+        }
+
+        if (resultId is not null)
+        {
+            IReadOnlyList<string> stored = _resultHandles.ResolveSymbols(resultId, 1, _limits.MaxBreadthSymbols);
+            return stored.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 
         if (requested is not null)

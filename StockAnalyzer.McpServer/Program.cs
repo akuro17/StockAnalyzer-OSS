@@ -40,7 +40,9 @@ try
         McpServerComposition.LoadConfiguration(AppContext.BaseDirectory),
         log,
         enableExecution: commandLine.EnableExecution,
-        enableDiscussion: commandLine.EnableDiscussion);
+        enableDiscussion: commandLine.EnableDiscussion,
+        toolsets: commandLine.Toolsets,
+        responseFormat: commandLine.ResponseFormat);
 }
 catch (Exception error) when (error is McpLimitsException or ExecutionLimitsException or DiscussionLimitsException)
 {

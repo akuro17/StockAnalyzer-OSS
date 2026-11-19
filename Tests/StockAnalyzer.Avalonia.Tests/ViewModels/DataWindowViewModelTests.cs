@@ -941,6 +941,147 @@ public class DataWindowViewModelTests : IDisposable
         Assert.Equal("35.000", _sut.KagiReversalText);
     }
 
+    // ---- Kagi Reversal price: the column extreme moved back by the effective reversal amount of the adapter that produced the segments (KagiSegments(): threshold 10).
+
+    private void ShowKagiSegmentsWithAdapter(decimal threshold = 10m)
+    {
+        ShowKagiSegments();
+        var segments = KagiSegments();
+        _chartViewModel.EffectiveKagiReversalAmount = threshold;
+        _chartViewModel.KagiDataAdapter = new StockAnalyzer.ZeroAllocation.ChartSegmentAdapter(
+            StockAnalyzer.ZeroAllocation.ZeroAllocChartDataType.Kagi,
+            segments.Select(s => s.Timestamp).ToArray(), segments.Select(s => s.Open).ToArray(), segments.Select(s => s.High).ToArray(),
+            segments.Select(s => s.Low).ToArray(), segments.Select(s => s.Close).ToArray(), new long[segments.Count],
+            Enumerable.Range(0, segments.Count).Select(i => new StockAnalyzer.ZeroAllocation.OriginalIndexRange(i, 1)).ToArray());
+    }
+
+    [Theory]
+    [InlineData(0, "110.000", "20.000")]   // first column (100 -> 120): high 120 - 10
+    [InlineData(1, "110.000", "20.000")]   // the same column hovered on its last segment
+    [InlineData(2, "105.000", "25.000")]   // second column (120 -> 95): low 95 + 10
+    [InlineData(3, "105.000", "25.000")]
+    [InlineData(4, "120.000", "35.000")]   // third column (95 -> 130): high 130 - 10
+    public void Receive_OnKagi_ShowsTheReversalPriceOfTheHoveredColumnBelowTheMove(int segment, string reversalPrice, string move)
+    {
+        ShowKagiSegmentsWithAdapter();
+
+        _sut.Receive(HoverElement(segment, KagiSegments()[segment]));
+
+        Assert.Equal(reversalPrice, _sut.KagiReversalPriceText);
+        Assert.Equal(move, _sut.KagiReversalText);   // the Move row keeps its own text
+    }
+
+    [Fact]
+    public void Receive_WhenThePointerLeavesAKagiChart_ShowsTheReversalPriceOfTheNewestColumn()
+    {
+        ShowKagiSegmentsWithAdapter();
+
+        _sut.Receive(PointerLeft());
+
+        Assert.Equal("120.000", _sut.KagiReversalPriceText);
+    }
+
+    [Fact]
+    public void Receive_OnKagiWithoutTheAdapterOfTheSegments_LeavesTheReversalPriceEmpty()
+    {
+        ShowKagiSegments();   // the segments come from the fallback conversion: the effective threshold is not theirs
+
+        _sut.Receive(HoverElement(1, KagiSegments()[1]));
+
+        Assert.Equal(string.Empty, _sut.KagiReversalPriceText);
+        Assert.Equal("20.000", _sut.KagiReversalText);
+    }
+
+    [Fact]
+    public void Receive_OnKagiWithoutAPositiveThreshold_LeavesTheReversalPriceEmpty()
+    {
+        ShowKagiSegmentsWithAdapter(threshold: 0m);
+
+        _sut.Receive(HoverElement(1, KagiSegments()[1]));
+
+        Assert.Equal(string.Empty, _sut.KagiReversalPriceText);
+    }
+
+    // ---- Point and Figure Reversal / Update price (ArrangePointAndFigureColumns: box 2, columns 200..200 (one box), 200..206, 200..205, reversal of 3 boxes by default).
+
+    [Theory]
+    [InlineData(0, "194.000", "202.000")]   // one box without a direction before it: an X column, top 200
+    [InlineData(1, "200.000", "208.000")]   // X column, top 206: 206 - 3 x 2, 206 + 2
+    [InlineData(2, "199.000", "207.000")]   // top 205
+    public void Receive_WithPointAndFigure_ShowsTheReversalAndUpdatePriceOfTheHoveredColumn(int columnIndex, string reversalPrice, string updatePrice)
+    {
+        ArrangePointAndFigureColumns(boxSize: 2m);
+        var candle = new CoreCandleData(new DateTime(2026, 1, 1).AddDays(columnIndex), 1m, 1m, 1m, 1m, 0);
+
+        _sut.Receive(new CrosshairPositionChangedMessage(new CrosshairPositionData { CandleIndex = columnIndex, HoveredCandle = candle, ChartSymbol = "TEST" }));
+
+        Assert.Equal(reversalPrice, _sut.PointAndFigureReversalText);
+        Assert.Equal(updatePrice, _sut.PointAndFigureUpdateText);
+    }
+
+    [Fact]
+    public void Receive_WhenThePointerLeavesAPointAndFigureChart_ShowsTheReversalAndUpdatePriceOfTheNewestColumn()
+    {
+        _chartViewModel.Candles = OriginalCandles(50);
+        ArrangePointAndFigureColumns(boxSize: 2m);
+
+        _sut.Receive(PointerLeft());
+
+        Assert.Equal("199.000", _sut.PointAndFigureReversalText);
+        Assert.Equal("207.000", _sut.PointAndFigureUpdateText);
+    }
+
+    [Fact]
+    public void Receive_WithPointAndFigure_UsesTheReversalBoxesOfTheChart()
+    {
+        _chartViewModel.PnfReversal = 2;   // first: changing it recalculates the chart, which clears the adapter when no strategy factory exists
+        ArrangePointAndFigureColumns(boxSize: 2m);
+        var candle = new CoreCandleData(new DateTime(2026, 1, 2), 1m, 1m, 1m, 1m, 0);
+
+        _sut.Receive(new CrosshairPositionChangedMessage(new CrosshairPositionData { CandleIndex = 1, HoveredCandle = candle, ChartSymbol = "TEST" }));
+
+        Assert.Equal("202.000", _sut.PointAndFigureReversalText);   // 206 - 2 x 2
+        Assert.Equal("208.000", _sut.PointAndFigureUpdateText);
+    }
+
+    [Fact]
+    public void Receive_WithPointAndFigureAndNoPositiveBoxSize_LeavesTheReversalAndUpdatePriceEmpty()
+    {
+        ArrangePointAndFigureColumns(boxSize: 2m);
+        _chartViewModel.EffectivePnfBoxSize = 0m;
+        var candle = new CoreCandleData(new DateTime(2026, 1, 2), 1m, 1m, 1m, 1m, 0);
+
+        _sut.Receive(new CrosshairPositionChangedMessage(new CrosshairPositionData { CandleIndex = 1, HoveredCandle = candle, ChartSymbol = "TEST" }));
+
+        Assert.Equal(string.Empty, _sut.PointAndFigureReversalText);
+        Assert.Equal(string.Empty, _sut.PointAndFigureUpdateText);
+    }
+
+    [Fact]
+    public void Refresh_AfterTheChartTypeLeavesPointAndFigureAndKagi_LeavesTheNewPriceRowsEmpty()
+    {
+        _chartViewModel.Candles = OriginalCandles(50);
+        ArrangePointAndFigureColumns(boxSize: 2m);
+        _messenger.Send(new IndicatorResultsUpdatedMessage());
+        Assert.NotEqual(string.Empty, _sut.PointAndFigureReversalText);
+
+        _chartViewModel.ChartType = ChartType.Renko;
+        _messenger.Send(new IndicatorResultsUpdatedMessage());
+
+        Assert.Equal(string.Empty, _sut.PointAndFigureReversalText);
+        Assert.Equal(string.Empty, _sut.PointAndFigureUpdateText);
+        Assert.Equal(string.Empty, _sut.KagiReversalPriceText);
+
+        ShowKagiSegmentsWithAdapter();
+        _messenger.Send(new IndicatorResultsUpdatedMessage());
+        Assert.Equal("120.000", _sut.KagiReversalPriceText);
+
+        _chartViewModel.ChartType = ChartType.Renko;
+        _messenger.Send(new IndicatorResultsUpdatedMessage());
+
+        Assert.Equal(string.Empty, _sut.KagiReversalPriceText);
+    }
+
     private class DummyMissingKeyLocalizationService : StockAnalyzer.Core.Interfaces.ILocalizationService
     {
         public string GetString(string key) => $"[{key}]";

@@ -50,6 +50,8 @@ public static class McpLimitsContract
 
     private const int Kibibyte = 1024;
     private const int Mebibyte = 1024 * Kibibyte;
+    private const int MinResponseTokensBand = 1024;
+    private const int MaxResponseTokensBand = (8 * Mebibyte) / 4;
 
     /// <summary>
     /// Safe upper estimate of the JSON bytes of one sa_run_backtest equity-curve point (date, a decimal equity of up to 28 digits, a decimal drawdown
@@ -78,6 +80,7 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.QueueWaitSeconds), limits.QueueWaitSeconds, 0, 600);
         Band(nameof(McpLimits.MaxConcurrentReadOnlyCalls), limits.MaxConcurrentReadOnlyCalls, 1, MaxConcurrentReadOnlyCallsBandMaximum);
         Band(nameof(McpLimits.MaxResponseBytes), limits.MaxResponseBytes, 64 * Kibibyte, 8 * Mebibyte);
+        Band(nameof(McpLimits.MaxResponseTokens), limits.MaxResponseTokens, MinResponseTokensBand, MaxResponseTokensBand);
         Band(nameof(McpLimits.MaxRequestBytes), limits.MaxRequestBytes, 4 * Kibibyte, 8 * Mebibyte);
         Band(nameof(McpLimits.MaxScreenerSymbols), limits.MaxScreenerSymbols, 1, 5000);
         Band(nameof(McpLimits.MaxReturnedMatches), limits.MaxReturnedMatches, 1, 1000);

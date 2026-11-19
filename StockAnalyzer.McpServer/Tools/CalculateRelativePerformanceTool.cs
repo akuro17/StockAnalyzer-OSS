@@ -54,14 +54,8 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
     public string Name => "sa_calculate_relative_performance";
 
     public string Description =>
-        "Calculates the values the Relative Performance chart plots for a primary symbol and its comparison symbols. " +
-        $"Up to {_limits.MaxComparisonTargets} comparison symbols are aligned to the primary symbol's bars (gaps carried forward, badly fragmented symbols excluded, as the chart does). " +
-        "mode Performance (default) is the percentage change of the close from the first returned bar (the chart's left edge, rebased at 0 %); Ratio is the close divided by the primary symbol's close; " +
-        "Spread is the close minus the primary symbol's close (price units); ZScore is the close's distance from its mean over the last zScorePeriod bars in population standard deviations. " +
-        "A value that cannot be defined is null. The unit of the values is in the result (unit). " +
-        $"The last outputTailCount bars (default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}) of up to lookbackBars stored bars (default and maximum {_limits.MaxCandlesPerRequest}) are returned. " +
-        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds the written values and basePrice (away from zero at the midpoint); the calculation itself is never rounded, and without it the numbers are as calculated. " +
-        "The tool never changes anything and never fetches data; it does not read the chart's saved symbol list or presets.";
+        $"Calculates aligned Relative Performance series (Performance, Ratio, Spread, ZScore) for a primary symbol and up to {_limits.MaxComparisonTargets} comparison symbols; supports {SeriesOutputOptions.DecimalPlacesArgument}. Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

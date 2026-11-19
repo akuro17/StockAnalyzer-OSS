@@ -52,17 +52,11 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
     {
         get
         {
-            string functions = string.Join(", ", ExpressionCalculator.Functions.Select(f => f.Signature));
             CalculatorLimits coreLimits = CalculatorLimits.Default;
             return
-                "Evaluates a batch of named arithmetic expressions sequentially with optional named variables. " +
-                "Operators and algebraic/rounding functions use exact System.Decimal (28-29 significant digits); " +
-                "transcendental and extended mathematical functions evaluate internally in IEEE-754 binary64 (~15 significant digits) narrowed via ToDecimalOrNull (overflow at |x| >= " + MaxTranscendentalMagnitudeText + "). " +
-                $"Supports operators + - * / % ^, unary + -, parentheses, built-in constants (e, pi, phi, euler_gamma), and decimal literals without exponent; ^ requires an integer exponent with absolute value at most {coreLimits.MaxIntegerExponent}. " +
-                $"Functions: {functions}. " +
-                $"Limits: at most {_limits.MaxCalculatorExpressions} expressions, {_limits.MaxCalculatorVariables} variables, and {coreLimits.MaxExpressionChars} characters per expression. " +
-                "Expressions are evaluated in array order and may reference variables and earlier expressions that succeeded; a failing expression is reported in its own result and does not fail the call. " +
-                "Results are deterministic and may be attached to a discussion with sa_discussion_attach_analysis.";
+                "Evaluates a sequential batch of named deterministic System.Decimal expressions (and binary64 math functions narrowed via ToDecimalOrNull) with optional variables. " +
+                $"Limits: {_limits.MaxCalculatorExpressions} expressions, {_limits.MaxCalculatorVariables} variables, {coreLimits.MaxExpressionChars} chars/expression. " +
+                ToolJson.DocLink(Name);
         }
     }
 

@@ -44,14 +44,8 @@ internal sealed class CalculateReverseWatchTool : IMcpTool
     public string Name => "sa_calculate_reverse_watch";
 
     public string Description =>
-        "Calculates the Reverse Watch curve the chart draws, for the latest bars of one symbol and time frame. Each point carries its phase (Phase1 to Phase8, the eight 45-degree sectors of the price-volume plane) " +
-        "and where it lies in the window of the last dataCount points: pricePosition and volumePosition are High, Middle or Low relative to the window's centre. " +
-        "The application's own descriptions of what a phase means are inconsistent, so no meaning is attached to a phase. " +
-        $"period is the moving-average window in bars (default {ChartConstants.DefaultReverseWatchPeriod}, the chart's default). isMaBased (default true) averages the price and volume over the period; false uses the close and volume of each bar. " +
-        "isLogScaleVolume (default false) takes log10 of the volume. " +
-        $"dataCount (default {ChartConstants.DefaultReverseWatchDataCount}) is the number of latest points the window's centre and bounds are taken from. " +
-        $"The calculation runs over up to lookbackBars stored bars (default and maximum {_limits.MaxCandlesPerRequest}); the last outputTailCount points are returned (default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}). " +
-        "The tool never changes anything and never fetches data.";
+        "Calculates the Reverse Watch price-volume phase curve (Phase1..Phase8; no meaning is attached to a phase) over stored bars of one symbol. Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

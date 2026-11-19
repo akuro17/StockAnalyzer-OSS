@@ -26,14 +26,8 @@ internal sealed class GetTickerMetadataTool : IMcpTool
     public string Name => "sa_get_ticker_metadata";
 
     public string Description =>
-        "Returns the metadata stored locally for each symbol (company names, region, sector, industry, currency, prices, fundamentals) and the date of the newest stored bar. " +
-        "Nothing is fetched from the internet: found is false when nothing is stored. Fields without a stored value are omitted. " +
-        "The record also contains the user's own entries (tag, notes, reminder and strategy prices such as long, exitLong and stopLossLong) when the user has made them; " +
-        "they are the user's personal annotations. " +
-        "timeSeriesLastUpdated is the date of the newest stored daily bar, or the date the data file was last written when the bar dates cannot be read. " +
-        $"Duplicate symbols (after canonicalisation) are returned once. At most {_limits.MaxSymbolsPerMetadataCall} symbols per call. " +
-        $"{FieldsArgument} (optional) limits the metadata object to the named properties to save tokens: camelCase names as they appear in the result, at least one, an unknown name is INVALID_ARGUMENT; " +
-        $"{string.Join(", ", AlwaysWrittenNames)} are always written (naming them changes nothing), and the order is always the fixed one, not the order of {FieldsArgument}. Default: every stored property.";
+        $"Returns locally stored metadata and latest bar date for 1..{_limits.MaxSymbolsPerMetadataCall} symbols; supports optional {FieldsArgument} filter to reduce tokens. Read-only; never fetches data. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

@@ -43,6 +43,7 @@ public sealed class McpServerSettingsManagerTests : IDisposable
 
         Assert.NotNull(settings);
         Assert.False(settings.EnableDiscussion);
+        Assert.Equal(string.Empty, settings.Toolset);
         Assert.Equal(4, settings.Discussion.MaxActiveSessions);
         Assert.Equal(6, settings.Discussion.MaxParticipantsPerSession);
         Assert.Equal(300, settings.Discussion.MaxMessagesPerSession);
@@ -56,6 +57,7 @@ public sealed class McpServerSettingsManagerTests : IDisposable
         var original = new McpServerSettings
         {
             EnableDiscussion = true,
+            Toolset = "core,screener,backtest",
             Discussion = new DiscussionSettings
             {
                 MaxActiveSessions = 8,
@@ -74,6 +76,7 @@ public sealed class McpServerSettingsManagerTests : IDisposable
         var reloaded = await reloadedManager.LoadAsync();
 
         Assert.True(reloaded.EnableDiscussion);
+        Assert.Equal("core,screener,backtest", reloaded.Toolset);
         Assert.Equal(8, reloaded.Discussion.MaxActiveSessions);
         Assert.Equal(10, reloaded.Discussion.MaxParticipantsPerSession);
         Assert.Equal(500, reloaded.Discussion.MaxMessagesPerSession);
@@ -91,6 +94,7 @@ public sealed class McpServerSettingsManagerTests : IDisposable
 
         Assert.NotNull(settings);
         Assert.False(settings.EnableDiscussion);
+        Assert.Equal(string.Empty, settings.Toolset);
         Assert.Equal(4, settings.Discussion.MaxActiveSessions);
     }
 
@@ -100,6 +104,7 @@ public sealed class McpServerSettingsManagerTests : IDisposable
         var original = new McpServerSettings
         {
             EnableDiscussion = true,
+            Toolset = "core,technical",
             Discussion = new DiscussionSettings
             {
                 MaxActiveSessions = 7,
@@ -109,11 +114,30 @@ public sealed class McpServerSettingsManagerTests : IDisposable
 
         var clone = original.Clone();
         clone.EnableDiscussion = false;
+        clone.Toolset = "ml";
         clone.Discussion.MaxActiveSessions = 2;
 
         Assert.True(original.EnableDiscussion);
+        Assert.Equal("core,technical", original.Toolset);
         Assert.Equal(7, original.Discussion.MaxActiveSessions);
         Assert.False(clone.EnableDiscussion);
+        Assert.Equal("ml", clone.Toolset);
         Assert.Equal(2, clone.Discussion.MaxActiveSessions);
+    }
+
+    [Theory]
+    [InlineData(false, "", "")]
+    [InlineData(true, "", "--enable-discussion")]
+    [InlineData(false, "core,backtest", "--toolset core,backtest")]
+    [InlineData(true, " core,screener,core ", "--enable-discussion --toolset core,screener")]
+    public void BuildLaunchArguments_CombinesDiscussionAndNormalizedToolset(bool enableDiscussion, string toolset, string expectedArgs)
+    {
+        var settings = new McpServerSettings
+        {
+            EnableDiscussion = enableDiscussion,
+            Toolset = toolset
+        };
+
+        Assert.Equal(expectedArgs, settings.BuildLaunchArguments());
     }
 }

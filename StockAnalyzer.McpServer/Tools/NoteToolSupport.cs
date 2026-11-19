@@ -10,6 +10,11 @@ internal static class NoteToolSupport
     /// <summary>The longest text of a parent or quoted note that <c>includeParentContext</c> adds, in characters; the full text is one more call away.</summary>
     internal const int ContextPreviewChars = 200;
 
+    /// <summary>The longest body text emitted by <c>sa_search_notes</c> when <c>snippetOnly</c> is true, in characters.</summary>
+    internal const int BodySnippetMaxChars = 200;
+
+    private const int SnippetMatchLeadingContextChars = 40;
+
     public static async Task<T> ReadAsync<T>(Func<Task<T>> read)
     {
         try
@@ -22,8 +27,53 @@ internal static class NoteToolSupport
         }
     }
 
+    /// <summary>
+    /// Extracts a bounded UTF-16 safe snippet around the earliest occurrence of any word in <paramref name="queryWords"/>,
+    /// returning whether truncation occurred.
+    /// </summary>
+    internal static (string Text, bool Truncated) ExtractSnippet(string body, IReadOnlyList<string>? queryWords, int maxChars = BodySnippetMaxChars)
+    {
+        if (body.Length <= maxChars)
+        {
+            return (body, false);
+        }
+
+        int earliestMatch = int.MaxValue;
+        if (queryWords is not null)
+        {
+            foreach (string word in queryWords)
+            {
+                if (string.IsNullOrEmpty(word))
+                {
+                    continue;
+                }
+
+                int index = body.IndexOf(word, StringComparison.OrdinalIgnoreCase);
+                if (index >= 0 && index < earliestMatch)
+                {
+                    earliestMatch = index;
+                }
+            }
+        }
+
+        int anchor = earliestMatch == int.MaxValue ? 0 : earliestMatch;
+        int start = Math.Max(0, Math.Min(anchor - SnippetMatchLeadingContextChars, body.Length - maxChars));
+        if (start > 0 && char.IsLowSurrogate(body[start]))
+        {
+            start++;
+        }
+
+        int length = Math.Min(maxChars, body.Length - start);
+        if (length > 0 && char.IsHighSurrogate(body[start + length - 1]))
+        {
+            length--;
+        }
+
+        return (body.Substring(start, length), true);
+    }
+
     /// <summary>One note: its identity, text, ticker, tags, catalyst date and thread links. Attachments are counted, never read.</summary>
-    public static void WriteNote(Utf8JsonWriter writer, Note note, IReadOnlyDictionary<Guid, Note>? context = null)
+    public static void WriteNote(Utf8JsonWriter writer, Note note, IReadOnlyDictionary<Guid, Note>? context = null, bool snippetOnly = false, IReadOnlyList<string>? queryWords = null)
     {
         writer.WriteStartObject();
         writer.WriteString("id", note.Id.ToString());
@@ -75,7 +125,17 @@ internal static class NoteToolSupport
             writer.WriteString("quotedNoteId", quotedId.ToString());
         }
 
-        writer.WriteString("body", note.Body);
+        if (snippetOnly)
+        {
+            (string snippet, bool bodyTruncated) = ExtractSnippet(note.Body, queryWords);
+            writer.WriteString("body", snippet);
+            writer.WriteBoolean("bodyTruncated", bodyTruncated);
+        }
+        else
+        {
+            writer.WriteString("body", note.Body);
+        }
+
         if (context is not null)
         {
             WriteContext(writer, "parentContext", note.ParentNoteId, context);

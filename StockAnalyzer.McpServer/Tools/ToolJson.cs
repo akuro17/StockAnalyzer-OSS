@@ -16,6 +16,8 @@ internal static class ToolJson
     /// <summary>A moment in UTC with a fixed 24-character shape (milliseconds always written, even when zero), so the text sorts in time order.</summary>
     public const string TimestampUtcFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
 
+    public static string DocLink(string toolName) => $"See docs/MCP/tools/{toolName}.md.";
+
     public static string Build(Action<Utf8JsonWriter> write)
     {
         using var stream = new MemoryStream();
@@ -50,6 +52,53 @@ internal static class ToolJson
         else
         {
             writer.WriteNull(name);
+        }
+    }
+
+    public static void WriteStringArray(Utf8JsonWriter writer, string name, IReadOnlyList<string> values)
+    {
+        writer.WriteStartArray(name);
+        foreach (string value in values)
+        {
+            writer.WriteStringValue(value);
+        }
+
+        writer.WriteEndArray();
+    }
+
+    public static void WriteNullableValue(Utf8JsonWriter writer, decimal? value)
+    {
+        if (value is { } present)
+        {
+            writer.WriteNumberValue(present);
+        }
+        else
+        {
+            writer.WriteNullValue();
+        }
+    }
+
+    public static void WriteNullableValue(Utf8JsonWriter writer, int? value)
+    {
+        if (value is { } present)
+        {
+            writer.WriteNumberValue(present);
+        }
+        else
+        {
+            writer.WriteNullValue();
+        }
+    }
+
+    public static void WriteNullableValue(Utf8JsonWriter writer, string? value)
+    {
+        if (value is { } present)
+        {
+            writer.WriteStringValue(present);
+        }
+        else
+        {
+            writer.WriteNullValue();
         }
     }
 

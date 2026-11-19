@@ -25,5 +25,7 @@
   <ItemGroup>
     <!-- The GUI's appsettings.json is the single configuration source: linked, never copied into the repository. -->
     <None Include="..\StockAnalyzer.Avalonia\appsettings.json" Link="appsettings.json" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\StockAnalyzer.Avalonia\appsettings.json')" />
+    <!-- Externalized MCP tool reference docs deployed beside the executable and in publish outputs. -->
+    <None Include="..\docs\MCP\**\*.md" Link="docs\MCP\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Condition="Exists('..\docs\MCP')" />
   </ItemGroup>
 </Project>

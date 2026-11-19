@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using StockAnalyzer.Core.Discussion;
 
 namespace StockAnalyzer.Core.Models.Settings;
@@ -19,15 +20,43 @@ public sealed class McpServerSettings
     public bool EnableDiscussion { get; set; }
 
     /// <summary>
+    /// Comma-separated <c>--toolset</c> profile list (e.g. <c>core,screener,backtest</c>).
+    /// Empty string (default) omits <c>--toolset</c> so all read-only tools are exposed.
+    /// </summary>
+    public string Toolset { get; set; } = string.Empty;
+
+    /// <summary>
     /// Tunable settings for the discussion hub (AiIntegration:Discussion).
     /// </summary>
     public DiscussionSettings Discussion { get; set; } = new();
+
+    /// <summary>
+    /// Builds the CLI argument string passed when starting StockAnalyzer.McpServer.
+    /// </summary>
+    public string BuildLaunchArguments()
+    {
+        var args = new List<string>(3);
+        if (EnableDiscussion)
+        {
+            args.Add(McpToolsetProfiles.EnableDiscussionToken);
+        }
+
+        string normalizedToolset = McpToolsetProfiles.NormalizeText(Toolset);
+        if (!string.IsNullOrEmpty(normalizedToolset) && McpToolsetProfiles.TryParse(normalizedToolset, out IReadOnlyList<string> parsed))
+        {
+            args.Add(McpToolsetProfiles.ToolsetToken);
+            args.Add(string.Join(",", parsed));
+        }
+
+        return string.Join(" ", args);
+    }
 
     public McpServerSettings Clone()
     {
         return new McpServerSettings
         {
             EnableDiscussion = EnableDiscussion,
+            Toolset = Toolset,
             Discussion = CloneDiscussion(Discussion)
         };
     }

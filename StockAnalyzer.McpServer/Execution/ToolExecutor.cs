@@ -26,15 +26,18 @@ internal sealed class ToolExecutor
     private readonly SemaphoreSlim _heavyTurn = new(McpLimitsContract.MaxConcurrentToolCalls, McpLimitsContract.MaxConcurrentToolCalls);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _inFlight = new(StringComparer.Ordinal);
     private readonly IToolCallObserver? _observer;
+    private readonly McpResponseFormat _responseFormat;
     private int _observerFailureLogged;
 
     /// <param name="observer">Told once about every call that reaches the executor (see <see cref="IToolCallObserver"/>); null tells nobody and costs nothing.</param>
-    public ToolExecutor(McpLimits limits, ErrorMessageSanitizer sanitizer, LogSink log, IToolCallObserver? observer = null)
+    /// <param name="responseFormat">Selects whether <c>structuredContent</c> is emitted next to <c>content[0].text</c> (<see cref="McpResponseFormat.Dual"/>) or omitted (<see cref="McpResponseFormat.TextOnly"/>).</param>
+    public ToolExecutor(McpLimits limits, ErrorMessageSanitizer sanitizer, LogSink log, IToolCallObserver? observer = null, McpResponseFormat responseFormat = McpResponseFormat.Dual)
     {
         _limits = limits;
         _sanitizer = sanitizer;
         _log = log;
         _observer = observer;
+        _responseFormat = responseFormat;
         _readOnlySlots = Math.Max(1, limits.MaxConcurrentReadOnlyCalls); // the start-up check keeps it inside 1..16; a semaphore cannot have no slot
         _readOnlyTurn = new SemaphoreSlim(_readOnlySlots, _readOnlySlots);
     }
@@ -312,28 +315,56 @@ internal sealed class ToolExecutor
     private string SuccessResult(ToolOutput output, CallOutcome outcome)
     {
         string hint = output.Png is null ? "Request fewer items or a narrower window." : "Request a smaller image (width, height) or fewer bars (barCount).";
-        if (output.Png is not null && EstimatedImageResultBytes(output.StructuredJson, output.Png.Length) > _limits.MaxResponseBytes)
+        if (output.Png is not null && EstimatedImageResultBytes(output.StructuredJson, output.Png.Length, _responseFormat) > _limits.MaxResponseBytes)
         {
             // Refused before the large text is built: the Base64 form alone is about 4/3 of the PNG.
             return Fail(outcome, new ToolException(ToolErrorCodes.LimitExceeded, $"The result is larger than {_limits.MaxResponseBytes} bytes.", hint: hint));
         }
 
+        if (output.Png is not null)
+        {
+            long multiplier = _responseFormat == McpResponseFormat.TextOnly ? 1L : 2L;
+            long imageTextTokens = ((multiplier * Encoding.UTF8.GetByteCount(output.StructuredJson)) + 3L) / 4L;
+            if (imageTextTokens > _limits.MaxResponseTokens)
+            {
+                return Fail(outcome, TokenLimitExceeded(imageTextTokens));
+            }
+        }
+
         string result = CallResult(output.StructuredJson, isError: false, output.Png);
-        if (Encoding.UTF8.GetByteCount(result) > _limits.MaxResponseBytes)
+        int resultBytes = Encoding.UTF8.GetByteCount(result);
+        if (resultBytes > _limits.MaxResponseBytes)
         {
             return Fail(outcome, new ToolException(ToolErrorCodes.LimitExceeded, $"The result is larger than {_limits.MaxResponseBytes} bytes.", hint: hint));
+        }
+
+        if (output.Png is null)
+        {
+            long estimatedTokens = ((long)resultBytes + 3L) / 4L;
+            if (estimatedTokens > _limits.MaxResponseTokens)
+            {
+                return Fail(outcome, TokenLimitExceeded(estimatedTokens));
+            }
         }
 
         outcome.Value = ToolCallOutcomes.Ok;
         return result;
     }
 
+    private ToolException TokenLimitExceeded(long estimatedTokens) => new(
+        ToolErrorCodes.LimitExceeded,
+        $"The result is estimated at {estimatedTokens} tokens, exceeding the limit of {_limits.MaxResponseTokens} tokens.",
+        hint: "Pass compactRows: true, compactReport: true, includeSeries: false, summary: true, decimalPlaces: 4, or request a smaller count / narrower window.");
+
     /// <summary>
-    /// A lower bound of the result's size in bytes: the JSON twice (text block and structuredContent) plus the Base64 form of the PNG (4 characters per 3 bytes).
+    /// A lower bound of the result's size in bytes: the JSON once (text-only) or twice (text block and structuredContent) plus the Base64 form of the PNG (4 characters per 3 bytes).
     /// A result over the limit by this measure is over it by the real measure too, so the real text need not be built.
     /// </summary>
-    private static long EstimatedImageResultBytes(string structuredJson, int pngLength)
-        => (2L * Encoding.UTF8.GetByteCount(structuredJson)) + ((pngLength + 2L) / 3L * 4L);
+    private static long EstimatedImageResultBytes(string structuredJson, int pngLength, McpResponseFormat responseFormat)
+    {
+        long multiplier = responseFormat == McpResponseFormat.TextOnly ? 1L : 2L;
+        return (multiplier * Encoding.UTF8.GetByteCount(structuredJson)) + ((pngLength + 2L) / 3L * 4L);
+    }
 
     private string ErrorResult(ToolException error)
     {
@@ -360,10 +391,10 @@ internal sealed class ToolExecutor
     }
 
     /// <summary>
-    /// The MCP call result: the structured JSON both as a text block and as structuredContent. A tool with an image adds one image block AFTER the text block,
-    /// so <c>content[0]</c> stays the JSON text for every tool.
+    /// The MCP call result: the structured JSON as a text block and, in <see cref="McpResponseFormat.Dual"/> mode, as <c>structuredContent</c>.
+    /// A tool with an image adds one image block AFTER the text block, so <c>content[0]</c> stays the JSON text for every tool.
     /// </summary>
-    private static string CallResult(string structuredJson, bool isError, byte[]? png = null)
+    private string CallResult(string structuredJson, bool isError, byte[]? png = null)
     {
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
@@ -384,8 +415,11 @@ internal sealed class ToolExecutor
             }
 
             writer.WriteEndArray();
-            writer.WritePropertyName("structuredContent");
-            writer.WriteRawValue(structuredJson);
+            if (_responseFormat != McpResponseFormat.TextOnly)
+            {
+                writer.WritePropertyName("structuredContent");
+                writer.WriteRawValue(structuredJson);
+            }
             writer.WriteBoolean("isError", isError);
             writer.WriteEndObject();
         }

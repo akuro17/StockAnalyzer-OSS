@@ -165,6 +165,12 @@
                         <TextBlock Grid.Row="8" Grid.Column="1" Text="{Binding KagiReversalText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding KagiReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
+                        <!-- Row 9 is shared by the Kagi and the Three Line Break reversal price: one chart type at a time fills its text. -->
+                        <TextBlock Grid.Row="9" Grid.Column="0" Text="{l:Localize DataWindow_Row_Reversal}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding KagiReversalPriceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding KagiReversalPriceText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding KagiReversalPriceText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
                         <TextBlock Grid.Row="9" Grid.Column="0" Text="{l:Localize DataWindow_Row_Reversal}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding ThreeLineBreakReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="9" Grid.Column="1" Text="{Binding ThreeLineBreakReversalText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
@@ -189,6 +195,17 @@
                                     IsVisible="{Binding PointAndFigureCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock Grid.Row="13" Grid.Column="1" Text="{Binding PointAndFigureCountText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
                                     IsVisible="{Binding PointAndFigureCountText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <!-- Rows 14 and 15 are shared by the Point and Figure reversal / update price and the Reverse Watch rows: one chart type at a time fills its texts. -->
+                        <TextBlock Grid.Row="14" Grid.Column="0" Text="{l:Localize DataWindow_Row_Reversal}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding PointAndFigureReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="14" Grid.Column="1" Text="{Binding PointAndFigureReversalText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding PointAndFigureReversalText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+
+                        <TextBlock Grid.Row="15" Grid.Column="0" Text="{l:Localize DataWindow_Row_Update}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
+                                    IsVisible="{Binding PointAndFigureUpdateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock Grid.Row="15" Grid.Column="1" Text="{Binding PointAndFigureUpdateText}" Foreground="{DynamicResource Brush.Foreground.Primary}" HorizontalAlignment="Right" Margin="0,0,8,4"
+                                    IsVisible="{Binding PointAndFigureUpdateText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
                         <TextBlock Grid.Row="14" Grid.Column="0" Text="{l:Localize DataWindow_Row_Value}" Foreground="{DynamicResource Brush.Foreground.Secondary}" Margin="0,0,8,4"
                                     IsVisible="{Binding ReverseWatchValueText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>

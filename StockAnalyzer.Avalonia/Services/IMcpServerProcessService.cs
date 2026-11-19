@@ -41,6 +41,11 @@ public interface IMcpServerProcessService : INotifyPropertyChanged, IDisposable
     Task<McpServerLaunchResult> StartServerAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Stops any running managed McpServer process and starts a new instance with current user settings.
+    /// </summary>
+    Task<McpServerLaunchResult> RestartServerAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Stops the running McpServer process if it was started by this service.
     /// </summary>
     void StopServer();

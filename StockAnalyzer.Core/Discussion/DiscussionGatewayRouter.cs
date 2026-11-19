@@ -17,10 +17,21 @@ internal static class DiscussionRouterTexts
 /// <summary>Switches that exist for tests only; production code never sets either.</summary>
 /// <param name="PipeNameSuffix">Appended to the pipe name, so that a test never meets a real board.</param>
 /// <param name="EnableSharing">False keeps the board in this process alone.</param>
-internal sealed record DiscussionTransportOptions(string? PipeNameSuffix = null, bool EnableSharing = true)
+/// <param name="ElectionAttempts">Rounds of the election instead of <see cref="DiscussionLimits.ElectionAttempts"/>: a test whose process can stall for longer than the
+/// election lasts (a full run of the test assembly stalls it in garbage collections) widens the budget; null keeps the specified value.</param>
+/// <param name="CallConnectTimeoutMs">Connect wait of a call over the pipe instead of <see cref="DiscussionLimits.PipeConnectTimeoutMs"/>, for the same reason; null keeps the
+/// specified value. The connect probe of the election always keeps the specified value.</param>
+internal sealed record DiscussionTransportOptions(
+    string? PipeNameSuffix = null, bool EnableSharing = true, int? ElectionAttempts = null, int? CallConnectTimeoutMs = null)
 {
     /// <summary>Sharing is available whenever sharing is enabled.</summary>
     public bool SharingAvailable => EnableSharing;
+
+    /// <summary>The rounds the election makes.</summary>
+    public int EffectiveElectionAttempts => ElectionAttempts ?? DiscussionLimits.ElectionAttempts;
+
+    /// <summary>The connect wait of a call over the pipe, in milliseconds.</summary>
+    public int EffectiveCallConnectTimeoutMs => CallConnectTimeoutMs ?? DiscussionLimits.PipeConnectTimeoutMs;
 }
 
 /// <summary>
@@ -36,6 +47,8 @@ internal sealed class DiscussionGatewayRouter : IDiscussionGateway, IDisposable
     private readonly string? _protocolSuffix;
     private readonly string? _pipeName;
     private readonly string? _sharingKey;
+    private readonly int _electionAttempts;
+    private readonly int _callConnectTimeoutMs;
     private readonly SemaphoreSlim _electionLock = new(1, 1);
     private Board? _board;
     private int _disposed;
@@ -55,6 +68,10 @@ internal sealed class DiscussionGatewayRouter : IDiscussionGateway, IDisposable
         _commandLog = commandLog;
         _protocolSuffix = protocolSuffix;
         transport ??= new DiscussionTransportOptions();
+        ArgumentOutOfRangeException.ThrowIfLessThan(transport.EffectiveElectionAttempts, 1);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(transport.EffectiveCallConnectTimeoutMs);
+        _electionAttempts = transport.EffectiveElectionAttempts;
+        _callConnectTimeoutMs = transport.EffectiveCallConnectTimeoutMs;
         if (transport.SharingAvailable)
         {
             _pipeName = DiscussionSharingKey.PipeName(Environment.UserName, resolvedDailyDataPath, transport.PipeNameSuffix);
@@ -158,7 +175,7 @@ internal sealed class DiscussionGatewayRouter : IDiscussionGateway, IDisposable
     {
         try
         {
-            return (await DiscussionPipeClient.CallAsync(_pipeName!, request, cancellationToken).ConfigureAwait(false), false);
+            return (await DiscussionPipeClient.CallAsync(_pipeName!, request, cancellationToken, _callConnectTimeoutMs).ConfigureAwait(false), false);
         }
         catch (DiscussionWireException error) when (error.Problem == DiscussionWireProblem.VersionMismatch)
         {
@@ -295,7 +312,7 @@ internal sealed class DiscussionGatewayRouter : IDiscussionGateway, IDisposable
     private async Task<Board?> ElectAsync(CancellationToken cancellationToken)
     {
         string pipeName = _pipeName!;
-        for (int attempt = 1; attempt <= DiscussionLimits.ElectionAttempts; attempt++)
+        for (int attempt = 1; attempt <= _electionAttempts; attempt++)
         {
             if (await DiscussionPipeClient.ProbeAsync(pipeName, cancellationToken).ConfigureAwait(false))
             {

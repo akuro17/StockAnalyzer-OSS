@@ -21,6 +21,9 @@ internal static class TickerMetadataJson
         nameof(TickerMetadata.Sector), nameof(TickerMetadata.Industry), nameof(TickerMetadata.Currency),
     };
 
+    /// <summary>The camelCase JSON names that <see cref="WriteSummaryFields"/> emits when unfiltered.</summary>
+    public static IReadOnlyList<string> SummaryFieldNames { get; } = SummaryFields.Select(JsonName).ToArray();
+
     private static readonly PropertyInfo[] Properties = typeof(TickerMetadata)
         .GetProperties(BindingFlags.Public | BindingFlags.Instance)
         .Where(p => p.GetIndexParameters().Length == 0)
@@ -55,12 +58,18 @@ internal static class TickerMetadataJson
         writer.WriteEndObject();
     }
 
-    /// <summary>Writes the <see cref="SummaryFields"/> into the object that is currently open.</summary>
-    public static void WriteSummaryFields(Utf8JsonWriter writer, TickerMetadata metadata)
+    /// <summary>
+    /// Writes the <see cref="SummaryFields"/> into the object that is currently open. When <paramref name="onlyFields"/> is non-null,
+    /// writes only the selected camelCase summary fields in their fixed property order.
+    /// </summary>
+    public static void WriteSummaryFields(Utf8JsonWriter writer, TickerMetadata metadata, IReadOnlySet<string>? onlyFields = null)
     {
         foreach (PropertyInfo property in Properties.Where(p => SummaryFields.Contains(p.Name) && !ExcludedFields.Contains(p.Name)))
         {
-            WriteProperty(writer, property, metadata);
+            if (onlyFields is null || onlyFields.Contains(JsonName(property.Name)))
+            {
+                WriteProperty(writer, property, metadata);
+            }
         }
     }
 

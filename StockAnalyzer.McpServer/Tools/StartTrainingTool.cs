@@ -27,11 +27,8 @@ internal sealed class StartTrainingTool : IMcpTool
     public string Name => "sa_start_training";
 
     public string Description =>
-        "Starts one supervised training job (the Training Wizard's path) on stored daily bars and returns at once with a jobId; poll sa_get_training_status until the state is final. " +
-        "The model is written to a temporary folder that is removed when the server stops: nothing is saved under Data and nothing is registered. " +
-        "Fixed by the server: daily bars, OHLCV min-max features, a fresh model, no ensemble. " +
-        "Frameworks, architectures and hyperparameters (names, defaults, ranges) are listed in sa_get_capabilities under execution. " +
-        "Only a limited number of jobs run at once (EXECUTION_BUSY). A server whose temporary folder path is too long for the trainer is refused before anything is created (SANDBOX_PATH_TOO_LONG).";
+        "Starts a supervised training job on daily bars in a temporary folder (capabilities list frameworks/architectures); poll sa_get_training_status. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

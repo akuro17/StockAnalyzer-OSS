@@ -20,7 +20,10 @@ internal sealed class ListTickersTool : IMcpTool
     private const string LimitArgument = "limit";
     private const string SearchArgument = "searchQuery";
     private const string SummaryArgument = "includeMetadataSummary";
+    private const string FieldsArgument = "fields";
     private const string GroupIdArgument = "groupId";
+
+    private static readonly string[] AlwaysWrittenNames = { "symbol", "hasMetadata" };
 
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
     private readonly ITickerGroupResolver _groupResolver;
@@ -41,11 +44,8 @@ internal sealed class ListTickersTool : IMcpTool
     public string Name => "sa_list_tickers";
 
     public string Description =>
-        "Lists the registered ticker symbols (All Tickers), sorted by symbol (ordinal, ascending). " +
-        "Symbols are canonical: upper case with '.' replaced by '-' (for example 7203-T). " +
-        "searchQuery matches symbol or stored short name, ignoring case. " +
-        "includeMetadataSummary adds the stored identity fields (short name, long name, region, sector, industry, currency) to each returned ticker. " +
-        "groupId restricts the symbols to the members of a saved ticker group (from sa_list_ticker_groups).";
+        $"Lists registered canonical ticker symbols (ascending), filtered optionally by searchQuery or groupId, with optional metadata summary (up to {_limits.MaxSymbolsPerMetadataCall} items) and {FieldsArgument}. Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
@@ -56,6 +56,7 @@ internal sealed class ListTickersTool : IMcpTool
         .Integer(LimitArgument, $"Page size. Default {_limits.DefaultTickerPageSize}, at most {_limits.MaxTickersPerPage}.", defaultValue: _limits.DefaultTickerPageSize, minimum: 1, maximum: _limits.MaxTickersPerPage)
         .String(SearchArgument, "Case-insensitive text that must occur in the symbol or the stored short name.")
         .Boolean(SummaryArgument, $"Add stored identity fields to each returned ticker. At most {_limits.MaxSymbolsPerMetadataCall} tickers per call.")
+        .StringArray(FieldsArgument, $"Summary properties to include when {SummaryArgument} is true (camelCase names, for example shortName or sector); {string.Join(", ", AlwaysWrittenNames)} are always written. Default: all summary properties.", minItems: 1)
         .String(GroupIdArgument, "Guid of a ticker group from sa_list_ticker_groups. When given, lists only members of that group.")
         .Build();
 
@@ -88,6 +89,53 @@ internal sealed class ListTickersTool : IMcpTool
             .Build();
     }
 
+    private static IReadOnlySet<string>? ReadFields(JsonElement arguments, bool includeSummary)
+    {
+        IReadOnlyList<string>? named = ToolArgs.StringArray(arguments, FieldsArgument);
+        if (named is null)
+        {
+            return null;
+        }
+
+        if (!includeSummary)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{FieldsArgument}' selects summary metadata properties and requires '{SummaryArgument}' true.",
+                FieldsArgument,
+                $"Set {SummaryArgument} to true, or omit {FieldsArgument}.");
+        }
+
+        if (named.Count == 0)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{FieldsArgument}' must name at least one property, or be omitted.",
+                FieldsArgument,
+                $"Omit {FieldsArgument} for every summary property.");
+        }
+
+        var selected = new HashSet<string>(StringComparer.Ordinal);
+        for (int index = 0; index < named.Count; index++)
+        {
+            string name = named[index];
+            if (TickerMetadataJson.SummaryFieldNames.Contains(name, StringComparer.Ordinal))
+            {
+                selected.Add(name);
+            }
+            else if (!AlwaysWrittenNames.Contains(name, StringComparer.Ordinal))
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InvalidArgument,
+                    $"Unknown summary property '{name}'.",
+                    $"{FieldsArgument}[{index}]",
+                    $"Valid names: {string.Join(", ", TickerMetadataJson.SummaryFieldNames.Concat(AlwaysWrittenNames))}.");
+            }
+        }
+
+        return selected;
+    }
+
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         long offset = ToolArgs.Integer(arguments, OffsetArgument) ?? 0;
@@ -98,6 +146,7 @@ internal sealed class ListTickersTool : IMcpTool
 
         int limit = ToolArgs.PositiveWithin(arguments, LimitArgument, _limits.DefaultTickerPageSize, _limits.MaxTickersPerPage);
         bool includeSummary = ToolArgs.Boolean(arguments, SummaryArgument) ?? false;
+        IReadOnlySet<string>? onlyFields = ReadFields(arguments, includeSummary);
         if (includeSummary && limit > _limits.MaxSymbolsPerMetadataCall)
         {
             throw new ToolException(
@@ -183,7 +232,7 @@ internal sealed class ListTickersTool : IMcpTool
                     writer.WriteBoolean("hasMetadata", metadata is not null);
                     if (metadata is { } stored)
                     {
-                        TickerMetadataJson.WriteSummaryFields(writer, stored);
+                        TickerMetadataJson.WriteSummaryFields(writer, stored, onlyFields);
                     }
                 }
 

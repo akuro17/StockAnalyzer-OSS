@@ -26,21 +26,16 @@ internal sealed class SeriesOutputOptions
     public const int MaxDecimalPlaces = 10;
 
     /// <summary>
-    /// The description every tool that offers <c>summaryDistribution</c> gives the argument (one text, so the two tools cannot disagree): the six added fields and the rule for robustTrendSlope.
+    /// The description every tool that offers <c>summaryDistribution</c> gives the argument (one text, so the two tools cannot disagree).
     /// </summary>
     public static readonly string SummaryDistributionDescription =
-        "true adds, to every series summary, median, iqr (interquartile range, type 7), mad (median absolute deviation, raw), skewness (sample G1; null below 3 values or for a flat series), " +
-        "excessKurtosis (sample G2; null below 4 values or for a flat series) and robustTrendSlope (Theil-Sen slope per bar over the same trendBars window as trendSlope; null below two values). " +
-        $"For protection against the quadratic cost, robustTrendSlope is only calculated when trendBars is {SeriesSummaryStatistics.MinTrendBars} to {SeriesSummaryStatistics.MaxRobustTrendBars}: with a larger trendBars it is null " +
-        "(that is not an error and not a data shortage; trendSlope and every other field are unaffected). Needs summary true. Default false.";
+        $"Adds median, iqr, mad, skewness, excessKurtosis and robustTrendSlope (null, not an error, when trendBars > {SeriesSummaryStatistics.MaxRobustTrendBars}) to each summary; needs summary true. Default false.";
 
     /// <summary>
     /// The description every tool that offers <c>summaryBars</c> gives the argument (one text, so the two tools cannot disagree).
     /// </summary>
     public static string SummaryBarsDescription(McpLimits limits)
-        => $"Number of the LAST calculated bars the summary is computed over (needs summary true; from {SeriesSummaryStatistics.MinTrendBars} to {McpLimitsContract.EffectiveMaxSummaryBars(limits)}). " +
-           "Null values inside that tail count as bars; a value above the number of calculated bars is clamped to it (not an error). " +
-           "Each series summary then also reports summaryBars (as sent) and summaryWindowBars (the bars actually used). pastValues always read the whole calculated window. Default: the whole calculated window.";
+        => $"Trailing calculated bars covered by summary ({SeriesSummaryStatistics.MinTrendBars}..{McpLimitsContract.EffectiveMaxSummaryBars(limits)}); needs summary true. Default: all calculated bars.";
 
     private SeriesOutputOptions(bool includeSeries, bool summary, bool summaryDistribution, int trendBars, int? summaryBars, IReadOnlyList<long> lookbackOffsets, int? decimalPlaces)
     {
@@ -94,7 +89,7 @@ internal sealed class SeriesOutputOptions
 
     /// <summary>The schema text of <c>decimalPlaces</c> for a tool that rounds the numbers named by <paramref name="what"/> (output only; no calculation uses a rounded number).</summary>
     public static string DecimalPlacesDescription(string what)
-        => $"Round {what} to this many decimal places (0 to {MaxDecimalPlaces}; away from zero at the midpoint). Counts, indexes, dates and text are never rounded. Default: the numbers as calculated.";
+        => $"Round {what} to 0..{MaxDecimalPlaces} decimal places (away from zero; output only). Default: unrounded.";
 
     /// <summary>
     /// The double counterpart of <see cref="Round(decimal, int)"/>, for a tool whose statistic is a double: a non-finite value is returned unchanged (the writer decides how it is shown),

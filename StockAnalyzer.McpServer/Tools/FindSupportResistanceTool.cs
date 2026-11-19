@@ -48,11 +48,8 @@ internal sealed class FindSupportResistanceTool : IMcpTool
     public string Name => "sa_find_support_resistance";
 
     public string Description =>
-        "Extracts support and resistance price levels, hit counts, and strength scores using Singular Spectrum Analysis (SSA). " +
-        "Computes active nearest support/resistance levels and distance ratios relative to the current price. Read-only. " +
-        "Causal as of endDate (bars after it are never read), but the SSA reconstruction smooths over the whole loaded window including its last bar, " +
-        "so the levels are not prefix-invariant: a level can move when later bars are added. " +
-        "clusterTolerance is a multiplier of residualStdDev; effectiveClusterTolerance is the resulting price distance.";
+        "Extracts SSA support and resistance levels, hit counts, strength scores, and distances from current price (causal to endDate, non-prefix-invariant window). Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
@@ -69,7 +66,7 @@ internal sealed class FindSupportResistanceTool : IMcpTool
         .Integer(NumComponentsArgument, $"Number of reconstructed SSA components when autoRank is false (>= 1). Default {IndicatorDefaultConstants.SsaAnomalyDefaultNumComponents}.", defaultValue: IndicatorDefaultConstants.SsaAnomalyDefaultNumComponents, minimum: 1)
         .Boolean(AutoRankArgument, "Automatically estimate signal rank via cumulative energy threshold. Default true.")
         .Integer(MaxLevelsArgument, $"Maximum total support and resistance levels to return (1..{_limits.MaxSupportResistanceLevels}). Default {_limits.MaxSupportResistanceLevels}.", defaultValue: _limits.MaxSupportResistanceLevels, minimum: 1, maximum: _limits.MaxSupportResistanceLevels)
-        .Number(ClusterToleranceArgument, "StructuralPivots only: a MULTIPLIER of the residual standard deviation (sigma_res) of the SSA reconstruction, not a price. Extrema closer than clusterTolerance x sigma_res (reported as effectiveClusterTolerance, in price units) are merged into one level. Default 0.5.")
+        .Number(ClusterToleranceArgument, "StructuralPivots: multiplier of residualStdDev merging close extrema into effectiveClusterTolerance. Default 0.5.")
         .Number(MultiplierArgument, $"Volatility multiplier for DynamicEnvelopes mode. Default {IndicatorDefaultConstants.SsaResidualBandDefaultMultiplier}.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();

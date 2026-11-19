@@ -31,16 +31,8 @@ internal sealed class GetPortfolioSummaryTool : IMcpTool
     public string Name => "sa_get_portfolio_summary";
 
     public string Description =>
-        "Returns the user's saved portfolio valued by the application's own valuation: total value, unrealized and realized profit, cash and its ratio, every open position with its latest stored price, " +
-        $"market value and unrealized profit in the base currency ({BaseCurrencyArgument}, an ISO 4217 code, default JPY), the cash by currency and the exchange rates used. " +
-        "The exchange rates are the ones the user's own transactions applied (the newest per currency and their inverses); nothing is fetched. A currency without a rate to the base currency is listed in unconvertedCurrencies " +
-        "and its positions are left out of the base-currency totals (a portfolio that holds a single currency is valued in it unchanged). A position without a stored price is valued at its average cost with no unrealized profit (priceAvailable false). " +
-        "Short positions have a negative market value. Read-only; the file is read as it is. No portfolio saved: portfolioFound false and empty lists. " +
-        $"{IncludeClosedPositionsArgument} true adds closedPositions and {IncludeTransactionsArgument} true adds transactions, each {{totalCount, returnedCount, truncated, items}}: closed positions newest exit first " +
-        "(id, ticker, side Long or Short, quantity, entryPrice, exitPrice, entryTime, exitTime, realizedPnL, totalFees; in the currency of the trade, which a closed position does not record), " +
-        "transactions newest first (id, executedAt, type Long, ExitLong, Deposit, Withdrawal, Short or ExitShort, ticker, quantity, pricePerUnit, priceCurrency, cashAmount, fee, commissionCurrency, appliedRate when one was applied; " +
-        $"the notes, target price and stop loss of a transaction are never returned). Each list returns at most {LimitArgument} items (default {_limits.MaxReturnedClosedPositions} for closed positions, {_limits.MaxReturnedTransactions} for transactions). " +
-        "The totals above, closedPositionCount and realizedPLByCurrency are always for the whole portfolio. There is no allocation breakdown.";
+        $"Returns the saved portfolio's valuation, cash balances, open positions in {BaseCurrencyArgument} (default JPY), exchange rates, and optional closedPositions/transactions history (limit default {_limits.MaxReturnedClosedPositions}/{_limits.MaxReturnedTransactions}). Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Protocol;
 using StockAnalyzer.McpServer.Tools;
 
@@ -41,6 +42,8 @@ internal static class McpHelpText
         options.Add((McpCommandLine.VersionToken, "Print the version and the supported MCP protocol versions, and exit. Cannot be combined with another argument."));
         options.Add((McpCommandLine.EnableExecutionToken, "Offer the opt-in execution tools: they train a model and run it in a temporary folder of this computer (nothing is saved under Data); listed below when this option is given."));
         options.Add((McpCommandLine.EnableDiscussionToken, "Offer the opt-in discussion tools: a volatile board in memory on which several AI agents talk about an analysis (nothing is saved under Data); listed below when this option is given."));
+        options.Add(($"{McpCommandLine.ToolsetToken} <names>", $"Restrict read-only tools to comma-separated profiles ({string.Join(", ", McpToolsetCatalog.AllowedProfiles)}). Default all."));
+        options.Add(($"{McpCommandLine.ResponseFormatToken} <mode>", $"Tool response format: {McpCommandLine.DualFormat} (default, text + structuredContent) or {McpCommandLine.TextOnlyFormat} (text only)."));
         AppendTable(text, options);
 
         text.Append($"{NewLine}Configuration:{NewLine}");

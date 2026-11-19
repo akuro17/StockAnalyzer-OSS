@@ -46,12 +46,8 @@ internal sealed class RunOnnxPredictionTool : IMcpTool
     public string Name => "sa_run_onnx_prediction";
 
     public string Description =>
-        "Runs a model trained with sa_start_training or a registered production model (modelId) over the stored daily bars of one symbol. " +
-        "Exactly one of 'artifactId' or 'modelId' must be specified. " +
-        "Each prediction uses only the model's window of bars that ends at its own bar (never a later bar): the latest 'count' bars up to asOfDate are predicted, oldest first. " +
-        "A classifier returns classScores (probabilities, the model's own class order), predictedClass (the most probable class) and confidence (its probability); " +
-        "a regressor returns value (the predicted log return). modelContract lists the window, feature mode, classes and the sha256 of the model. " +
-        $"{McpDisclaimerConstants.ResearchNotAdvice} The model must be a succeeded job's (see sa_get_training_status) or 'latest', or a registered modelId (or 'active').";
+        $"Runs a trained or registered ONNX model (exactly one of artifactId or modelId) over daily bars up to asOfDate. {McpDisclaimerConstants.ResearchNotAdvice} " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

@@ -22,6 +22,7 @@ internal sealed class SearchNotesTool : IMcpTool
     private const string CreatedToArgument = "createdTo";
     private const string LimitArgument = "limit";
     private const string IncludeParentContextArgument = "includeParentContext";
+    private const string SnippetOnlyArgument = "snippetOnly";
     private const string MatchAll = "All";
     private const string MatchAny = "Any";
 
@@ -40,13 +41,10 @@ internal sealed class SearchNotesTool : IMcpTool
     public string Name => "sa_search_notes";
 
     public string Description =>
-        "Searches the user's Ticker Notes (investment journal entries): each note's text, related ticker, hashtags, catalyst date, creation time and thread links, newest first. " +
-        $"query holds up to {MaxQueryWords} words separated by white space, matched as plain text inside the note text, ignoring case ('%', '_' and '\\' are ordinary characters); " +
-        $"{MatchModeArgument} {MatchAll} (default) needs every word, {MatchAny} at least one. {TickerArgument} (a symbol, '.' and '-' interchangeable), {HashtagArgument} (with or without '#') and " +
-        $"{CreatedFromArgument}/{CreatedToArgument} ({ToolJson.DateFormat}, inclusive, local dates of the creation time) narrow the search; all given conditions must hold. With no condition the newest notes are returned. " +
-        $"At most {_limits.MaxReturnedNotes} notes are returned ({LimitArgument}); totalMatched counts all matches and truncated says when more exist. " +
-        $"{IncludeParentContextArgument} true adds a short preview of the note a reply answers (parentContext) and of the note a quote cites (quotedContext). " +
-        "Notes in the trash are never returned. Attachments are counted (attachmentCount), not read. Read-only; no database means no notes.";
+        $"Searches the user's Ticker Notes (up to {MaxQueryWords} query words, newest first). " +
+        $"{MatchModeArgument} ({MatchAll}/{MatchAny}), {TickerArgument}, {HashtagArgument}, date bounds, {IncludeParentContextArgument}, and {SnippetOnlyArgument} filter and shape results. " +
+        $"Excludes trash; read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
@@ -61,6 +59,7 @@ internal sealed class SearchNotesTool : IMcpTool
         .String(CreatedToArgument, $"Last creation date to include ({ToolJson.DateFormat}).")
         .Integer(LimitArgument, $"Most notes returned. Default and maximum {_limits.MaxReturnedNotes}.", defaultValue: _limits.MaxReturnedNotes, minimum: 1, maximum: _limits.MaxReturnedNotes)
         .Boolean(IncludeParentContextArgument, "true adds a preview of the replied-to and the quoted note. Default false.")
+        .Boolean(SnippetOnlyArgument, $"true caps note body at {NoteToolSupport.BodySnippetMaxChars} characters and adds bodyTruncated. Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -91,6 +90,7 @@ internal sealed class SearchNotesTool : IMcpTool
 
         int limit = ToolArgs.PositiveWithin(arguments, LimitArgument, _limits.MaxReturnedNotes, _limits.MaxReturnedNotes);
         bool includeContext = ToolArgs.Boolean(arguments, IncludeParentContextArgument) ?? false;
+        bool snippetOnly = ToolArgs.Boolean(arguments, SnippetOnlyArgument) ?? false;
 
         var criteria = new NoteFilterCriteria
         {
@@ -121,7 +121,7 @@ internal sealed class SearchNotesTool : IMcpTool
             writer.WriteStartArray("notes");
             foreach (Note note in returned)
             {
-                NoteToolSupport.WriteNote(writer, note, context);
+                NoteToolSupport.WriteNote(writer, note, context, snippetOnly, words);
             }
 
             writer.WriteEndArray();

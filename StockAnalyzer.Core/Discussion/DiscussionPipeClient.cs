@@ -37,7 +37,8 @@ internal static class DiscussionPipeClient
     /// <exception cref="TimeoutException">Nothing accepted the connection in time.</exception>
     /// <exception cref="IOException">The pipe broke or the peer closed it without a reply.</exception>
     /// <exception cref="DiscussionWireException">The reply is not a valid line of the wire, or of another version.</exception>
-    public static async Task<DiscussionReply> CallAsync(string pipeName, DiscussionRequest request, CancellationToken cancellationToken)
+    public static async Task<DiscussionReply> CallAsync(
+        string pipeName, DiscussionRequest request, CancellationToken cancellationToken, int connectTimeoutMs = DiscussionLimits.PipeConnectTimeoutMs)
     {
         byte[] bytes;
         try
@@ -56,7 +57,7 @@ internal static class DiscussionPipeClient
         }
 
         using NamedPipeClientStream client = NewClient(pipeName);
-        await client.ConnectAsync(DiscussionLimits.PipeConnectTimeoutMs, cancellationToken).ConfigureAwait(false);
+        await client.ConnectAsync(connectTimeoutMs, cancellationToken).ConfigureAwait(false);
         await client.WriteAsync(bytes.AsMemory(), cancellationToken).ConfigureAwait(false);
         await client.FlushAsync(cancellationToken).ConfigureAwait(false);
 

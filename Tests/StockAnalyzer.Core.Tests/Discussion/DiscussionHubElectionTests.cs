@@ -46,12 +46,36 @@ public sealed class DiscussionHubElectionTests : IDisposable
 
     private static string NewSuffix() => Guid.NewGuid().ToString("N")[..12];
 
-    private DiscussionGatewayRouter NewRouter(string suffix, string? dataFolder = null, bool sharing = true, ICommandLog? commandLog = null, DiscussionSettings? settings = null)
+    // A full run of this assembly stalls the whole process in garbage collections (measured: about 63 percent of 100 ms in the first minute), and the specified election lasts
+    // about one second (3 rounds of a 300 ms connect and a 50 ms pause), so a stall of that length makes a router answer HUB_UNAVAILABLE although the board is fine. The tests of
+    // the election itself therefore widen the budget (rounds and the connect wait of a call); only the tests that pin the specified budget use it as it is.
+    private const int ToleratedElectionAttempts = 30;
+    private const int ToleratedCallConnectTimeoutMs = 1500;
+    private const int StallMilliseconds = 1500;
+
+    private DiscussionGatewayRouter NewRouter(
+        string suffix, string? dataFolder = null, bool sharing = true, ICommandLog? commandLog = null, DiscussionSettings? settings = null, bool specifiedBudget = false)
     {
+        var transport = specifiedBudget
+            ? new DiscussionTransportOptions(suffix, sharing)
+            : new DiscussionTransportOptions(suffix, sharing, ToleratedElectionAttempts, ToleratedCallConnectTimeoutMs);
         var router = new DiscussionGatewayRouter(
-            settings ?? new DiscussionSettings(), TimeProvider.System, commandLog, protocolSuffix: null, dataFolder ?? DataFolder, new DiscussionTransportOptions(suffix, sharing));
+            settings ?? new DiscussionSettings(), TimeProvider.System, commandLog, protocolSuffix: null, dataFolder ?? DataFolder, transport);
         _disposables.Add(router);
         return router;
+    }
+
+    /// <summary>A hub that has no listening instance: the one instance of the name is connected to a client that never speaks, so every other connect finds the pipe busy.</summary>
+    private (NamedPipeServerStream Server, NamedPipeClientStream Occupier) StartHubWithoutAListeningInstance(string suffix)
+    {
+        string name = DiscussionSharingKey.PipeName(Environment.UserName, DataFolder, suffix);
+        var server = new NamedPipeServerStream(
+            name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly | PipeOptions.FirstPipeInstance);
+        var occupier = new NamedPipeClientStream(".", name, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        occupier.Connect(ConnectTimeoutMilliseconds);
+        _disposables.Add(occupier);
+        _disposables.Add(server);
+        return (server, occupier);
     }
 
     private static Task<DiscussionReply> Ask(IDiscussionGateway gateway, string operation, string arguments = "{}", CancellationToken cancellationToken = default)
@@ -118,6 +142,63 @@ public sealed class DiscussionHubElectionTests : IDisposable
                 router.Dispose();
             }
         }
+    }
+
+    // ---- The budget of the election ---------------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task AnElectionThatFindsNoListeningInstanceInTheSpecifiedRoundsAnswersHubUnavailable_AndTheNextCallElectsAgain()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // Spec 5.12: at most 3 rounds, then HUB_UNAVAILABLE. This is what a stalled hub looks like to a router (the name exists, so no router can claim it, and no
+        // instance listens, so every connect waits its 300 ms): the reply of the flaky full runs, "No discussion board could be reached."
+        string suffix = NewSuffix();
+        (NamedPipeServerStream server, NamedPipeClientStream occupier) = StartHubWithoutAListeningInstance(suffix);
+        DiscussionGatewayRouter router = NewRouter(suffix, specifiedBudget: true);
+
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        DiscussionReply refused = await Ask(router, DiscussionOperations.Status);
+        stopwatch.Stop();
+
+        Assert.Equal(DiscussionErrorCodes.HubUnavailable, Code(refused));
+        Assert.Equal("No discussion board could be reached.", refused.Failure!.Message);
+        Assert.Null(router.Role);
+        Assert.True(stopwatch.ElapsedMilliseconds >= DiscussionLimits.ElectionAttempts * DiscussionLimits.PipeConnectTimeoutMs / 2,
+            $"the election gave up after {stopwatch.ElapsedMilliseconds} ms: it did not use its rounds");
+
+        // The failure is not kept: once the name is free the next call elects.
+        occupier.Dispose();
+        server.Dispose();
+        using JsonDocument status = await Ok(router, DiscussionOperations.Status);
+        Assert.Equal("hub", router.Role);
+    }
+
+    [Fact]
+    public async Task AWiderBudgetWaitsForAHubThatDoesNotListenForAWhile()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        // The same stalled hub, which resumes after StallMilliseconds (longer than the specified election lasts): the widened budget outlasts it.
+        string suffix = NewSuffix();
+        (NamedPipeServerStream server, NamedPipeClientStream occupier) = StartHubWithoutAListeningInstance(suffix);
+        DiscussionGatewayRouter router = NewRouter(suffix);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(StallMilliseconds);
+            occupier.Dispose();
+            server.Dispose();
+        });
+
+        using JsonDocument status = await Ok(router, DiscussionOperations.Status);
+
+        Assert.NotNull(router.Role);
     }
 
     [Fact]

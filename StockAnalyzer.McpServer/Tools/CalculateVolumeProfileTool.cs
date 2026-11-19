@@ -29,6 +29,10 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
     private const string BinCountArgument = "binCount";
     private const string ValueAreaPercentArgument = "valueAreaPercent";
     private const string IncludeBinsArgument = "includeBins";
+    private const string CompactRowsArgument = "compactRows";
+    private const string BinColumnsKey = "binColumns";
+    private const string BinRowsKey = "binRows";
+    private static readonly string[] BinColumns = { "priceLow", "priceHigh", "volume" };
 
     private const string VolumeBasis = "Volume";
     private const string TimeAtPriceBasis = "TimeAtPrice";
@@ -50,13 +54,8 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
     public string Name => "sa_calculate_volume_profile";
 
     public string Description =>
-        "Calculates price-level volume distribution (Volume Profile) or residence time distribution (Time-at-Price) " +
-        "over a specified lookback range, deriving Point of Control (POC), Value Area High (VAH), and Value Area Low (VAL). " +
-        "The volume of a bar is split equally over the bins its range touches, in whole units, so the bins can add up to slightly less than the bars: " +
-        "totalBarVolume (the bars), profileVolume (the bins) and truncatedVolume (the difference) show by how much; with basis TimeAtPrice the unit is bars. " +
-        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds the written prices (priceMin, priceMax, the bin bounds, poc, valueArea high and low; away from zero at the midpoint; output only); volumes and counts are never rounded, and valueArea.percent is the value you sent, as sent. " +
-        $"{IncludeBinsArgument} false leaves out the bins array only (default true); poc, valueArea, totalBarVolume, profileVolume, truncatedVolume and every other field stay. " +
-        "Operates strictly read-only and respects causal as-of dates.";
+        $"Calculates Volume Profile or Time-at-Price bin distribution (POC, VAH, VAL) over stored bars; supports {SeriesOutputOptions.DecimalPlacesArgument}, {IncludeBinsArgument}, and {CompactRowsArgument} ({BinColumnsKey}/{BinRowsKey}). Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
@@ -75,6 +74,7 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("priceMin, priceMax, the bin bounds, poc and the value area bounds (volumes are never rounded)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Boolean(IncludeBinsArgument, "false leaves out the bins array only (poc, valueArea and the volume totals stay). Default true.")
+        .Boolean(CompactRowsArgument, $"true returns 'bins' as [] and writes '{BinColumnsKey}' plus '{BinRowsKey}' ([priceLow, priceHigh, volume] rows; cannot be combined with {IncludeBinsArgument} false). Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -105,6 +105,15 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
 
         int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
         bool includeBins = ToolArgs.Boolean(arguments, IncludeBinsArgument) ?? true;
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
+        if (compactRows && !includeBins)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{CompactRowsArgument}' formats the bins array and cannot be combined with '{IncludeBinsArgument}' false.",
+                CompactRowsArgument,
+                $"Omit {CompactRowsArgument}, or set {IncludeBinsArgument} to true.");
+        }
         double valueAreaPercent = ToolArgs.Number(arguments, ValueAreaPercentArgument) ?? ChartConstants.DefaultValueAreaPercent;
         if (valueAreaPercent <= 0.0 || valueAreaPercent > 1.0)
         {
@@ -268,15 +277,33 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
             if (includeBins)
             {
                 writer.WriteStartArray("bins");
-                foreach (var b in bins)
+                if (!compactRows)
                 {
-                    writer.WriteStartObject();
-                    writer.WriteNumber("priceLow", SeriesOutputOptions.RoundIfRequested(b.LowerBound, decimalPlaces));
-                    writer.WriteNumber("priceHigh", SeriesOutputOptions.RoundIfRequested(b.UpperBound, decimalPlaces));
-                    writer.WriteNumber("volume", b.TotalVolume);
-                    writer.WriteEndObject();
+                    foreach (var b in bins)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteNumber("priceLow", SeriesOutputOptions.RoundIfRequested(b.LowerBound, decimalPlaces));
+                        writer.WriteNumber("priceHigh", SeriesOutputOptions.RoundIfRequested(b.UpperBound, decimalPlaces));
+                        writer.WriteNumber("volume", b.TotalVolume);
+                        writer.WriteEndObject();
+                    }
                 }
                 writer.WriteEndArray();
+
+                if (compactRows)
+                {
+                    ToolJson.WriteStringArray(writer, BinColumnsKey, BinColumns);
+                    writer.WriteStartArray(BinRowsKey);
+                    foreach (var b in bins)
+                    {
+                        writer.WriteStartArray();
+                        writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(b.LowerBound, decimalPlaces));
+                        writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(b.UpperBound, decimalPlaces));
+                        writer.WriteNumberValue(b.TotalVolume);
+                        writer.WriteEndArray();
+                    }
+                    writer.WriteEndArray();
+                }
             }
 
             writer.WriteStartObject("poc");

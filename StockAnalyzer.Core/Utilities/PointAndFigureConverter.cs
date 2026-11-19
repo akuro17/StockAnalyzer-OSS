@@ -52,7 +52,7 @@ public static class PointAndFigureConverter
         elementDatesBuffer?.Clear();
         if (candles == null || candles.Count == 0) return;
         if (boxSize <= 0) throw new ArgumentOutOfRangeException(nameof(boxSize), "Box size must be positive.");
-        if (reversalAmount < 1) throw new ArgumentOutOfRangeException(nameof(reversalAmount), "Reversal amount must be >= 1.");
+        if (reversalAmount < ChartConstants.MinPnfReversalAmount) throw new ArgumentOutOfRangeException(nameof(reversalAmount), "Reversal amount must be >= 1.");
 
         int count = candles.Count;
         var zeroAlloc = ArrayPool<ZeroAllocCandleData>.Shared.Rent(count);

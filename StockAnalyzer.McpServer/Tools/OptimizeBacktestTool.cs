@@ -57,20 +57,9 @@ internal sealed class OptimizeBacktestTool : IMcpTool
     public string Name => "sa_optimize_backtest";
 
     public string Description =>
-        "Grid search over the numbers of one backtest: runs every combination of parameterRanges with the application's own backtest engine (the same one as sa_run_backtest) and returns the best combinations by one metric of the backtest report. " +
-        "Give conditions exactly as for sa_run_backtest, but put {\"$param\": \"<name>\"} where a number goes: an indicator parameter value, the right-hand constant of a comparison, an offset, or a number of riskManagement, account or report. " +
-        "parameterRanges lists {name, start, end, step}, one per name used in $param (an unused name or an undefined $param is INVALID_ARGUMENT); a parameter takes start, start + step, ... up to the largest value not above end. " +
-        "An integer parameter (Period, offset) that meets a fractional value is INVALID_ARGUMENT. templateId is not accepted because a template cannot carry placeholders. " +
-        $"The combinations are numbered from 0 in the order of parameterRanges, the first range changing slowest. At most {_limits.MaxOptimizationParameters} ranges and {_limits.MaxOptimizationCombinations} combinations (the product of the value counts); more is LIMIT_EXCEEDED, the grid is never thinned. " +
-        $"objective is the name of a report metric as sa_run_backtest writes it (call sa_get_capabilities for the list: {string.Join(", ", OptimizationObjectives.Names)}); no new formula is defined. " +
-        "Only combinations whose objective has status Valid are ranked: the best value first (objectiveDirection Maximize, the default, or Minimize, for example for maxDrawdown), equal values in combination order; the others are counted in invalidCombinationCount. If none is Valid the ranking is empty (not an error). " +
-        $"minTrades (default {_limits.DefaultMinInSampleTrades}) is the fewest trades a combination must make in the ranked period to be eligible: a combination without trades has an objective (for example totalReturn 0) that says nothing, so it is not ranked; the ones left out are counted in belowMinTradesCombinationCount and in invalidCombinationCount, and minTrades is echoed. 0 ranks them. " +
-        $"topK (1 to {_limits.MaxOptimizationTopK}) is the number of ranked combinations returned. " +
-        "sensitivity of a ranked combination looks at the neighbours that differ in one parameter by one step (up to two per parameter): neighborCount is how many of them have a Valid objective, neighborMean, neighborMin and neighborMax are over those; it is null when none has. " +
-        "positiveInfinityCombinationCount is how many combinations had an infinite objective (for example a profit factor without a losing trade): they are not ranked and are part of invalidCombinationCount. " +
-        "outOfSampleStartDate (yyyy-MM-dd) splits the period: the combinations are ranked on startDate to the day before it, and each returned combination is also run on that date to endDate (outOfSample: objectiveValue and the metric status). " +
-        "symbol, timeFrame (D1, W1 or MN1), startDate, endDate, account, riskManagement, report and allowUnregistered mean what they mean for sa_run_backtest. " +
-        "A call that runs out of time or is cancelled returns an error, never a partial ranking. The tool never changes anything and never fetches data.";
+        $"Grid search over sa_run_backtest parameters using {{\"$param\": \"name\"}} placeholders and parameterRanges (at most {_limits.MaxOptimizationParameters} ranges, {_limits.MaxOptimizationCombinations} combinations), ranked by objective (call sa_get_capabilities for metrics). " +
+        $"Supports minTrades (default {_limits.DefaultMinInSampleTrades}), outOfSampleStartDate, and {BacktestReportJson.CompactReportArgument}. Read-only; never mutates Data. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => true;
 
@@ -92,6 +81,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         .FreeObject(BacktestSettingsBinder.RiskArgument, "{stopLossRatio, takeProfitRatio, dynamicExits}, as for sa_run_backtest; numbers may be placeholders.")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings, as for sa_run_backtest; numbers may be placeholders.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
+        .Boolean(BacktestReportJson.CompactReportArgument, "Write every metric in ranking[].metrics as its bare number (null when its status is not Valid) and list non-Valid ones in unavailableMetrics [{name, status}] (only when any exist). Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -110,6 +100,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         bool minimize = string.Equals(ToolArgs.String(arguments, DirectionArgument), Minimize, StringComparison.Ordinal);
         int topK = ToolArgs.PositiveWithin(arguments, TopKArgument, _limits.MaxOptimizationTopK, _limits.MaxOptimizationTopK);
         int minTrades = ToolArgs.NonNegativeWithin(arguments, MinTradesArgument, _limits.DefaultMinInSampleTrades, BacktestSweep.NoUpperBound);
+        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? false;
         CheckOutOfSampleAgainstRequested(outOfSampleStart, requestedStart, requestedEnd);
 
         BacktestParameterGrid grid = _sweep.ReadGrid(arguments.GetProperty(BacktestParameterGrid.RangesArgument));
@@ -172,7 +163,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
 
         return ToolJson.Build(writer => Write(
             writer, symbol, timeFrame, objective, minimize, grid, inSample, objectiveValues, ranked, outOfSample, effectiveStart, effectiveEnd, inSampleEnd,
-            outOfSampleStart, requestedStart is null || requestedEnd is null, valid, infinite, minTrades, belowMinimumCount, warnings));
+            outOfSampleStart, requestedStart is null || requestedEnd is null, valid, infinite, minTrades, belowMinimumCount, warnings, compactReport));
     }
 
     // ---- reading and checking the request ----------------------------------------------------------------------------------------------
@@ -217,7 +208,8 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         int infinite,
         int minTrades,
         int belowMinimumCount,
-        IReadOnlyList<string> warnings)
+        IReadOnlyList<string> warnings,
+        bool compactReport)
     {
         writer.WriteStartObject();
         writer.WriteString("symbol", symbol);
@@ -260,7 +252,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
 
             writer.WriteEndObject();
             writer.WriteNumber("objectiveValue", objectiveValues[index]!.Value);
-            WriteMetrics(writer, report);
+            WriteMetrics(writer, report, compactReport);
             writer.WriteNumber("totalTrades", report.TotalTrades);
             WriteSensitivity(writer, grid, objectiveValues, index);
             if (outOfSampleStart is not null)
@@ -279,12 +271,27 @@ internal sealed class OptimizeBacktestTool : IMcpTool
 
     private static string FormatDate(DateOnly date) => date.ToString(ToolJson.DateFormat, CultureInfo.InvariantCulture);
 
-    private static void WriteMetrics(Utf8JsonWriter writer, BacktestReport report)
+    private static void WriteMetrics(Utf8JsonWriter writer, BacktestReport report, bool compactReport)
     {
         writer.WriteStartObject("metrics");
+        List<(string Name, MetricStatus Status)>? unavailable = compactReport ? new List<(string, MetricStatus)>() : null;
         foreach (string name in SummaryMetrics)
         {
-            BacktestSweep.WriteMetric(writer, BacktestReportJson.JsonName(name), BacktestSweep.Metric(report, name));
+            string jsonName = BacktestReportJson.JsonName(name);
+            MetricValue? metric = BacktestSweep.Metric(report, name);
+            if (compactReport)
+            {
+                BacktestSweep.WriteCompactMetric(writer, jsonName, metric, unavailable);
+            }
+            else
+            {
+                BacktestSweep.WriteMetric(writer, jsonName, metric);
+            }
+        }
+
+        if (unavailable is not null)
+        {
+            BacktestSweep.WriteUnavailableMetrics(writer, unavailable);
         }
 
         writer.WriteEndObject();

@@ -117,6 +117,8 @@ internal static class McpServerComposition
     /// <param name="discussionGateway">Only for tests: the gateway the discussion tools use instead of the real board.</param>
     /// <param name="timeProvider">Only for tests: the clock of the board and the command log.</param>
     /// <param name="commandLog">Only for tests: the command log instead of the real one.</param>
+    /// <param name="toolsets">Optional CLI <c>--toolset</c> profile names restricting registered read-only tools; null registers all.</param>
+    /// <param name="responseFormat">Selects whether <c>tools/call</c> emits <c>structuredContent</c> (<see cref="McpResponseFormat.Dual"/>) or omits it (<see cref="McpResponseFormat.TextOnly"/>).</param>
     public static McpServerRuntime Create(
         IConfiguration configuration,
         LogSink log,
@@ -134,7 +136,9 @@ internal static class McpServerComposition
         IReadOnlyPortfolioSource? portfolioSource = null,
         IReadOnlyNoteSource? noteSource = null,
         IReadOnlyRegisteredIndicatorSource? registeredIndicatorSource = null,
-        IReadOnlyDrawingDocumentSource? drawingSource = null)
+        IReadOnlyDrawingDocumentSource? drawingSource = null,
+        IReadOnlyList<string>? toolsets = null,
+        McpResponseFormat responseFormat = McpResponseFormat.Dual)
     {
         McpLimits limits = configuration.GetSection(McpLimits.SectionName).Get<McpLimits>() ?? new McpLimits();
         McpLimitsContract.Validate(limits);
@@ -264,30 +268,31 @@ internal static class McpServerComposition
 
             var calculateIndicators = new CalculateIndicatorsTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), sanitizer, limits);
             var activeWorkspaceTool = new GetActiveWorkspaceTool(resolvedWorkspaceSource, services.GetRequiredService<IReadOnlyRegisteredIndicatorSource>(), catalog, limits);
+            var resultHandles = new McpResultHandleStore();
             var tools = new List<IMcpTool>
             {
                 new ListTickersTool(gateway, groupResolver, limits),
                 new ListTickerGroupsTool(gateway, resolvedWorkspaceSource, limits),
-                new FilterTickersTool(gateway, groupResolver, screenerBinder, limits),
+                new FilterTickersTool(gateway, groupResolver, screenerBinder, limits, resultHandles),
                 new GetCandlesTool(gateway, symbols, limits),
                 new GetTickerMetadataTool(gateway, limits),
                 capabilitiesTool,
                 settingsTool,
                 calculateIndicators,
-                new CalculateIndicatorsBatchTool(calculateIndicators, symbols, groupResolver, sanitizer, limits),
+                new CalculateIndicatorsBatchTool(calculateIndicators, symbols, groupResolver, sanitizer, limits, resultHandles),
                 new GetPortfolioSummaryTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway, limits),
                 new AnalyzePortfolioRiskTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway, symbols, limits),
                 new SearchNotesTool(services.GetRequiredService<IReadOnlyNoteSource>(), limits),
                 new ListUpcomingCatalystsTool(services.GetRequiredService<IReadOnlyNoteSource>(), limits, timeProvider),
                 activeWorkspaceTool,
-                new RunScreenerTool(gateway, groupResolver, screenerBinder, ScreenerValueExtractor.Default, templateAdvisor, settings, limits),
+                new RunScreenerTool(gateway, groupResolver, screenerBinder, ScreenerValueExtractor.Default, templateAdvisor, settings, limits, resultHandles),
                 new ListTemplatesTool(gateway, templateAdvisor, backtestBinder),
                 new RunBacktestTool(gateway, symbols, backtestBinder, limits),
                 new ExtractSignalEventsTool(gateway, symbols, backtestBinder, factory, limits),
                 new DetectDivergencesTool(gateway, symbols, catalog, indicatorBinder, factory, limits),
                 new OptimizeBacktestTool(gateway, symbols, backtestBinder, limits),
                 new RunWalkForwardTool(gateway, symbols, backtestBinder, limits),
-                new RunPortfolioBacktestTool(gateway, groupResolver, symbols, backtestBinder, limits),
+                new RunPortfolioBacktestTool(gateway, groupResolver, symbols, backtestBinder, limits, resultHandles),
                 new CalculateReverseWatchTool(gateway, symbols, limits),
                 new CalculateChartSeriesTool(gateway, symbols, limits),
                 new RenderChartImageTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), limits, services.GetRequiredService<IReadOnlyDrawingDocumentSource>()),
@@ -302,8 +307,8 @@ internal static class McpServerComposition
                 new ProjectPricePathTool(gateway, symbols, limits),
                 new GetSeasonalityTool(gateway, symbols, limits),
                 new CalculateRelativePerformanceTool(gateway, symbols, sanitizer, limits),
-                new CalculateCrossAssetStatsTool(gateway, symbols, groupResolver, limits),
-                new CalculateMarketBreadthTool(gateway, symbols, groupResolver, limits),
+                new CalculateCrossAssetStatsTool(gateway, symbols, groupResolver, limits, resultHandles),
+                new CalculateMarketBreadthTool(gateway, symbols, groupResolver, limits, resultHandles),
                 new CheckPortfolioRlPreflightTool(symbols, services.GetService<IRlPortfolioService>()),
                 new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders),
                 new ListModelsTool(symbols, modelRegistry, limits),
@@ -388,9 +393,9 @@ internal static class McpServerComposition
                     cancellationToken => ReadActiveWorkspaceAsync(activeWorkspaceTool, cancellationToken)),
             });
 
-            var registry = new McpToolRegistry(tools);
+            var registry = new McpToolRegistry(McpToolsetCatalog.Filter(tools, toolsets));
             registryOfTools = registry;
-            var dispatcher = new McpMessageDispatcher(log, registry, new ToolExecutor(limits, sanitizer, log, observer), resources, identity, new McpPromptRegistry(limits));
+            var dispatcher = new McpMessageDispatcher(log, registry, new ToolExecutor(limits, sanitizer, log, observer, responseFormat), resources, identity, new McpPromptRegistry(limits));
             return new McpServerRuntime(services, limits, dispatcher, registry, prepareExecution);
         }
         catch

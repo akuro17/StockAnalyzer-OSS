@@ -76,6 +76,7 @@ public class McpServerSettingsManager : IMcpServerSettingsManager
                     CurrentSettings = new McpServerSettings
                     {
                         EnableDiscussion = dto.McpServer?.EnableDiscussion ?? false,
+                        Toolset = McpToolsetProfiles.NormalizeText(dto.McpServer?.Toolset),
                         Discussion = dto.AiIntegration?.Discussion is not null
                             ? McpServerSettings.CloneDiscussion(dto.AiIntegration.Discussion)
                             : new DiscussionSettings()
@@ -102,7 +103,8 @@ public class McpServerSettingsManager : IMcpServerSettingsManager
             {
                 McpServer = new McpServerSectionDto
                 {
-                    EnableDiscussion = settings.EnableDiscussion
+                    EnableDiscussion = settings.EnableDiscussion,
+                    Toolset = McpToolsetProfiles.NormalizeText(settings.Toolset)
                 },
                 AiIntegration = new AiIntegrationSectionDto
                 {
@@ -144,6 +146,7 @@ public class McpServerSettingsManager : IMcpServerSettingsManager
     internal sealed class McpServerSectionDto
     {
         public bool EnableDiscussion { get; set; }
+        public string? Toolset { get; set; }
     }
 
     internal sealed class AiIntegrationSectionDto

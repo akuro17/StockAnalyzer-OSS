@@ -98,6 +98,22 @@ public class DataWindowViewLocalizationTests
         Assert.Matches(value, source);
     }
 
+    // Rows shared by chart types that are never shown together: the Kagi reversal price sits below the Move row (8) on the row of the Three Line Break reversal, the Point and Figure
+    // reversal and update price below its Count row (13) on the rows of the Reverse Watch values.
+    [Theory]
+    [InlineData(9, "DataWindow_Row_Reversal", "KagiReversalPriceText")]
+    [InlineData(14, "DataWindow_Row_Reversal", "PointAndFigureReversalText")]
+    [InlineData(15, "DataWindow_Row_Update", "PointAndFigureUpdateText")]
+    public void ReversalPriceRows_AreOnTheirGridRow_AndAreShownOnlyWhenTheirTextIsNotEmpty(int row, string key, string property)
+    {
+        var source = ViewSource();
+        var label = new Regex($@"<TextBlock Grid\.Row=""{row}"" Grid\.Column=""0"" Text=""\{{l:Localize {key}\}}""[^>]*?IsVisible=""\{{Binding {property}, Converter=\{{x:Static StringConverters\.IsNotNullOrEmpty\}}\}}""", RegexOptions.Singleline);
+        var value = new Regex($@"<TextBlock Grid\.Row=""{row}"" Grid\.Column=""1"" Text=""\{{Binding {property}\}}""[^>]*?IsVisible=""\{{Binding {property}, Converter=\{{x:Static StringConverters\.IsNotNullOrEmpty\}}\}}""", RegexOptions.Singleline);
+
+        Assert.Matches(label, source);
+        Assert.Matches(value, source);
+    }
+
     [Fact]
     public void TheMarketDataGrid_HasARowForEveryRowIndexUsedByTheView()
     {

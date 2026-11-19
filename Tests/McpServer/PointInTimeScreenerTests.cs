@@ -368,9 +368,12 @@ public sealed class PointInTimeScreenerTests : IDisposable
         string description = listing.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
             .Single(tool => tool.GetProperty("name").GetString() == "sa_run_screener").GetProperty("description").GetString()!;
         Assert.Contains("asOfDate", description, StringComparison.Ordinal);
-        Assert.Contains("noDataAtAsOfCount", description, StringComparison.Ordinal);
-        Assert.Contains("survivorship", description, StringComparison.Ordinal);
-        Assert.Contains("stored snapshot", description, StringComparison.Ordinal);
+        Assert.Contains("docs/MCP/tools/sa_run_screener.md", description, StringComparison.Ordinal);
+        string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_run_screener.md"));
+        Assert.Contains("asOfDate", doc, StringComparison.Ordinal);
+        Assert.Contains("noDataAtAsOfCount", doc, StringComparison.Ordinal);
+        Assert.Contains("survivorship", doc, StringComparison.Ordinal);
+        Assert.Contains("stored snapshot", doc, StringComparison.Ordinal);
     }
 
     // ---- the gateway and its as-of data service ----------------------------------------------------------------------------------------

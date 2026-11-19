@@ -356,10 +356,12 @@ public sealed class IndicatorTimeFrameTests : IDisposable
         JsonElement tool = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().Single(t => t.GetProperty("name").GetString() == "sa_calculate_indicators");
 
         string description = tool.GetProperty("description").GetString()!;
-        Assert.Contains("PreviousClosedPeriod", description, StringComparison.Ordinal);
-        Assert.Contains("previous CLOSED period", description, StringComparison.Ordinal);
-        Assert.Contains("bars of the indicator's own time frame", description, StringComparison.Ordinal);
-        Assert.DoesNotContain("bars of the requested time frame", description, StringComparison.Ordinal);
+        Assert.Contains("docs/MCP/tools/sa_calculate_indicators.md", description, StringComparison.Ordinal);
+        string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_calculate_indicators.md"));
+        Assert.Contains("PreviousClosedPeriod", doc, StringComparison.Ordinal);
+        Assert.Contains("previous CLOSED period", doc, StringComparison.Ordinal);
+        Assert.Contains("bars of the indicator's own time frame", doc, StringComparison.Ordinal);
+        Assert.DoesNotContain("bars of the requested time frame", doc, StringComparison.Ordinal);
         JsonElement item = tool.GetProperty("inputSchema").GetProperty("properties").GetProperty("indicators").GetProperty("items");
         Assert.True(item.GetProperty("properties").TryGetProperty("timeFrame", out _));
         Assert.DoesNotContain("timeFrame", item.TryGetProperty("required", out JsonElement required) ? required.GetRawText() : string.Empty, StringComparison.Ordinal);

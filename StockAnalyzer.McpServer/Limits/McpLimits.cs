@@ -65,6 +65,12 @@ public sealed class McpLimits
 
     public int MaxResponseBytes { get; set; } = 4 * 1024 * 1024;
 
+    /// <summary>
+    /// Estimated maximum tokens (4 UTF-8 bytes per token, rounded up) of the JSON text part of one tool response.
+    /// Default equals <see cref="MaxResponseBytes"/> / 4 so existing responses are unaffected; lower in configuration to enforce a strict token budget.
+    /// </summary>
+    public int MaxResponseTokens { get; set; } = (4 * 1024 * 1024) / 4;
+
     public int MaxRequestBytes { get; set; } = 1024 * 1024;
 
     public int MaxScreenerSymbols { get; set; } = 500;

@@ -27,6 +27,14 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
     private const string EndDateArgument = "endDate";
     private const string LookbackArgument = "lookbackBars";
     private const string TailArgument = "outputTailCount";
+    private const string CompactRowsArgument = "compactRows";
+    private const string ElementColumnsKey = "elementColumns";
+    private const string ElementRowsKey = "elementRows";
+
+    private static readonly string[] HeikinAshiColumns = { "index", "timestamp", "open", "high", "low", "close", "volume", "direction" };
+    private static readonly string[] RenkoAndThreeLineBreakColumns = { "index", "timestamp", "open", "high", "low", "close", "volume", "direction", "runCount", "reversalPrice", "nextTargetPrice", "startDate", "endDate", "trendDays" };
+    private static readonly string[] KagiColumns = { "index", "timestamp", "open", "high", "low", "close", "volume", "direction", "columnIndex", "isYang", "lineState", "columnSpan", "reversalPrice", "nextTargetPrice", "startDate", "endDate", "reversalDate", "updateDate", "trendDays" };
+    private static readonly string[] PointAndFigureColumns = { "index", "timestamp", "open", "high", "low", "close", "volume", "direction", "columnIndex", "columnType", "boxCount", "columnSpan", "reversalPrice", "nextTargetPrice", "startDate", "endDate", "trendDays" };
 
     // Sizing arguments
     private const string SizingModeArgument = "sizingMode";
@@ -89,11 +97,8 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
     public string Name => "sa_calculate_chart_series";
 
     public string Description =>
-        "Calculates the converted numerical series, effective sizing parameters, DataWindow metrics, and optional pattern analysis " +
-        "for Heikin-Ashi and Non-Time-Series charts (HeikinAshi, Renko, Kagi, PointAndFigure, ThreeLineBreak). " +
-        "Supports all GUI calculation settings (sizing modes, manual sizes, percentages, ATR period/multiplier, rounding and fallback modes, reversals, initial column, line count, minimum move, tolerance, multi-wave and P&F patterns). " +
-        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds every written price, size and score (away from zero at the midpoint; output only, the series is calculated unrounded); volume, counts, indexes and dates are never rounded. " +
-        "Never mutates data and runs read-only.";
+        $"Calculates converted chart series (HeikinAshi, Renko, Kagi, PointAndFigure, ThreeLineBreak), sizing metrics, and optional patterns; supports {SeriesOutputOptions.DecimalPlacesArgument} and {CompactRowsArgument} ({ElementColumnsKey}/{ElementRowsKey}). Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
@@ -133,6 +138,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         .Boolean(ShowTriangleBreakoutArgument, "Include Triangle breakout signals in P&F pattern analysis. Default true.")
         .Boolean(ShowCatapultBreakoutArgument, "Include Catapult breakout signals in P&F pattern analysis. Default true.")
         .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every price, size, span and score of the result (volume is never rounded)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Boolean(CompactRowsArgument, $"true returns 'elements' as [] and writes '{ElementColumnsKey}' plus '{ElementRowsKey}' (one row per element, in column order). Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -145,6 +151,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
         int tail = ToolArgs.PositiveWithin(arguments, TailArgument, _limits.DefaultOutputTailBars, _limits.MaxOutputTailBars);
         int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
 
         ChartSeriesRequest request = BuildRequest(arguments, chartType);
 
@@ -185,7 +192,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, ex.Message, ChartTypeArgument);
         }
 
-        return ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, chartType, loaded.Count, result, tail, endDate, decimalPlaces));
+        return ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, chartType, loaded.Count, result, tail, endDate, decimalPlaces, compactRows));
     }
 
     private static ChartType ParseChartType(JsonElement arguments)
@@ -469,7 +476,8 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         ChartSeriesCalculationResult result,
         int tail,
         DateOnly? endDate,
-        int? decimalPlaces)
+        int? decimalPlaces,
+        bool compactRows)
     {
         writer.WriteStartObject();
         writer.WriteString("symbol", symbol);
@@ -498,38 +506,51 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         }
 
         writer.WriteStartArray("elements");
-
-        for (int i = skipCount; i < result.Elements.Count; i++)
+        if (!compactRows)
         {
-            var el = result.Elements[i];
-            writer.WriteStartObject();
-            writer.WriteNumber("index", el.Index);
-            writer.WriteString("timestamp", ToolJson.FormatDate(el.Timestamp));
-            writer.WriteNumber("open", SeriesOutputOptions.RoundIfRequested(el.Open, decimalPlaces));
-            writer.WriteNumber("high", SeriesOutputOptions.RoundIfRequested(el.High, decimalPlaces));
-            writer.WriteNumber("low", SeriesOutputOptions.RoundIfRequested(el.Low, decimalPlaces));
-            writer.WriteNumber("close", SeriesOutputOptions.RoundIfRequested(el.Close, decimalPlaces));
-            writer.WriteNumber("volume", el.Volume);
-            writer.WriteString("direction", el.Direction);
+            for (int i = skipCount; i < result.Elements.Count; i++)
+            {
+                var el = result.Elements[i];
+                writer.WriteStartObject();
+                writer.WriteNumber("index", el.Index);
+                writer.WriteString("timestamp", ToolJson.FormatDate(el.Timestamp));
+                writer.WriteNumber("open", SeriesOutputOptions.RoundIfRequested(el.Open, decimalPlaces));
+                writer.WriteNumber("high", SeriesOutputOptions.RoundIfRequested(el.High, decimalPlaces));
+                writer.WriteNumber("low", SeriesOutputOptions.RoundIfRequested(el.Low, decimalPlaces));
+                writer.WriteNumber("close", SeriesOutputOptions.RoundIfRequested(el.Close, decimalPlaces));
+                writer.WriteNumber("volume", el.Volume);
+                writer.WriteString("direction", el.Direction);
 
-            if (el.ColumnIndex is not null) writer.WriteNumber("columnIndex", el.ColumnIndex.Value);
-            if (el.ColumnType is not null) writer.WriteString("columnType", el.ColumnType);
-            if (el.IsYang is not null) writer.WriteBoolean("isYang", el.IsYang.Value);
-            if (el.LineState is not null) writer.WriteString("lineState", el.LineState);
-            if (el.ColumnSpan is not null) writer.WriteNumber("columnSpan", SeriesOutputOptions.RoundIfRequested(el.ColumnSpan.Value, decimalPlaces));
-            if (el.RunCount is not null) writer.WriteNumber("runCount", el.RunCount.Value);
-            if (el.BoxCount is not null) writer.WriteNumber("boxCount", el.BoxCount.Value);
-            if (el.ReversalPrice is not null) writer.WriteNumber("reversalPrice", SeriesOutputOptions.RoundIfRequested(el.ReversalPrice.Value, decimalPlaces));
-            if (el.NextTargetPrice is not null) writer.WriteNumber("nextTargetPrice", SeriesOutputOptions.RoundIfRequested(el.NextTargetPrice.Value, decimalPlaces));
-            if (el.StartDate is not null) writer.WriteString("startDate", ToolJson.FormatDate(el.StartDate.Value));
-            if (el.EndDate is not null) writer.WriteString("endDate", ToolJson.FormatDate(el.EndDate.Value));
-            if (el.ReversalDate is not null) writer.WriteString("reversalDate", ToolJson.FormatDate(el.ReversalDate.Value));
-            if (el.UpdateDate is not null) writer.WriteString("updateDate", ToolJson.FormatDate(el.UpdateDate.Value));
-            if (el.TrendDays is not null) writer.WriteNumber("trendDays", el.TrendDays.Value);
+                if (el.ColumnIndex is not null) writer.WriteNumber("columnIndex", el.ColumnIndex.Value);
+                if (el.ColumnType is not null) writer.WriteString("columnType", el.ColumnType);
+                if (el.IsYang is not null) writer.WriteBoolean("isYang", el.IsYang.Value);
+                if (el.LineState is not null) writer.WriteString("lineState", el.LineState);
+                if (el.ColumnSpan is not null) writer.WriteNumber("columnSpan", SeriesOutputOptions.RoundIfRequested(el.ColumnSpan.Value, decimalPlaces));
+                if (el.RunCount is not null) writer.WriteNumber("runCount", el.RunCount.Value);
+                if (el.BoxCount is not null) writer.WriteNumber("boxCount", el.BoxCount.Value);
+                if (el.ReversalPrice is not null) writer.WriteNumber("reversalPrice", SeriesOutputOptions.RoundIfRequested(el.ReversalPrice.Value, decimalPlaces));
+                if (el.NextTargetPrice is not null) writer.WriteNumber("nextTargetPrice", SeriesOutputOptions.RoundIfRequested(el.NextTargetPrice.Value, decimalPlaces));
+                if (el.StartDate is not null) writer.WriteString("startDate", ToolJson.FormatDate(el.StartDate.Value));
+                if (el.EndDate is not null) writer.WriteString("endDate", ToolJson.FormatDate(el.EndDate.Value));
+                if (el.ReversalDate is not null) writer.WriteString("reversalDate", ToolJson.FormatDate(el.ReversalDate.Value));
+                if (el.UpdateDate is not null) writer.WriteString("updateDate", ToolJson.FormatDate(el.UpdateDate.Value));
+                if (el.TrendDays is not null) writer.WriteNumber("trendDays", el.TrendDays.Value);
 
-            writer.WriteEndObject();
+                writer.WriteEndObject();
+            }
         }
         writer.WriteEndArray();
+
+        if (compactRows)
+        {
+            ToolJson.WriteStringArray(writer, ElementColumnsKey, ColumnsFor(chartType));
+            writer.WriteStartArray(ElementRowsKey);
+            for (int i = skipCount; i < result.Elements.Count; i++)
+            {
+                WriteElementRow(writer, chartType, result.Elements[i], decimalPlaces);
+            }
+            writer.WriteEndArray();
+        }
 
         if (result.MultiWaveSignals is not null)
         {
@@ -583,5 +604,80 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         }
 
         writer.WriteEndObject();
+    }
+
+    private static string[] ColumnsFor(ChartType chartType) => chartType switch
+    {
+        ChartType.HeikinAshi => HeikinAshiColumns,
+        ChartType.Renko or ChartType.ThreeLineBreak => RenkoAndThreeLineBreakColumns,
+        ChartType.Kagi => KagiColumns,
+        ChartType.PointAndFigure => PointAndFigureColumns,
+        _ => throw new InvalidOperationException($"Unsupported chart type: {chartType}"),
+    };
+
+    private static void WriteElementRow(Utf8JsonWriter writer, ChartType chartType, ChartSeriesElement el, int? decimalPlaces)
+    {
+        writer.WriteStartArray();
+        writer.WriteNumberValue(el.Index);
+        writer.WriteStringValue(ToolJson.FormatDate(el.Timestamp));
+        writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(el.Open, decimalPlaces));
+        writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(el.High, decimalPlaces));
+        writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(el.Low, decimalPlaces));
+        writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(el.Close, decimalPlaces));
+        writer.WriteNumberValue(el.Volume);
+        writer.WriteStringValue(el.Direction);
+
+        switch (chartType)
+        {
+            case ChartType.HeikinAshi:
+                break;
+            case ChartType.Renko:
+            case ChartType.ThreeLineBreak:
+                ToolJson.WriteNullableValue(writer, el.RunCount);
+                ToolJson.WriteNullableValue(writer, SeriesOutputOptions.RoundIfRequested(el.ReversalPrice, decimalPlaces));
+                ToolJson.WriteNullableValue(writer, SeriesOutputOptions.RoundIfRequested(el.NextTargetPrice, decimalPlaces));
+                WriteNullableDate(writer, el.StartDate);
+                WriteNullableDate(writer, el.EndDate);
+                ToolJson.WriteNullableValue(writer, el.TrendDays);
+                break;
+            case ChartType.Kagi:
+                ToolJson.WriteNullableValue(writer, el.ColumnIndex);
+                if (el.IsYang is { } isYang) writer.WriteBooleanValue(isYang); else writer.WriteNullValue();
+                ToolJson.WriteNullableValue(writer, el.LineState);
+                ToolJson.WriteNullableValue(writer, SeriesOutputOptions.RoundIfRequested(el.ColumnSpan, decimalPlaces));
+                ToolJson.WriteNullableValue(writer, SeriesOutputOptions.RoundIfRequested(el.ReversalPrice, decimalPlaces));
+                ToolJson.WriteNullableValue(writer, SeriesOutputOptions.RoundIfRequested(el.NextTargetPrice, decimalPlaces));
+                WriteNullableDate(writer, el.StartDate);
+                WriteNullableDate(writer, el.EndDate);
+                WriteNullableDate(writer, el.ReversalDate);
+                WriteNullableDate(writer, el.UpdateDate);
+                ToolJson.WriteNullableValue(writer, el.TrendDays);
+                break;
+            case ChartType.PointAndFigure:
+                ToolJson.WriteNullableValue(writer, el.ColumnIndex);
+                ToolJson.WriteNullableValue(writer, el.ColumnType);
+                ToolJson.WriteNullableValue(writer, el.BoxCount);
+                ToolJson.WriteNullableValue(writer, SeriesOutputOptions.RoundIfRequested(el.ColumnSpan, decimalPlaces));
+                ToolJson.WriteNullableValue(writer, SeriesOutputOptions.RoundIfRequested(el.ReversalPrice, decimalPlaces));
+                ToolJson.WriteNullableValue(writer, SeriesOutputOptions.RoundIfRequested(el.NextTargetPrice, decimalPlaces));
+                WriteNullableDate(writer, el.StartDate);
+                WriteNullableDate(writer, el.EndDate);
+                ToolJson.WriteNullableValue(writer, el.TrendDays);
+                break;
+        }
+
+        writer.WriteEndArray();
+    }
+
+    private static void WriteNullableDate(Utf8JsonWriter writer, DateTime? value)
+    {
+        if (value is { } present)
+        {
+            writer.WriteStringValue(ToolJson.FormatDate(present));
+        }
+        else
+        {
+            writer.WriteNullValue();
+        }
     }
 }

@@ -836,7 +836,7 @@ namespace StockAnalyzer.ZeroAllocation
 
             var span = source.Span;
             var boxSize = parameters.BoxSize <= 0 ? 1m : parameters.BoxSize;
-            var reversalAmount = parameters.ReversalAmount < 1 ? 1 : parameters.ReversalAmount;
+            var reversalAmount = Math.Max(parameters.ReversalAmount, StockAnalyzer.Core.ChartConstants.MinPnfReversalAmount);
             decimal reversalValue = boxSize * reversalAmount;
 
             int capacity = Math.Max(64, span.Length / 2);

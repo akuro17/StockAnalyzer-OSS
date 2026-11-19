@@ -53,13 +53,8 @@ internal sealed class GetModelExplanationTool : IMcpTool
     public string Name => "sa_get_model_explanation";
 
     public string Description =>
-        "Loads offline explanation (Shapley values, partial dependence) and temperature calibration " +
-        "for a registered model generation. Optionally assigns the market regime when symbol is provided, on bars of the model's own time frame; " +
-        "regimeReason names why none was assigned (null when one was). " +
-        "The explanation, calibration and regime centroids are fixed artefacts of the training run: asOfDate only selects the bars used for the regime. " +
-        "pointInTime gives dataEnd (the last prediction anchor of the training run, null when unknown) and horizonBars (bars of the model's time frame): " +
-        "the labels of the last anchor reach horizonBars bars beyond dataEnd, and asOfBeforeDataEnd is true when asOfDate < dataEnd (null when unknown, never false then). " +
-        "Zero-mutation; contains no file paths.";
+        "Loads Shapley/PDP offline explanation, calibration, and optional market regime assignment for a registered model generation. Zero-mutation; contains no file paths. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

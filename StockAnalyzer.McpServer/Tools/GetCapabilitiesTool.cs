@@ -34,20 +34,9 @@ internal sealed class GetCapabilitiesTool : IMcpTool
     public string Name => "sa_get_capabilities";
 
     public string Description =>
-        "Describes what this server can calculate: every indicator type with its display name, category and backtest eligibility, and the supported time frames. " +
-        "Call it before sa_calculate_indicators to learn exact type names, parameter names with their default and allowed range, and output series names. " +
-        "Without arguments the list is compact (type, displayName, category, backtestEligibility, isRegistered); " +
-        "with indicatorTypeFilter (or includeDetails true) each indicator also lists parameters, outputSeriesNames, isCrossTicker and nonCausalSeries. " +
-        "A parameter has min and max from the indicator's hard range (CoreParameterRange) and, where the chart input is narrower, guiMin and guiMax. " +
-        "isCrossTicker marks an indicator that compares two symbols: it needs its ComparisonSymbol parameter and is accepted by sa_calculate_indicators and sa_run_screener, not by sa_run_backtest. " +
-        "backtestEligibility is Allowed, NonCausal (the value at a bar depends on later bars) or SynchronousCalculationUnsupported; nonCausalSeries lists the series that look ahead. " +
-        "With details each indicator also has screenerEligibility, the same three values for the screener (sa_run_screener): the indicators that compare two symbols or compute universe breadth are Allowed there although the backtest refuses them. " +
-        "Unregistered types are defined in the product but cannot be calculated (isRegistered false). " +
-        "unit is null because no indicator output unit is stored in the application; unitUndefined lists those types. " +
-        "includeScreenerCatalog adds the names sa_run_screener accepts besides indicators: columns (isText true for the text columns; unavailableColumns lists table columns no condition can read reliably), criteria (patterns) and price sources, with the comparison and group operator names, " +
-        "timeFrame (the default frame of a scan) and sideTimeFrames (the frames a side may name with its own timeFrame; a column read from the stored metadata has none). " +
-        "execution says whether the training tools are offered (enabled) and, when they are, lists what sa_start_training accepts: frameworks, architectures, hyperparameters, the fixed values and the limits, and what sa_start_rl_training does (reinforcementLearning). " +
-        $"Period parameters and lengths are always in {PeriodUnit} of the requested time frame.";
+        $"Returns supported indicators, parameters, eligibility flags, time frames ({PeriodUnit}), screener catalogue (includeScreenerCatalog), backtest optimization objectives, and training capabilities. " +
+        "Call before sa_calculate_indicators or sa_run_screener. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

@@ -62,11 +62,8 @@ internal sealed class DetectDivergencesTool : IMcpTool
     public string Name => "sa_detect_divergences";
 
     public string Description =>
-        "Detects technical divergences between price swings and an indicator (e.g. RSI, MACD), " +
-        "and moving-average crossovers (Golden Cross / Dead Cross) using the application's DivergenceCrossDetector. " +
-        "Outputs exact pivot timestamps, indices, price values, and indicator values without inventing ad-hoc strength scores. " +
-        "A divergence event's triggerIndex/timestamp is the bar of its second price pivot; a swing pivot is only known after pivotOrder further bars, " +
-        "so the divergence is available from confirmedAtIndex/confirmedAtTime (the later of the two second pivots plus pivotOrder), not from the trigger bar.";
+        "Detects price-indicator divergences and MA crosses (Golden/Dead Cross) via DivergenceCrossDetector; reports triggerIndex and confirmedAtIndex (pivotOrder lag). Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 

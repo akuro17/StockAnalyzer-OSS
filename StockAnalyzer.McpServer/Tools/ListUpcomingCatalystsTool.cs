@@ -30,10 +30,8 @@ internal sealed class ListUpcomingCatalystsTool : IMcpTool
     public string Name => "sa_list_upcoming_catalysts";
 
     public string Description =>
-        "Lists the user's Ticker Notes that carry a catalyst date (an expected event such as earnings), from fromDate to fromDate + horizonDays inclusive, earliest first. " +
-        $"fromDate ({ToolJson.DateFormat}) defaults to today's local date and the resolved value is always returned; horizonDays defaults to and is at most {_limits.MaxCatalystHorizonDays}. " +
-        $"ticker narrows to one symbol. At most {_limits.MaxReturnedNotes} are returned ({LimitArgument}); totalMatched counts all and truncated says when more exist. " +
-        "daysUntil counts calendar days from fromDate. Notes in the trash are never listed. A catalyst date is the user's own note, not a verified event date. Read-only.";
+        $"Lists Ticker Notes carrying catalyst dates from fromDate up to horizonDays (max {_limits.MaxCatalystHorizonDays}, excluding trash). Read-only. " +
+        ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
