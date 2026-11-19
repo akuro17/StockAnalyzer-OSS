@@ -58,6 +58,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         $"{IncludeDistributionStatsArgument} true (default false) adds downsideBeta and upsideBeta to every betaAlpha entry (the OLS beta inside the dates with a strictly negative / strictly positive benchmark return; a zero benchmark return belongs to neither; null below 3 such dates or without benchmark variance there) " +
         "and a symbolStats array in symbols order: mean, stdDev (sample, N-1), downsideDeviation (target 0), skewness (G1, 3+ returns), excessKurtosis (G2, 4+), jarqueBeraStat and jarqueBeraPValue (8+; p = exp(-JB/2)), " +
         "cornishFisherVar95 (4+; the 5 % lower-tail return quantile with the Cornish-Fisher correction: a LOSS IS NEGATIVE, so it equals minus the positive valueAtRisk convention of sa_analyze_portfolio_risk; null where the expansion is not monotone). " +
+        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds every written statistic (away from zero at the midpoint; output only, the statistics are calculated unrounded); counts and dates are never rounded. " +
         "Statistics that are undefined for the data (a flat series, too few returns) are null. Read-only.";
 
     public bool IsHeavy => false;
@@ -75,6 +76,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         .String(ReturnBasisArgument, "Return calculation basis: 'SimpleReturn' (default) or 'LogReturn'.", allowedValues: new[] { ReturnStatistics.SimpleReturnBasis, ReturnStatistics.LogReturnBasis })
         .String(HoldingPeriodModeArgument, $"Common return dates whose returns cover different holding periods (multiBarReturnCount): '{nameof(HoldingPeriodAlignmentMode.IncludeAll)}' (default) uses them unchanged, '{nameof(HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod)}' leaves them out.", allowedValues: Enum.GetNames<HoldingPeriodAlignmentMode>())
         .Boolean(IncludeCovarianceArgument, "Whether to include the sample covariance matrix in the result. Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every correlation, covariance, beta, alpha, R2 and distribution statistic"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Boolean(IncludeDistributionStatsArgument, "Whether to add downsideBeta / upsideBeta to betaAlpha (needs a benchmark) and the symbolStats array (mean, stdDev, downsideDeviation, skewness, excessKurtosis, jarqueBeraStat, jarqueBeraPValue, cornishFisherVar95; the VaR is the negative lower-tail return). Default false: the output is unchanged.")
         .Build();
 
@@ -87,6 +89,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         bool includeCovariance = ToolArgs.Boolean(arguments, IncludeCovarianceArgument) ?? false;
         bool includeDistributionStats = ToolArgs.Boolean(arguments, IncludeDistributionStatsArgument) ?? false;
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
 
         string returnBasis = ToolArgs.String(arguments, ReturnBasisArgument) ?? ReturnStatistics.SimpleReturnBasis;
         if (!string.Equals(returnBasis, ReturnStatistics.SimpleReturnBasis, StringComparison.OrdinalIgnoreCase) &&
@@ -227,7 +230,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
                 writer.WriteStartArray();
                 foreach (double? val in row)
                 {
-                    WriteNullableDouble(writer, val);
+                    WriteNullableDouble(writer, val, decimalPlaces);
                 }
                 writer.WriteEndArray();
             }
@@ -242,7 +245,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
                     writer.WriteStartArray();
                     foreach (double? val in row)
                     {
-                        WriteNullableDouble(writer, val);
+                        WriteNullableDouble(writer, val, decimalPlaces);
                     }
                     writer.WriteEndArray();
                 }
@@ -257,13 +260,13 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
                 {
                     writer.WriteStartObject();
                     writer.WriteString("symbol", entry.Symbol);
-                    WriteNullableDouble(writer, "beta", entry.Beta);
-                    WriteNullableDouble(writer, "alpha", entry.Alpha);
-                    WriteNullableDouble(writer, "rSquared", entry.RSquared);
+                    WriteNullableDouble(writer, "beta", entry.Beta, decimalPlaces);
+                    WriteNullableDouble(writer, "alpha", entry.Alpha, decimalPlaces);
+                    WriteNullableDouble(writer, "rSquared", entry.RSquared, decimalPlaces);
                     if (includeDistributionStats)
                     {
-                        WriteNullableDouble(writer, "downsideBeta", entry.DownsideBeta);
-                        WriteNullableDouble(writer, "upsideBeta", entry.UpsideBeta);
+                        WriteNullableDouble(writer, "downsideBeta", entry.DownsideBeta, decimalPlaces);
+                        WriteNullableDouble(writer, "upsideBeta", entry.UpsideBeta, decimalPlaces);
                     }
 
                     writer.WriteEndObject();
@@ -279,14 +282,14 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
                 {
                     writer.WriteStartObject();
                     writer.WriteString("symbol", stats.Symbol);
-                    WriteNullableDouble(writer, "mean", stats.Mean);
-                    WriteNullableDouble(writer, "stdDev", stats.StdDev);
-                    WriteNullableDouble(writer, "downsideDeviation", stats.DownsideDeviation);
-                    WriteNullableDouble(writer, "skewness", stats.Skewness);
-                    WriteNullableDouble(writer, "excessKurtosis", stats.ExcessKurtosis);
-                    WriteNullableDouble(writer, "jarqueBeraStat", stats.JarqueBeraStatistic);
-                    WriteNullableDouble(writer, "jarqueBeraPValue", stats.JarqueBeraPValue);
-                    WriteNullableDouble(writer, "cornishFisherVar95", stats.CornishFisherVar95);
+                    WriteNullableDouble(writer, "mean", stats.Mean, decimalPlaces);
+                    WriteNullableDouble(writer, "stdDev", stats.StdDev, decimalPlaces);
+                    WriteNullableDouble(writer, "downsideDeviation", stats.DownsideDeviation, decimalPlaces);
+                    WriteNullableDouble(writer, "skewness", stats.Skewness, decimalPlaces);
+                    WriteNullableDouble(writer, "excessKurtosis", stats.ExcessKurtosis, decimalPlaces);
+                    WriteNullableDouble(writer, "jarqueBeraStat", stats.JarqueBeraStatistic, decimalPlaces);
+                    WriteNullableDouble(writer, "jarqueBeraPValue", stats.JarqueBeraPValue, decimalPlaces);
+                    WriteNullableDouble(writer, "cornishFisherVar95", stats.CornishFisherVar95, decimalPlaces);
                     writer.WriteEndObject();
                 }
 
@@ -424,11 +427,11 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         return all;
     }
 
-    private static void WriteNullableDouble(Utf8JsonWriter writer, double? value)
+    private static void WriteNullableDouble(Utf8JsonWriter writer, double? value, int? decimalPlaces)
     {
         if (value is { } v && !double.IsNaN(v) && !double.IsInfinity(v))
         {
-            writer.WriteNumberValue(v);
+            writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(v, decimalPlaces));
         }
         else
         {
@@ -436,11 +439,11 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         }
     }
 
-    private static void WriteNullableDouble(Utf8JsonWriter writer, string propertyName, double? value)
+    private static void WriteNullableDouble(Utf8JsonWriter writer, string propertyName, double? value, int? decimalPlaces)
     {
         if (value is { } v && !double.IsNaN(v) && !double.IsInfinity(v))
         {
-            writer.WriteNumber(propertyName, v);
+            writer.WriteNumber(propertyName, SeriesOutputOptions.RoundIfRequested(v, decimalPlaces));
         }
         else
         {

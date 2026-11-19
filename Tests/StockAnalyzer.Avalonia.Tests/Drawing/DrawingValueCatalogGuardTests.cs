@@ -11,7 +11,7 @@ using Xunit;
 namespace StockAnalyzer.Avalonia.Tests.Drawing;
 
 /// <summary>
-/// Guards that the Core drawing-value catalog and the GUI drawing objects describe the same 24 tools:
+/// Guards that the Core drawing-value catalog and the GUI drawing objects describe the same 26 tools:
 /// every name is a <see cref="ChartObjectType"/>, and the catalog result equals what the GUI object returns.
 /// </summary>
 public sealed class DrawingValueCatalogGuardTests
@@ -45,6 +45,8 @@ public sealed class DrawingValueCatalogGuardTests
         ["RegressionTrend"] = p => new RegressionTrendObject(p[0], p[1]),
         ["AnchoredVWAP"] = p => new AnchoredVwapObject(p[0]),
         ["ClassicPivotPoints"] = p => new ClassicPivotPointsObject(p[0]),
+        ["CrossLine"] = p => new CrossLineObject(p[0]),
+        ["DatePriceRange"] = p => new DatePriceRangeObject(p[0], p[1]),
     };
 
     /// <summary>Daily bars (one per calendar day, from 2025-11-01) with a wavy close, so the regression has a spread, the VWAP a deviation and the pivot periods differ from each other.</summary>
@@ -64,6 +66,7 @@ public sealed class DrawingValueCatalogGuardTests
             case RegressionTrendObject regression: regression.Recalculate(Candles); break;
             case AnchoredVwapObject vwap: vwap.Recalculate(Candles); break;
             case ClassicPivotPointsObject pivots: pivots.Recalculate(Candles); break;
+            case DatePriceRangeObject range: range.Recalculate(Candles); break;
         }
     }
 

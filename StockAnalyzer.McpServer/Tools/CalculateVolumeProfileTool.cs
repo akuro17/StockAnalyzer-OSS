@@ -28,6 +28,7 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
     private const string RangeBarsArgument = "rangeBars";
     private const string BinCountArgument = "binCount";
     private const string ValueAreaPercentArgument = "valueAreaPercent";
+    private const string IncludeBinsArgument = "includeBins";
 
     private const string VolumeBasis = "Volume";
     private const string TimeAtPriceBasis = "TimeAtPrice";
@@ -53,6 +54,8 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         "over a specified lookback range, deriving Point of Control (POC), Value Area High (VAH), and Value Area Low (VAL). " +
         "The volume of a bar is split equally over the bins its range touches, in whole units, so the bins can add up to slightly less than the bars: " +
         "totalBarVolume (the bars), profileVolume (the bins) and truncatedVolume (the difference) show by how much; with basis TimeAtPrice the unit is bars. " +
+        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds the written prices (priceMin, priceMax, the bin bounds, poc, valueArea high and low; away from zero at the midpoint; output only); volumes and counts are never rounded, and valueArea.percent is the value you sent, as sent. " +
+        $"{IncludeBinsArgument} false leaves out the bins array only (default true); poc, valueArea, totalBarVolume, profileVolume, truncatedVolume and every other field stay. " +
         "Operates strictly read-only and respects causal as-of dates.";
 
     public bool IsHeavy => false;
@@ -70,6 +73,8 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         .Integer(BinCountArgument, $"Number of vertical price bins (2..{_limits.MaxVolumeProfileBins}). Default {ChartConstants.DefaultVolumeProfileRowSize}.", defaultValue: ChartConstants.DefaultVolumeProfileRowSize, minimum: 2, maximum: _limits.MaxVolumeProfileBins)
         .Number(ValueAreaPercentArgument, $"Target fraction of total profile volume inside the value area (0.0 < valueAreaPercent <= 1.0). Default {ChartConstants.DefaultValueAreaPercent}.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("priceMin, priceMax, the bin bounds, poc and the value area bounds (volumes are never rounded)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Boolean(IncludeBinsArgument, "false leaves out the bins array only (poc, valueArea and the volume totals stay). Default true.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -98,6 +103,8 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"{BinCountArgument} must be between 2 and {_limits.MaxVolumeProfileBins}.", BinCountArgument);
         }
 
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        bool includeBins = ToolArgs.Boolean(arguments, IncludeBinsArgument) ?? true;
         double valueAreaPercent = ToolArgs.Number(arguments, ValueAreaPercentArgument) ?? ChartConstants.DefaultValueAreaPercent;
         if (valueAreaPercent <= 0.0 || valueAreaPercent > 1.0)
         {
@@ -250,32 +257,35 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
             writer.WriteString("rangeStart", subset[0].Timestamp.ToString(ToolJson.DateFormat, CultureInfo.InvariantCulture));
             writer.WriteString("rangeEnd", subset[^1].Timestamp.ToString(ToolJson.DateFormat, CultureInfo.InvariantCulture));
             writer.WriteNumber("barCount", subset.Count);
-            writer.WriteNumber("priceMin", minPrice);
-            writer.WriteNumber("priceMax", maxPrice);
+            writer.WriteNumber("priceMin", SeriesOutputOptions.RoundIfRequested(minPrice, decimalPlaces));
+            writer.WriteNumber("priceMax", SeriesOutputOptions.RoundIfRequested(maxPrice, decimalPlaces));
             writer.WriteString("basis", basis);
             writer.WriteNumber("binCount", bins.Count);
             writer.WriteNumber("totalBarVolume", totalBarVolume);
             writer.WriteNumber("profileVolume", profileVolume);
             writer.WriteNumber("truncatedVolume", totalBarVolume - profileVolume);
 
-            writer.WriteStartArray("bins");
-            foreach (var b in bins)
+            if (includeBins)
             {
-                writer.WriteStartObject();
-                writer.WriteNumber("priceLow", b.LowerBound);
-                writer.WriteNumber("priceHigh", b.UpperBound);
-                writer.WriteNumber("volume", b.TotalVolume);
-                writer.WriteEndObject();
+                writer.WriteStartArray("bins");
+                foreach (var b in bins)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteNumber("priceLow", SeriesOutputOptions.RoundIfRequested(b.LowerBound, decimalPlaces));
+                    writer.WriteNumber("priceHigh", SeriesOutputOptions.RoundIfRequested(b.UpperBound, decimalPlaces));
+                    writer.WriteNumber("volume", b.TotalVolume);
+                    writer.WriteEndObject();
+                }
+                writer.WriteEndArray();
             }
-            writer.WriteEndArray();
 
             writer.WriteStartObject("poc");
-            writer.WriteNumber("price", pocPrice);
+            writer.WriteNumber("price", SeriesOutputOptions.RoundIfRequested(pocPrice, decimalPlaces));
             writer.WriteEndObject();
 
             writer.WriteStartObject("valueArea");
-            writer.WriteNumber("high", vah);
-            writer.WriteNumber("low", val);
+            writer.WriteNumber("high", SeriesOutputOptions.RoundIfRequested(vah, decimalPlaces));
+            writer.WriteNumber("low", SeriesOutputOptions.RoundIfRequested(val, decimalPlaces));
             writer.WriteNumber("percent", valueAreaPercent);
             writer.WriteEndObject();
 

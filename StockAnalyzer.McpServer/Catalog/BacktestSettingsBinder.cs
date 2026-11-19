@@ -63,6 +63,16 @@ internal static class BacktestSettingsBinder
             ? ParseEnum<PositionSizingModel>(model.ValueKind == JsonValueKind.String ? model : throw NotText($"{AccountArgument}.sizingModel"), $"{AccountArgument}.sizingModel", Enum.GetNames<PositionSizingModel>())
             : BacktestDefaults.SizingModel;
 
+        // The execution-realism keys: a key that is not sent keeps the engine's own default (the class's property initializer), so a call that names none binds exactly as before.
+        var engineDefaults = new BacktestConfiguration();
+        T Mode<T>(string key, T fallback) where T : struct, Enum
+            => account is { } holder && holder.TryGetProperty(key, out JsonElement element)
+                ? ParseEnum<T>(element.ValueKind == JsonValueKind.String ? element : throw NotText($"{AccountArgument}.{key}"), $"{AccountArgument}.{key}", Enum.GetNames<T>())
+                : fallback;
+        VolumeConstraintMode volumeConstraintMode = Mode(McpBacktestSettingsExposure.VolumeConstraintModeKey, engineDefaults.VolumeConstraintMode);
+        BorrowFeeBasisMode borrowFeeBasisMode = Mode(McpBacktestSettingsExposure.BorrowFeeBasisModeKey, engineDefaults.BorrowFeeBasisMode);
+        PriceLimitFillMode priceLimitFillMode = Mode(McpBacktestSettingsExposure.PriceLimitFillModeKey, engineDefaults.PriceLimitFillMode);
+
         try
         {
             var configuration = new BacktestConfiguration
@@ -77,6 +87,11 @@ internal static class BacktestSettingsBinder
                 InitialMarginRatio = Number("initialMarginRatio", BacktestDefaults.InitialMarginRatio),
                 MaintenanceMarginRatio = Number("maintenanceMarginRatio", BacktestDefaults.MaintenanceMarginRatio),
                 LiquidationPenaltyRatio = Number("liquidationPenaltyRatio", BacktestDefaults.LiquidationPenaltyRatio),
+                MaxVolumeParticipationRatio = ReadNumber(account, AccountArgument, McpBacktestSettingsExposure.MaxVolumeParticipationRatioKey),
+                VolumeConstraintMode = volumeConstraintMode,
+                ShortBorrowAnnualRate = Number(McpBacktestSettingsExposure.ShortBorrowAnnualRateKey, engineDefaults.ShortBorrowAnnualRate),
+                BorrowFeeBasisMode = borrowFeeBasisMode,
+                PriceLimitFillMode = priceLimitFillMode,
             };
             configuration.Validate();
             return configuration;

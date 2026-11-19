@@ -48,8 +48,9 @@ public sealed class DatePriceRangeTests
             categories.SelectMany(c => c.Tools),
             t => t.Tool == DrawingTool.DatePriceRange && t.NameKey == "DrawTool_DatePriceRange");
 
-        Assert.False(DrawingValueCatalog.TryGet("DatePriceRange", out _));
-        // The size and the order of the catalogue are pinned once, by DrawingValueCatalogTests (Core.Tests); this tool is not in it.
+        // The tool was added to the catalogue later (WebAI gap review D-7 = A, T7). The size and the order of the catalogue are pinned once, by DrawingValueCatalogTests (Core.Tests).
+        Assert.True(DrawingValueCatalog.TryGet("DatePriceRange", out DrawingValueDescriptor descriptor));
+        Assert.Equal("DatePriceRangeObject", descriptor.StoredTypeName);
     }
 
     [Fact]

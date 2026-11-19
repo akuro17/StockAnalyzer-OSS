@@ -34,6 +34,19 @@ internal static class McpBacktestSettingsExposure
     public const string BootstrapSeedKey = "bootstrapSeed";
     public const string BootstrapIterationsKey = "bootstrapIterations";
 
+    // The five execution-realism keys of the account section (WebAI gap review T9): one definition for the table below, the binder and the echo.
+    public const string MaxVolumeParticipationRatioKey = "maxVolumeParticipationRatio";
+    public const string VolumeConstraintModeKey = "volumeConstraintMode";
+    public const string ShortBorrowAnnualRateKey = "shortBorrowAnnualRate";
+    public const string BorrowFeeBasisModeKey = "borrowFeeBasisMode";
+    public const string PriceLimitFillModeKey = "priceLimitFillMode";
+
+    /// <summary>The execution-realism keys in the order the result echoes them.</summary>
+    public static readonly string[] ExecutionRealismKeys =
+    {
+        MaxVolumeParticipationRatioKey, VolumeConstraintModeKey, ShortBorrowAnnualRateKey, BorrowFeeBasisModeKey, PriceLimitFillModeKey,
+    };
+
     private const string SeparateArgumentReason = "Another argument of the tool (or the run itself) supplies it.";
 
     private const string InternalSweepReason = "Internal: the optimization and walk-forward tools set it from their objective (the adjusted-Sortino bootstrap is computed only when the objective reads it, owner decision D-6); every other tool computes it.";
@@ -60,6 +73,11 @@ internal static class McpBacktestSettingsExposure
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.InitialMarginRatio), AccountSection, "initialMarginRatio"),
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.MaintenanceMarginRatio), AccountSection, "maintenanceMarginRatio"),
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.LiquidationPenaltyRatio), AccountSection, "liquidationPenaltyRatio"),
+        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.MaxVolumeParticipationRatio), AccountSection, MaxVolumeParticipationRatioKey),
+        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.VolumeConstraintMode), AccountSection, VolumeConstraintModeKey),
+        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.ShortBorrowAnnualRate), AccountSection, ShortBorrowAnnualRateKey),
+        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.BorrowFeeBasisMode), AccountSection, BorrowFeeBasisModeKey),
+        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.PriceLimitFillMode), AccountSection, PriceLimitFillModeKey),
         new(typeof(BacktestRiskManagementSettings), nameof(BacktestRiskManagementSettings.StopLossPercent), RiskSection, "stopLossRatio"),
         new(typeof(BacktestRiskManagementSettings), nameof(BacktestRiskManagementSettings.TakeProfitPercent), RiskSection, "takeProfitRatio"),
         new(typeof(BacktestRiskManagementSettings), nameof(BacktestRiskManagementSettings.DynamicExits), RiskSection, "dynamicExits"),
@@ -75,14 +93,9 @@ internal static class McpBacktestSettingsExposure
     {
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.ExecutionModel), "The read-only gateway runs the Legacy execution model only."),
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.TradingDaysPerYear), NotInTheWindowReason),
-        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.ShortBorrowAnnualRate), NotInTheWindowReason),
-        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.VolumeConstraintMode), NotInTheWindowReason),
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.CorporateActionHandlingMode), NotInTheWindowReason),
-        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.BorrowFeeBasisMode), NotInTheWindowReason),
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.PricePathConflictMode), NotInTheWindowReason),
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.MarginLiquidationDeficitMode), NotInTheWindowReason),
-        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.PriceLimitFillMode), NotInTheWindowReason),
-        new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.MaxVolumeParticipationRatio), NotInTheWindowReason),
         new(typeof(BacktestConfiguration), nameof(BacktestConfiguration.IntrabarPathMode), NotInTheWindowReason),
         new(typeof(BacktestReportDefaults), nameof(BacktestReportDefaults.SchemaVersion), "The internal schema number of the saved settings."),
         new(typeof(BacktestRunSnapshot), nameof(BacktestRunSnapshot.Symbol), SeparateArgumentReason),

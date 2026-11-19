@@ -360,15 +360,27 @@ public sealed class McpCommandLineTests : IDisposable
         }
 
         // A new integer argument without hints is caught here: every integer argument of every tool states a default.
-        // The one exception is an argument whose absence switches a feature off and so has no number to state as its default (decimalPlaces: absent = no rounding).
+        // The exceptions are arguments whose absence switches a feature off or means "the whole window", so there is no number to state as their default.
+        // decimalPlaces (absent = no rounding) is exempt by name, because every tool that offers it means the same; the others are exempt only as a tool.argument pair below.
         var withoutNumericDefault = new HashSet<string>(StringComparer.Ordinal) { SeriesOutputOptions.DecimalPlacesArgument };
+
+        // sa_get_portfolio_summary.limit caps each requested history list; absent, every list is cut at its own configured maximum (two different numbers), so none is stated.
+        // summaryBars (sa_calculate_indicators and its batch): absent = the summary covers the whole calculated window.
+        var withoutNumericDefaultPairs = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "sa_get_portfolio_summary.limit",
+            $"sa_calculate_indicators.{SeriesOutputOptions.SummaryBarsArgument}",
+            $"sa_calculate_indicators_batch.{SeriesOutputOptions.SummaryBarsArgument}",
+        };
         foreach (RegisteredTool registered in runtime.Tools.Tools)
         {
             foreach (JsonProperty property in registered.Schema.GetProperty("properties").EnumerateObject())
             {
                 if (property.Value.GetProperty("type").GetString() == "integer")
                 {
-                    Assert.True(withoutNumericDefault.Contains(property.Name) || property.Value.TryGetProperty("default", out _), $"{registered.Tool.Name}.{property.Name} states no default");
+                    Assert.True(
+                        withoutNumericDefault.Contains(property.Name) || withoutNumericDefaultPairs.Contains($"{registered.Tool.Name}.{property.Name}") || property.Value.TryGetProperty("default", out _),
+                        $"{registered.Tool.Name}.{property.Name} states no default");
                     Assert.True(property.Value.TryGetProperty("minimum", out _), $"{registered.Tool.Name}.{property.Name} states no minimum");
                 }
             }

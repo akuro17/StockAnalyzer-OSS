@@ -64,7 +64,11 @@ internal sealed class RunBacktestTool : IMcpTool
         "Example: {\"entryLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30}," +
         "\"exitLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"GreaterThan\",\"right\":70}}. " +
         "startDate and endDate (yyyy-MM-dd, inclusive) default to the stored history (at most the latest " + _limits.MaxCandlesPerRequest + " bars); bars before startDate warm the indicators up. " +
-        "account sets initialCapital, commissionFlat, commissionPerUnit, slippageRatio, sizingModel (FixedQuantity or PercentOfEquity), sizingParameter, initialMarginRatio, maintenanceMarginRatio and liquidationPenaltyRatio; " +
+        "account sets initialCapital, commissionFlat, commissionPerUnit, slippageRatio, sizingModel (FixedQuantity or PercentOfEquity), sizingParameter, initialMarginRatio, maintenanceMarginRatio and liquidationPenaltyRatio, " +
+        $"and the execution-realism keys {McpBacktestSettingsExposure.MaxVolumeParticipationRatioKey} (number in (0, 1], the most of a bar's volume an order may take; omitted means no limit), " +
+        $"{McpBacktestSettingsExposure.VolumeConstraintModeKey} ({string.Join(", ", Enum.GetNames<VolumeConstraintMode>())}; has no effect without {McpBacktestSettingsExposure.MaxVolumeParticipationRatioKey}), " +
+        $"{McpBacktestSettingsExposure.ShortBorrowAnnualRateKey} (simple annual borrow rate of a short position, 0 to 1, 0.02 = 2%; default 0), {McpBacktestSettingsExposure.BorrowFeeBasisModeKey} ({string.Join(", ", Enum.GetNames<BorrowFeeBasisMode>())}) " +
+        $"and {McpBacktestSettingsExposure.PriceLimitFillModeKey} ({string.Join(", ", Enum.GetNames<PriceLimitFillMode>())}); the result echoes these five only when the call names them, and naming one with its default value gives the same reproducibilityHash as leaving it out, and the same runFingerprint when the number is written with the same number of decimals (the fingerprint encodes the decimal scale: 0 and 0.0, or 0.02 and 0.020, differ); " +
         "riskManagement sets stopLossRatio and takeProfitRatio of the entry price (0.05 = 5%), and dynamicExits (maxHoldingBars, atrStop, atrTarget, trailingStop); report sets annualRiskFreeRate, annualMar, annualPeriodsD1 (daily bars per year, for the annualised metrics), bootstrapSeed and bootstrapIterations (the report's bootstrap confidence intervals). " +
         "Omitted values are the Backtest window's factory defaults, not the values saved in the window; the result echoes every effective value. " +
         $"The supported time frames are {string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}; the Legacy execution model is used. " +
@@ -76,7 +80,9 @@ internal sealed class RunBacktestTool : IMcpTool
         "includePeriodicReturns and includeEquityCurve Monthly are refused for timeFrame W1 (UNSUPPORTED_TIMEFRAME) because a weekly bar cannot be cut at a month end. " +
         $"A part whose arithmetic fails is left out and named in {BacktestDiagnostics.UnavailableKey} with a reason. " +
         "allowUnregistered true also accepts a symbol that is not in the ticker list but has stored bars; it is named in warnings, and a symbol without stored bars is SYMBOL_NOT_FOUND. " +
-        "Metrics keep status/value/unit/reason: a value is present only when status is Valid. The tool never changes anything and never fetches data.";
+        "Metrics keep status/value/unit/reason: a value is present only when status is Valid. " +
+        $"{BacktestReportJson.CompactReportArgument} true writes each report metric as its bare number instead (null when it is not Valid), lists the metrics that are not Valid in the report's unavailableMetrics [{{name, status, reason}}] and the unit of each Valid one in metricUnits; the numbers are the same, nothing is rounded. " +
+        "The tool never changes anything and never fetches data.";
 
     public bool IsHeavy => true;
 
@@ -97,6 +103,7 @@ internal sealed class RunBacktestTool : IMcpTool
         .String(EquityCurveArgument, $"Add the equity curve: None (default), Weekly or Monthly (the last evaluated bar of each ISO week or calendar month) or Bar (every evaluated bar; LIMIT_EXCEEDED above {McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} points).", allowedValues: BacktestDiagnostics.CurveNames)
         .Integer(DrawdownEpisodesArgument, $"Add the deepest drawdown episodes. Default 0 adds none; maximum {_limits.MaxDrawdownEpisodes}.", defaultValue: 0, minimum: 0, maximum: _limits.MaxDrawdownEpisodes)
         .Boolean(PeriodicReturnsArgument, "Add monthly and yearly returns of the equity. Default false.")
+        .Boolean(BacktestReportJson.CompactReportArgument, BacktestReportJson.CompactReportDescription)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -115,6 +122,7 @@ internal sealed class RunBacktestTool : IMcpTool
             ToolArgs.NonNegativeWithin(arguments, DrawdownEpisodesArgument, 0, _limits.MaxDrawdownEpisodes),
             ToolArgs.Boolean(arguments, PeriodicReturnsArgument) ?? false);
         BacktestDiagnostics.EnsureTimeFrameSupported(diagnosticsRequest, timeFrame);
+        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? false;
 
         // Everything the client sent is checked before any data is read.
         string? templateText = ToolArgs.String(arguments, TemplateIdArgument);
@@ -207,7 +215,8 @@ internal sealed class RunBacktestTool : IMcpTool
         }
 
         BacktestDiagnostics? diagnostics = diagnosticsRequest.Any ? BacktestDiagnostics.Compute(artifact, diagnosticsRequest, _limits) : null;
-        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, conditions, maxTrades, template, symbolWarnings, diagnostics));
+        JsonElement? accountArguments = arguments.TryGetProperty(BacktestSettingsBinder.AccountArgument, out JsonElement accountElement) ? accountElement : null;
+        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, accountArguments, conditions, maxTrades, template, symbolWarnings, diagnostics, compactReport));
     }
 
     internal static DateTime ToUtc(DateOnly date) => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
@@ -242,11 +251,13 @@ internal sealed class RunBacktestTool : IMcpTool
         DateOnly end,
         bool datesDefaulted,
         BoundBacktestSettings settings,
+        JsonElement? accountArguments,
         BoundBacktestConditions conditions,
         int maxTrades,
         TemplateReference? template,
         IReadOnlyList<string> symbolWarnings,
-        BacktestDiagnostics? diagnostics)
+        BacktestDiagnostics? diagnostics,
+        bool compactReport)
     {
         BacktestResult result = artifact.Result;
         BacktestEvaluationMetadata metadata = artifact.Metadata;
@@ -280,7 +291,7 @@ internal sealed class RunBacktestTool : IMcpTool
 
         writer.WriteEndObject();
 
-        WriteSettings(writer, settings, metadata);
+        WriteSettings(writer, settings, accountArguments, metadata);
         WriteConditions(writer, conditions);
 
         writer.WriteStartObject("equity");
@@ -298,7 +309,7 @@ internal sealed class RunBacktestTool : IMcpTool
         if (artifact.Report is { } report)
         {
             writer.WritePropertyName("report");
-            BacktestReportJson.Write(writer, report);
+            BacktestReportJson.Write(writer, report, compactReport);
         }
 
         WriteTrades(writer, result, maxTrades);
@@ -325,7 +336,7 @@ internal sealed class RunBacktestTool : IMcpTool
         writer.WriteEndObject();
     }
 
-    private static void WriteSettings(System.Text.Json.Utf8JsonWriter writer, BoundBacktestSettings settings, BacktestEvaluationMetadata metadata)
+    private static void WriteSettings(System.Text.Json.Utf8JsonWriter writer, BoundBacktestSettings settings, JsonElement? accountArguments, BacktestEvaluationMetadata metadata)
     {
         BacktestConfiguration configuration = settings.Configuration;
         writer.WriteStartObject("effectiveSettings");
@@ -339,6 +350,7 @@ internal sealed class RunBacktestTool : IMcpTool
         writer.WriteNumber("initialMarginRatio", configuration.InitialMarginRatio);
         writer.WriteNumber("maintenanceMarginRatio", configuration.MaintenanceMarginRatio);
         writer.WriteNumber("liquidationPenaltyRatio", configuration.LiquidationPenaltyRatio);
+        BacktestSettingsEcho.WriteExecutionRealism(writer, accountArguments, configuration);
         writer.WriteEndObject();
 
         writer.WriteStartObject("riskManagement");

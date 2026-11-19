@@ -67,7 +67,8 @@ internal sealed class ProjectPricePathTool : IMcpTool
         $"Generates multi-step mathematical price projection trajectories (ARIMA, FFT, SSA, HMM) with lower/upper bands (the projected value plus or minus confidenceMultiplier model standard deviations; " +
         $"a model-based band, not a statistical confidence interval of the price). " +
         $"{McpDisclaimerConstants.ResearchNotAdvice} Causal as of endDate: a projection is computed only from bars dated on or before endDate, so later bars never change it. " +
-        $"Future dates of D1 are consecutive calendar days from asOfDate; for W1 and MN1 they are calendar period starts (Monday of each week, 1st of each month). {PeriodStartDateNote}";
+        $"Future dates of D1 are consecutive calendar days from asOfDate; for W1 and MN1 they are calendar period starts (Monday of each week, 1st of each month). {PeriodStartDateNote} " +
+        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds the written value, lower and upper of every point (away from zero at the midpoint); the projection and its bands are calculated unrounded.";
 
     public bool IsHeavy => false;
 
@@ -90,6 +91,7 @@ internal sealed class ProjectPricePathTool : IMcpTool
         .Integer(SsaNumComponentsArgument, $"SSA number of principal reconstructed components (1..20). Default {IndicatorDefaultConstants.SsaDefaultNumComponents}.", defaultValue: IndicatorDefaultConstants.SsaDefaultNumComponents, minimum: 1, maximum: 20)
         .Integer(HmmStatesArgument, $"HMM hidden state count (2..3). Default {IndicatorDefaultConstants.HmmStates}.", defaultValue: IndicatorDefaultConstants.HmmStates, minimum: 2, maximum: 3)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("the value, lower and upper of every projected point"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -105,6 +107,7 @@ internal sealed class ProjectPricePathTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
         int horizon = ToolArgs.PositiveWithin(arguments, HorizonBarsArgument, DefaultHorizonBars, _limits.MaxProjectionBars);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
 
         string rawMethod = ToolArgs.String(arguments, MethodArgument)
             ?? throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{MethodArgument}' is required.", MethodArgument);
@@ -259,15 +262,15 @@ internal sealed class ProjectPricePathTool : IMcpTool
                     writer.WriteStartObject();
                     writer.WriteNumber("barOffset", k);
                     writer.WriteString("date", ToolJson.FormatDate(FutureDate(loaded[^1].Timestamp, timeFrame, k, projectedPoints[k])));
-                    writer.WriteNumber("value", projectedPoints[k].Y);
+                    writer.WriteNumber("value", SeriesOutputOptions.RoundIfRequested(projectedPoints[k].Y, decimalPlaces));
 
                     if (k < lowerBandPoints.Count)
                     {
-                        writer.WriteNumber("lower", lowerBandPoints[k].Y);
+                        writer.WriteNumber("lower", SeriesOutputOptions.RoundIfRequested(lowerBandPoints[k].Y, decimalPlaces));
                     }
                     if (k < upperBandPoints.Count)
                     {
-                        writer.WriteNumber("upper", upperBandPoints[k].Y);
+                        writer.WriteNumber("upper", SeriesOutputOptions.RoundIfRequested(upperBandPoints[k].Y, decimalPlaces));
                     }
 
                     writer.WriteEndObject();

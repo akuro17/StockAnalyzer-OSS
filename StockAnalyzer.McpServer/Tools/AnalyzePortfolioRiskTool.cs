@@ -45,7 +45,8 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
         "Weights are signed market values in the base currency (baseCurrency, ISO 4217, default JPY) divided by the gross exposure (the sum of the absolute values); shorts are negative; a symbol held long and short is netted. " +
         "Market values and exchange rates are those of sa_get_portfolio_summary; a holding without a stored price or without a rate to the base currency is listed in excludedSymbols and left out of the risk figures (its value stays in the gross exposure). " +
         "All figures are per daily bar, not annualized, from simple returns on the bars every held symbol shares; volatility uses the sample covariance (N-1). The definitions are echoed in 'definitions'. " +
-        "Optional benchmark (a symbol) adds the portfolio beta (the weighted sum of the holdings' betas). Historical figures are not forecasts. Read-only.";
+        "Optional benchmark (a symbol) adds the portfolio beta (the weighted sum of the holdings' betas). Historical figures are not forecasts. " +
+        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds the written exposures, risk figures, weights and volatilities (away from zero at the midpoint); the figures are calculated unrounded, and confidenceLevel is the value you sent, as sent. Read-only.";
 
     public bool IsHeavy => false;
 
@@ -56,6 +57,7 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
         .Integer(LookbackArgument, $"Daily bars the returns are taken from, newest last. Default {_limits.DefaultCandleCount}, maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.DefaultCandleCount, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Number(ConfidenceArgument, $"Confidence level of the value at risk, from {PortfolioRiskCalculator.MinConfidenceLevel} to {PortfolioRiskCalculator.MaxConfidenceLevel}. Default {DefaultConfidenceLevel}.")
         .String(BenchmarkArgument, "Optional benchmark symbol; adds the portfolio beta.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every exposure, risk figure, weight and volatility (confidenceLevel is echoed as sent)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -71,6 +73,7 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
                 ConfidenceArgument);
         }
 
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
         string? benchmark = null;
         if (ToolArgs.String(arguments, BenchmarkArgument) is { } benchmarkText)
         {
@@ -132,8 +135,8 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
                 writer.WriteString(BenchmarkArgument, benchmark);
             }
 
-            ToolJson.WriteNullableNumber(writer, "grossExposure", risk.GrossExposure);
-            ToolJson.WriteNullableNumber(writer, "netExposure", risk.NetExposure);
+            ToolJson.WriteNullableNumber(writer, "grossExposure", SeriesOutputOptions.RoundIfRequested(risk.GrossExposure, decimalPlaces));
+            ToolJson.WriteNullableNumber(writer, "netExposure", SeriesOutputOptions.RoundIfRequested(risk.NetExposure, decimalPlaces));
             writer.WriteNumber("commonDateCount", risk.CommonDateCount);
             if (risk.StartDate is { } start)
             {
@@ -145,12 +148,12 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
                 writer.WriteString("endDate", ToolJson.FormatDate(end));
             }
 
-            ToolJson.WriteNullableNumber(writer, "valueAtRisk", risk.ValueAtRisk);
-            ToolJson.WriteNullableNumber(writer, "conditionalValueAtRisk", risk.ConditionalValueAtRisk);
-            ToolJson.WriteNullableNumber(writer, "portfolioVolatility", risk.PortfolioVolatility);
+            ToolJson.WriteNullableNumber(writer, "valueAtRisk", SeriesOutputOptions.RoundIfRequested(risk.ValueAtRisk, decimalPlaces));
+            ToolJson.WriteNullableNumber(writer, "conditionalValueAtRisk", SeriesOutputOptions.RoundIfRequested(risk.ConditionalValueAtRisk, decimalPlaces));
+            ToolJson.WriteNullableNumber(writer, "portfolioVolatility", SeriesOutputOptions.RoundIfRequested(risk.PortfolioVolatility, decimalPlaces));
             if (benchmark is not null)
             {
-                ToolJson.WriteNullableNumber(writer, "beta", risk.Beta);
+                ToolJson.WriteNullableNumber(writer, "beta", SeriesOutputOptions.RoundIfRequested(risk.Beta, decimalPlaces));
             }
 
             writer.WriteStartArray("contributions");
@@ -158,11 +161,11 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
             {
                 writer.WriteStartObject();
                 writer.WriteString("symbol", contribution.Symbol);
-                writer.WriteNumber("signedValueInBase", contribution.SignedValue);
-                writer.WriteNumber("weight", contribution.Weight);
-                ToolJson.WriteNullableNumber(writer, "marginalVolatility", contribution.MarginalVolatility);
-                ToolJson.WriteNullableNumber(writer, "componentVolatility", contribution.ComponentVolatility);
-                ToolJson.WriteNullableNumber(writer, "tailComponentCVaR", contribution.TailComponentCVaR);
+                writer.WriteNumber("signedValueInBase", SeriesOutputOptions.RoundIfRequested(contribution.SignedValue, decimalPlaces));
+                writer.WriteNumber("weight", SeriesOutputOptions.RoundIfRequested(contribution.Weight, decimalPlaces));
+                ToolJson.WriteNullableNumber(writer, "marginalVolatility", SeriesOutputOptions.RoundIfRequested(contribution.MarginalVolatility, decimalPlaces));
+                ToolJson.WriteNullableNumber(writer, "componentVolatility", SeriesOutputOptions.RoundIfRequested(contribution.ComponentVolatility, decimalPlaces));
+                ToolJson.WriteNullableNumber(writer, "tailComponentCVaR", SeriesOutputOptions.RoundIfRequested(contribution.TailComponentCVaR, decimalPlaces));
                 writer.WriteEndObject();
             }
 

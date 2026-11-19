@@ -178,6 +178,38 @@ public sealed class GetChartDrawingsToolTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task ASavedCrossLineAndDatePriceRange_AreCalculable_AndEqualTheChartObjects()
+    {
+        var cross = Record("CrossLineObject", new[] { Point(30, 105m) });
+        var range = Record("DatePriceRangeObject", new[] { Point(10, 100m), Point(60, 112m) });
+        WriteDocument("Standard", cross, range);
+        var dispatcher = await StartAsync();
+
+        JsonElement result = Result(await CallAsync(dispatcher));
+
+        DateTime lastTime = FirstDay.AddDays(Days - 1);
+        decimal lastClose = _closes[^1];
+        List<CoreCandleData> bars = _closes.Select((close, i) => new CoreCandleData(FirstDay.AddDays(i), close - 0.2m, close + 0.5m, close - 0.5m, close, 1000)).ToList();
+        var chartRange = new DatePriceRangeObject(new ChartPoint(FirstDay.AddDays(10), 100m), new ChartPoint(FirstDay.AddDays(60), 112m));
+        chartRange.Recalculate(bars);
+        CultureInfo previous = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        try
+        {
+            AssertValues(ObjectOf(result, cross.ObjectId), new CrossLineObject(new ChartPoint(FirstDay.AddDays(30), 105m)), lastTime, lastClose);
+            AssertValues(ObjectOf(result, range.ObjectId), chartRange, lastTime, lastClose);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+
+        string[] rangeKeys = ObjectOf(result, range.ObjectId).GetProperty("calculatedValues").EnumerateArray().Select(v => v.GetProperty("key").GetString()!).ToArray();
+        Assert.Equal(new[] { "PriceDelta", "PriceChangePercent", "BarCount", "CalendarDays", "TotalVolume", "AverageVolume", "HighestHigh", "LowestLow", "MaxDrawdown", "Volatility" }, rangeKeys);
+        Assert.Equal(51m, ObjectOf(result, range.ObjectId).GetProperty("calculatedValues")[2].GetProperty("value").GetDecimal());
+    }
+
     private static void AssertValues(JsonElement item, IChartObject chartObject, DateTime time, decimal close)
     {
         Assert.True(item.GetProperty("valuesSupported").GetBoolean());

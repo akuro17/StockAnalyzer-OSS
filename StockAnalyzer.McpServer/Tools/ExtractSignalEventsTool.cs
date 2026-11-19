@@ -33,6 +33,7 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
     private const string MaxEventsArgument = "maxEvents";
     private const string OrderArgument = "order";
     private const string IncludeBooleanSeriesArgument = "includeBooleanSeries";
+    private const string IncludeEventStudyArgument = "includeEventStudy";
 
     private const string EveryTrueBarMode = "EveryTrueBar";
     private const string FirstTrueBarOfRunMode = "FirstTrueBarOfRun";
@@ -69,7 +70,10 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
     public string Description =>
         "Extracts bars where a user-defined condition evaluates to true (same syntax as sa_run_backtest conditions root). " +
         "Returns the matching bars with timestamps, close prices, leaf-level comparison breakdowns, elapsed bars since previous event, " +
-        "forward return diagnostics (close-to-close and next-open-to-close), and optional full boolean series across the evaluation window.";
+        "forward return diagnostics (close-to-close and next-open-to-close), and optional full boolean series across the evaluation window. " +
+        $"{IncludeEventStudyArgument} true (needs {ForwardBarsArgument}) adds eventStudy: for every horizon and both bases, over ALL events of the call (also those {MaxEventsArgument} cuts off), " +
+        "count, missingCount (events without that horizon), mean, median, stdDev (population, divisor n), min, max and positiveRatio (share of returns above 0); the figures are ratios (0.05 = 5%) and null when there is no value. " +
+        "Events of EveryTrueBar overlap, so the figures are descriptive, not a significance test.";
 
     public bool IsHeavy => false;
 
@@ -84,6 +88,7 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
         .String(EndArgument, "Last evaluated day, yyyy-MM-dd. Default: latest stored bar.")
         .String(EventModeArgument, $"Event filter mode: {EveryTrueBarMode} (default, every bar matching condition) or {FirstTrueBarOfRunMode} (only the initial true bar of consecutive matches).", allowedValues: EventModes)
         .IntegerArray(ForwardBarsArgument, $"Forward bar horizons (each 1..{_limits.MaxForwardBars}, at most {_limits.MaxForwardBarsList} horizons).")
+        .Boolean(IncludeEventStudyArgument, $"true adds eventStudy: count, missingCount, mean, median, stdDev, min, max and positiveRatio of the forward returns per horizon and basis over all events (before {MaxEventsArgument}). Needs {ForwardBarsArgument}. Default false.")
         .Integer(MaxEventsArgument, $"Most events to return. Default and maximum {_limits.MaxReturnedEvents}.", defaultValue: _limits.MaxReturnedEvents, minimum: 1, maximum: _limits.MaxReturnedEvents)
         .String(OrderArgument, $"Output ordering: {OldestFirstOrder} (default) or {NewestFirstOrder}.", allowedValues: OrderValues)
         .Boolean(IncludeBooleanSeriesArgument, "Include boolean series for every bar in the evaluation window. Default false.")
@@ -116,6 +121,15 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
         bool includeBooleanSeries = ToolArgs.Boolean(arguments, IncludeBooleanSeriesArgument) ?? false;
 
         IReadOnlyList<int> forwardBars = ParseForwardBars(arguments);
+        bool includeEventStudy = ToolArgs.Boolean(arguments, IncludeEventStudyArgument) ?? false;
+        if (includeEventStudy && forwardBars.Count == 0)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{IncludeEventStudyArgument}' requires '{ForwardBarsArgument}' to be specified.",
+                IncludeEventStudyArgument,
+                $"Name at least one horizon in {ForwardBarsArgument}, or omit {IncludeEventStudyArgument}.");
+        }
 
         if (!arguments.TryGetProperty(ConditionArgument, out JsonElement conditionElement) || conditionElement.ValueKind != JsonValueKind.Object)
         {
@@ -368,6 +382,15 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
                 writer.WriteEndObject();
             }
             writer.WriteEndArray();
+
+            if (includeEventStudy)
+            {
+                EventStudySummary.Write(
+                    writer,
+                    forwardBars.Distinct().ToList(),
+                    allEvents.Select(e => e.ForwardReturns).ToList(),
+                    allEvents.Select(e => e.ForwardReturnsFromNextOpen).ToList());
+            }
 
             if (includeBooleanSeries)
             {

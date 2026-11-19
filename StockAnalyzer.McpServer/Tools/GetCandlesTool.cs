@@ -206,10 +206,10 @@ internal sealed class GetCandlesTool : IMcpTool
                 {
                     writer.WriteStartObject();
                     writer.WriteString("timestamp", ToolJson.FormatDate(bar.Timestamp));
-                    writer.WriteNumber("open", RoundPrice(bar.Open, decimalPlaces));
-                    writer.WriteNumber("high", RoundPrice(bar.High, decimalPlaces));
-                    writer.WriteNumber("low", RoundPrice(bar.Low, decimalPlaces));
-                    writer.WriteNumber("close", RoundPrice(bar.Close, decimalPlaces));
+                    writer.WriteNumber("open", SeriesOutputOptions.RoundIfRequested(bar.Open, decimalPlaces));
+                    writer.WriteNumber("high", SeriesOutputOptions.RoundIfRequested(bar.High, decimalPlaces));
+                    writer.WriteNumber("low", SeriesOutputOptions.RoundIfRequested(bar.Low, decimalPlaces));
+                    writer.WriteNumber("close", SeriesOutputOptions.RoundIfRequested(bar.Close, decimalPlaces));
                     writer.WriteNumber("volume", bar.Volume);
                     writer.WriteEndObject();
                 }
@@ -230,10 +230,10 @@ internal sealed class GetCandlesTool : IMcpTool
                 {
                     writer.WriteStartArray();
                     writer.WriteStringValue(ToolJson.FormatDate(bar.Timestamp));
-                    writer.WriteNumberValue(RoundPrice(bar.Open, decimalPlaces));
-                    writer.WriteNumberValue(RoundPrice(bar.High, decimalPlaces));
-                    writer.WriteNumberValue(RoundPrice(bar.Low, decimalPlaces));
-                    writer.WriteNumberValue(RoundPrice(bar.Close, decimalPlaces));
+                    writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(bar.Open, decimalPlaces));
+                    writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(bar.High, decimalPlaces));
+                    writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(bar.Low, decimalPlaces));
+                    writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(bar.Close, decimalPlaces));
                     writer.WriteNumberValue(bar.Volume);
                     writer.WriteEndArray();
                 }
@@ -244,8 +244,6 @@ internal sealed class GetCandlesTool : IMcpTool
             writer.WriteEndObject();
         });
     }
-
-    private static decimal RoundPrice(decimal price, int? decimalPlaces) => decimalPlaces is { } places ? SeriesOutputOptions.Round(price, places) : price;
 
     private static bool InRange(DateOnly date, DateOnly? start, DateOnly? end)
         => (start is null || date >= start) && (end is null || date <= end);

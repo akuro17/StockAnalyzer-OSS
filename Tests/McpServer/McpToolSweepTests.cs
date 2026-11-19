@@ -174,6 +174,7 @@ public sealed class McpToolSweepTests : IDisposable
         ("sa_validate_condition_tree", """{"kind":"screener","conditionTree":""" + HighClose + "}"),
         ("sa_get_template_detail", $$$"""{"templateType":"screener","templateId":"{{{SweepTemplateId}}}"}"""),
         ("sa_build_template", """{"templateType":"screener","name":"SweepBuild","conditionTree":""" + HighClose + "}"),
+        ("sa_evaluate_expressions", """{"variables":{"close":2950,"atr":48.5},"expressions":[{"name":"stop","expression":"close - 2 * atr"}]}"""),
     };
 
     /// <summary>Every argument position that carries a symbol or a template id; the slot is replaced with each corpus entry.</summary>
@@ -477,6 +478,8 @@ public sealed class McpToolSweepTests : IDisposable
             ("sa_get_seasonality", $"{{{Frame},\"years\":4294967320}}", "years"),
             ("sa_render_chart_image", $"{{{Frame},\"barCount\":2147483648}}", "barCount"),
             ("sa_render_chart_image", $"{{{Frame},\"width\":4294967320}}", "width"),
+            ("sa_evaluate_expressions", $"{{\"expressions\":[{string.Join(",", Enumerable.Range(0, limits.MaxCalculatorExpressions + 1).Select(i => $"{{\"name\":\"e{i}\",\"expression\":\"1\"}}"))}]}}", "expressions"),
+            ("sa_evaluate_expressions", $"{{\"variables\":{{{string.Join(",", Enumerable.Range(0, limits.MaxCalculatorVariables + 1).Select(i => $"\"v{i}\":1"))}}},\"expressions\":[{{\"name\":\"e0\",\"expression\":\"1\"}}]}}", "variables"),
         }.Select(call => new object[] { call.Tool, call.Arguments, call.Parameter });
     }
 

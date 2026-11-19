@@ -110,6 +110,8 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
         ["RegressionTrend"] = (p, _) => new RegressionTrendObject(p[0], p[1]),
         ["AnchoredVWAP"] = (p, _) => new AnchoredVwapObject(p[0]),
         ["ClassicPivotPoints"] = (p, _) => new ClassicPivotPointsObject(p[0]),
+        ["CrossLine"] = (p, _) => new CrossLineObject(p[0]),
+        ["DatePriceRange"] = (p, _) => new DatePriceRangeObject(p[0], p[1]),
     };
 
     /// <summary>The bars the fixture stores for <see cref="_closes"/> (open = close - 0.2, high = close + 0.5, low = close - 0.5, volume 1000), as the chart objects take them.</summary>
@@ -123,6 +125,7 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
             case RegressionTrendObject regression: regression.Recalculate(candles); break;
             case AnchoredVwapObject vwap: vwap.Recalculate(candles); break;
             case ClassicPivotPointsObject pivots: pivots.Recalculate(candles); break;
+            case DatePriceRangeObject range: range.Recalculate(candles); break;
         }
     }
 

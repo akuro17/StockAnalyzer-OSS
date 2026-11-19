@@ -26,8 +26,17 @@ internal static class BacktestReportJson
     public static bool CanWrite(PropertyInfo property)
         => ExcludedProperties.Contains(property.Name) || IsKnownType(Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType);
 
-    public static void Write(Utf8JsonWriter writer, BacktestReport report)
+    /// <summary>The optional boolean argument that selects the compact metric form (see <see cref="CompactMetrics"/>); default false keeps the verbose form.</summary>
+    public const string CompactReportArgument = "compactReport";
+
+    /// <summary>The schema text of <see cref="CompactReportArgument"/>, shared by every tool that offers it.</summary>
+    public const string CompactReportDescription =
+        "Write every metric as its bare number (null when its status is not Valid) instead of {status, value, unit, reason}. " +
+        "The metrics that are not Valid are then listed in unavailableMetrics [{name, status, reason}] (only when there are any) and the unit of every Valid metric in metricUnits {name: unit}. Default false.";
+
+    public static void Write(Utf8JsonWriter writer, BacktestReport report, bool compact = false)
     {
+        CompactMetrics? compactMetrics = compact ? new CompactMetrics() : null;
         writer.WriteStartObject();
         foreach (PropertyInfo property in Properties)
         {
@@ -37,11 +46,77 @@ internal static class BacktestReportJson
                 continue;
             }
 
-            writer.WritePropertyName(ToCamelCase(property.Name));
+            string name = ToCamelCase(property.Name);
+            if (compactMetrics is not null && value is MetricValue metric)
+            {
+                compactMetrics.Write(writer, name, metric);
+                continue;
+            }
+
+            writer.WritePropertyName(name);
             WriteValue(writer, value, property);
         }
 
+        compactMetrics?.WriteSummary(writer);
         writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// The compact metric form: a Valid metric is written as its number, any other as null, and the writer remembers what it left out. <see cref="WriteSummary"/> then
+    /// writes <c>unavailableMetrics</c> (the non-Valid metrics, in the order written; omitted when there are none) and <c>metricUnits</c> (the unit of each Valid metric, in the order written).
+    /// Nothing is calculated here: the number is the metric's own value, unrounded.
+    /// </summary>
+    internal sealed class CompactMetrics
+    {
+        private readonly List<(string Name, MetricValue Metric)> _unavailable = new();
+        private readonly List<(string Name, MetricUnit Unit)> _units = new();
+
+        /// <summary>
+        /// Writes <paramref name="name"/> with the bare number, or null. A missing metric is treated as NotApplicable, the way the verbose form writes it. A metric that says
+        /// Valid but holds no value (only a default(MetricValue) can: the constructor enforces the pair) is no valid figure either, so it is listed as NotApplicable as well,
+        /// never as "Valid" in the list of unavailable metrics.
+        /// </summary>
+        public void Write(Utf8JsonWriter writer, string name, MetricValue? metric)
+        {
+            if (metric is { Status: MetricStatus.Valid, Value: { } number } valid)
+            {
+                writer.WriteNumber(name, number);
+                _units.Add((name, valid.Unit));
+                return;
+            }
+
+            writer.WriteNull(name);
+            MetricValue listed = metric is { Status: not MetricStatus.Valid } unavailable
+                ? unavailable
+                : MetricValue.NonValid(MetricStatus.NotApplicable, metric?.Unit ?? MetricUnit.Dimensionless, MetricReason.None);
+            _unavailable.Add((name, listed));
+        }
+
+        public void WriteSummary(Utf8JsonWriter writer)
+        {
+            if (_unavailable.Count > 0)
+            {
+                writer.WriteStartArray("unavailableMetrics");
+                foreach ((string name, MetricValue metric) in _unavailable)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("name", name);
+                    writer.WriteString("status", metric.Status.ToString());
+                    writer.WriteString("reason", metric.Reason.ToString());
+                    writer.WriteEndObject();
+                }
+
+                writer.WriteEndArray();
+            }
+
+            writer.WriteStartObject("metricUnits");
+            foreach ((string name, MetricUnit unit) in _units)
+            {
+                writer.WriteString(name, unit.ToString());
+            }
+
+            writer.WriteEndObject();
+        }
     }
 
     private static bool IsKnownType(Type type)

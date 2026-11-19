@@ -275,7 +275,7 @@ internal static class McpServerComposition
                 settingsTool,
                 calculateIndicators,
                 new CalculateIndicatorsBatchTool(calculateIndicators, symbols, groupResolver, sanitizer, limits),
-                new GetPortfolioSummaryTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway),
+                new GetPortfolioSummaryTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway, limits),
                 new AnalyzePortfolioRiskTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway, symbols, limits),
                 new SearchNotesTool(services.GetRequiredService<IReadOnlyNoteSource>(), limits),
                 new ListUpcomingCatalystsTool(services.GetRequiredService<IReadOnlyNoteSource>(), limits, timeProvider),
@@ -312,6 +312,7 @@ internal static class McpServerComposition
                 new ValidateConditionTreeTool(gateway, screenerBinder, backtestBinder, limits),
                 new GetTemplateDetailTool(gateway, templateWriter),
                 new BuildTemplateTool(templateBuilder),
+                new EvaluateExpressionsTool(limits),
             };
 
             Action? prepareExecution = null;

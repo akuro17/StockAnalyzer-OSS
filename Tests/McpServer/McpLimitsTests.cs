@@ -34,6 +34,10 @@ public class McpLimitsTests
         Assert.Equal(2, limits.MaxConcurrentReadOnlyCalls);
         Assert.Equal(50, limits.MaxBatchIndicatorSymbols);
         Assert.Equal(100, limits.MaxReturnedNotes);
+        Assert.Equal(200, limits.MaxReturnedClosedPositions);
+        Assert.Equal(200, limits.MaxReturnedTransactions);
+        Assert.Equal(20, limits.MaxCalculatorExpressions);
+        Assert.Equal(50, limits.MaxCalculatorVariables);
         Assert.Equal(365, limits.MaxCatalystHorizonDays);
         Assert.Equal(50, limits.MaxPivotStrength);
         Assert.Equal(5, limits.MaxBatchIndicatorTailBars);
@@ -99,6 +103,14 @@ public class McpLimitsTests
         { nameof(McpLimits.QueueWaitSeconds), 601 },
         { nameof(McpLimits.MaxReturnedNotes), 0 },
         { nameof(McpLimits.MaxReturnedNotes), 501 },
+        { nameof(McpLimits.MaxReturnedClosedPositions), 0 },
+        { nameof(McpLimits.MaxReturnedClosedPositions), 1001 },
+        { nameof(McpLimits.MaxReturnedTransactions), 0 },
+        { nameof(McpLimits.MaxReturnedTransactions), 1001 },
+        { nameof(McpLimits.MaxCalculatorExpressions), 0 },
+        { nameof(McpLimits.MaxCalculatorExpressions), 101 },
+        { nameof(McpLimits.MaxCalculatorVariables), 0 },
+        { nameof(McpLimits.MaxCalculatorVariables), 201 },
         { nameof(McpLimits.MaxCatalystHorizonDays), 0 },
         { nameof(McpLimits.MaxCatalystHorizonDays), 3651 },
         { nameof(McpLimits.MaxPivotStrength), 0 },
@@ -347,6 +359,14 @@ public class McpLimitsTests
     public void TheEdgesOfTheComparisonTargetBandAreAccepted(int value)
     {
         McpLimitsContract.Validate(new McpLimits { MaxComparisonTargets = value });
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(100, 200)]
+    public void TheEdgesOfTheCalculatorBandsAreAccepted(int expressions, int variables)
+    {
+        McpLimitsContract.Validate(new McpLimits { MaxCalculatorExpressions = expressions, MaxCalculatorVariables = variables });
     }
 
     [Fact]

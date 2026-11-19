@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Drawing.Values;
@@ -15,11 +16,15 @@ public sealed class DrawingValueCatalogTests
         "FibonacciRetracement", "FibonacciFan", "FibonacciExpansion", "FibonacciChannel", "ParallelChannel",
         "GannFan", "GannBox", "SineLine", "TimeCycles", "Pitchfork",
         "AngleTool", "GannSquareOfNine", "TargetPriceProjection", "LongPosition", "ShortPosition", "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints",
+        "CrossLine", "DatePriceRange",
     };
 
-    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 2, 1, 3, 3, 3, 2, 1, 1 };
+    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 2, 1, 3, 3, 3, 2, 1, 1, 1, 2 };
 
-    private static readonly string[] CandleTools = { "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints" };
+    private static readonly string[] CandleTools = { "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints", "DatePriceRange" };
+
+    /// <summary>The one bar-based tool whose calculator accepts a missing bar list (the GUI object calculates before any bar is known): it still gives the figures that need no bars.</summary>
+    private const string BarOptionalTool = "DatePriceRange";
 
     [Fact]
     public void TheNamesOtherLayersBranchOn_AreTheCatalogNames_SoARenameCannotLeaveThemBehind()
@@ -35,7 +40,7 @@ public sealed class DrawingValueCatalogTests
     }
 
     [Fact]
-    public void All_HoldsTheTwentyFourToolsOfTheSpecificationInOrder_WithUniqueNames()
+    public void All_HoldsTheTwentySixToolsOfTheSpecificationInOrder_WithUniqueNames()
     {
         Assert.Equal(ExpectedNames, DrawingValueCatalog.All.Select(d => d.Name).ToArray());
         Assert.Equal(ExpectedPointCounts, DrawingValueCatalog.All.Select(d => d.PointCount).ToArray());
@@ -53,7 +58,19 @@ public sealed class DrawingValueCatalogTests
             var withoutBars = new DrawingValueRequest(points, new DateTime(2026, 1, 20), 123.456m, IndicatorColor.Gray, new DrawingValueOptions());
             var withBars = withoutBars with { Candles = DrawingValueTestCandles.Daily() };
 
-            if (descriptor.RequiresCandles)
+            if (descriptor.Name == BarOptionalTool)
+            {
+                // GUI parity: no special empty branch. Without bars the bar counts are 0 and the bar-derived figures are undefined; with bars they are defined.
+                IReadOnlyList<DrawingCalculatedValue> none = descriptor.Calculate(withoutBars);
+                IReadOnlyList<DrawingCalculatedValue> some = descriptor.Calculate(withBars);
+                Assert.Equal(DatePriceRangeValues.ValueCount, none.Count);
+                Assert.Equal(DatePriceRangeValues.ValueCount, some.Count);
+                Assert.Equal(0m, none.Single(v => v.Key == "BarCount").NumericValue);
+                Assert.True(some.Single(v => v.Key == "BarCount").NumericValue > 0m);
+                Assert.Null(none[DatePriceRangeValues.HighestHighIndex].NumericValue);
+                Assert.NotNull(some[DatePriceRangeValues.HighestHighIndex].NumericValue);
+            }
+            else if (descriptor.RequiresCandles)
             {
                 Assert.Empty(descriptor.Calculate(withoutBars));
                 Assert.NotEmpty(descriptor.Calculate(withBars));

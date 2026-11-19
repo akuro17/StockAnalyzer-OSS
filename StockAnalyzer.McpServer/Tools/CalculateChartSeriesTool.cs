@@ -92,6 +92,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         "Calculates the converted numerical series, effective sizing parameters, DataWindow metrics, and optional pattern analysis " +
         "for Heikin-Ashi and Non-Time-Series charts (HeikinAshi, Renko, Kagi, PointAndFigure, ThreeLineBreak). " +
         "Supports all GUI calculation settings (sizing modes, manual sizes, percentages, ATR period/multiplier, rounding and fallback modes, reversals, initial column, line count, minimum move, tolerance, multi-wave and P&F patterns). " +
+        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds every written price, size and score (away from zero at the midpoint; output only, the series is calculated unrounded); volume, counts, indexes and dates are never rounded. " +
         "Never mutates data and runs read-only.";
 
     public bool IsHeavy => false;
@@ -131,6 +132,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         .Boolean(ShowTrendlineBreakoutArgument, "Include Trendline breakout signals in P&F pattern analysis. Default true.")
         .Boolean(ShowTriangleBreakoutArgument, "Include Triangle breakout signals in P&F pattern analysis. Default true.")
         .Boolean(ShowCatapultBreakoutArgument, "Include Catapult breakout signals in P&F pattern analysis. Default true.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every price, size, span and score of the result (volume is never rounded)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -142,6 +144,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
         int tail = ToolArgs.PositiveWithin(arguments, TailArgument, _limits.DefaultOutputTailBars, _limits.MaxOutputTailBars);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
 
         ChartSeriesRequest request = BuildRequest(arguments, chartType);
 
@@ -182,7 +185,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, ex.Message, ChartTypeArgument);
         }
 
-        return ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, chartType, loaded.Count, result, tail, endDate));
+        return ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, chartType, loaded.Count, result, tail, endDate, decimalPlaces));
     }
 
     private static ChartType ParseChartType(JsonElement arguments)
@@ -465,7 +468,8 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         int sourceBarCount,
         ChartSeriesCalculationResult result,
         int tail,
-        DateOnly? endDate)
+        DateOnly? endDate,
+        int? decimalPlaces)
     {
         writer.WriteStartObject();
         writer.WriteString("symbol", symbol);
@@ -485,7 +489,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
 
         if (result.EffectiveSize is not null)
         {
-            writer.WriteNumber("effectiveSize", result.EffectiveSize.Value);
+            writer.WriteNumber("effectiveSize", SeriesOutputOptions.RoundIfRequested(result.EffectiveSize.Value, decimalPlaces));
         }
 
         if (result.TotalColumns is not null)
@@ -501,10 +505,10 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
             writer.WriteStartObject();
             writer.WriteNumber("index", el.Index);
             writer.WriteString("timestamp", ToolJson.FormatDate(el.Timestamp));
-            writer.WriteNumber("open", el.Open);
-            writer.WriteNumber("high", el.High);
-            writer.WriteNumber("low", el.Low);
-            writer.WriteNumber("close", el.Close);
+            writer.WriteNumber("open", SeriesOutputOptions.RoundIfRequested(el.Open, decimalPlaces));
+            writer.WriteNumber("high", SeriesOutputOptions.RoundIfRequested(el.High, decimalPlaces));
+            writer.WriteNumber("low", SeriesOutputOptions.RoundIfRequested(el.Low, decimalPlaces));
+            writer.WriteNumber("close", SeriesOutputOptions.RoundIfRequested(el.Close, decimalPlaces));
             writer.WriteNumber("volume", el.Volume);
             writer.WriteString("direction", el.Direction);
 
@@ -512,11 +516,11 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
             if (el.ColumnType is not null) writer.WriteString("columnType", el.ColumnType);
             if (el.IsYang is not null) writer.WriteBoolean("isYang", el.IsYang.Value);
             if (el.LineState is not null) writer.WriteString("lineState", el.LineState);
-            if (el.ColumnSpan is not null) writer.WriteNumber("columnSpan", el.ColumnSpan.Value);
+            if (el.ColumnSpan is not null) writer.WriteNumber("columnSpan", SeriesOutputOptions.RoundIfRequested(el.ColumnSpan.Value, decimalPlaces));
             if (el.RunCount is not null) writer.WriteNumber("runCount", el.RunCount.Value);
             if (el.BoxCount is not null) writer.WriteNumber("boxCount", el.BoxCount.Value);
-            if (el.ReversalPrice is not null) writer.WriteNumber("reversalPrice", el.ReversalPrice.Value);
-            if (el.NextTargetPrice is not null) writer.WriteNumber("nextTargetPrice", el.NextTargetPrice.Value);
+            if (el.ReversalPrice is not null) writer.WriteNumber("reversalPrice", SeriesOutputOptions.RoundIfRequested(el.ReversalPrice.Value, decimalPlaces));
+            if (el.NextTargetPrice is not null) writer.WriteNumber("nextTargetPrice", SeriesOutputOptions.RoundIfRequested(el.NextTargetPrice.Value, decimalPlaces));
             if (el.StartDate is not null) writer.WriteString("startDate", ToolJson.FormatDate(el.StartDate.Value));
             if (el.EndDate is not null) writer.WriteString("endDate", ToolJson.FormatDate(el.EndDate.Value));
             if (el.ReversalDate is not null) writer.WriteString("reversalDate", ToolJson.FormatDate(el.ReversalDate.Value));
@@ -536,12 +540,12 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
                 writer.WriteString("patternType", sig.PatternType.ToString());
                 writer.WriteBoolean("isBullish", sig.IsBullish);
                 writer.WriteNumber("triggerIndex", sig.TriggerIndex);
-                writer.WriteNumber("triggerPrice", sig.TriggerPrice);
-                writer.WriteNumber("signalLevel", sig.SignalLevel);
-                writer.WriteNumber("confidenceScore", sig.ConfidenceScore);
-                writer.WriteNumber("invalidationPrice", sig.InvalidationPrice);
-                writer.WriteNumber("targetPriceMin", sig.TargetPriceMin);
-                writer.WriteNumber("targetPriceMax", sig.TargetPriceMax);
+                writer.WriteNumber("triggerPrice", SeriesOutputOptions.RoundIfRequested(sig.TriggerPrice, decimalPlaces));
+                writer.WriteNumber("signalLevel", SeriesOutputOptions.RoundIfRequested(sig.SignalLevel, decimalPlaces));
+                writer.WriteNumber("confidenceScore", SeriesOutputOptions.RoundIfRequested(sig.ConfidenceScore, decimalPlaces));
+                writer.WriteNumber("invalidationPrice", SeriesOutputOptions.RoundIfRequested(sig.InvalidationPrice, decimalPlaces));
+                writer.WriteNumber("targetPriceMin", SeriesOutputOptions.RoundIfRequested(sig.TargetPriceMin, decimalPlaces));
+                writer.WriteNumber("targetPriceMax", SeriesOutputOptions.RoundIfRequested(sig.TargetPriceMax, decimalPlaces));
                 writer.WriteBoolean("isInvalidated", sig.IsInvalidated);
                 writer.WriteEndObject();
             }
@@ -558,8 +562,8 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
                 writer.WriteString("patternType", sig.PatternType.ToString());
                 writer.WriteBoolean("isBullish", sig.IsBullish);
                 writer.WriteString("triggerTimestamp", ToolJson.FormatDate(sig.TriggerTimestamp));
-                writer.WriteNumber("triggerPrice", sig.TriggerPrice);
-                writer.WriteNumber("signalLevel", sig.SignalLevel);
+                writer.WriteNumber("triggerPrice", SeriesOutputOptions.RoundIfRequested(sig.TriggerPrice, decimalPlaces));
+                writer.WriteNumber("signalLevel", SeriesOutputOptions.RoundIfRequested(sig.SignalLevel, decimalPlaces));
                 writer.WriteNumber("anchorColOffset", sig.AnchorColOffset);
                 writer.WriteEndObject();
             }
@@ -570,7 +574,7 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
             {
                 writer.WriteStartObject();
                 writer.WriteNumber("anchorIndex", line.AnchorIndex);
-                writer.WriteNumber("anchorPrice", line.AnchorPrice);
+                writer.WriteNumber("anchorPrice", SeriesOutputOptions.RoundIfRequested(line.AnchorPrice, decimalPlaces));
                 writer.WriteBoolean("isBullish", line.IsBullish);
                 writer.WriteEndObject();
             }

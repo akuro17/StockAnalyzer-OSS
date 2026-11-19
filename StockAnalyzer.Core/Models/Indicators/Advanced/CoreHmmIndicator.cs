@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Advanced;
@@ -34,7 +36,28 @@ public class CoreHmmIndicator : CoreIndicatorBase
         }
     }
 
+    /// <summary>
+    /// Observes the token of a cancellable execution context (one created per indicator call) and lets
+    /// <see cref="OperationCanceledException"/> escape instead of becoming a failure result (the guards and the error handling are those of
+    /// <see cref="CoreIndicatorBase.CalculateGuarded"/>). Any other context, or a token that cannot be cancelled, takes the base path unchanged.
+    /// Not covered: an HMM fed through indicator chaining (<c>CalculateSeries</c>), which has no context.
+    /// </summary>
+    public override Task<IIndicatorResult> CalculateAsync(IReadOnlyList<CoreCandleData> candles, IExecutionContext context)
+    {
+        if (context is not ICancellableExecutionContext cancellable || !cancellable.CancellationToken.CanBeCanceled)
+        {
+            return base.CalculateAsync(candles, context);
+        }
+
+        return Task.FromResult(CalculateGuarded(candles, cancellable.CancellationToken));
+    }
+
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    {
+        return CalculateCore(candles, CancellationToken.None);
+    }
+
+    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles, CancellationToken cancellationToken)
     {
         _values.Clear();
 
@@ -70,6 +93,8 @@ public class CoreHmmIndicator : CoreIndicatorBase
         // Rolling causal estimation window
         for (int t = w; t < count; t++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             // 1. Extract log-return observation series of length W
             bool hasInvalidPrice = false;
             for (int m = 0; m < w; m++)

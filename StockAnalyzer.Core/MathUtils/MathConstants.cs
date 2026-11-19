@@ -47,4 +47,34 @@ public static class MathConstants
     /// One full turn in radians, <c>2 * pi</c>. Equals <c>2.0 * Math.PI</c>.
     /// </summary>
     public const double TwoPi = 2.0 * Math.PI;
+
+    /// <summary>
+    /// Quarter turn in radians, <c>pi / 2</c>. Equals <c>0.5 * Math.PI</c>.
+    /// </summary>
+    public const double HalfPi = 0.5 * Math.PI;
+
+    /// <summary>
+    /// High-precision <see cref="decimal"/> constant for <c>pi</c> (29 significant digits).
+    /// </summary>
+    public const decimal PiDecimal = 3.1415926535897932384626433833m;
+
+    /// <summary>
+    /// High-precision <see cref="decimal"/> constant for Euler's number <c>e</c> (29 significant digits).
+    /// </summary>
+    public const decimal EDecimal = 2.7182818284590452353602874714m;
+
+    /// <summary>
+    /// High-precision <see cref="decimal"/> constant for the golden ratio <c>phi = (1 + sqrt(5)) / 2</c> (29 significant digits).
+    /// </summary>
+    public const decimal PhiDecimal = 1.6180339887498948482045868344m;
+
+    /// <summary>
+    /// High-precision <see cref="decimal"/> constant for the Euler-Mascheroni constant <c>gamma</c> (28 fractional digits).
+    /// </summary>
+    public const decimal EulerGammaDecimal = 0.5772156649015328606065120901m;
+
+    /// <summary>
+    /// Double-precision Euler-Mascheroni constant <c>gamma</c>.
+    /// </summary>
+    public const double EulerGamma = 0.57721566490153286;
 }

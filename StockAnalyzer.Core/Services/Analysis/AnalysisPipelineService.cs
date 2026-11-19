@@ -583,7 +583,7 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
                     }
                     else
                     {
-                        IExecutionContext context = new CoreExecutionContext(_pythonService);
+                        IExecutionContext context = new CoreExecutionContext(_pythonService, cancellationToken);
                         var timeframePlan = PlanTimeframe(setting, timeFrame, allSettings, ref chainParticipants);
                         if (timeframePlan.IsRefused)
                         {

@@ -44,7 +44,8 @@ internal sealed class GetSeasonalityTool : IMcpTool
 
     public string Description =>
         "Extracts the historical calendar seasonality matrix and monthly fractional return statistics for a symbol. " +
-        "Output contains raw monthly return ratios and averages; no advice or win-rate is synthesized.";
+        "Output contains raw monthly return ratios and averages; no advice or win-rate is synthesized. " +
+        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds returnRatio and average (away from zero at the midpoint; output only); without it the ratios are as calculated.";
 
     public bool IsHeavy => false;
 
@@ -59,6 +60,7 @@ internal sealed class GetSeasonalityTool : IMcpTool
         .Integer(StartMonthArgument, "Starting calendar month for the 1-year cycle (1..12). Default 1.", defaultValue: DefaultStartMonth, minimum: 1, maximum: 12)
         .Integer(YearsArgument, $"Number of overlaid calendar years to analyze (1..{_limits.MaxSeasonalityYears}). Default {DefaultYears}.", defaultValue: DefaultYears, minimum: 1, maximum: _limits.MaxSeasonalityYears)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("returnRatio and average"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -82,6 +84,7 @@ internal sealed class GetSeasonalityTool : IMcpTool
         int startMonth = (int)(rawStartMonth ?? DefaultStartMonth);
 
         int years = ToolArgs.PositiveWithin(arguments, YearsArgument, Math.Min(DefaultYears, _limits.MaxSeasonalityYears), _limits.MaxSeasonalityYears);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
 
         List<CandleData> loaded;
         if (endDate is not null)
@@ -159,7 +162,7 @@ internal sealed class GetSeasonalityTool : IMcpTool
                     decimal? ret = table.Cell(r, y).Return;
                     if (ret.HasValue)
                     {
-                        writer.WriteNumber("returnRatio", ret.Value);
+                        writer.WriteNumber("returnRatio", SeriesOutputOptions.RoundIfRequested(ret.Value, decimalPlaces));
                     }
                     else
                     {
@@ -172,7 +175,7 @@ internal sealed class GetSeasonalityTool : IMcpTool
                 decimal? avg = table.RowAverages[r];
                 if (avg.HasValue)
                 {
-                    writer.WriteNumber("average", avg.Value);
+                    writer.WriteNumber("average", SeriesOutputOptions.RoundIfRequested(avg.Value, decimalPlaces));
                 }
                 else
                 {

@@ -89,9 +89,9 @@ public sealed class DisjointChannelTests
     [Fact]
     public void Tool_IsNotExposedThroughTheDrawingValueCatalog()
     {
-        // U-17=A: the new tools have no MCP surface.
+        // U-17=A: the new tools had no MCP surface. CrossLine was given one later (WebAI gap review D-7 = A, T7); the DisjointChannel stays without.
         Assert.False(DrawingValueCatalog.TryGet("DisjointChannel", out _));
-        Assert.False(DrawingValueCatalog.TryGet("CrossLine", out _));
+        Assert.True(DrawingValueCatalog.TryGet("CrossLine", out _));
     }
 
     [Fact]

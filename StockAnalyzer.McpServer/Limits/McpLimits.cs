@@ -106,6 +106,18 @@ public sealed class McpLimits
     /// <summary>Most notes (and catalysts) sa_search_notes and sa_list_upcoming_catalysts return; the answer says when more matched (truncated). Standard value: 100 (owner decision U-08).</summary>
     public int MaxReturnedNotes { get; set; } = 100;
 
+    /// <summary>Most closed positions sa_get_portfolio_summary lists (includeClosedPositions); the answer carries totalCount and truncated. Standard value: 200.</summary>
+    public int MaxReturnedClosedPositions { get; set; } = 200;
+
+    /// <summary>Most transactions sa_get_portfolio_summary lists (includeTransactions); the answer carries totalCount and truncated. Standard value: 200.</summary>
+    public int MaxReturnedTransactions { get; set; } = 200;
+
+    /// <summary>Most expressions one sa_evaluate_expressions call may carry; more is LIMIT_EXCEEDED. Standard value: 20.</summary>
+    public int MaxCalculatorExpressions { get; set; } = 20;
+
+    /// <summary>Most variables one sa_evaluate_expressions call may carry; more is LIMIT_EXCEEDED. Standard value: 50.</summary>
+    public int MaxCalculatorVariables { get; set; } = 50;
+
     /// <summary>Most days ahead of fromDate sa_list_upcoming_catalysts looks (horizonDays); more is LIMIT_EXCEEDED. Standard value: 365 (owner decision U-09).</summary>
     public int MaxCatalystHorizonDays { get; set; } = 365;
 

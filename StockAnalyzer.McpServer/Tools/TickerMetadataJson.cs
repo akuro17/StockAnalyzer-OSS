@@ -32,12 +32,21 @@ internal static class TickerMetadataJson
 
     public static string JsonName(string propertyName) => char.ToLowerInvariant(propertyName[0]) + propertyName[1..];
 
-    public static void WriteAll(Utf8JsonWriter writer, TickerMetadata metadata)
+    /// <summary>
+    /// The camelCase names a client may select with <c>fields</c>: every writable property (<see cref="AllFields"/> without <see cref="ExcludedFields"/>), in the order they are written.
+    /// </summary>
+    public static IReadOnlyList<string> SelectableFieldNames { get; } = AllFields.Where(name => !ExcludedFields.Contains(name)).Select(JsonName).ToArray();
+
+    /// <summary>
+    /// Writes the record. <paramref name="onlyFields"/> (camelCase names, <see cref="SelectableFieldNames"/>) limits the output to those properties, always in the fixed
+    /// property order and never in the order of the set; null (the default) writes every property exactly as before.
+    /// </summary>
+    public static void WriteAll(Utf8JsonWriter writer, TickerMetadata metadata, IReadOnlySet<string>? onlyFields = null)
     {
         writer.WriteStartObject();
         foreach (PropertyInfo property in Properties)
         {
-            if (!ExcludedFields.Contains(property.Name))
+            if (!ExcludedFields.Contains(property.Name) && (onlyFields is null || onlyFields.Contains(JsonName(property.Name))))
             {
                 WriteProperty(writer, property, metadata);
             }

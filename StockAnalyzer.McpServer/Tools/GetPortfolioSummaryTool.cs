@@ -2,6 +2,7 @@ using System.Text.Json;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.McpServer.Limits;
 using static StockAnalyzer.McpServer.Tools.PortfolioToolSupport;
 
 namespace StockAnalyzer.McpServer.Tools;
@@ -12,13 +13,19 @@ namespace StockAnalyzer.McpServer.Tools;
 /// </summary>
 internal sealed class GetPortfolioSummaryTool : IMcpTool
 {
+    private const string IncludeClosedPositionsArgument = "includeClosedPositions";
+    private const string IncludeTransactionsArgument = "includeTransactions";
+    private const string LimitArgument = "limit";
+
     private readonly IReadOnlyPortfolioSource _source;
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
+    private readonly McpLimits _limits;
 
-    public GetPortfolioSummaryTool(IReadOnlyPortfolioSource source, IReadOnlyStockAnalyzerGateway gateway)
+    public GetPortfolioSummaryTool(IReadOnlyPortfolioSource source, IReadOnlyStockAnalyzerGateway gateway, McpLimits limits)
     {
         _source = source;
         _gateway = gateway;
+        _limits = limits;
     }
 
     public string Name => "sa_get_portfolio_summary";
@@ -28,7 +35,12 @@ internal sealed class GetPortfolioSummaryTool : IMcpTool
         $"market value and unrealized profit in the base currency ({BaseCurrencyArgument}, an ISO 4217 code, default JPY), the cash by currency and the exchange rates used. " +
         "The exchange rates are the ones the user's own transactions applied (the newest per currency and their inverses); nothing is fetched. A currency without a rate to the base currency is listed in unconvertedCurrencies " +
         "and its positions are left out of the base-currency totals (a portfolio that holds a single currency is valued in it unchanged). A position without a stored price is valued at its average cost with no unrealized profit (priceAvailable false). " +
-        "Short positions have a negative market value. Read-only; the file is read as it is. No portfolio saved: portfolioFound false and empty lists.";
+        "Short positions have a negative market value. Read-only; the file is read as it is. No portfolio saved: portfolioFound false and empty lists. " +
+        $"{IncludeClosedPositionsArgument} true adds closedPositions and {IncludeTransactionsArgument} true adds transactions, each {{totalCount, returnedCount, truncated, items}}: closed positions newest exit first " +
+        "(id, ticker, side Long or Short, quantity, entryPrice, exitPrice, entryTime, exitTime, realizedPnL, totalFees; in the currency of the trade, which a closed position does not record), " +
+        "transactions newest first (id, executedAt, type Long, ExitLong, Deposit, Withdrawal, Short or ExitShort, ticker, quantity, pricePerUnit, priceCurrency, cashAmount, fee, commissionCurrency, appliedRate when one was applied; " +
+        $"the notes, target price and stop loss of a transaction are never returned). Each list returns at most {LimitArgument} items (default {_limits.MaxReturnedClosedPositions} for closed positions, {_limits.MaxReturnedTransactions} for transactions). " +
+        "The totals above, closedPositionCount and realizedPLByCurrency are always for the whole portfolio. There is no allocation breakdown.";
 
     public bool IsHeavy => false;
 
@@ -36,11 +48,15 @@ internal sealed class GetPortfolioSummaryTool : IMcpTool
 
     public string InputSchemaJson => ToolSchema.Object()
         .String(BaseCurrencyArgument, "ISO 4217 code of the currency every total is shown in. Default JPY.")
+        .Boolean(IncludeClosedPositionsArgument, "true adds closedPositions: the closed trades, newest exit first. Default false.")
+        .Boolean(IncludeTransactionsArgument, "true adds transactions: the saved transaction history, newest first (notes, target price and stop loss are never returned). Default false.")
+        .Integer(LimitArgument, $"Most items per requested list (needs includeClosedPositions or includeTransactions). Default and maximum {_limits.MaxReturnedClosedPositions} closed positions and {_limits.MaxReturnedTransactions} transactions.", minimum: 1, maximum: Math.Max(_limits.MaxReturnedClosedPositions, _limits.MaxReturnedTransactions))
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         CurrencyCode baseCurrency = ReadBaseCurrency(arguments);
+        (int? closedLimit, int? transactionLimit) = ReadHistoryRequest(arguments);
         PortfolioReadResult read = await LoadAsync(_source, cancellationToken).ConfigureAwait(false);
         Portfolio portfolio = read.Portfolio;
         Dictionary<string, LatestPrice> latest = await LatestPricesAsync(_gateway, portfolio.Positions.Values.Select(p => p.Ticker), cancellationToken).ConfigureAwait(false);
@@ -130,7 +146,45 @@ internal sealed class GetPortfolioSummaryTool : IMcpTool
             }
 
             writer.WriteEndArray();
+
+            if (closedLimit is { } closed)
+            {
+                PortfolioHistoryJson.WriteClosedPositions(writer, portfolio.ClosedPositions, closed);
+            }
+
+            if (transactionLimit is { } transactions)
+            {
+                PortfolioHistoryJson.WriteTransactions(writer, portfolio.History, transactions);
+            }
+
             writer.WriteEndObject();
         });
+    }
+
+    /// <summary>
+    /// Reads <c>includeClosedPositions</c>, <c>includeTransactions</c> and <c>limit</c> before anything is loaded. Each is the number of items its list returns, or null when the list was not asked for.
+    /// <c>limit</c> must be 1 or more (INVALID_ARGUMENT) and no larger than the limit of every list asked for (LIMIT_EXCEEDED); without a list it has nothing to limit (INVALID_ARGUMENT).
+    /// </summary>
+    private (int? ClosedPositions, int? Transactions) ReadHistoryRequest(JsonElement arguments)
+    {
+        bool closed = ToolArgs.Boolean(arguments, IncludeClosedPositionsArgument) ?? false;
+        bool transactions = ToolArgs.Boolean(arguments, IncludeTransactionsArgument) ?? false;
+        if (ToolArgs.Integer(arguments, LimitArgument) is null)
+        {
+            return (closed ? _limits.MaxReturnedClosedPositions : null, transactions ? _limits.MaxReturnedTransactions : null);
+        }
+
+        if (!closed && !transactions)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{LimitArgument}' limits the lists of {IncludeClosedPositionsArgument} and {IncludeTransactionsArgument} and has no effect without one of them.",
+                LimitArgument,
+                $"Set {IncludeClosedPositionsArgument} or {IncludeTransactionsArgument} to true, or omit {LimitArgument}.");
+        }
+
+        int largest = Math.Min(closed ? _limits.MaxReturnedClosedPositions : int.MaxValue, transactions ? _limits.MaxReturnedTransactions : int.MaxValue);
+        int limit = ToolArgs.PositiveWithin(arguments, LimitArgument, largest, largest);
+        return (closed ? limit : null, transactions ? limit : null);
     }
 }

@@ -83,7 +83,8 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
         "LongPosition points are Entry, Stop, Target with Stop < Entry < Target; ShortPosition points are Entry, Stop, Target with Target < Entry < Stop. " +
         "RegressionTrend, AnchoredVWAP and ClassicPivotPoints are calculated from the loaded bars with the default options of the chart tool " +
         "(RegressionTrend: 2 standard deviations, not extended; AnchoredVWAP: no bands, typical price; ClassicPivotPoints: daily, no extension); RegressionTrend ignores the prices of its two points (only their dates matter) " +
-        "and AnchoredVWAP and ClassicPivotPoints use only the date of their point. anchorBars counts bars of the chosen timeFrame, not calendar days; left out, it is every loaded bar. Values are evaluated at evaluationDates " +
+        "and AnchoredVWAP and ClassicPivotPoints use only the date of their point. DatePriceRange is calculated from the loaded bars between its two dates (price change, bar count, volume, highest high, lowest low, maximum drawdown, volatility; " +
+        "volatility is in percent per bar and is not annualised); CrossLine has one point and gives the values of a horizontal line and a vertical line at it. anchorBars counts bars of the chosen timeFrame, not calendar days; left out, it is every loaded bar. Values are evaluated at evaluationDates " +
         "(default: the last loaded bar); a date without a stored bar is allowed and only extends the geometry (hasBar false, no current price). " +
         "Time math is calendar time (price change per 24 hours), not bar count. Causal as of endDate (bars after it are never read). " +
         "FibonacciRetracement: level 0 is the second point and level 1 the first point. " +

@@ -63,7 +63,11 @@ public sealed class McpParityGuardTests : IDisposable
     public void BacktestSettings_KeysAreUniqueAndTheBinderAcceptsTheSameKeysAsBefore()
     {
         Assert.Equal(
-            new[] { "initialCapital", "commissionFlat", "commissionPerUnit", "slippageRatio", "sizingModel", "sizingParameter", "initialMarginRatio", "maintenanceMarginRatio", "liquidationPenaltyRatio" },
+            new[]
+            {
+                "initialCapital", "commissionFlat", "commissionPerUnit", "slippageRatio", "sizingModel", "sizingParameter", "initialMarginRatio", "maintenanceMarginRatio", "liquidationPenaltyRatio",
+                "maxVolumeParticipationRatio", "volumeConstraintMode", "shortBorrowAnnualRate", "borrowFeeBasisMode", "priceLimitFillMode",
+            },
             McpBacktestSettingsExposure.KeysOf(McpBacktestSettingsExposure.AccountSection));
         Assert.Equal(new[] { "stopLossRatio", "takeProfitRatio", "dynamicExits" }, McpBacktestSettingsExposure.KeysOf(McpBacktestSettingsExposure.RiskSection));
         Assert.Equal(

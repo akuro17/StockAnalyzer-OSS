@@ -13,7 +13,7 @@ namespace StockAnalyzer.Core.Drawing;
 /// which is not the tool name for every tool (AngleTool is AngleObject, AnchoredVWAP is AnchoredVwapObject) and is one class for both LongPosition and ShortPosition.
 /// A guard test in StockAnalyzer.Avalonia.Tests pins every name to the real class.
 /// </param>
-/// <param name="RequiresCandles">True for the tools calculated from bars (RegressionTrend, AnchoredVWAP, ClassicPivotPoints): the request must carry <see cref="DrawingValueRequest.Candles"/>.</param>
+/// <param name="RequiresCandles">True for the tools calculated from bars (RegressionTrend, AnchoredVWAP, ClassicPivotPoints, DatePriceRange): the request must carry <see cref="DrawingValueRequest.Candles"/>.</param>
 public sealed record DrawingValueDescriptor(
     string Name,
     int PointCount,

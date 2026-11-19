@@ -35,6 +35,9 @@ internal sealed class RenderChartImageTool : IMcpImageTool
     private const string MarkersArgument = "markers";
     private const string IncludeHistogramArgument = "includeHistogram";
     private const string IncludeSavedDrawingsArgument = "includeSavedDrawings";
+    private const string IncludeBarCoordinatesArgument = "includeBarCoordinates";
+    private const string BarsListUnit = "index counts bars from 0 (the oldest drawn bar); ";
+    private const string CountsUnit = "barCountDrawn, barsOmittedCount and legendEntriesInImage are numbers of bars or entries.";
     private const string IchimokuOmissionNote = "Ichimoku ChikouSpan is omitted because it is non-causal; TenkanSen, KijunSen, SenkouSpanA, SenkouSpanB and the Kumo cloud are drawn.";
     private const string IchimokuFutureNote = "The Senkou spans are plotted ahead of the bar they are calculated from, so the part of the cloud beyond the last drawn bar is not drawn.";
     private const string BackgroundWhite = "White";
@@ -83,7 +86,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         "Renders the stored bars of one symbol as a PNG chart for an AI that reads images: candles, an optional volume panel, overlay indicator lines on the price panel, up to " +
         $"{AiChartImageStyle.MaxOscillatorPanels} oscillator panels and buy/sell markers, in the fixed style {AiChartImageStyle.Name} (the user's chart colours are never used; text is English letters and digits only; the same input gives the same mapping on every machine and the same pixels on one machine, but the shapes of the letters depend on the default font of the operating system). " +
         "The result has an image block and, as text and structuredContent, the mapping that turns pixels back into numbers: axes (price range and pixel rows of the price panel), panels (the pixel rows and value range of every panel), " +
-        "legend (colour, pattern and width of every line), and bars (the pixel position of each drawn bar; the last bars only when there are more than the limit, the rest counted in barsOmittedCount). " +
+        "legend (colour, pattern and width of every line), and bars (the pixel position of each drawn bar; the last bars only when there are more than the limit, the rest counted in barsOmittedCount; includeBarCoordinates false leaves the list out to save tokens). " +
         "Do not read prices from the picture: take numbers from bars and from sa_calculate_indicators. " +
         $"Up pixel colour {AiChartImageStyle.UpHex}, down {AiChartImageStyle.DownHex}, a bar with open equal to close {AiChartImageStyle.DojiHex} (also in colors). Pixel coordinates: origin at the top left of the image, pixel-edge coordinates, the pixel that holds the point (x, y) is (floor x, floor y). " +
         "overlays are indicators drawn on the price panel (prices scale: moving averages, bands) and oscillators each get a panel of their own; both use the item shape of sa_calculate_indicators (id, type, parameters, priceSource, sourceIndicatorId, ...), " +
@@ -147,6 +150,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
                 .Boolean(IncludeVolumeArgument, "Draw the volume panel under the price panel. Default true.")
                 .Boolean(IncludeHistogramArgument, "Also draw the histogram series of each oscillator (for example the MACD histogram) as bars from zero behind its lines. Default false.")
                 .Boolean(IncludeSavedDrawingsArgument, $"Also draw the user's saved horizontal lines, vertical lines, trend lines, rays and parallel channels on the price panel in the fixed colour {AiChartImageStyle.SavedDrawingHex} (the drawings of the same daily, weekly or monthly chart). Default false.")
+                .Boolean(IncludeBarCoordinatesArgument, "false leaves out the bars list (the pixel position of each drawn bar) and the sentence of units.bars that explains it (the sentence on the counts stays) to save tokens; barCountDrawn, barsOmittedCount, axes, panels, legend, markers and the picture are unchanged. Default true.")
                 .Integer(
                     LookbackArgument,
                     $"Stored bars the indicators are calculated over (at least barCount). Default and maximum {_limits.MaxCandlesPerRequest}; the same meaning as in sa_calculate_indicators. Used only when indicators are given or includeSavedDrawings is true (the saved drawings are placed by every loaded bar).",
@@ -170,6 +174,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         bool includeVolume = ToolArgs.Boolean(arguments, IncludeVolumeArgument) ?? true;
         bool includeHistogram = ToolArgs.Boolean(arguments, IncludeHistogramArgument) ?? false;
         bool includeSavedDrawings = ToolArgs.Boolean(arguments, IncludeSavedDrawingsArgument) ?? false;
+        bool includeBarCoordinates = ToolArgs.Boolean(arguments, IncludeBarCoordinatesArgument) ?? true;
         bool lightGray = string.Equals(ToolArgs.String(arguments, BackgroundArgument), BackgroundLightGray, StringComparison.Ordinal);
         int barCount = ToolArgs.PositiveWithin(arguments, BarCountArgument, McpLimitsContract.EffectiveDefaultChartImageBars(_limits), McpLimitsContract.EffectiveMaxChartImageBars(_limits));
         int width = ReadSize(arguments, WidthArgument, _limits.DefaultChartImageWidth, AiChartImageStyle.MinImageWidthPx, _limits.MaxChartImageWidth);
@@ -367,7 +372,8 @@ internal sealed class RenderChartImageTool : IMcpImageTool
             overlays.Any(o => o.Cloud is not null),
             savedDrawings,
             overlays.Any(o => o.Shape == AiChartLineShape.Dots),
-            includeSavedDrawings && endDate is not null ? savedSelection.AfterEndDate : null);
+            includeSavedDrawings && endDate is not null ? savedSelection.AfterEndDate : null,
+            includeBarCoordinates);
         string json = ToolJson.Build(writer => WriteResult(writer, symbol, timeFrame, endDate, lightGray, includeVolume, image, markerEcho, notes, warnings, extras));
         return new ToolImageResult(json, image.Png);
     }
@@ -425,7 +431,8 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         bool HasCloud,
         IReadOnlyList<ImageSavedDrawing> SavedDrawings,
         bool HasDots,
-        int? SavedDrawingsAfterEndDate);
+        int? SavedDrawingsAfterEndDate,
+        bool IncludeBarCoordinates);
 
     private static int ReadSize(JsonElement arguments, string name, int defaultValue, int minimum, int maximum)
     {
@@ -771,28 +778,34 @@ internal sealed class RenderChartImageTool : IMcpImageTool
 
         int listed = Math.Min(image.Bars.Count, _limits.MaxImageBarsListed);
         int first = image.Bars.Count - listed;
-        writer.WriteStartArray("bars");
-        for (int i = first; i < image.Bars.Count; i++)
+        if (extras.IncludeBarCoordinates)
         {
-            AiChartBarPosition bar = image.Bars[i];
-            writer.WriteStartObject();
-            writer.WriteNumber("index", bar.Index);
-            writer.WriteString("date", ToolJson.FormatDate(bar.Date));
-            writer.WriteNumber("xPx", bar.XPx);
-            writer.WriteNumber("openYPx", bar.OpenYPx);
-            writer.WriteNumber("highYPx", bar.HighYPx);
-            writer.WriteNumber("lowYPx", bar.LowYPx);
-            writer.WriteNumber("closeYPx", bar.CloseYPx);
-            writer.WriteEndObject();
+            writer.WriteStartArray("bars");
+            for (int i = first; i < image.Bars.Count; i++)
+            {
+                AiChartBarPosition bar = image.Bars[i];
+                writer.WriteStartObject();
+                writer.WriteNumber("index", bar.Index);
+                writer.WriteString("date", ToolJson.FormatDate(bar.Date));
+                writer.WriteNumber("xPx", bar.XPx);
+                writer.WriteNumber("openYPx", bar.OpenYPx);
+                writer.WriteNumber("highYPx", bar.HighYPx);
+                writer.WriteNumber("lowYPx", bar.LowYPx);
+                writer.WriteNumber("closeYPx", bar.CloseYPx);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
         }
 
-        writer.WriteEndArray();
         writer.WriteNumber("barsOmittedCount", first);
 
         writer.WriteStartObject("units");
         writer.WriteString("pixels", "Image pixels; origin at the top left; pixel-edge coordinates, so the pixel that holds (x, y) is (floor x, floor y); rounded to 2 decimals (names ending in Px).");
         writer.WriteString("prices", "The unit of the stored prices (priceMin, priceMax and the price panel values).");
-        writer.WriteString("bars", "index counts bars from 0 (the oldest drawn bar); barCountDrawn, barsOmittedCount and legendEntriesInImage are numbers of bars or entries.");
+        // Without the bars list the sentence on the list is left out and the sentence on the counts (which are always written) stays.
+        writer.WriteString("bars", extras.IncludeBarCoordinates ? BarsListUnit + CountsUnit : CountsUnit);
+
         writer.WriteString("dates", $"Calendar dates ({ToolJson.DateFormat}); a weekly or monthly bar is dated by its first day.");
         writer.WriteEndObject();
 

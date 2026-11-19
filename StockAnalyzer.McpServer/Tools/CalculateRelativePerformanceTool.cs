@@ -60,6 +60,7 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
         "Spread is the close minus the primary symbol's close (price units); ZScore is the close's distance from its mean over the last zScorePeriod bars in population standard deviations. " +
         "A value that cannot be defined is null. The unit of the values is in the result (unit). " +
         $"The last outputTailCount bars (default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}) of up to lookbackBars stored bars (default and maximum {_limits.MaxCandlesPerRequest}) are returned. " +
+        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds the written values and basePrice (away from zero at the midpoint); the calculation itself is never rounded, and without it the numbers are as calculated. " +
         "The tool never changes anything and never fetches data; it does not read the chart's saved symbol list or presets.";
 
     public bool IsHeavy => false;
@@ -75,6 +76,7 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, bars up to this date are evaluated.")
         .Integer(LookbackArgument, $"Stored bars the alignment runs over, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Integer(TailArgument, $"Number of trailing bars returned; the first of them is the Performance base. Default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("the series values and basePrice"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -87,6 +89,7 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
         int tail = ToolArgs.PositiveWithin(arguments, TailArgument, _limits.DefaultOutputTailBars, _limits.MaxOutputTailBars);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
 
         int primaryBars = await CountPrimaryBarsAsync(symbol, timeFrame, endDate, lookback, cancellationToken).ConfigureAwait(false);
 
@@ -122,7 +125,7 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
             }
         }
 
-        return ToolJson.Build(writer => WriteResult(writer, aligned, values, order, excluded, ignored, warnings, symbol, timeFrame, endDate, mode, zScorePeriod, lookback, returned, windowStart));
+        return ToolJson.Build(writer => WriteResult(writer, aligned, values, order, excluded, ignored, warnings, symbol, timeFrame, endDate, mode, zScorePeriod, lookback, returned, windowStart, decimalPlaces));
     }
 
     /// <summary>
@@ -237,7 +240,8 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
         int zScorePeriod,
         int lookback,
         int returned,
-        int windowStart)
+        int windowStart,
+        int? decimalPlaces)
     {
         writer.WriteStartObject();
         writer.WriteString("symbol", symbol);
@@ -279,7 +283,7 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
             if (series.BaseIndex is { } baseIndex && series.BasePrice is { } basePrice)
             {
                 writer.WriteString("baseDate", ToolJson.FormatDate(aligned.Timestamps[baseIndex]));
-                writer.WriteNumber("basePrice", basePrice);
+                writer.WriteNumber("basePrice", SeriesOutputOptions.RoundIfRequested(basePrice, decimalPlaces));
             }
 
             writer.WriteStartArray("values");
@@ -287,7 +291,7 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
             {
                 if (value is { } number)
                 {
-                    writer.WriteNumberValue(number);
+                    writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(number, decimalPlaces));
                 }
                 else
                 {

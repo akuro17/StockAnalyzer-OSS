@@ -88,6 +88,10 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.MaxBatchIndicatorSymbols), limits.MaxBatchIndicatorSymbols, 1, 200);
         Band(nameof(McpLimits.MaxBatchIndicatorTailBars), limits.MaxBatchIndicatorTailBars, 1, 50);
         Band(nameof(McpLimits.MaxReturnedNotes), limits.MaxReturnedNotes, 1, 500);
+        Band(nameof(McpLimits.MaxReturnedClosedPositions), limits.MaxReturnedClosedPositions, 1, 1000);
+        Band(nameof(McpLimits.MaxReturnedTransactions), limits.MaxReturnedTransactions, 1, 1000);
+        Band(nameof(McpLimits.MaxCalculatorExpressions), limits.MaxCalculatorExpressions, 1, 100);
+        Band(nameof(McpLimits.MaxCalculatorVariables), limits.MaxCalculatorVariables, 1, 200);
         Band(nameof(McpLimits.MaxCatalystHorizonDays), limits.MaxCatalystHorizonDays, 1, 3650);
         Band(nameof(McpLimits.MaxPivotStrength), limits.MaxPivotStrength, 1, 500);
         Band(nameof(McpLimits.MaxComparisonTargets), limits.MaxComparisonTargets, 1, WatchlistConstants.MaxRelativePerformanceTargets);
@@ -146,6 +150,12 @@ public static class McpLimitsContract
     /// (the Core definition of the smallest trend window). Applied at run time, not as a start-up refusal, because a request limit below two bars is a valid configuration that must keep starting.
     /// </summary>
     public static int EffectiveMaxTrendBars(McpLimits limits) => Math.Max(SeriesSummaryStatistics.MinTrendBars, limits.MaxCandlesPerRequest);
+
+    /// <summary>
+    /// The largest <c>summaryBars</c> a call may name: the same bound as <see cref="EffectiveMaxTrendBars"/> (one definition, so the two windows cannot drift apart).
+    /// A value above the number of calculated bars is not an error; it is clamped to that number when the summary is written.
+    /// </summary>
+    public static int EffectiveMaxSummaryBars(McpLimits limits) => EffectiveMaxTrendBars(limits);
 
     /// <summary>The trend window in force when a call names none: <see cref="McpLimits.DefaultSummaryTrendBars"/> within <see cref="EffectiveMaxTrendBars"/>.</summary>
     public static int EffectiveDefaultTrendBars(McpLimits limits) => Math.Min(limits.DefaultSummaryTrendBars, EffectiveMaxTrendBars(limits));

@@ -70,7 +70,8 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         "Capital is equally divided across sleeves: sleeveCapital = initialCapital / N (decimal precision). " +
         "Each sleeve runs independently through the core backtest engine. Symbols with insufficient data remain as cash. " +
         "Outputs individual sleeve metrics and composite portfolio equity, return, drawdown and pooled trade statistics. " +
-        "allocation defaults to 'Equal'; maxConcurrentPositions is not accepted in the independent sleeves model.";
+        "allocation defaults to 'Equal'; maxConcurrentPositions is not accepted in the independent sleeves model. " +
+        $"{BacktestReportJson.CompactReportArgument} true writes each symbol's five metrics as bare numbers (null when not Valid) and adds unavailableMetrics [{{name, status, reason}}] and metricUnits to every symbol result; the numbers are the same.";
 
     public bool IsHeavy => true;
 
@@ -86,12 +87,13 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         .String(StartArgument, "First evaluated day, yyyy-MM-dd. Default: start of stored history.")
         .String(EndArgument, "Last evaluated day, yyyy-MM-dd. Default: latest stored bar.")
         .String(TimeFrameArgument, $"Time frame of the bars ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
-        .FreeObject(BacktestSettingsBinder.AccountArgument, "Account capital, cost, sizing and margin settings. initialCapital represents total portfolio funds.")
+        .FreeObject(BacktestSettingsBinder.AccountArgument, $"Account capital, cost, sizing and margin settings, and the execution-realism keys ({string.Join(", ", McpBacktestSettingsExposure.ExecutionRealismKeys)}), as for sa_run_backtest. initialCapital represents total portfolio funds.")
         .FreeObject(BacktestSettingsBinder.RiskArgument, "Optional stop-loss, take-profit and dynamic exits: {stopLossRatio, takeProfitRatio, dynamicExits}.")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings: {annualRiskFreeRate, annualMar, annualPeriodsD1, bootstrapSeed, bootstrapIterations}.")
         .Integer(MaxTradesPerSymbolArgument, $"Most trades to list per symbol (default 0; maximum {_limits.MaxReturnedTrades}).", defaultValue: 0, minimum: 0, maximum: _limits.MaxReturnedTrades)
         .String(EquityCurveArgument, "Add composite equity curve: None (default), Weekly or Monthly.", allowedValues: AllowedEquityCurveResolutions)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept symbols that are not in the ticker list but have stored bars. Default false.")
+        .Boolean(BacktestReportJson.CompactReportArgument, "Per symbol, write totalReturn, winRate, profitFactor, annualizedSharpe and maxDrawdown as bare numbers (null when not Valid) and add unavailableMetrics / metricUnits to the symbol result. " + BacktestReportJson.CompactReportDescription)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -106,6 +108,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
                 "The independent sleeves model evaluates each symbol with isolated capital.");
         }
 
+        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? false;
         string allocation = ToolArgs.String(arguments, AllocationArgument) ?? "Equal";
         if (!string.Equals(allocation, "Equal", StringComparison.OrdinalIgnoreCase))
         {
@@ -390,7 +393,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
             writer.WriteStartArray("symbolResults");
             foreach (SleeveHolder sleeve in orderedSleeves)
             {
-                WriteSymbolResult(writer, sleeve, maxTradesPerSymbol);
+                WriteSymbolResult(writer, sleeve, maxTradesPerSymbol, compactReport);
             }
             writer.WriteEndArray();
 
@@ -422,7 +425,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         });
     }
 
-    private static void WriteSymbolResult(Utf8JsonWriter writer, SleeveHolder sleeve, int maxTrades)
+    private static void WriteSymbolResult(Utf8JsonWriter writer, SleeveHolder sleeve, int maxTrades, bool compactReport)
     {
         writer.WriteStartObject();
         writer.WriteString("symbol", sleeve.Symbol);
@@ -438,6 +441,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         }
 
         writer.WriteNumber("sleeveCapital", sleeve.SleeveCapital);
+        BacktestReportJson.CompactMetrics? compact = compactReport ? new BacktestReportJson.CompactMetrics() : null;
 
         if (sleeve.IsSuccess && sleeve.Artifact is { } artifact)
         {
@@ -447,12 +451,13 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
             decimal finalEq = !result.EquityPoints.IsEmpty ? result.EquityPoints[^1].Equity : sleeve.SleeveCapital;
             writer.WriteNumber("finalEquity", finalEq);
 
-            BacktestReportJson.WriteMetric(writer, "totalReturn", report?.TotalReturn);
+            WriteSleeveMetric(writer, compact, "totalReturn", report?.TotalReturn);
             writer.WriteNumber("totalTrades", report?.TotalTrades ?? result.Trades.Length);
-            BacktestReportJson.WriteMetric(writer, "winRate", report?.WinRate);
-            BacktestReportJson.WriteMetric(writer, "profitFactor", report?.ProfitFactor);
-            BacktestReportJson.WriteMetric(writer, "annualizedSharpe", report?.AnnualizedSharpe);
-            BacktestReportJson.WriteMetric(writer, "maxDrawdown", report?.MaxDrawdown);
+            WriteSleeveMetric(writer, compact, "winRate", report?.WinRate);
+            WriteSleeveMetric(writer, compact, "profitFactor", report?.ProfitFactor);
+            WriteSleeveMetric(writer, compact, "annualizedSharpe", report?.AnnualizedSharpe);
+            WriteSleeveMetric(writer, compact, "maxDrawdown", report?.MaxDrawdown);
+            compact?.WriteSummary(writer);
             BacktestReportJson.WriteRunFingerprint(writer, artifact.RunFingerprint);
 
             if (maxTrades > 0 && !result.Trades.IsEmpty)
@@ -480,16 +485,30 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         else
         {
             writer.WriteNumber("finalEquity", sleeve.SleeveCapital);
-            BacktestReportJson.WriteMetric(writer, "totalReturn", null);
+            WriteSleeveMetric(writer, compact, "totalReturn", null);
             writer.WriteNumber("totalTrades", 0);
-            BacktestReportJson.WriteMetric(writer, "winRate", null);
-            BacktestReportJson.WriteMetric(writer, "profitFactor", null);
-            BacktestReportJson.WriteMetric(writer, "annualizedSharpe", null);
-            BacktestReportJson.WriteMetric(writer, "maxDrawdown", null);
+            WriteSleeveMetric(writer, compact, "winRate", null);
+            WriteSleeveMetric(writer, compact, "profitFactor", null);
+            WriteSleeveMetric(writer, compact, "annualizedSharpe", null);
+            WriteSleeveMetric(writer, compact, "maxDrawdown", null);
+            compact?.WriteSummary(writer);
             BacktestReportJson.WriteRunFingerprint(writer, null);
         }
 
         writer.WriteEndObject();
+    }
+
+    /// <summary>One sleeve metric in the verbose form, or in the compact form when <paramref name="compact"/> is given.</summary>
+    private static void WriteSleeveMetric(Utf8JsonWriter writer, BacktestReportJson.CompactMetrics? compact, string name, MetricValue? metric)
+    {
+        if (compact is null)
+        {
+            BacktestReportJson.WriteMetric(writer, name, metric);
+        }
+        else
+        {
+            compact.Write(writer, name, metric);
+        }
     }
 
     private static void WriteComposite(
@@ -554,6 +573,11 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
             InitialMarginRatio = baseConfig.InitialMarginRatio,
             MaintenanceMarginRatio = baseConfig.MaintenanceMarginRatio,
             LiquidationPenaltyRatio = baseConfig.LiquidationPenaltyRatio,
+            MaxVolumeParticipationRatio = baseConfig.MaxVolumeParticipationRatio,
+            VolumeConstraintMode = baseConfig.VolumeConstraintMode,
+            ShortBorrowAnnualRate = baseConfig.ShortBorrowAnnualRate,
+            BorrowFeeBasisMode = baseConfig.BorrowFeeBasisMode,
+            PriceLimitFillMode = baseConfig.PriceLimitFillMode,
         };
         config.Validate();
         return config;

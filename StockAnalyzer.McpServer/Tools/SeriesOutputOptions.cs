@@ -15,6 +15,8 @@ internal sealed class SeriesOutputOptions
 {
     public const string SummaryArgument = "summary";
     public const string TrendBarsArgument = "trendBars";
+    public const string SummaryBarsArgument = "summaryBars";
+    public const string SummaryWindowBarsKey = "summaryWindowBars";
     public const string SummaryDistributionArgument = "summaryDistribution";
     public const string LookbackOffsetsArgument = "lookbackOffsets";
     public const string IncludeSeriesArgument = "includeSeries";
@@ -32,12 +34,21 @@ internal sealed class SeriesOutputOptions
         $"For protection against the quadratic cost, robustTrendSlope is only calculated when trendBars is {SeriesSummaryStatistics.MinTrendBars} to {SeriesSummaryStatistics.MaxRobustTrendBars}: with a larger trendBars it is null " +
         "(that is not an error and not a data shortage; trendSlope and every other field are unaffected). Needs summary true. Default false.";
 
-    private SeriesOutputOptions(bool includeSeries, bool summary, bool summaryDistribution, int trendBars, IReadOnlyList<long> lookbackOffsets, int? decimalPlaces)
+    /// <summary>
+    /// The description every tool that offers <c>summaryBars</c> gives the argument (one text, so the two tools cannot disagree).
+    /// </summary>
+    public static string SummaryBarsDescription(McpLimits limits)
+        => $"Number of the LAST calculated bars the summary is computed over (needs summary true; from {SeriesSummaryStatistics.MinTrendBars} to {McpLimitsContract.EffectiveMaxSummaryBars(limits)}). " +
+           "Null values inside that tail count as bars; a value above the number of calculated bars is clamped to it (not an error). " +
+           "Each series summary then also reports summaryBars (as sent) and summaryWindowBars (the bars actually used). pastValues always read the whole calculated window. Default: the whole calculated window.";
+
+    private SeriesOutputOptions(bool includeSeries, bool summary, bool summaryDistribution, int trendBars, int? summaryBars, IReadOnlyList<long> lookbackOffsets, int? decimalPlaces)
     {
         IncludeSeries = includeSeries;
         Summary = summary;
         SummaryDistribution = summaryDistribution;
         TrendBars = trendBars;
+        SummaryBars = summaryBars;
         LookbackOffsets = lookbackOffsets;
         DecimalPlaces = decimalPlaces;
     }
@@ -52,6 +63,9 @@ internal sealed class SeriesOutputOptions
 
     /// <summary>The trend window, in bars, of the summary's <c>trendSlope</c>.</summary>
     public int TrendBars { get; }
+
+    /// <summary>The number of last calculated bars the summary covers, as sent; null (the argument is absent) means the whole calculated window.</summary>
+    public int? SummaryBars { get; }
 
     /// <summary>The distinct offsets asked for, in the order they first appear; offset k is the bar k bars before the last calculated bar.</summary>
     public IReadOnlyList<long> LookbackOffsets { get; }
@@ -77,6 +91,34 @@ internal sealed class SeriesOutputOptions
         decimal rounded = Math.Round(value, places, MidpointRounding.AwayFromZero);
         return rounded == 0m ? 0m : rounded;
     }
+
+    /// <summary>The schema text of <c>decimalPlaces</c> for a tool that rounds the numbers named by <paramref name="what"/> (output only; no calculation uses a rounded number).</summary>
+    public static string DecimalPlacesDescription(string what)
+        => $"Round {what} to this many decimal places (0 to {MaxDecimalPlaces}; away from zero at the midpoint). Counts, indexes, dates and text are never rounded. Default: the numbers as calculated.";
+
+    /// <summary>
+    /// The double counterpart of <see cref="Round(decimal, int)"/>, for a tool whose statistic is a double: a non-finite value is returned unchanged (the writer decides how it is shown),
+    /// anything else is rounded away from zero at the midpoint of its binary value, and a result of zero is a plain zero (never -0).
+    /// </summary>
+    public static double Round(double value, int places)
+    {
+        if (!double.IsFinite(value))
+        {
+            return value;
+        }
+
+        double rounded = Math.Round(value, places, MidpointRounding.AwayFromZero);
+        return rounded == 0d ? 0d : rounded;
+    }
+
+    /// <summary><see cref="Round(decimal, int)"/> when <paramref name="places"/> is given (the tool's <c>decimalPlaces</c>), otherwise <paramref name="value"/> unchanged.</summary>
+    public static decimal RoundIfRequested(decimal value, int? places) => places is { } p ? Round(value, p) : value;
+
+    /// <summary><see cref="Round(double, int)"/> when <paramref name="places"/> is given, otherwise <paramref name="value"/> unchanged.</summary>
+    public static double RoundIfRequested(double value, int? places) => places is { } p ? Round(value, p) : value;
+
+    /// <summary><see cref="RoundIfRequested(decimal, int?)"/> for a value that may be missing; null stays null.</summary>
+    public static decimal? RoundIfRequested(decimal? value, int? places) => value is { } number ? RoundIfRequested(number, places) : null;
 
     /// <summary><see cref="Round(decimal, int)"/> by <see cref="DecimalPlaces"/>; null stays null, and without <see cref="DecimalPlaces"/> the value is returned unchanged.</summary>
     public decimal? Round(decimal? value) => value is { } number && DecimalPlaces is { } places ? Round(number, places) : value;
@@ -126,6 +168,32 @@ internal sealed class SeriesOutputOptions
             trendBars = (int)requested;
         }
 
+        int? summaryBars = null;
+        if (ToolArgs.Integer(arguments, SummaryBarsArgument) is { } requestedBars)
+        {
+            int largestBars = McpLimitsContract.EffectiveMaxSummaryBars(limits);
+            if (!summary)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InvalidArgument,
+                    $"'{SummaryBarsArgument}' is the number of last bars the summary covers and has no effect without '{SummaryArgument}'.",
+                    SummaryBarsArgument,
+                    $"Set {SummaryArgument} to true, or omit {SummaryBarsArgument}.");
+            }
+
+            if (requestedBars < SeriesSummaryStatistics.MinTrendBars)
+            {
+                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{SummaryBarsArgument}' must be at least {SeriesSummaryStatistics.MinTrendBars}.", SummaryBarsArgument);
+            }
+
+            if (requestedBars > largestBars)
+            {
+                throw new ToolException(ToolErrorCodes.LimitExceeded, $"Argument '{SummaryBarsArgument}' is larger than the limit {largestBars}.", SummaryBarsArgument, $"Use {largestBars} or less.");
+            }
+
+            summaryBars = (int)requestedBars;
+        }
+
         var offsets = new List<long>();
         if (arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(LookbackOffsetsArgument, out JsonElement list))
         {
@@ -168,12 +236,13 @@ internal sealed class SeriesOutputOptions
                 $"Also set {SummaryArgument} true or name {LookbackOffsetsArgument}, or leave {IncludeSeriesArgument} out.");
         }
 
-        return new SeriesOutputOptions(includeSeries, summary, summaryDistribution, trendBars, offsets, ReadDecimalPlaces(arguments));
+        return new SeriesOutputOptions(includeSeries, summary, summaryDistribution, trendBars, summaryBars, offsets, ReadDecimalPlaces(arguments));
     }
 
     /// <summary>
     /// Writes <c>summary</c> and <c>pastValues</c> (each only when asked for) for the series of one result. A series is read over the whole calculation window of
-    /// <paramref name="barCount"/> bars, whatever tail is returned; entries beyond it (a projection) are not part of the window.
+    /// <paramref name="barCount"/> bars, whatever tail is returned; entries beyond it (a projection) are not part of the window. With <see cref="SummaryBars"/> the summary
+    /// covers only the last bars of that window; <c>pastValues</c> always read the whole window.
     /// </summary>
     public void WriteStatistics(Utf8JsonWriter writer, IEnumerable<(string Name, IReadOnlyList<decimal?> Values)> series, int barCount)
     {
@@ -186,9 +255,13 @@ internal sealed class SeriesOutputOptions
         if (Summary)
         {
             writer.WriteStartObject("summary");
+            // The summary window: the whole calculated window, or its last K bars when summaryBars was sent. It is a separate variable, never a slice of
+            // `windows`, because pastValues below index the whole window (barCount - 1 - offset).
+            int? windowBars = SummaryBars is { } requestedBars ? Math.Min(requestedBars, barCount) : null;
             foreach ((string name, IReadOnlyList<decimal?> values) in windows)
             {
-                SeriesSummary summary = SummaryDistribution ? SeriesSummaryStatistics.CalculateDistribution(values, TrendBars) : SeriesSummaryStatistics.Calculate(values, TrendBars);
+                IReadOnlyList<decimal?> summaryValues = windowBars is { } tailBars ? Tail(values, tailBars) : values;
+                SeriesSummary summary = SummaryDistribution ? SeriesSummaryStatistics.CalculateDistribution(summaryValues, TrendBars) : SeriesSummaryStatistics.Calculate(summaryValues, TrendBars);
                 writer.WriteStartObject(name);
                 writer.WriteNumber("count", summary.Count);
                 WriteNullable(writer, "latest", Round(summary.Latest));
@@ -198,6 +271,12 @@ internal sealed class SeriesOutputOptions
                 WriteNullable(writer, "percentileRankOfLatest", Round(summary.PercentileRankOfLatest));
                 WriteNullable(writer, "trendSlope", Round(summary.TrendSlope));
                 writer.WriteNumber("trendBars", summary.TrendBars);
+                if (SummaryBars is { } sentBars && windowBars is { } usedBars)
+                {
+                    writer.WriteNumber(SummaryBarsArgument, sentBars);
+                    writer.WriteNumber(SummaryWindowBarsKey, usedBars);
+                }
+
                 if (SummaryDistribution)
                 {
                     WriteNullable(writer, "median", Round(summary.Median));
@@ -248,6 +327,24 @@ internal sealed class SeriesOutputOptions
         }
 
         return window;
+    }
+
+    /// <summary>The last <paramref name="count"/> entries of <paramref name="window"/> (a null entry is a bar like any other); the list itself when it already has that length.</summary>
+    private static IReadOnlyList<decimal?> Tail(IReadOnlyList<decimal?> window, int count)
+    {
+        if (count >= window.Count)
+        {
+            return window;
+        }
+
+        var tail = new decimal?[count];
+        int first = window.Count - count;
+        for (int i = 0; i < count; i++)
+        {
+            tail[i] = window[first + i];
+        }
+
+        return tail;
     }
 
     private static void WriteNullable(Utf8JsonWriter writer, string name, decimal? value)

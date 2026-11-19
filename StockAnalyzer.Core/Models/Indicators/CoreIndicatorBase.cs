@@ -8,6 +8,7 @@ using System.Reflection;
 using StockAnalyzer.Core.Models.DivergenceCross;
 using StockAnalyzer.Core.Models.Confluence;
 using System.Collections.Concurrent;
+using System.Threading;
 
 namespace StockAnalyzer.Core.Models.Indicators;
 
@@ -337,6 +338,14 @@ public abstract class CoreIndicatorBase : ICoreIndicator
     /// Wraps CalculateCore with error handling.
     /// </summary>
     public IIndicatorResult Calculate(IReadOnlyList<CoreCandleData> candles)
+        => CalculateGuarded(candles, CancellationToken.None);
+
+    /// <summary>
+    /// The one definition of the guards and the error handling around <see cref="CalculateCore(IReadOnlyList{CoreCandleData}, CancellationToken)"/>: null and empty input, and a
+    /// failure result for an exception. An <see cref="OperationCanceledException"/> is the one exception that is NOT turned into a failure result, and only when
+    /// <paramref name="cancellationToken"/> can be cancelled (a call that cannot be cancelled behaves exactly as before). The token belongs to the call, never to the instance.
+    /// </summary>
+    protected IIndicatorResult CalculateGuarded(IReadOnlyList<CoreCandleData> candles, CancellationToken cancellationToken)
     {
         _values.Clear();
 
@@ -352,7 +361,11 @@ public abstract class CoreIndicatorBase : ICoreIndicator
 
         try
         {
-            return CalculateCore(candles);
+            return CalculateCore(candles, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.CanBeCanceled)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -408,6 +421,13 @@ public abstract class CoreIndicatorBase : ICoreIndicator
         var series = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         return CalculateSeriesCore(series, null);
     }
+
+    /// <summary>
+    /// The candle-based calculation of a call that may carry a cancellation token. The default ignores the token and calls <see cref="CalculateCore(IReadOnlyList{CoreCandleData})"/>;
+    /// an indicator with a long-running loop overrides it and checks the token inside the loop.
+    /// </summary>
+    protected virtual IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles, CancellationToken cancellationToken)
+        => CalculateCore(candles);
 
     /// <summary>
     /// Override in derived classes to perform the actual series-based calculation.
