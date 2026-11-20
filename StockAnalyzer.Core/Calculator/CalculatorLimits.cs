@@ -14,6 +14,7 @@ public sealed record CalculatorLimits
     public const int MaxAllowedIntegerExponent = 1024;
     public const int MaxAllowedFunctionArguments = 64;
     public const int MaxAllowedExecutionOps = 1_000_000;
+    public const int MaxAllowedArrayLiteralElements = 512;
 
     public static CalculatorLimits Default { get; } = new();
 
@@ -29,6 +30,10 @@ public sealed record CalculatorLimits
 
     public int MaxStatisticalFunctionArguments { get; init; } = 32;
 
+    public int MaxVariadicFunctionArguments { get; init; } = 64;
+
+    public int MaxArrayLiteralElements { get; init; } = 512;
+
     public int MaxExecutionOps { get; init; } = 10_000;
 
     /// <summary>
@@ -43,6 +48,8 @@ public sealed record CalculatorLimits
         ValidateRange(MaxIntegerExponent, MaxAllowedIntegerExponent, nameof(MaxIntegerExponent));
         ValidateRange(MaxFunctionArguments, MaxAllowedFunctionArguments, nameof(MaxFunctionArguments));
         ValidateRange(MaxStatisticalFunctionArguments, MaxAllowedFunctionArguments, nameof(MaxStatisticalFunctionArguments));
+        ValidateRange(MaxVariadicFunctionArguments, MaxAllowedFunctionArguments, nameof(MaxVariadicFunctionArguments));
+        ValidateRange(MaxArrayLiteralElements, MaxAllowedArrayLiteralElements, nameof(MaxArrayLiteralElements));
         ValidateRange(MaxExecutionOps, MaxAllowedExecutionOps, nameof(MaxExecutionOps));
     }
 

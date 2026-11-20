@@ -1,5 +1,6 @@
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using StockAnalyzer.Core.Models.Indicators.Chart;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Services.Backtest.Engine;
 using StockAnalyzer.Core.Services.Screener;
@@ -29,20 +30,17 @@ public static class IndicatorTimeframePolicy
     /// Indicators of the index-based block charts: they transform the bar series itself (Renko, Kagi, Point and Figure, Three Line Break),
     /// so a calculation on aggregated time bars has no meaning for them.
     /// </summary>
-    private static readonly FrozenSet<IndicatorType> BlockIndicatorTypes = new[]
+    private static readonly FrozenSet<IndicatorType> BlockIndicatorTypes = BlockChartOverlayTypes.All.Concat(new[]
     {
-        IndicatorType.Renko,
+        // The legacy placeholders and the signal indicator; the four registered overlay types come from their one definition.
         IndicatorType.RenkoChart,
         IndicatorType.RenkoOverlay,
-        IndicatorType.Kagi,
         IndicatorType.KagiChart,
         IndicatorType.KagiOverlay,
-        IndicatorType.PointAndFigure,
         IndicatorType.PointAndFigureChart,
         IndicatorType.PointAndFigureOverlay,
-        IndicatorType.ThreeLineBreak,
         IndicatorType.ThreeLineBreakSignal,
-    }.ToFrozenSet();
+    }).ToFrozenSet();
 
     /// <summary>
     /// True when the chart draws on time-based bars that accept indicators. The pipeline has no chart type, so the chart host asks this before it hands settings over.

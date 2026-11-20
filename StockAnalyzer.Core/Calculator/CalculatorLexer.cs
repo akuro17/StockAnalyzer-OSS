@@ -16,6 +16,8 @@ internal enum CalcTokenKind
     Caret,
     OpenParen,
     CloseParen,
+    OpenBracket,
+    CloseBracket,
     Comma,
     EndOfInput,
 }
@@ -90,6 +92,8 @@ internal static class CalculatorLexer
                     '^' => CalcTokenKind.Caret,
                     '(' => CalcTokenKind.OpenParen,
                     ')' => CalcTokenKind.CloseParen,
+                    '[' => CalcTokenKind.OpenBracket,
+                    ']' => CalcTokenKind.CloseBracket,
                     ',' => CalcTokenKind.Comma,
                     _ => null,
                 };

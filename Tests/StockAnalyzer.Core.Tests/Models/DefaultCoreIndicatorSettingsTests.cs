@@ -41,7 +41,8 @@ public class DefaultCoreIndicatorSettingsTests
         // + 1 ADFStationarity (disabled by default, added 2026-11-17, statistical functions plan R5).
         // + 1 VarianceRatio (disabled by default, added 2026-11-17, statistical functions plan R6).
         // + 3 QuantileBands + TheilSenRegression + CornishFisherVaR (disabled by default, added 2026-11-17, statistical functions plan R7).
-        Assert.Equal(125, defaults.Count);
+        // + 4 Renko + PointAndFigure + Kagi + ThreeLineBreak (disabled by default, added 2026-11-20, block chart overlays plan T4).
+        Assert.Equal(129, defaults.Count);
     }
 
     [Fact]

@@ -254,10 +254,73 @@ internal sealed class CalculatorParser
                     _depth--;
                 }
 
+            case CalcTokenKind.OpenBracket:
+                return TryParseArrayLiteral(token, out node, out error);
+
             default:
                 error = SyntaxErrorAt(token);
                 node = null;
                 return false;
+        }
+    }
+
+    private bool TryParseArrayLiteral(CalcToken openBracket, out CalcNode? node, out CalculatorError? error)
+    {
+        Advance(); // consume '['
+        if (!TryEnterDepth(openBracket.Position, out error))
+        {
+            node = null;
+            return false;
+        }
+
+        try
+        {
+            var elements = new List<CalcNode>();
+            if (Current.Kind != CalcTokenKind.CloseBracket)
+            {
+                while (true)
+                {
+                    if (elements.Count >= _limits.MaxArrayLiteralElements)
+                    {
+                        error = new CalculatorError(
+                            CalculatorErrorCode.DomainError,
+                            Current.Position,
+                            $"Array literal exceeds the limit of {_limits.MaxArrayLiteralElements} elements.");
+                        node = null;
+                        return false;
+                    }
+
+                    if (!TryParseAdditive(out CalcNode? element, out error))
+                    {
+                        node = null;
+                        return false;
+                    }
+
+                    elements.Add(element!);
+                    if (Current.Kind == CalcTokenKind.Comma)
+                    {
+                        Advance();
+                        continue;
+                    }
+
+                    break;
+                }
+            }
+
+            if (Current.Kind != CalcTokenKind.CloseBracket)
+            {
+                error = SyntaxErrorAt(Current);
+                node = null;
+                return false;
+            }
+
+            Advance(); // consume ']'
+            node = new ArrayLiteralNode(openBracket.Position, elements);
+            return true;
+        }
+        finally
+        {
+            _depth--;
         }
     }
 

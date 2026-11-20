@@ -1709,13 +1709,13 @@ public partial class DataWindowViewModel : ViewModelBase,
                 decimal brickHigh = System.Math.Max(opens[globalIndex], closes[globalIndex]);
                 decimal brickLow = System.Math.Min(opens[globalIndex], closes[globalIndex]);
                 decimal brickSize = _chartViewModel.EffectiveRenkoBrickSize;
-                decimal reversalRequirement = _chartViewModel.RenkoReversal;
 
-                decimal reversalPrice = isUp ? brickLow - (reversalRequirement * brickSize) : brickHigh + (reversalRequirement * brickSize);
-                decimal nextBrickPrice = isUp ? brickHigh + brickSize : brickLow - brickSize;
-
-                RenkoReversalText = DisplayFormat.Price(reversalPrice);
-                RenkoUpdateText = DisplayFormat.Price(nextBrickPrice);
+                // One definition of the rows (RenkoLevels); not defined (size or reversal out of range, which the settings never produce) leaves both rows empty like the other special-chart rows.
+                if (RenkoLevels.TryDescribe(isUp, brickHigh, brickLow, brickSize, _chartViewModel.RenkoReversal, out decimal reversalPrice, out decimal nextBrickPrice))
+                {
+                    RenkoReversalText = DisplayFormat.Price(reversalPrice);
+                    RenkoUpdateText = DisplayFormat.Price(nextBrickPrice);
+                }
             }
             IsHighVisible = false;
             IsLowVisible = false;

@@ -1159,6 +1159,7 @@ public partial class MainWindowViewModel : ViewModelBase,
                         var src = message.Value;
                         existing.Color = src.Color;
                         existing.Thickness = src.Thickness;
+                        existing.DotSize = src.DotSize;
                         existing.Style = src.Style;
                         existing.IsEnabled = src.IsEnabled;
                         existing.IsOverlay = src.IsOverlay;

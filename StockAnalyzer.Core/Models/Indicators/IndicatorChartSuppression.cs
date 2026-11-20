@@ -36,6 +36,9 @@ public static class IndicatorChartSuppression
         nameof(CoreSSAResidualBandIndicator.Center),
     };
 
+    // The direction flag of the block chart overlays (a helper series, not a public property of the indicators); must be declared before the tables that use it.
+    private static readonly string[] BlockChartOverlayHelperSeries = { IndicatorSeriesNames.UpTrendFlag };
+
     // Series names are bound with nameof to the producing indicator's public series property, which
     // is the exact name CoreIndicatorBase.CreateAutomaticResult emits (prop.Name). "Main" has no
     // backing property, so it comes from IndicatorResult.MainSeriesName.
@@ -80,6 +83,11 @@ public static class IndicatorChartSuppression
             {
                 nameof(CoreDonchianChannelIndicator.Position),
             },
+            // Block chart overlays: the 1/0 direction flag is a colouring helper of the renderer (read by name), not a price line; it never joins the price-axis range or the drawn lines.
+            [IndicatorType.Renko] = new HashSet<string>(BlockChartOverlayHelperSeries, StringComparer.Ordinal),
+            [IndicatorType.PointAndFigure] = new HashSet<string>(BlockChartOverlayHelperSeries, StringComparer.Ordinal),
+            [IndicatorType.Kagi] = new HashSet<string>(BlockChartOverlayHelperSeries, StringComparer.Ordinal),
+            [IndicatorType.ThreeLineBreak] = new HashSet<string>(BlockChartOverlayHelperSeries, StringComparer.Ordinal),
             // BandWidth is a percentage (not drawn on the price panel, still shown in the DataWindow) and the aliases
             // repeat the drawn Main / Upper / Lower series; all of them stay in the result so the screener can resolve them.
             [IndicatorType.SSAResidualBand] = new HashSet<string>(SsaResidualBandAliasSeries, StringComparer.Ordinal)
@@ -216,6 +224,11 @@ public static class IndicatorChartSuppression
                 nameof(CoreClothoidMovingAverageIndicator.EffectiveSampleSize),
             },
             [IndicatorType.SSAResidualBand] = new HashSet<string>(SsaResidualBandAliasSeries, StringComparer.Ordinal),
+            // Block chart overlays: the 1/0 direction flag only colours the step line; it is not a value to read in the data window.
+            [IndicatorType.Renko] = new HashSet<string>(BlockChartOverlayHelperSeries, StringComparer.Ordinal),
+            [IndicatorType.PointAndFigure] = new HashSet<string>(BlockChartOverlayHelperSeries, StringComparer.Ordinal),
+            [IndicatorType.Kagi] = new HashSet<string>(BlockChartOverlayHelperSeries, StringComparer.Ordinal),
+            [IndicatorType.ThreeLineBreak] = new HashSet<string>(BlockChartOverlayHelperSeries, StringComparer.Ordinal),
         };
 
     /// <summary>

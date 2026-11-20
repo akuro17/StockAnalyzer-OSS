@@ -193,6 +193,9 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
         && EditingSettings.TypeEnum != IndicatorType.VolumeProfile;
 
     public bool ShowThicknessAndOffset => EditingSettings?.TypeEnum != IndicatorType.GranvilleLaw;
+
+    /// <summary>The Dot Size row is shown for the four block chart overlays only (the only indicators that draw dots from this setting).</summary>
+    public bool ShowDotSize => StockAnalyzer.Core.Models.Indicators.Chart.BlockChartOverlayTypes.Contains(EditingSettings?.TypeEnum);
     public bool ShowUpDownColors => EditingSettings?.TypeEnum != IndicatorType.GranvilleLaw;
 
     public bool ShowSignals => EditingSettings != null &&
@@ -419,6 +422,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
 
         OnPropertyChanged(nameof(ShowPanelSelector));
         OnPropertyChanged(nameof(ShowThicknessAndOffset));
+        OnPropertyChanged(nameof(ShowDotSize));
         OnPropertyChanged(nameof(ShowUpDownColors));
         OnPropertyChanged(nameof(ShowSignals));
         OnPropertyChanged(nameof(SelectedOverlayPanelOption));

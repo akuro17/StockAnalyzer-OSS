@@ -583,7 +583,7 @@ namespace StockAnalyzer.ZeroAllocation
             var roundingMode = parameters.RoundingMode;
 
             if (blockSize <= 0) blockSize = 1; // Prevent infinite loop
-            if (reversalBricks <= 0) reversalBricks = 1;
+            if (reversalBricks < StockAnalyzer.Core.ChartConstants.MinRenkoReversalBricks) reversalBricks = StockAnalyzer.Core.ChartConstants.MinRenkoReversalBricks;
 
             // Phase 2 Zero Allocation Fix: Use ArrayPool instead of List<T> for intermediate calculations
             // Estimate initial capacity (e.g. half of source length, min 64)
@@ -1052,7 +1052,7 @@ namespace StockAnalyzer.ZeroAllocation
             rg[idx] = new OriginalIndexRange(start, len);
         }
 
-        private static decimal QuantizeDown(decimal price, decimal boxSize, ChartRoundingMode mode)
+        internal static decimal QuantizeDown(decimal price, decimal boxSize, ChartRoundingMode mode)
         {
             if (mode == ChartRoundingMode.None)
             {
@@ -1061,7 +1061,7 @@ namespace StockAnalyzer.ZeroAllocation
             return ChartMath.Quantize(price, boxSize, mode);
         }
 
-        private static decimal QuantizeUp(decimal price, decimal boxSize, ChartRoundingMode mode)
+        internal static decimal QuantizeUp(decimal price, decimal boxSize, ChartRoundingMode mode)
         {
             if (mode == ChartRoundingMode.None)
             {

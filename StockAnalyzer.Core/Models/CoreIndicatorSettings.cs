@@ -145,6 +145,12 @@ public partial class CoreIndicatorSettings : ObservableObject
     private IndicatorColor _color = new(255, 255, 0, 0); // Red
     [ObservableProperty]
     private double _thickness = 1.5;
+    /// <summary>
+    /// Diameter in pixels of the dots an indicator draws besides its line (the Reversal / Update dots of the block chart overlays; no other indicator reads it).
+    /// A visual-only setting: it never triggers a recalculation. A file saved before this setting existed has no value and keeps the default.
+    /// </summary>
+    [ObservableProperty]
+    private double _dotSize = IndicatorDefaultConstants.BlockChartOverlayDefaultDotSize;
     [ObservableProperty]
     private CoreLineStyle _style = CoreLineStyle.Solid;
 

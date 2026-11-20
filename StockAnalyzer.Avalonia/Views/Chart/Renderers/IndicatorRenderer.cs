@@ -25,6 +25,7 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
     private readonly LineIndicatorRenderer _lineRenderer = new();
     private readonly HistogramRenderer _histogramRenderer = new();
     private readonly StepLineRenderer _stepLineRenderer = new();
+    private readonly BlockChartOverlayRenderer _blockChartOverlayRenderer = new();
     private readonly VolumeIndicatorRenderer _volumeRenderer = new();
     private readonly ParabolicSarRenderer _sarRenderer = new();
     private readonly IchimokuRenderer _ichimokuRenderer = new();
@@ -383,6 +384,25 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
                     return;
                 }
 
+                // Block chart overlays (Renko, P&F, Kagi, Three Line Break as time-series indicators): up/down coloured step line + Reversal/Update dots.
+                // Never drawn on a non-time-series main chart (their price axis share is skipped in ChartDataSnapshot too) and never in a sub-window.
+                if (BlockChartOverlayTypes.Contains(setting.TypeEnum))
+                {
+                    if (BlockChartOverlayTypes.IsHiddenOn(snapshot.ChartType, setting.TypeEnum) || isSubWindowContext) return;
+
+                    _blockChartOverlayRenderer.Render(canvas, targetRect,
+                        result.MainValues,
+                        result.HasSeries(IndicatorSeriesNames.UpTrendFlag) ? result.GetSeries(IndicatorSeriesNames.UpTrendFlag) : null,
+                        result.HasSeries(nameof(CoreBlockChartOverlayIndicatorBase.Reversal)) ? result.GetSeries(nameof(CoreBlockChartOverlayIndicatorBase.Reversal)) : null,
+                        result.HasSeries(CoreBlockChartOverlayIndicatorBase.UpdateSeriesName) ? result.GetSeries(CoreBlockChartOverlayIndicatorBase.UpdateSeriesName) : null,
+                        setting,
+                        (FindSeriesColor(setting.SeriesColors, nameof(CoreBlockChartOverlayIndicatorBase.Reversal))?.Color ?? setting.Color).ToSkColor(),
+                        (FindSeriesColor(setting.SeriesColors, CoreBlockChartOverlayIndicatorBase.UpdateSeriesName)?.Color ?? setting.Color).ToSkColor(),
+                        snapshot.VisibleCandleCount > 0 ? snapshot.VisibleCandleCount : snapshot.Candles!.Count,
+                        setting.Offset, config.VisibleStartIndex, snapshot.Candles!, interval, transform);
+                    return;
+                }
+
                 // CHECK for StepLine Indicators (Renko, P&F, Kagi, ThreeLineBreak)
                 if (setting.TypeEnum == IndicatorType.Renko || setting.TypeEnum == IndicatorType.RenkoOverlay ||
                     setting.TypeEnum == IndicatorType.Kagi || setting.TypeEnum == IndicatorType.KagiOverlay ||
@@ -710,6 +730,7 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
         _indexIndicatorRenderer.Dispose();
         _lineRenderer.Dispose();
         _stepLineRenderer.Dispose();
+        _blockChartOverlayRenderer.Dispose();
         _mssRenderer.Dispose();
         _ichimokuRenderer.Dispose();
         _subHistPaint.Dispose();

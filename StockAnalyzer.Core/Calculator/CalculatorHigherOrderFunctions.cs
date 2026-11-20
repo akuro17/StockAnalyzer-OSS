@@ -24,16 +24,34 @@ internal static class CalculatorHigherOrderFunctions
         "quad_de" or
         "quad_gauss_legendre" or
         "quad_gk21" or
-        "quad_romberg";
+        "quad_romberg" or
+        "mc_integrate" or
+        "mc_integrate_se" or
+        "mc_integrate_nd" or
+        "mc_integrate_nd_se" or
+        "fd_forward" or
+        "fd_backward" or
+        "fd_central" or
+        "fd_second" or
+        "fd_richardson";
 
     public static CalculatorOutcome Evaluate(
         CallNode call,
-        IReadOnlyDictionary<string, decimal> names,
+        in DslEvalScope scope,
         CalculatorLimits limits,
         ref DslExecutionBudget budget,
-        in BoundVariableScope boundScope)
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
     {
+        // A failure detail left by an earlier call must never be read as the result of this one.
+        FunctorFailureBridge.Clear(ref budget);
+
         IReadOnlyList<CalcNode> rawArgs = call.Arguments;
+        if (call.Name is "mc_integrate_nd" or "mc_integrate_nd_se")
+        {
+            return EvaluateMcNd(call, in scope, limits, ref budget, in boundScope, ref arena);
+        }
+
         if (rawArgs[1] is not IdentifierNode dummyVar)
         {
             return CalculatorEvaluator.Fail(
@@ -56,21 +74,19 @@ internal static class CalculatorHigherOrderFunctions
         Span<decimal> scalars = stackalloc decimal[scalarCount];
         for (int i = 0; i < scalarCount; i++)
         {
-            CalculatorOutcome scalarOutcome = CalculatorEvaluator.Evaluate(rawArgs[i + 2], names, limits, ref budget, in boundScope);
-            if (scalarOutcome.Error is not null)
+            if (!TryEvaluateScalarArg(rawArgs[i + 2], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out scalars[i], out CalculatorOutcome argErr))
             {
-                return scalarOutcome;
+                return argErr;
             }
-
-            scalars[i] = scalarOutcome.Value!.Value;
         }
 
-        var fn = new AstScalarFunction(rawArgs[0], dummyVar.Name, names, limits, in boundScope);
+        var fn = new AstScalarFunction(rawArgs[0], dummyVar.Name, scope.ScalarNames, limits, in boundScope);
 
         MathResult<double> rawResult;
         switch (call.Name)
         {
             case "diff_central":
+            case "fd_central":
             {
                 double x = (double)scalars[0];
                 double h = scalarCount >= 2 ? (double)scalars[1] : 0.0;
@@ -84,6 +100,60 @@ internal static class CalculatorHigherOrderFunctions
                 }
 
                 rawResult = DslNumericalAnalysisMath.DiffCentral(fn, x, h, ref budget);
+                break;
+            }
+
+            case "fd_forward":
+                rawResult = DslFiniteDifferenceMath.FdForward(fn, (double)scalars[0], (double)scalars[1], ref budget);
+                break;
+
+            case "fd_backward":
+                rawResult = DslFiniteDifferenceMath.FdBackward(fn, (double)scalars[0], (double)scalars[1], ref budget);
+                break;
+
+            case "fd_second":
+                rawResult = DslFiniteDifferenceMath.FdSecond(fn, (double)scalars[0], (double)scalars[1], ref budget);
+                break;
+
+            case "fd_richardson":
+            {
+                int order = 2;
+                if (scalarCount >= 3 && !DslMathValidation.TryReadInt32InRange(scalars[2], 1, DslFiniteDifferenceMath.MaxDiffOrder, out order))
+                {
+                    return CalculatorElementaryFunctions.FromMathError(MathErrorCode.DomainError, call.NamePosition, call.Name);
+                }
+
+                rawResult = DslFiniteDifferenceMath.FdRichardson(fn, (double)scalars[0], (double)scalars[1], order, ref budget);
+                break;
+            }
+
+            case "mc_integrate":
+            case "mc_integrate_se":
+            {
+                if (!DslMathValidation.TryReadInt32InRange(scalars[2], DslMonteCarloMath.MinSamples, DslMonteCarloMath.MaxSamples, out int nSamples) ||
+                    !DslMathValidation.TryReadUInt64Seed(scalars[3], out ulong seed))
+                {
+                    return CalculatorElementaryFunctions.FromMathError(MathErrorCode.DomainError, call.NamePosition, call.Name);
+                }
+
+                int modeCode = 0;
+                if (scalarCount >= 5 && !DslMathValidation.TryReadInt32InRange(scalars[4], 0, (int)MonteCarloMode.QuasiHalton, out modeCode))
+                {
+                    return CalculatorElementaryFunctions.FromMathError(MathErrorCode.DomainError, call.NamePosition, call.Name);
+                }
+
+                MathResult<McIntegrateResult> mcRes = DslMonteCarloMath.McIntegrate(
+                    fn,
+                    (double)scalars[0],
+                    (double)scalars[1],
+                    nSamples,
+                    seed,
+                    (MonteCarloMode)modeCode,
+                    ref budget,
+                    requireStandardError: call.Name == "mc_integrate_se");
+                rawResult = mcRes.IsOk
+                    ? MathResult<double>.Ok(call.Name == "mc_integrate_se" ? mcRes.Value.StandardError : mcRes.Value.Value)
+                    : MathResult<double>.Fail(mcRes.Error);
                 break;
             }
 
@@ -173,13 +243,166 @@ internal static class CalculatorHigherOrderFunctions
 
         if (!rawResult.IsOk)
         {
-            return CalculatorElementaryFunctions.FromMathError(rawResult.Error, call.NamePosition, call.Name);
+            return FunctorFailureBridge.ToOutcome(rawResult.Error, ref budget, call.NamePosition, call.Name);
         }
 
         return CalculatorElementaryFunctions.FromMathResult(
             DslElementaryMath.NarrowDouble(rawResult.Value),
             call.NamePosition,
             call.Name);
+    }
+
+    private static CalculatorOutcome EvaluateMcNd(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        IReadOnlyList<CalcNode> rawArgs = call.Arguments;
+        if (rawArgs[1] is not ArrayLiteralNode varsLiteral ||
+            varsLiteral.Elements.Count < 1 ||
+            varsLiteral.Elements.Count > DslMonteCarloMath.MaxDimensions)
+        {
+            return CalculatorEvaluator.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(rawArgs[1]),
+                $"Higher-order function '{call.Name}' requires a literal array of 1..{DslMonteCarloMath.MaxDimensions} dummy variable identifiers.",
+                call.Name);
+        }
+
+        int dim = varsLiteral.Elements.Count;
+        var varNames = new string[dim];
+        for (int i = 0; i < dim; i++)
+        {
+            if (varsLiteral.Elements[i] is not IdentifierNode id || id.Name is "nan" or "inf")
+            {
+                return CalculatorEvaluator.Fail(
+                    CalculatorErrorCode.DomainError,
+                    CalculatorEvaluator.GetNodePosition(varsLiteral.Elements[i]),
+                    $"Dummy variable {i} in '{call.Name}' must be a valid finite identifier.",
+                    call.Name);
+            }
+
+            for (int prev = 0; prev < i; prev++)
+            {
+                if (string.Equals(varNames[prev], id.Name, StringComparison.Ordinal))
+                {
+                    return CalculatorEvaluator.Fail(
+                        CalculatorErrorCode.DomainError,
+                        id.Position,
+                        $"Duplicate dummy variable '{id.Name}' in '{call.Name}'.",
+                        id.Name);
+                }
+            }
+
+            varNames[i] = id.Name;
+        }
+
+        DslEvalOutcome loOutcome = CalculatorEvaluator.EvaluateValue(rawArgs[2], in scope, limits, ref budget, in boundScope, ref arena);
+        if (loOutcome.Error is { } loErr) return new CalculatorOutcome(null, loErr);
+        DslEvalOutcome hiOutcome = CalculatorEvaluator.EvaluateValue(rawArgs[3], in scope, limits, ref budget, in boundScope, ref arena);
+        if (hiOutcome.Error is { } hiErr) return new CalculatorOutcome(null, hiErr);
+
+        if (!loOutcome.Value.IsArray || !hiOutcome.Value.IsArray)
+        {
+            return CalculatorEvaluator.Fail(
+                CalculatorErrorCode.DomainError,
+                call.NamePosition,
+                $"'{call.Name}' requires 1D lower and upper bound arrays.",
+                call.Name);
+        }
+
+        ReadOnlySpan<decimal> loDec = arena.GetSlice(loOutcome.Value.Array);
+        ReadOnlySpan<decimal> hiDec = arena.GetSlice(hiOutcome.Value.Array);
+        if (loDec.Length != dim || hiDec.Length != dim)
+        {
+            return CalculatorElementaryFunctions.FromMathError(MathErrorCode.DimensionMismatch, call.NamePosition, call.Name);
+        }
+
+        int tailCount = rawArgs.Count - 4;
+        Span<decimal> tail = stackalloc decimal[tailCount];
+        for (int i = 0; i < tailCount; i++)
+        {
+            if (!TryEvaluateScalarArg(rawArgs[4 + i], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out tail[i], out CalculatorOutcome tailErr))
+            {
+                return tailErr;
+            }
+        }
+
+        if (!DslMathValidation.TryReadInt32InRange(tail[0], DslMonteCarloMath.MinSamples, DslMonteCarloMath.MaxSamples, out int nSamples) ||
+            !DslMathValidation.TryReadUInt64Seed(tail[1], out ulong seed))
+        {
+            return CalculatorElementaryFunctions.FromMathError(MathErrorCode.DomainError, call.NamePosition, call.Name);
+        }
+
+        int modeCode = 0;
+        if (tailCount >= 3 && !DslMathValidation.TryReadInt32InRange(tail[2], 0, (int)MonteCarloMode.QuasiHalton, out modeCode))
+        {
+            return CalculatorElementaryFunctions.FromMathError(MathErrorCode.DomainError, call.NamePosition, call.Name);
+        }
+
+        Span<double> lower = stackalloc double[dim];
+        Span<double> upper = stackalloc double[dim];
+        CalculatorMatrixFunctions.CopyToDouble(loDec, lower);
+        CalculatorMatrixFunctions.CopyToDouble(hiDec, upper);
+
+        var fnNd = new AstNdScalarFunction(rawArgs[0], varNames, in scope, limits, in boundScope);
+        MathResult<McIntegrateResult> mcRes = DslMonteCarloMath.McIntegrateNd(
+            fnNd,
+            lower,
+            upper,
+            nSamples,
+            seed,
+            (MonteCarloMode)modeCode,
+            ref budget,
+            requireStandardError: call.Name == "mc_integrate_nd_se");
+        if (!mcRes.IsOk)
+        {
+            return FunctorFailureBridge.ToOutcome(mcRes.Error, ref budget, call.NamePosition, call.Name);
+        }
+
+        double val = call.Name == "mc_integrate_nd_se" ? mcRes.Value.StandardError : mcRes.Value.Value;
+        return CalculatorElementaryFunctions.FromMathResult(
+            DslElementaryMath.NarrowDouble(val),
+            call.NamePosition,
+            call.Name);
+    }
+
+    private static bool TryEvaluateScalarArg(
+        CalcNode node,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena,
+        string callerName,
+        out decimal value,
+        out CalculatorOutcome errorOutcome)
+    {
+        DslEvalOutcome outcome = CalculatorEvaluator.EvaluateValue(node, in scope, limits, ref budget, in boundScope, ref arena);
+        if (outcome.Error is { } err)
+        {
+            value = 0m;
+            errorOutcome = new CalculatorOutcome(null, err);
+            return false;
+        }
+
+        if (outcome.Value.IsArray)
+        {
+            value = 0m;
+            errorOutcome = CalculatorEvaluator.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(node),
+                $"Scalar argument in '{callerName}' cannot evaluate to an array.",
+                callerName);
+            return false;
+        }
+
+        value = outcome.Value.Scalar;
+        errorOutcome = default;
+        return true;
     }
 
     private static bool TryGetPositiveInt(decimal value, out int integer)

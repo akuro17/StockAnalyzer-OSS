@@ -47,6 +47,8 @@ public static class FeatureChannelNormalizationDefaults
         IndicatorType.KalmanFilter, IndicatorType.ARIMA, IndicatorType.HilbertTrendline,
         IndicatorType.ChandelierExit, IndicatorType.T3, IndicatorType.McGinleyDynamic,
         IndicatorType.VolumeProfileLevels,
+        // Block chart overlays (Close, Reversal, Update are prices; the IsUpTrend flag is a helper that is not a public output, so it is never offered as a channel).
+        IndicatorType.Renko, IndicatorType.PointAndFigure, IndicatorType.Kagi, IndicatorType.ThreeLineBreak,
         IndicatorType.QuantileBands, IndicatorType.TheilSenRegression,
     };
 

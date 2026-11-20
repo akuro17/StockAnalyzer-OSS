@@ -561,6 +561,30 @@
                                                                  TextAlignment="Center"/>
                                                     </Grid>
                                                 </StackPanel>
+
+                                                <!-- Dot Size (right of Line Thickness; the Reversal / Update dots of the block chart overlays only) -->
+                                                <StackPanel IsVisible="{Binding ShowDotSize}"
+                                                            Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
+                                                    <TextBlock Text="{l:Localize Label_DotSize}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
+                                                    <Grid ColumnDefinitions="*,Auto" Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}">
+                                                        <Slider Name="DotSizeSlider"
+                                                                Grid.Column="0"
+                                                                Value="{Binding SelectedIndicator.DotSize, Mode=TwoWay}"
+                                                                Minimum="{x:Static models:IndicatorDefaultConstants.BlockChartOverlayMinDotSize}"
+                                                                Maximum="{x:Static models:IndicatorDefaultConstants.BlockChartOverlayMaxDotSize}"
+                                                                MinWidth="140"
+                                                                TickFrequency="{x:Static models:IndicatorDefaultConstants.BlockChartOverlayDotSizeStep}"
+                                                                IsSnapToTickEnabled="True"
+                                                                VerticalAlignment="Center"
+                                                                HorizontalAlignment="Stretch"/>
+                                                        <TextBox Grid.Column="1"
+                                                                 Text="{Binding #DotSizeSlider.Value, Mode=TwoWay, StringFormat={}{0:F1}}"
+                                                                 Width="40"
+                                                                 Margin="10,0,0,0"
+                                                                 VerticalAlignment="Center"
+                                                                 TextAlignment="Center"/>
+                                                    </Grid>
+                                                </StackPanel>
                                             </controls:ResponsiveFormPanel>
 
                                             <!-- Multi-Series Colors -->

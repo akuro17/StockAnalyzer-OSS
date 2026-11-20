@@ -232,7 +232,7 @@
                                             Minimum="0.5" Maximum="5" TickFrequency="0.5" Width="150"
                                             IsSnapToTickEnabled="True" 
                                             VerticalAlignment="Center"/>
-                                    <TextBox Text="{Binding #ThicknessSlider.Value, Mode=TwoWay, StringFormat={}{0:F1}}" 
+                                    <TextBox Text="{Binding #ThicknessSlider.Value, Mode=TwoWay, StringFormat={}{0:F1}}"
                                              Width="40" Margin="10,0,0,0" VerticalAlignment="Center" TextAlignment="Center"/>
                                 </StackPanel>
                             </DockPanel>
@@ -272,6 +272,26 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- Dot Size (the Reversal / Update dots of the block chart overlays only; these have a colour per series, so the Line Thickness row of the simple branch above is not shown for them) -->
+                        <DockPanel IsVisible="{Binding ShowDotSize}">
+                            <TextBlock Text="{l:Localize Label_DotSize}"
+                                       Width="150"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Slider Name="DotSizeSlider"
+                                        Value="{Binding EditingSettings.DotSize, Mode=TwoWay}"
+                                        Minimum="{x:Static models:IndicatorDefaultConstants.BlockChartOverlayMinDotSize}"
+                                        Maximum="{x:Static models:IndicatorDefaultConstants.BlockChartOverlayMaxDotSize}"
+                                        TickFrequency="{x:Static models:IndicatorDefaultConstants.BlockChartOverlayDotSizeStep}"
+                                        Width="150"
+                                        IsSnapToTickEnabled="True"
+                                        VerticalAlignment="Center"/>
+                                <TextBox Text="{Binding #DotSizeSlider.Value, Mode=TwoWay, StringFormat={}{0:F1}}"
+                                         Width="40" Margin="10,0,0,0" VerticalAlignment="Center" TextAlignment="Center"/>
+                            </StackPanel>
+                        </DockPanel>
 
                     </StackPanel>
                 </Border>

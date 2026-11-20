@@ -68,6 +68,7 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowThicknessAndOffset))]
+    [NotifyPropertyChangedFor(nameof(ShowDotSize))]
     [NotifyPropertyChangedFor(nameof(ShowUpDownColors))]
     [NotifyPropertyChangedFor(nameof(ShowPanelSelector))]
     [NotifyPropertyChangedFor(nameof(ShowPriceTypeAndSourceIndicator))]
@@ -374,6 +375,9 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
         : null;
 
     public bool ShowThicknessAndOffset => SelectedIndicator?.TypeEnum != IndicatorType.GranvilleLaw;
+
+    /// <summary>The Dot Size row is shown for the four block chart overlays only (the only indicators that draw dots from this setting).</summary>
+    public bool ShowDotSize => StockAnalyzer.Core.Models.Indicators.Chart.BlockChartOverlayTypes.Contains(SelectedIndicator?.TypeEnum);
     public bool ShowUpDownColors => SelectedIndicator?.TypeEnum != IndicatorType.GranvilleLaw;
 
     /// <summary>

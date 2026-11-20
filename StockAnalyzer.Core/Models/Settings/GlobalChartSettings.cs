@@ -113,7 +113,7 @@ public sealed record GlobalChartSettings
     public bool RenkoShowGhostProjections { get; init; } = false;
     public Models.ChartRoundingMode RenkoRoundingMode { get; init; } = Models.ChartRoundingMode.None;
     public Models.AutoFallbackMode RenkoFallbackMode { get; init; } = Models.AutoFallbackMode.Percentage;
-    public int RenkoReversal { get; init; } = 2;
+    public int RenkoReversal { get; init; } = ChartConstants.DefaultRenkoReversalBricks;
     public float RenkoGhostProjectionFontSize { get; init; } = 11.0f;
     public bool RenkoShowGhostLabelsOnHoverOnly { get; init; } = true;
 

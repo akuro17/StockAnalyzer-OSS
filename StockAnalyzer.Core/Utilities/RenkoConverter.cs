@@ -55,7 +55,7 @@ public static class RenkoConverter
             int loopGuard = 0;
             while (true)
             {
-                if (++loopGuard > 1000)
+                if (++loopGuard > ChartConstants.MaxIteratedRenkoBricksPerBar)
                 {
                     break;
                 }

@@ -325,7 +325,8 @@ public sealed class CalculatorDslSpecialAndDistTests
         Assert.True(Math.Abs(cLeft - 1e-15m) / 1e-15m < 1e-12m);
         decimal cRight = EvalOk("cauchy_sf(cauchy_icdf(0.999999999999999, 0, 1), 0, 1)");
         Assert.True(Math.Abs(cRight - 1e-15m) / 1e-15m < 1e-12m);
-        EvalErr("quad_gk21(tukey_q_cdf(x, 20, 10), x, 0.1, 20, 0.0001)", CalculatorErrorCode.BudgetExceeded);
+        // The error keeps its code and now also its own position: the call inside the body that ran out of budget (not the position of the enclosing quad_gk21).
+        EvalErr("quad_gk21(tukey_q_cdf(x, 20, 10), x, 0.1, 20, 0.0001)", CalculatorErrorCode.BudgetExceeded, "quad_gk21(".Length);
 
         // (7) Zero-allocation check on updated Step 2 kernels
         var budget = DslExecutionBudget.CreateDefault();

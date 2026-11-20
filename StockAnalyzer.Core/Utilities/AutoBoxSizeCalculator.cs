@@ -144,7 +144,48 @@ namespace StockAnalyzer.Core.Utilities
             return size;
         }
 
+        /// <summary>
+        /// Same computation as <see cref="Calculate(ChartSizingMode, ReadOnlySpan{CoreCandleData}, decimal, int, decimal, ChartRoundingMode, AutoFallbackMode, decimal, decimal)"/>, except that a size that is not
+        /// positive after the rounding post-processing is REPORTED (returns false, <paramref name="size"/> = 0) instead of being replaced by <see cref="ChartConstants.DefaultBoxSize"/>.
+        /// A non-positive <paramref name="currentPrice"/> also returns false. When it returns true, <paramref name="size"/> equals what <c>Calculate</c> returns for the same arguments.
+        /// Used by the time-series overlays of the block charts, which must wait for a usable size instead of silently drawing with a substituted one.
+        /// </summary>
+        public static bool TryCalculateStrict(
+            ChartSizingMode mode,
+            ReadOnlySpan<CoreCandleData> candles,
+            decimal fixedSize,
+            int atrPeriod,
+            decimal atrMultiplier,
+            ChartRoundingMode roundingMode,
+            AutoFallbackMode fallbackMode,
+            decimal currentPrice,
+            decimal percentage,
+            out decimal size)
+        {
+            size = 0m;
+            if (currentPrice <= 0) return false;
+
+            if (!TryResolveNonAtrSize(mode, fixedSize, percentage, currentPrice, out decimal calculatedSize))
+            {
+                decimal atr = candles.Length > atrPeriod ? AtrCalculator.Calculate(candles, atrPeriod) : 0m;
+                calculatedSize = ResolveAtrSize(atr, atrMultiplier, fallbackMode, fixedSize, currentPrice);
+            }
+
+            calculatedSize = QuantizeCalculatedSize(calculatedSize, roundingMode, currentPrice);
+            if (calculatedSize <= 0) return false;
+
+            size = calculatedSize;
+            return true;
+        }
+
         private static decimal PostProcessCalculatedSize(decimal calculatedSize, ChartRoundingMode roundingMode, decimal currentPrice)
+        {
+            calculatedSize = QuantizeCalculatedSize(calculatedSize, roundingMode, currentPrice);
+            return calculatedSize > 0 ? calculatedSize : ChartConstants.DefaultBoxSize;
+        }
+
+        /// <summary>The rounding post-processing alone: the result may be zero (a size smaller than the tick, floored). Shared by <c>Calculate</c> (which then substitutes the default) and <see cref="TryCalculateStrict"/>.</summary>
+        private static decimal QuantizeCalculatedSize(decimal calculatedSize, ChartRoundingMode roundingMode, decimal currentPrice)
         {
             if (calculatedSize > 0 && roundingMode != ChartRoundingMode.None)
             {
@@ -165,7 +206,7 @@ namespace StockAnalyzer.Core.Utilities
                 }
             }
 
-            return calculatedSize > 0 ? calculatedSize : ChartConstants.DefaultBoxSize;
+            return calculatedSize;
         }
 
         public static decimal EstimateTickSize(decimal price)

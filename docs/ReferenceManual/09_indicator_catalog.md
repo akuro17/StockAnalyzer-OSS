@@ -21,6 +21,10 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | IndicatorType | Ordinal | Parameter Class (`"$type"`) | Parameters (Name, Type, Default, Range) | IsOverlay | Output Series Names |
 |---|---|---|---|---|---|
 | `PivotPointsAdvanced` | `67` | `CorePivotPointsAdvancedParameter` | `PivotType` (PivotPointType, default `0 (Standard)`), `SourcePeriod` (PivotSourcePeriod, default `0 (PreviousBar)`) | `true` | `"Main"`, `"R1"`, `"R2"`, `"R3"`, `"R4"`, `"S1"`, `"S2"`, `"S3"`, `"S4"` |
+| `Renko` | `78` | `CoreRenkoChartParameter` | `ReversalBricks` (int, default `2`), `SizingMode` (ChartSizingMode, default `1 (AutoAtr)`), `ManualSize` (decimal, default `1.0`), `Percentage` (decimal, default `1.0`), `AtrPeriod` (int, default `14`), `AtrMultiplier` (decimal, default `1.0`), `RoundingMode` (ChartRoundingMode, default `0 (None)`), `FallbackMode` (AutoFallbackMode, default `0 (Percentage)`) | `true` | `"Main"`, `"Reversal"`, `"Update"`, `"IsUpTrend"` |
+| `Kagi` | `79` | `CoreKagiChartParameter` | `SizingMode` (ChartSizingMode, default `1 (AutoAtr)`), `ManualSize` (decimal, default `1.0`), `Percentage` (decimal, default `1.0`), `AtrPeriod` (int, default `14`), `AtrMultiplier` (decimal, default `1.0`), `RoundingMode` (ChartRoundingMode, default `0 (None)`), `FallbackMode` (AutoFallbackMode, default `0 (Percentage)`) | `true` | `"Main"`, `"Reversal"`, `"IsUpTrend"` |
+| `PointAndFigure` | `80` | `CorePointAndFigureChartParameter` | `ReversalBoxes` (int, default `3`), `SizingMode` (ChartSizingMode, default `1 (AutoAtr)`), `ManualSize` (decimal, default `1.0`), `Percentage` (decimal, default `1.0`), `AtrPeriod` (int, default `14`), `AtrMultiplier` (decimal, default `1.0`), `RoundingMode` (ChartRoundingMode, default `0 (None)`), `FallbackMode` (AutoFallbackMode, default `0 (Percentage)`) | `true` | `"Main"`, `"Reversal"`, `"Update"`, `"IsUpTrend"` |
+| `ThreeLineBreak` | `92` | `CoreThreeLineBreakChartParameter` | `NumberOfLines` (int, default `3`), `MinimumMove` (decimal, default `0`) | `true` | `"Main"`, `"Reversal"`, `"IsUpTrend"` |
 | `ClassicPivotPoints` | `130` | `CoreClassicPivotPointsParameter` | `SourcePeriod` (PivotSourcePeriod, default `0 (PreviousBar)`) | `true` | `"Main"`, `"R1"`, `"R2"`, `"R3"`, `"S1"`, `"S2"`, `"S3"` |
 | `VolumeProfile` | `131` | `CoreVolumeProfileParameter` | `Period` (int, default `200`), `RowCount` (int, default `50`), `Opacity` (double, default `0.3`), `Mode` (VolumeDistributionMode, default `0 (Proportional)`), `Side` (DisplaySide, default `0 (Left)`), `ValueAreaColor` (IndicatorColor?, default `#FFFFEB3B`) | `true` | `"Main"` |
 | `MarketStructureShift` | `138` | `CoreMarketStructureShiftParameter` | `ZigZagThreshold` (decimal, default `5.0`) | `true` | `"BOS_Lines"`, `"CHoCH_Lines"` |
@@ -259,9 +263,12 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 
 Enums are serialized as integers. The member name in parentheses is for readability only.
 
+- **`AutoFallbackMode`**: `0` = `Percentage`, `1` = `Fixed`
 - **`AutocorrelationFallbackPolicy`**: `0` = `HoldPrevious`, `1` = `StaticDefault`
 - **`AutocorrelationPeakSelectionMode`**: `0` = `MaxCorrelation`, `1` = `FirstPeak`
 - **`BetaCalculationMode`**: `0` = `SimpleReturn`, `1` = `LogReturn`
+- **`ChartRoundingMode`**: `0` = `None`, `1` = `NiceNumbers`, `2` = `TickSize`, `3` = `Floor`, `4` = `Ceiling`, `5` = `Round`
+- **`ChartSizingMode`**: `0` = `Fixed`, `1` = `AutoAtr`, `2` = `Percentage`
 - **`CointegrationPriceMode`**: `0` = `PriceLevel`, `1` = `LogPrice`
 - **`CorrelationCalculationMode`**: `0` = `PriceLevel`, `1` = `LogReturn`
 - **`CrossCorrelationPeakSelectionMode`**: `0` = `MaxCorrelation`, `1` = `MaxAbsoluteCorrelation`

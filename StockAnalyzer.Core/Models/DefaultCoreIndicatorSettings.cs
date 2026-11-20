@@ -13,6 +13,40 @@ namespace StockAnalyzer.Core.Models;
 
 public static class DefaultCoreIndicatorSettings
 {
+    /// <summary>
+    /// The default setting of a block chart overlay (Renko, Point and Figure, Kagi, Three Line Break on a time-series chart): a step line "Close" coloured by the direction of the chart, plus dots for
+    /// "Reversal" and, for Renko and Point and Figure only, "Update". Kagi and Three Line Break have no Update entry (the series does not exist). The helper series IsUpTrend has no colour entry
+    /// (unrendered diagnostic series: it is suppressed in <see cref="IndicatorChartSuppression"/>). Colours by role; the up / down colours are those of the chart types.
+    /// </summary>
+    private static CoreIndicatorSettings CreateBlockChartOverlay(IndicatorType type, CoreIndicatorParameterBase parameter, bool hasUpdate)
+    {
+        var seriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+        {
+            new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Close", Color = IndicatorDefaultConstants.BlockChartOverlayUpColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+            new SeriesColorConfig { Name = nameof(CoreBlockChartOverlayIndicatorBase.Reversal), DisplayName = "Reversal", Color = IndicatorDefaultConstants.BlockChartOverlayReversalColor, TargetSeries = new List<string> { nameof(CoreBlockChartOverlayIndicatorBase.Reversal) } },
+        };
+        if (hasUpdate)
+        {
+            seriesColors.Add(new SeriesColorConfig { Name = CoreBlockChartOverlayIndicatorBase.UpdateSeriesName, DisplayName = "Update", Color = IndicatorDefaultConstants.BlockChartOverlayUpdateColor, TargetSeries = new List<string> { CoreBlockChartOverlayIndicatorBase.UpdateSeriesName } });
+        }
+
+        return new CoreIndicatorSettings
+        {
+            TypeEnum = type,
+            Category = CoreIndicatorCategory.Chart,
+            IsEnabled = false,
+            ParameterObject = parameter,
+            Color = IndicatorDefaultConstants.BlockChartOverlayUpColor,
+            Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+            Style = CoreLineStyle.Step,
+            IsOverlay = true,
+            UseUpDownColors = true,
+            UpColor = IndicatorDefaultConstants.BlockChartOverlayUpColor,
+            DownColor = IndicatorDefaultConstants.BlockChartOverlayDownColor,
+            SeriesColors = seriesColors
+        };
+    }
+
     public static List<CoreIndicatorSettings> GetDefault()
     {
         return new List<CoreIndicatorSettings>
@@ -1610,6 +1644,10 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = "Bands", DisplayName = "Value Area (VAH/VAL)", Color = IndicatorDefaultConstants.BollingerBandsColor, TargetSeries = new List<string> { nameof(CoreVolumeProfileLevelsIndicator.VAH), nameof(CoreVolumeProfileLevelsIndicator.VAL) } }
                 }
             },
+            CreateBlockChartOverlay(IndicatorType.Renko, new CoreRenkoChartParameter(), hasUpdate: true),
+            CreateBlockChartOverlay(IndicatorType.PointAndFigure, new CorePointAndFigureChartParameter(), hasUpdate: true),
+            CreateBlockChartOverlay(IndicatorType.Kagi, new CoreKagiChartParameter(), hasUpdate: false),
+            CreateBlockChartOverlay(IndicatorType.ThreeLineBreak, new CoreThreeLineBreakChartParameter(), hasUpdate: false),
             new CoreIndicatorSettings
             {
                 // Colours by role (decision U-01=A): volatility main line = RsiColor.

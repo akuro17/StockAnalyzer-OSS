@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using StockAnalyzer.Core.MathUtils;
 
 namespace StockAnalyzer.Core.Calculator;
 
@@ -328,7 +329,77 @@ public static class ExpressionCalculator
         new("quad_gauss_legendre", 5, 5, "quad_gauss_legendre(expr, var, a, b, n)"),
         new("quad_gk21", 4, 5, "quad_gk21(expr, var, a, b[, tol])"),
         new("quad_romberg", 4, 5, "quad_romberg(expr, var, a, b[, tol])"),
+        // v4: 1D array operations & flag helper
+        new("arr_len", 1, 1, "arr_len(a)"),
+        new("arr_get", 2, 2, "arr_get(a, idx)"),
+        new("arr_slice", 3, 3, "arr_slice(a, start, len)"),
+        new("arr_window", 2, 2, "arr_window(series, period)"),
+        new("arr_zip_add", 2, 2, "arr_zip_add(a, b)"),
+        new("arr_zip_mul", 2, 2, "arr_zip_mul(a, b)"),
+        new("has_flag", 2, 2, "has_flag(flags, bitIndex)"),
+        // v4: Matrix diagnostics, validation & regression/PCA projections
+        new("mat_cond", 3, 4, "mat_cond(A, rows, cols[, normKind])"),
+        new("mat_rcond", 3, 4, "mat_rcond(A, rows, cols[, normKind])"),
+        new("mat_validate_corr", 1, 2, "mat_validate_corr(R[, tol])"),
+        new("mat_is_corr", 1, 3, "mat_is_corr(R[, tol, requirePd])"),
+        new("mat_nearest_corr", 1, 2, "mat_nearest_corr(R[, tol])"),
+        new("mat_validate_cov", 1, 3, "mat_validate_cov(S[, requirePd, tol])"),
+        new("mat_cov_to_corr", 1, 1, "mat_cov_to_corr(S)"),
+        new("weighted_mean", 2, 2, "weighted_mean(w, x)"),
+        new("weighted_var", 2, 2, "weighted_var(w, x)"),
+        new("mahalanobis", 3, 3, "mahalanobis(x, mu, covInv)"),
+        new("ols_fit", 2, 2, "ols_fit(X, y)"),
+        new("ols_predict", 2, 2, "ols_predict(xNew, beta)"),
+        new("ridge_fit", 3, 3, "ridge_fit(X, y, lambda)"),
+        new("poly_project", 3, 3, "poly_project(series, deg, horizon)"),
+        new("pca_project", 4, 4, "pca_project(X, nRows, nCols, k)"),
+        // Sprint DSL Advanced v4 (Batch 2: Robust Stats, ACF/PACF, Multiple Testing, Diagnostics, Resampling, MC, Finite Differences)
+        new("mad_scaled", 1, 2, "mad_scaled(x[, scale])"),
+        new("trimmed_mean", 2, 2, "trimmed_mean(x, alpha)"),
+        new("winsor_mean", 2, 2, "winsor_mean(x, alpha)"),
+        new("huber_loc", 1, 2, "huber_loc(x[, k])"),
+        new("biweight_loc", 1, 2, "biweight_loc(x[, c])"),
+        new("theil_sen", 1, 2, "theil_sen(yOrX[, y])"),
+        new("siegel_slope", 1, 2, "siegel_slope(yOrX[, y])"),
+        new("acf", 2, 2, "acf(series, lag)"),
+        new("acf_series", 2, 2, "acf_series(series, maxLag)"),
+        new("pacf", 2, 2, "pacf(series, lag)"),
+        new("pacf_series", 2, 2, "pacf_series(series, maxLag)"),
+        new("p_adjust", 2, 2, "p_adjust(pValues, method)"),
+        new("diag_residual_norm", 3, 3, "diag_residual_norm(A, x, b)"),
+        new("diag_rel_err", 2, 2, "diag_rel_err(approx, exact)"),
+        new("diag_ulp_diff", 2, 2, "diag_ulp_diff(a, b)"),
+        new("diag_kahan_sum", 1, 1, "diag_kahan_sum(arr)"),
+        new("diag_kahan_err", 1, 1, "diag_kahan_err(arr)"),
+        new("diag_cancellation_bits", 2, 2, "diag_cancellation_bits(a, b)"),
+        new("boot_ci", 6, 7, "boot_ci(series, statKind, nResamples, blockLen, alpha, seed[, blockMode])"),
+        new("mc_integrate", 6, 7, "mc_integrate(expr, var, a, b, nSamples, seed[, mode])"),
+        new("mc_integrate_se", 6, 7, "mc_integrate_se(expr, var, a, b, nSamples, seed[, mode])"),
+        new("mc_integrate_nd", 6, 7, "mc_integrate_nd(expr, vars, lower, upper, nSamples, seed[, mode])"),
+        new("mc_integrate_nd_se", 6, 7, "mc_integrate_nd_se(expr, vars, lower, upper, nSamples, seed[, mode])"),
+        new("diff_lag", 1, 3, "diff_lag(series[, k, order])"),
+        new("diff_lag_series", 1, 3, "diff_lag_series(series[, k, order])"),
+        new("diff_pct", 1, 2, "diff_pct(series[, k])"),
+        new("fd_forward", 4, 4, "fd_forward(expr, var, x, h)"),
+        new("fd_backward", 4, 4, "fd_backward(expr, var, x, h)"),
+        new("fd_central", 3, 4, "fd_central(expr, var, x[, h])"),
+        new("fd_second", 4, 4, "fd_second(expr, var, x, h)"),
+        new("fd_richardson", 4, 5, "fd_richardson(expr, var, x, h[, order])"),
+        new("fd_pde_1d", 5, 7, "fd_pde_1d(u0, alpha, dx, dt, nSteps[, scheme, bcType])"),
     };
+
+    /// <summary>Input item for sequential batch evaluation in <see cref="EvaluateBatch"/>.</summary>
+    public sealed record CalculatorBatchItem(string Name, string Expression);
+
+    /// <summary>Per-expression result produced by <see cref="EvaluateBatch"/>.</summary>
+    public sealed record CalculatorBatchResult(
+        string Name,
+        string Expression,
+        bool IsOk,
+        bool IsArray,
+        decimal ScalarValue,
+        IReadOnlyList<decimal>? ArrayValues,
+        CalculatorError? Error);
 
     /// <summary>
     /// Evaluates one expression against <paramref name="names"/> (Ordinal lookup) using checked <see cref="decimal"/> arithmetic.
@@ -366,6 +437,128 @@ public static class ExpressionCalculator
 
         IReadOnlyDictionary<string, decimal> ordinalNames = ToOrdinalLookup(names);
         return CalculatorEvaluator.Evaluate(root!, ordinalNames, limits);
+    }
+
+    /// <summary>
+    /// Evaluates an ordered batch of expressions over scalar and optional 1D array variables,
+    /// sharing a single batch-lifetime <see cref="DslArrayArena"/> with per-expression compaction and rollback.
+    /// </summary>
+    public static IReadOnlyList<CalculatorBatchResult> EvaluateBatch(
+        IReadOnlyDictionary<string, decimal> scalarVariables,
+        IReadOnlyDictionary<string, IReadOnlyList<decimal>>? arrayVariables,
+        IReadOnlyList<CalculatorBatchItem> expressions,
+        CalculatorLimits limits,
+        System.Threading.CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scalarVariables);
+        ArgumentNullException.ThrowIfNull(expressions);
+        ArgumentNullException.ThrowIfNull(limits);
+        limits.Validate();
+
+        var scalarScope = new Dictionary<string, decimal>(scalarVariables.Count + expressions.Count, StringComparer.Ordinal);
+        foreach (KeyValuePair<string, decimal> kv in scalarVariables)
+        {
+            scalarScope[kv.Key] = kv.Value;
+        }
+
+        var arrayScope = new Dictionary<string, DslArrayHandle>(
+            (arrayVariables?.Count ?? 0) + expressions.Count,
+            StringComparer.Ordinal);
+
+        var arena = new MathUtils.DslArrayArena();
+        try
+        {
+            if (arrayVariables is not null)
+            {
+                foreach (KeyValuePair<string, IReadOnlyList<decimal>> kv in arrayVariables)
+                {
+                    IReadOnlyList<decimal> source = kv.Value ?? throw new ArgumentNullException(nameof(arrayVariables), $"Array variable '{kv.Key}' cannot be null.");
+                    if (!arena.TryAllocate(source.Count, out DslArrayHandle handle, out Span<decimal> slice))
+                    {
+                        throw new ArgumentOutOfRangeException(
+                            nameof(arrayVariables),
+                            $"Array variable '{kv.Key}' exceeds arena bounds ({MathUtils.DslArrayArena.MaxArrayLength} per array, {MathUtils.DslArrayArena.MaxArenaElements} total).");
+                    }
+
+                    for (int i = 0; i < source.Count; i++)
+                    {
+                        slice[i] = source[i];
+                    }
+
+                    arrayScope[kv.Key] = handle;
+                }
+            }
+
+            var results = new List<CalculatorBatchResult>(expressions.Count);
+            var evalScope = new DslEvalScope(scalarScope, arrayScope);
+
+            for (int i = 0; i < expressions.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                CalculatorBatchItem item = expressions[i];
+
+                if (item.Expression.Length > limits.MaxExpressionChars)
+                {
+                    results.Add(new CalculatorBatchResult(
+                        item.Name,
+                        item.Expression,
+                        false,
+                        false,
+                        0m,
+                        null,
+                        new CalculatorError(
+                            CalculatorErrorCode.ExpressionTooLong,
+                            limits.MaxExpressionChars,
+                            $"Expression exceeds {limits.MaxExpressionChars} characters.")));
+                    continue;
+                }
+
+                if (!CalculatorLexer.TryTokenize(item.Expression, limits, out List<CalcToken> tokens, out CalculatorError? lexError))
+                {
+                    results.Add(new CalculatorBatchResult(item.Name, item.Expression, false, false, 0m, null, lexError));
+                    continue;
+                }
+
+                if (!CalculatorParser.TryParse(tokens, limits, out CalcNode? root, out CalculatorError? parseError))
+                {
+                    results.Add(new CalculatorBatchResult(item.Name, item.Expression, false, false, 0m, null, parseError));
+                    continue;
+                }
+
+                int savedCursor = arena.Cursor;
+                var budget = MathUtils.DslExecutionBudget.Create(limits.MaxExecutionOps, limits.MaxNestingDepth);
+                BoundVariableScope emptyBound = default;
+                DslEvalOutcome evalOutcome = CalculatorEvaluator.EvaluateValue(root!, in evalScope, limits, ref budget, in emptyBound, ref arena);
+
+                if (evalOutcome.Error is { } err)
+                {
+                    arena.RestoreCursor(savedCursor);
+                    results.Add(new CalculatorBatchResult(item.Name, item.Expression, false, false, 0m, null, err));
+                    continue;
+                }
+
+                if (evalOutcome.Value.IsArray)
+                {
+                    DslArrayHandle compacted = arena.CompactResult(savedCursor, evalOutcome.Value.Array);
+                    arrayScope[item.Name] = compacted;
+                    decimal[] snapshot = arena.GetSlice(compacted).ToArray();
+                    results.Add(new CalculatorBatchResult(item.Name, item.Expression, true, true, 0m, snapshot, null));
+                }
+                else
+                {
+                    arena.RestoreCursor(savedCursor);
+                    decimal scalar = evalOutcome.Value.Scalar;
+                    scalarScope[item.Name] = scalar;
+                    results.Add(new CalculatorBatchResult(item.Name, item.Expression, true, false, scalar, null, null));
+                }
+            }
+
+            return results;
+        }
+        finally
+        {
+            arena.Dispose();
+        }
     }
 
     public static bool IsAsciiDigit(char ch) => ch is >= '0' and <= '9';

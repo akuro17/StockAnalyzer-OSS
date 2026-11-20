@@ -884,5 +884,37 @@ public static class IndicatorDefaultConstants
     public const double DbaDistanceEpsilon = 1e-6;
     public const double DbaLowerQuantile = 0.15;
     public const double DbaUpperQuantile = 0.85;
-}
 
+    // === Block chart overlays (Renko, Point and Figure, Kagi, Three Line Break on a time-series chart); unit: price-native ===
+    // Defaults are the ones of the corresponding chart types (GlobalChartSettings / ChartConstants); a drift test keeps them equal. The overlay settings are independent copies, never a live link.
+    public const ChartSizingMode BlockChartOverlayDefaultSizingMode = ChartSizingMode.AutoAtr;
+    public const ChartRoundingMode BlockChartOverlayDefaultRoundingMode = ChartRoundingMode.None;
+    public const AutoFallbackMode BlockChartOverlayDefaultFallbackMode = AutoFallbackMode.Percentage;
+    /// <summary>The smallest box / brick / reversal size of the settings dialogs of the chart types.</summary>
+    public const double BlockChartOverlayMinSize = 0.0001;
+    public const double BlockChartOverlayMaxSize = 1000000000.0;
+    public const double BlockChartOverlayMinPercentage = 0.01;
+    public const double BlockChartOverlayMaxPercentage = 100.0;
+    public const int BlockChartOverlayMinAtrPeriod = 1;
+    public const int BlockChartOverlayMaxAtrPeriod = 500;
+    public const double BlockChartOverlayMinAtrMultiplier = 0.1;
+    public const double BlockChartOverlayMaxAtrMultiplier = 10.0;
+    public const int BlockChartOverlayMinReversal = 1;
+    public const int BlockChartOverlayMaxReversal = 10;
+    public const int BlockChartOverlayMinLineCount = 1;
+    public const int BlockChartOverlayMaxLineCount = 100;
+    public const double BlockChartOverlayMinMinimumMove = 0.0;
+    /// <summary>The up / down colours of the chart types (<c>ChartSettingsConstants.DefaultBullishColor</c> #00B050 / <c>DefaultBearishColor</c> #FF0000); a drift test compares them.</summary>
+    public static readonly IndicatorColor BlockChartOverlayUpColor = new(255, 0, 176, 80);
+    public static readonly IndicatorColor BlockChartOverlayDownColor = new(255, 255, 0, 0);
+    /// <summary>Colours by role: the Reversal dots use the "second line" colour, the Update dots the "main line" colour.</summary>
+    public static readonly IndicatorColor BlockChartOverlayReversalColor = StochDColor;
+    public static readonly IndicatorColor BlockChartOverlayUpdateColor = SmaColor;
+    /// <summary>Diameter of the Reversal / Update dots in device-independent pixels (<see cref="CoreIndicatorSettings.DotSize"/>). The default equals the radius 2.25 that the former rule max(2, 1.5 x thickness) gave for the default thickness, so the default look is unchanged.</summary>
+    public const double BlockChartOverlayDefaultDotSize = 4.5;
+    public const double BlockChartOverlayMinDotSize = 2.0;
+    public const double BlockChartOverlayMaxDotSize = 20.0;
+    public const double BlockChartOverlayDotSizeStep = 0.5;
+    /// <summary>The IsUpTrend helper series holds 1 (up) or 0 (down); a value at or above this threshold is drawn with the up colour.</summary>
+    public const decimal BlockChartOverlayUpTrendThreshold = 0.5m;
+}

@@ -40,6 +40,14 @@ public static class ChartConstants
     public const int DefaultReversalAmount = 3;
     /// <summary>The fewest boxes of a Point and Figure reversal; the calculator treats a smaller number as this one and the Data tab shows no reversal price below it.</summary>
     public const int MinPnfReversalAmount = 1;
+    /// <summary>The fewest bricks of a Renko reversal; <c>RenkoCalculator</c> treats a smaller number as this one (its literal 1), the block chart overlays use this name.</summary>
+    public const int MinRenkoReversalBricks = 1;
+    /// <summary>
+    /// The most bricks one time bar adds by repeated addition in the Renko overlay engine, exactly as <c>RenkoCalculator</c> accumulates them (decimal addition of a non-terminating size rounds at the
+    /// 28th digit, so only the same additions give the same digits). A bar that adds more bricks than this is resolved in closed form (count x size), which keeps an absurd gap O(1) and allocation free;
+    /// its price may then differ from the calculator's accumulation in the last digits. Same value as the loop guard of <c>RenkoConverter</c>.
+    /// </summary>
+    public const int MaxIteratedRenkoBricksPerBar = 1000;
 
     // General Defaults
     public const decimal DefaultAtrMultiplier = 1.0m;
@@ -57,6 +65,10 @@ public static class ChartConstants
     public const decimal DefaultRenkoBrickPercent = 1.0m;
     public const decimal DefaultPnfBoxSize = 10m;
     public const int DefaultThreeLineBreakLineCount = 3;
+    /// <summary>The Renko reversal of the chart type (bricks beyond the edge of the last brick); the value of <c>GlobalChartSettings.RenkoReversal</c>.</summary>
+    public const int DefaultRenkoReversalBricks = 2;
+    /// <summary>No small-move filter: the value of <c>ChartViewModel.ThreeLineBreakMinMove</c>.</summary>
+    public const decimal DefaultThreeLineBreakMinMove = 0m;
 
     // Volume Analysis
     public const int DefaultVolumeProfileRowSize = 24;
@@ -374,100 +386,100 @@ public static class ChartConstants
 
     #region Continuation Candle Pattern Thresholds (Prompt 70-1 Strict)
 
-    /// <summary>大陽線・大陰線の判定における平均実体サイズ倍率 (1.5倍)。</summary>
+    /// <summary>Multiple of the average body size that makes a long bullish / bearish candle (1.5x).</summary>
     public const decimal CandlePatternLargeBodyRatio = 1.5m;
 
-    /// <summary>大足判定において実体がレンジに占める最小比率 (60%)。</summary>
+    /// <summary>Minimum share of the range that the body takes for a long candle (60%).</summary>
     public const decimal CandlePatternLargeRangeRatio = 0.60m;
 
-    /// <summary>小足判定における平均実体サイズ上限比率 (80%)。</summary>
+    /// <summary>Maximum multiple of the average body size for a small candle (80%).</summary>
     public const decimal CandlePatternSmallBodyRatio = 0.80m;
 
-    /// <summary>小足判定において実体がレンジに占める最大比率 (50%)。</summary>
+    /// <summary>Maximum share of the range that the body takes for a small candle (50%).</summary>
     public const decimal CandlePatternSmallRangeRatio = 0.50m;
 
-    /// <summary>ブレイクアウト足（5本目等）の最小実体サイズ倍率 (1.0倍)。</summary>
+    /// <summary>Minimum multiple of the average body size for a breakout candle (the fifth candle etc., 1.0x).</summary>
     public const decimal CandlePatternBreakoutBodyMinRatio = 1.0m;
 
-    /// <summary>三手一撃におけるStrike足の先行3本実体合算に対する最小比率 (85%)。</summary>
+    /// <summary>Three-line strike: minimum share of the three preceding bodies that the strike candle body has to cover (85%).</summary>
     public const decimal CandlePatternStrikeBodyDominanceRatio = 0.85m;
 
-    /// <summary>三手一撃におけるStrike足の始値許容バッファ比率 (avgBodyの10%)。</summary>
+    /// <summary>Three-line strike: tolerance buffer for the open of the strike candle (10% of the average body).</summary>
     public const decimal CandlePatternStrikeOpenToleranceRatio = 0.10m;
 
-    /// <summary>赤三兵・黒三兵構造における足の実体最小比率 (ノイズ除外: avgBodyの50%)。</summary>
+    /// <summary>Three white soldiers / three black crows: minimum body of each candle, excluding noise (50% of the average body).</summary>
     public const decimal CandlePatternNoiseBodyMinRatio = 0.50m;
 
-    /// <summary>明確な窓（Gap）判定の最小比率 (avgBodyの10%)。</summary>
+    /// <summary>Minimum size of a clear gap (10% of the average body).</summary>
     public const decimal CandlePatternGapMinRatio = 0.10m;
 
-    /// <summary>並び赤における2本の陽線の実体サイズ許容乖離率 (30%以内)。</summary>
+    /// <summary>Side-by-side white lines: allowed body size deviation of the two bullish candles (within 30%).</summary>
     public const decimal CandlePatternSimilarBodyToleranceRatio = 0.30m;
 
-    /// <summary>並び赤における始値の近傍許容乖離率 (30%以内)。</summary>
+    /// <summary>Side-by-side white lines: allowed deviation of the two opens (within 30%).</summary>
     public const decimal CandlePatternSimilarOpenToleranceRatio = 0.30m;
 
     #endregion
 
     #region Advanced Reversal Candle Pattern Thresholds (Prompt 70-2 Strict)
 
-    /// <summary>先詰まり (Advance Block) における上ヒゲの対実体最小比率 (50%)。</summary>
+    /// <summary>Advance Block: minimum upper shadow relative to the body (50%).</summary>
     public const decimal CandlePatternAdvanceBlockShadowRatio = 0.50m;
 
-    /// <summary>先詰まり (Advance Block) における3本目実体の1本目に対する累積最大縮小比率 (85%以下、すなわち15%以上の縮小)。</summary>
+    /// <summary>Advance Block: maximum cumulative shrink of the third body relative to the first (at most 85%, i.e. a shrink of 15% or more).</summary>
     public const decimal CandlePatternAdvanceBlockBodyReductionRatio = 0.85m;
 
-    /// <summary>思案 (Deliberation) における1本目・2本目陽線の平均実体対比最小サイズ (70%)。</summary>
+    /// <summary>Deliberation: minimum size of the first and second bullish candles relative to the average body (70%).</summary>
     public const decimal CandlePatternDeliberationMainBodyRatio = 0.70m;
 
-    /// <summary>思案 (Deliberation) における3本目Star足の2本目実体対比最大サイズ (40%)。</summary>
+    /// <summary>Deliberation: maximum size of the third (star) candle relative to the second body (40%).</summary>
     public const decimal CandlePatternDeliberationStarBodyRatio = 0.40m;
 
-    /// <summary>思案 (Deliberation) における3本目の寄付き許容バッファ比率 (avgBodyの15%)。</summary>
+    /// <summary>Deliberation: tolerance buffer for the open of the third candle (15% of the average body).</summary>
     public const decimal CandlePatternDeliberationOpenBufferRatio = 0.15m;
 
-    /// <summary>スティックサンドイッチ (Stick Sandwich) における3本目の寄付き許容バッファ比率 (avgBodyの10%)。</summary>
+    /// <summary>Stick Sandwich: tolerance buffer for the open of the third candle (10% of the average body).</summary>
     public const decimal CandlePatternStickSandwichOpenBufferRatio = 0.10m;
 
-    /// <summary>スティックサンドイッチ (Stick Sandwich) における2本の陰線終値の許容乖離比率 (avgBodyの5%)。</summary>
+    /// <summary>Stick Sandwich: allowed deviation of the closes of the two bearish candles (5% of the average body).</summary>
     public const decimal CandlePatternPriceEqualityToleranceRatio = 0.05m;
 
-    /// <summary>スティックサンドイッチ (Stick Sandwich) における価格相対トレランス比率 (終値の0.2%)。</summary>
+    /// <summary>Stick Sandwich: relative price tolerance (0.2% of the close).</summary>
     public const decimal CandlePatternPriceEqualityAbsoluteMinRatio = 0.002m;
 
-    /// <summary>梯子底 (Ladder Bottom) における4本目足の最小ヒゲ/実体比率 (1.0倍)。</summary>
+    /// <summary>Ladder Bottom: minimum shadow / body ratio of the fourth candle (1.0x).</summary>
     public const decimal CandlePatternLadderShadowRatio = 1.0m;
 
     #endregion
 
     #region Gap Candle Pattern Thresholds (Prompt 70-3 Strict)
 
-    /// <summary>タスキ窓 (Tasuki Gap) における3本目の寄付き許容バッファ比率 (avgBodyの20%)。</summary>
+    /// <summary>Tasuki Gap: tolerance buffer for the open of the third candle (20% of the average body).</summary>
     public const decimal CandlePatternTasukiOpenToleranceRatio = 0.20m;
 
-    /// <summary>離脱 (Breakaway) パターンにおける5本目反発足の最小実体比率 (avgBodyの1.2倍)。</summary>
+    /// <summary>Breakaway: minimum body of the fifth (rebound) candle (1.2x the average body).</summary>
     public const decimal CandlePatternBreakawayBodyRatio = 1.2m;
 
     #endregion
 
     #region Exotic & Minor Candle Pattern Thresholds (Prompt 70-4 Strict v3)
 
-    /// <summary>丸坊主判定におけるヒゲの対レンジ最大許容比率 (5%以下)。</summary>
+    /// <summary>Marubozu: maximum shadow relative to the range (5% or less).</summary>
     public const decimal CandlePatternMarubozuShadowMaxRatio = 0.05m;
 
-    /// <summary>Kicking パターンにおける窓開けの最小ATR倍率 (ATRの50%)。</summary>
+    /// <summary>Kicking: minimum gap as a multiple of the ATR (50% of the ATR).</summary>
     public const decimal CandlePatternKickingGapAtrRatio = 0.50m;
 
-    /// <summary>Kicking パターンにおける窓開けの最小平均実体倍率 (avgBodyの20%)。</summary>
+    /// <summary>Kicking: minimum gap as a multiple of the average body (20% of the average body).</summary>
     public const decimal CandlePatternKickingGapBodyRatio = 0.20m;
 
-    /// <summary>Concealing Baby Swallow 3本目における上ヒゲの対実体最小比率 (80%以上)。</summary>
+    /// <summary>Concealing Baby Swallow, third candle: minimum upper shadow relative to the body (80% or more).</summary>
     public const decimal CandlePatternConcealSwallowShadowRatio = 0.80m;
 
-    /// <summary>Identical Three Crows における始値と同値判定の許容乖離比率 (avgBodyの5%)。</summary>
+    /// <summary>Identical Three Crows: tolerance for treating an open as equal to the previous close (5% of the average body).</summary>
     public const decimal CandlePatternIdenticalCrowsOpenToleranceRatio = 0.05m;
 
-    /// <summary>Identical Three Crows における各陰線の下ヒゲ許容上限比率 (実体の15%以下)。</summary>
+    /// <summary>Identical Three Crows: maximum lower shadow of each bearish candle (15% of the body or less).</summary>
     public const decimal CandlePatternIdenticalCrowsShadowMaxRatio = 0.15m;
 
     #endregion

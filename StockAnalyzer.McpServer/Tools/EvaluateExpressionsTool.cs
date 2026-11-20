@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using StockAnalyzer.Core.Calculator;
+using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.McpServer.Limits;
 
@@ -8,17 +9,19 @@ namespace StockAnalyzer.McpServer.Tools;
 
 /// <summary>
 /// sa_evaluate_expressions: evaluates a sequential batch of deterministic <see cref="decimal"/> arithmetic expressions
-/// with named variables via <see cref="ExpressionCalculator"/>.
+/// with named scalar and 1D array variables via <see cref="ExpressionCalculator"/>.
 /// </summary>
 internal sealed class EvaluateExpressionsTool : IMcpTool
 {
-    private const int CalculatorVersion = 3;
+    private const int CalculatorVersion = 4;
     private const string ArithmeticName = "System.Decimal";
     private const string VariablesArgument = "variables";
+    private const string ArrayVariablesArgument = "arrayVariables";
     private const string ExpressionsArgument = "expressions";
     private const string NameProperty = "name";
     private const string ExpressionProperty = "expression";
     private const decimal DecimalScaleStripDivisor = 1.0000000000000000000000000000m;
+    private const int MaxInputArrayElements = 2_048;
     private const string DependencyFailedCode = "DEPENDENCY_FAILED";
 
     private static readonly string MaxTranscendentalMagnitudeText =
@@ -63,7 +66,11 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
     public string InputSchemaJson => ToolSchema.Object()
         .FreeObject(
             VariablesArgument,
-            $"Optional map of variable names to decimal numbers (at most {_limits.MaxCalculatorVariables} entries; names match {IdentifierRegexHint} and cannot equal a function name).",
+            $"Optional map of scalar variable names to decimal numbers (combined scalar + array variables at most {_limits.MaxCalculatorVariables} entries; names match {IdentifierRegexHint} and cannot equal a function name).",
+            required: false)
+        .FreeObject(
+            ArrayVariablesArgument,
+            $"Optional map of 1D array variable names to finite decimal arrays (empty [] allowed; at most {DslArrayArena.MaxArrayLength} items per array, {MaxInputArrayElements} total input elements across arrayVariables, and {DslArrayArena.MaxArenaElements} total elements across batch; combined scalar + array variables at most {_limits.MaxCalculatorVariables} entries).",
             required: false)
         .ObjectArray(
             ExpressionsArgument,
@@ -140,13 +147,50 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
             }
         }
 
-        var declaredNames = new HashSet<string>(variableCount + expressionCount, StringComparer.Ordinal);
+        bool hasArrayVariables = arguments.TryGetProperty(ArrayVariablesArgument, out JsonElement arrayVariablesElement);
+        int arrayVariableCount = 0;
+        if (hasArrayVariables)
+        {
+            if (arrayVariablesElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InvalidArgument,
+                    $"Argument '{ArrayVariablesArgument}' must be an object.",
+                    ArrayVariablesArgument);
+            }
+
+            foreach (JsonProperty _ in arrayVariablesElement.EnumerateObject())
+            {
+                arrayVariableCount++;
+            }
+
+            if (variableCount + arrayVariableCount > _limits.MaxCalculatorVariables)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.LimitExceeded,
+                    $"At most {_limits.MaxCalculatorVariables} combined scalar and array variables per call.",
+                    ArrayVariablesArgument,
+                    $"Send {_limits.MaxCalculatorVariables} or fewer total variables, or split the call.");
+            }
+        }
+
+        var declaredNames = new HashSet<string>(variableCount + arrayVariableCount + expressionCount, StringComparer.Ordinal);
         if (hasVariables)
         {
             foreach (JsonProperty prop in variablesElement.EnumerateObject())
             {
                 string varName = prop.Name;
                 string varPath = varName.Length == 0 ? VariablesArgument : $"{VariablesArgument}.{varName}";
+                ValidateDeclaredName(varName, varPath, declaredNames);
+            }
+        }
+
+        if (hasArrayVariables)
+        {
+            foreach (JsonProperty prop in arrayVariablesElement.EnumerateObject())
+            {
+                string varName = prop.Name;
+                string varPath = varName.Length == 0 ? ArrayVariablesArgument : $"{ArrayVariablesArgument}.{varName}";
                 ValidateDeclaredName(varName, varPath, declaredNames);
             }
         }
@@ -196,6 +240,61 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
             }
         }
 
+        var arrayVariables = hasArrayVariables ? new List<(string Name, decimal[] Values)>(arrayVariableCount) : null;
+        if (hasArrayVariables)
+        {
+            int totalArrayElements = 0;
+            foreach (JsonProperty prop in arrayVariablesElement.EnumerateObject())
+            {
+                string arrPath = $"{ArrayVariablesArgument}.{prop.Name}";
+                if (prop.Value.ValueKind != JsonValueKind.Array)
+                {
+                    throw new ToolException(
+                        ToolErrorCodes.InvalidArgument,
+                        $"Array variable '{prop.Name}' must be an array of finite decimal numbers.",
+                        arrPath);
+                }
+
+                int arrLen = prop.Value.GetArrayLength();
+                if (arrLen > DslArrayArena.MaxArrayLength)
+                {
+                    throw new ToolException(
+                        ToolErrorCodes.LimitExceeded,
+                        $"Array variable '{prop.Name}' exceeds {DslArrayArena.MaxArrayLength} elements.",
+                        arrPath,
+                        $"Keep each array within {DslArrayArena.MaxArrayLength} elements.");
+                }
+
+                totalArrayElements += arrLen;
+                if (totalArrayElements > MaxInputArrayElements)
+                {
+                    throw new ToolException(
+                        ToolErrorCodes.LimitExceeded,
+                        $"Total array variable elements exceed {MaxInputArrayElements}.",
+                        ArrayVariablesArgument,
+                        $"Keep combined input array elements within {MaxInputArrayElements}.");
+                }
+
+                var elems = new decimal[arrLen];
+                int elemIdx = 0;
+                foreach (JsonElement elem in prop.Value.EnumerateArray())
+                {
+                    if (elem.ValueKind != JsonValueKind.Number || !elem.TryGetDecimal(out decimal number))
+                    {
+                        throw new ToolException(
+                            ToolErrorCodes.InvalidArgument,
+                            $"Element {elemIdx} of array variable '{prop.Name}' must be a finite decimal number.",
+                            $"{arrPath}[{elemIdx}]",
+                            "Provide finite JSON numbers that fit System.Decimal.");
+                    }
+
+                    elems[elemIdx++] = number;
+                }
+
+                arrayVariables!.Add((prop.Name, elems));
+            }
+        }
+
         var expressions = new List<(string Name, string Text)>(expressionCount);
         int maxExprChars = CalculatorLimits.Default.MaxExpressionChars;
         index = 0;
@@ -232,7 +331,7 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
             index++;
         }
 
-        return Task.FromResult(EvaluateAndSerialize(variables, expressions, decimalPlaces, cancellationToken));
+        return Task.FromResult(EvaluateAndSerialize(variables, arrayVariables, expressions, decimalPlaces, cancellationToken));
     }
 
     internal static decimal NormalizeDecimal(decimal value)
@@ -240,49 +339,79 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
 
     private static string EvaluateAndSerialize(
         IReadOnlyList<(string Name, decimal Value)> variables,
+        IReadOnlyList<(string Name, decimal[] Values)>? arrayVariables,
         IReadOnlyList<(string Name, string Text)> expressions,
         int? decimalPlaces,
         CancellationToken cancellationToken)
     {
-        var scope = new Dictionary<string, decimal>(variables.Count + expressions.Count, StringComparer.Ordinal);
+        var scalarDict = new Dictionary<string, decimal>(variables.Count, StringComparer.Ordinal);
         foreach ((string name, decimal value) in variables)
         {
-            scope[name] = value;
+            scalarDict[name] = value;
+        }
+
+        Dictionary<string, IReadOnlyList<decimal>>? arrayDict = null;
+        if (arrayVariables is not null)
+        {
+            arrayDict = new Dictionary<string, IReadOnlyList<decimal>>(arrayVariables.Count, StringComparer.Ordinal);
+            foreach ((string name, decimal[] values) in arrayVariables)
+            {
+                arrayDict[name] = values;
+            }
         }
 
         var expressionIndexByName = new Dictionary<string, int>(expressions.Count, StringComparer.Ordinal);
+        var batchItems = new ExpressionCalculator.CalculatorBatchItem[expressions.Count];
         for (int i = 0; i < expressions.Count; i++)
         {
             expressionIndexByName[expressions[i].Name] = i;
+            batchItems[i] = new ExpressionCalculator.CalculatorBatchItem(expressions[i].Name, expressions[i].Text);
         }
+
+        IReadOnlyList<ExpressionCalculator.CalculatorBatchResult> batchResults =
+            ExpressionCalculator.EvaluateBatch(scalarDict, arrayDict, batchItems, CalculatorLimits.Default, cancellationToken);
 
         var failedExpressions = new HashSet<string>(StringComparer.Ordinal);
         var results = new List<ExpressionEvalResult>(expressions.Count);
         int okCount = 0;
         int errorCount = 0;
 
-        for (int i = 0; i < expressions.Count; i++)
+        for (int i = 0; i < batchResults.Count; i++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            (string name, string text) = expressions[i];
-
-            CalculatorOutcome outcome = ExpressionCalculator.Evaluate(text, scope, CalculatorLimits.Default);
-            if (outcome.Value is { } rawValue)
+            ExpressionCalculator.CalculatorBatchResult batchItem = batchResults[i];
+            if (batchItem.IsOk)
             {
-                scope[name] = rawValue;
-                decimal outputValue = decimalPlaces is { } places
-                    ? SeriesOutputOptions.Round(rawValue, places)
-                    : rawValue;
-                outputValue = NormalizeDecimal(outputValue);
-                results.Add(ExpressionEvalResult.Ok(name, text, outputValue));
+                if (batchItem.IsArray)
+                {
+                    IReadOnlyList<decimal> rawArr = batchItem.ArrayValues!;
+                    var outputArr = new decimal[rawArr.Count];
+                    for (int j = 0; j < rawArr.Count; j++)
+                    {
+                        decimal v = decimalPlaces is { } places
+                            ? SeriesOutputOptions.Round(rawArr[j], places)
+                            : rawArr[j];
+                        outputArr[j] = NormalizeDecimal(v);
+                    }
+
+                    results.Add(ExpressionEvalResult.OkArray(batchItem.Name, batchItem.Expression, outputArr));
+                }
+                else
+                {
+                    decimal outputValue = decimalPlaces is { } places
+                        ? SeriesOutputOptions.Round(batchItem.ScalarValue, places)
+                        : batchItem.ScalarValue;
+                    outputValue = NormalizeDecimal(outputValue);
+                    results.Add(ExpressionEvalResult.Ok(batchItem.Name, batchItem.Expression, outputValue));
+                }
+
                 okCount++;
             }
             else
             {
-                CalculatorError error = outcome.Error!;
-                failedExpressions.Add(name);
-                (string wireCode, string message) = RefineError(name, i, error, expressionIndexByName, failedExpressions);
-                results.Add(ExpressionEvalResult.Fail(name, text, wireCode, error.Position, message));
+                CalculatorError error = batchItem.Error!;
+                failedExpressions.Add(batchItem.Name);
+                (string wireCode, string message) = RefineError(batchItem.Name, i, error, expressionIndexByName, failedExpressions);
+                results.Add(ExpressionEvalResult.Fail(batchItem.Name, batchItem.Expression, wireCode, error.Position, message));
                 errorCount++;
             }
         }
@@ -309,6 +438,26 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
 
             writer.WriteEndArray();
 
+            if (arrayVariables is not null)
+            {
+                writer.WriteStartArray(ArrayVariablesArgument);
+                foreach ((string name, decimal[] values) in arrayVariables)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("name", name);
+                    writer.WriteStartArray("values");
+                    for (int j = 0; j < values.Length; j++)
+                    {
+                        writer.WriteNumberValue(NormalizeDecimal(values[j]));
+                    }
+
+                    writer.WriteEndArray();
+                    writer.WriteEndObject();
+                }
+
+                writer.WriteEndArray();
+            }
+
             writer.WriteStartArray("results");
             foreach (ExpressionEvalResult item in results)
             {
@@ -318,7 +467,21 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
                 writer.WriteString("status", item.IsOk ? "Ok" : "Error");
                 if (item.IsOk)
                 {
-                    writer.WriteNumber("value", item.Value);
+                    if (item.IsArray)
+                    {
+                        writer.WriteString("valueType", "array");
+                        writer.WriteStartArray("values");
+                        for (int j = 0; j < item.ArrayValues!.Length; j++)
+                        {
+                            writer.WriteNumberValue(item.ArrayValues[j]);
+                        }
+
+                        writer.WriteEndArray();
+                    }
+                    else
+                    {
+                        writer.WriteNumber("value", item.Value);
+                    }
                 }
                 else
                 {
@@ -408,15 +571,20 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
         string Name,
         string Expression,
         bool IsOk,
+        bool IsArray,
         decimal Value,
+        decimal[]? ArrayValues,
         string? ErrorCode,
         int ErrorPosition,
         string? ErrorMessage)
     {
         public static ExpressionEvalResult Ok(string name, string expression, decimal value)
-            => new(name, expression, true, value, null, 0, null);
+            => new(name, expression, true, false, value, null, null, 0, null);
+
+        public static ExpressionEvalResult OkArray(string name, string expression, decimal[] values)
+            => new(name, expression, true, true, 0m, values, null, 0, null);
 
         public static ExpressionEvalResult Fail(string name, string expression, string errorCode, int errorPosition, string errorMessage)
-            => new(name, expression, false, 0m, errorCode, errorPosition, errorMessage);
+            => new(name, expression, false, false, 0m, null, errorCode, errorPosition, errorMessage);
     }
 }

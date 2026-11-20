@@ -6,6 +6,7 @@ using System.Linq;
 using StockAnalyzer.Avalonia.Models;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Indicators.Chart;
 using StockAnalyzer.Core.Utilities;
 using StockAnalyzer.Avalonia.Views.Chart.Renderers;
 
@@ -370,7 +371,9 @@ public sealed class ChartDataSnapshot
                 indValues[kvp.Key] = slicedResult.MainValues;
 
                 // Update Min/Max for Overlays
-                if (settingsMap.TryGetValue(kvp.Key, out var setting) && setting.IsOverlay && setting.IsEnabled)
+                // The block chart overlays (Renko, P&F, Kagi, Three Line Break as time-series indicators) have no meaning on a non-time-series main chart: they are not drawn there, so they must not stretch its axis.
+                if (settingsMap.TryGetValue(kvp.Key, out var setting) && setting.IsOverlay && setting.IsEnabled
+                    && !BlockChartOverlayTypes.IsHiddenOn(chartType, setting.TypeEnum))
                 {
                     foreach (var seriesName in slicedResult.SeriesNames)
                     {
@@ -663,7 +666,9 @@ public sealed class ChartDataSnapshot
                 indValues[kvp.Key] = slicedResult.MainValues;
 
                 // Update Min/Max for Overlays
-                if (settingsMap.TryGetValue(kvp.Key, out var setting) && setting.IsOverlay && setting.IsEnabled)
+                // The block chart overlays (Renko, P&F, Kagi, Three Line Break as time-series indicators) have no meaning on a non-time-series main chart: they are not drawn there, so they must not stretch its axis.
+                if (settingsMap.TryGetValue(kvp.Key, out var setting) && setting.IsOverlay && setting.IsEnabled
+                    && !BlockChartOverlayTypes.IsHiddenOn(chartType, setting.TypeEnum))
                 {
                     foreach (var seriesName in slicedResult.SeriesNames)
                     {

@@ -36,3 +36,5 @@ internal sealed record PowerNode(CalcNode Base, int CaretPosition, CalcNode Expo
 internal sealed record BinaryChainNode(CalcNode First, IReadOnlyList<BinaryChainTerm> Rest) : CalcNode;
 
 internal sealed record CallNode(string Name, int NamePosition, IReadOnlyList<CalcNode> Arguments) : CalcNode;
+
+internal sealed record ArrayLiteralNode(int OpenBracketPosition, IReadOnlyList<CalcNode> Elements) : CalcNode;

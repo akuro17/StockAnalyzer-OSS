@@ -311,6 +311,33 @@ public sealed class EvaluateExpressionsToolTests
     }
 
     [Fact]
+    public async Task HigherOrderBodyReferencingFailedOrLaterExpressionIsRefinedLikeAnyOtherReference()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        using JsonDocument resp = await CallAsync(dispatcher, """
+        {
+          "expressions": [
+            { "name": "bad", "expression": "1 / 0" },
+            { "name": "uses_bad", "expression": "quad_trapz(bad * x, x, 0, 1, 8)" },
+            { "name": "uses_later", "expression": "quad_trapz(later * x, x, 0, 1, 8)" },
+            { "name": "later", "expression": "2" },
+            { "name": "typo", "expression": "mc_integrate(zzz * x, x, 0, 1, 64, 1)" }
+          ]
+        }
+        """);
+
+        Assert.False(McpTestSupport.IsError(resp));
+        JsonElement results = McpTestSupport.Structured(resp).GetProperty("results");
+
+        Assert.Equal("DEPENDENCY_FAILED", results[1].GetProperty("errorCode").GetString());
+        Assert.Equal("UNDEFINED_NAME", results[2].GetProperty("errorCode").GetString());
+        Assert.Contains("declared after", results[2].GetProperty("errorMessage").GetString(), StringComparison.Ordinal);
+        Assert.Equal("UNDEFINED_NAME", results[4].GetProperty("errorCode").GetString());
+        Assert.Equal("mc_integrate(".Length, results[4].GetProperty("errorPosition").GetInt32());
+        Assert.Contains("zzz", results[4].GetProperty("errorMessage").GetString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task DependencyFailedLaterReferenceAndSelfReferenceAreReportedDistinguishably()
     {
         McpMessageDispatcher dispatcher = await StartAsync();
@@ -443,7 +470,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(3, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(4, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal("System.Decimal", root.GetProperty("arithmetic").GetString());
         Assert.Equal("IEEE-754 binary64 narrowed via ToDecimalOrNull (|x| < 7.9e27)", root.GetProperty("transcendentalArithmetic").GetString());
         Assert.Equal(7, root.GetProperty("okCount").GetInt32());
@@ -548,7 +575,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(3, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(4, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal(4, root.GetProperty("okCount").GetInt32());
         Assert.Equal(2, root.GetProperty("errorCount").GetInt32());
 
@@ -671,5 +698,227 @@ public sealed class EvaluateExpressionsToolTests
         Assert.Equal(9m, results[3].GetProperty("value").GetDecimal());
         Assert.Equal("DOMAIN_ERROR", results[4].GetProperty("errorCode").GetString());
         Assert.Equal(13, results[4].GetProperty("errorPosition").GetInt32());
+    }
+
+    [Fact]
+    public async Task V4ArrayVariablesAndChainingEvaluateEndToEnd()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        using JsonDocument resp = await CallAsync(dispatcher, """
+        {
+          "decimalPlaces": 6,
+          "variables": { "lag": 1 },
+          "arrayVariables": {
+            "prices": [100, 102, 104, 107, 111],
+            "weights": [1, 2, 3, 4]
+          },
+          "expressions": [
+            { "name": "tail", "expression": "arr_window(prices, 4)" },
+            { "name": "fail_arr", "expression": "arr_get(tail, 10)" },
+            { "name": "dep_arr", "expression": "arr_len(fail_arr)" },
+            { "name": "w_mean", "expression": "weighted_mean(weights, tail)" },
+            { "name": "poly", "expression": "poly_project(prices, 2, lag)" },
+            { "name": "corr", "expression": "mat_nearest_corr([1, 0.9, 0.9, 0.9, 1, 0.9, 0.9, 0.9, 1])" },
+            { "name": "corr_flags", "expression": "mat_validate_corr(corr)" },
+            { "name": "is_corr", "expression": "mat_is_corr(corr)" },
+            { "name": "sum_tail", "expression": "sum(tail)" }
+          ]
+        }
+        """);
+
+        Assert.False(McpTestSupport.IsError(resp));
+        JsonElement root = McpTestSupport.Structured(resp);
+        Assert.Equal(4, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(2, root.GetProperty("arrayVariables").GetArrayLength());
+        Assert.Equal(7, root.GetProperty("okCount").GetInt32());
+        Assert.Equal(2, root.GetProperty("errorCount").GetInt32());
+
+        JsonElement results = root.GetProperty("results");
+        Assert.Equal("array", results[0].GetProperty("valueType").GetString());
+        decimal[] tail = results[0].GetProperty("values").EnumerateArray().Select(e => e.GetDecimal()).ToArray();
+        Assert.Equal([102m, 104m, 107m, 111m], tail);
+
+        Assert.Equal("DOMAIN_ERROR", results[1].GetProperty("errorCode").GetString());
+        Assert.Equal("DEPENDENCY_FAILED", results[2].GetProperty("errorCode").GetString());
+        Assert.Equal(107.5m, results[3].GetProperty("value").GetDecimal());
+        Assert.True(results[4].GetProperty("value").GetDecimal() > 115m);
+        Assert.Equal("array", results[5].GetProperty("valueType").GetString());
+        Assert.Equal(9, results[5].GetProperty("values").GetArrayLength());
+        Assert.Equal(0m, results[6].GetProperty("value").GetDecimal());
+        Assert.Equal(1m, results[7].GetProperty("value").GetDecimal());
+        Assert.Equal(424m, results[8].GetProperty("value").GetDecimal());
+    }
+
+    [Fact]
+    public async Task V4ArrayVariablesValidationAndBudgetLimitsAreEnforced()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+
+        // Scalar and array variable names share the declared identifier namespace.
+        using JsonDocument dup = await CallAsync(dispatcher, """
+        {
+          "variables": { "x": 1 },
+          "arrayVariables": { "x": [1, 2] },
+          "expressions": [{ "name": "a", "expression": "1" }]
+        }
+        """);
+        Assert.True(McpTestSupport.IsError(dup));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(dup));
+
+        // Combined scalar + array variable count cannot exceed MaxCalculatorVariables (50).
+        string manyArrays = string.Join(",", Enumerable.Range(0, 49).Select(i => $"\"a{i}\":[{i}]"));
+        using JsonDocument tooMany = await CallAsync(dispatcher, $$"""
+        {
+          "variables": { "v1": 1, "v2": 2 },
+          "arrayVariables": { {{manyArrays}} },
+          "expressions": [{ "name": "a", "expression": "v1 + v2" }]
+        }
+        """);
+        Assert.True(McpTestSupport.IsError(tooMany));
+        Assert.Equal(ToolErrorCodes.LimitExceeded, McpTestSupport.ErrorCodeOf(tooMany));
+
+        // Combined input arrayVariables budget (2048) exceeded is refused, while 4*512=2048 + derived arr_window (<=4096 arena) and [] pass.
+        string bigArr = "[" + string.Join(",", Enumerable.Range(0, 512)) + "]";
+        string fiveBigArrays = string.Join(",", Enumerable.Range(0, 5).Select(i => $"\"b{i}\":{bigArr}"));
+        using JsonDocument overBudget = await CallAsync(dispatcher, $$"""
+        {
+          "arrayVariables": { {{fiveBigArrays}} },
+          "expressions": [{ "name": "a", "expression": "1" }]
+        }
+        """);
+        Assert.True(McpTestSupport.IsError(overBudget));
+        Assert.Equal(ToolErrorCodes.LimitExceeded, McpTestSupport.ErrorCodeOf(overBudget));
+
+        string fourBigArrays = string.Join(",", Enumerable.Range(0, 4).Select(i => $"\"b{i}\":{bigArr}"));
+        using JsonDocument exactInputCapAndEmpty = await CallAsync(dispatcher, $$"""
+        {
+          "arrayVariables": { {{fourBigArrays}}, "emptyArr": [] },
+          "expressions": [
+            { "name": "win", "expression": "arr_window(b0, 4)" },
+            { "name": "emptyLen", "expression": "arr_len(emptyArr)" },
+            { "name": "emptySum", "expression": "sum(emptyArr)" }
+          ]
+        }
+        """);
+        Assert.False(McpTestSupport.IsError(exactInputCapAndEmpty));
+        JsonElement capResults = McpTestSupport.Structured(exactInputCapAndEmpty).GetProperty("results");
+        Assert.Equal("Ok", capResults[0].GetProperty("status").GetString());
+        Assert.Equal(0m, capResults[1].GetProperty("value").GetDecimal());
+        Assert.Equal("Error", capResults[2].GetProperty("status").GetString());
+        Assert.Equal("DOMAIN_ERROR", capResults[2].GetProperty("errorCode").GetString());
+    }
+
+    [Fact]
+    public async Task V4LinearDiagnosticsAndRegressionEvaluateEndToEnd()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        using JsonDocument resp = await CallAsync(dispatcher, """
+        {
+          "decimalPlaces": 6,
+          "arrayVariables": {
+            "X": [1, 0, 2, 1, 3, 0, 4, 2, 5, 1, 6, 3],
+            "y": [4, 7, 8, 12, 13, 17]
+          },
+          "expressions": [
+            { "name": "ols_b", "expression": "ols_fit(X, y)" },
+            { "name": "pred", "expression": "ols_predict([7, 2], ols_b)" },
+            { "name": "ridge", "expression": "ridge_fit(X, y, 0.01)" },
+            { "name": "pca", "expression": "pca_project(X, 6, 2, 1)" },
+            { "name": "cov_s", "expression": "[4, 2, 2, 9]" },
+            { "name": "cov_flags", "expression": "mat_validate_cov(cov_s, 1)" },
+            { "name": "corr_r", "expression": "mat_cov_to_corr(cov_s)" },
+            { "name": "rcond2", "expression": "mat_rcond([2, 0, 0, 1], 2, 2, 2)" },
+            { "name": "cond1", "expression": "mat_cond([2, 0, 0, 1], 2, 2, 1)" },
+            { "name": "mahal", "expression": "mahalanobis([2, 3], [0, 0], [1, 0, 0, 1])" },
+            { "name": "bad_cov", "expression": "mat_validate_cov([1, 5, 5, 1], 1)" },
+            { "name": "flag_not_pd", "expression": "has_flag(bad_cov, 7)" },
+            { "name": "is_corr_psd", "expression": "mat_is_corr([1, 1, 1, 1], 0.000000001, 0)" },
+            { "name": "is_corr_pd", "expression": "mat_is_corr([1, 1, 1, 1], 0.000000001, 1)" }
+          ]
+        }
+        """);
+
+        Assert.False(McpTestSupport.IsError(resp));
+        JsonElement root = McpTestSupport.Structured(resp);
+        Assert.Equal(14, root.GetProperty("okCount").GetInt32());
+        Assert.Equal(0, root.GetProperty("errorCount").GetInt32());
+
+        JsonElement results = root.GetProperty("results");
+        decimal[] beta = results[0].GetProperty("values").EnumerateArray().Select(e => e.GetDecimal()).ToArray();
+        Assert.Equal([2m, 2m, 1m], beta);
+        Assert.Equal(18m, results[1].GetProperty("value").GetDecimal());
+        Assert.Equal(3, results[2].GetProperty("values").GetArrayLength());
+        Assert.Equal(6, results[3].GetProperty("values").GetArrayLength());
+        Assert.Equal(0m, results[5].GetProperty("value").GetDecimal());
+        decimal[] corr = results[6].GetProperty("values").EnumerateArray().Select(e => e.GetDecimal()).ToArray();
+        Assert.Equal(1m, corr[0]);
+        Assert.Equal(0.333333m, corr[1]);
+        Assert.Equal(0.5m, results[7].GetProperty("value").GetDecimal());
+        Assert.Equal(2m, results[8].GetProperty("value").GetDecimal());
+        Assert.InRange(results[9].GetProperty("value").GetDecimal(), 3.60555m, 3.60556m);
+        Assert.Equal(1m, results[11].GetProperty("value").GetDecimal());
+        Assert.Equal(1m, results[12].GetProperty("value").GetDecimal());
+        Assert.Equal(0m, results[13].GetProperty("value").GetDecimal());
+    }
+
+    [Fact]
+    public async Task V4RobustStatsTimeSeriesResamplingMcAndPdeEvaluateEndToEnd()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        using JsonDocument resp = await CallAsync(dispatcher, """
+        {
+          "decimalPlaces": 6,
+          "arrayVariables": {
+            "ret": [1, 2, 1.5, 3, 2.5, 4, 3.5, 5, 4.5, 6, 5.5, 7],
+            "pvals": [0.01, 0.04, 0.03, 0.2],
+            "heat": [0, 1, 2, 1, 0]
+          },
+          "expressions": [
+            { "name": "hub", "expression": "huber_loc(ret)" },
+            { "name": "ts_slope", "expression": "theil_sen(ret)" },
+            { "name": "acf1", "expression": "acf(ret, 1)" },
+            { "name": "pacfs", "expression": "pacf_series(ret, 2)" },
+            { "name": "bh", "expression": "p_adjust(pvals, 2)" },
+            { "name": "k_sum", "expression": "diag_kahan_sum([10000000000000000, 1, -10000000000000000])" },
+            { "name": "ci", "expression": "boot_ci(ret, 0, 60, 2, 0.1, 42, 0)" },
+            { "name": "mc_nd", "expression": "mc_integrate_nd(x + y, [x, y], [0, 0], [1, 2], 128, 7, 0)" },
+            { "name": "rich", "expression": "fd_richardson(x^3, x, 2, 0.001, 2)" },
+            { "name": "pde_cn", "expression": "fd_pde_1d(heat, 0.1, 0.2, 0.1, 5, 2, 0)" },
+            { "name": "dl", "expression": "diff_lag(ret, 2, 1)" },
+            { "name": "rich_arr_arg", "expression": "fd_richardson(x^3, x, arr_get(heat, 2), 0.001, 2)" },
+            { "name": "mc1_arr_arg", "expression": "mc_integrate(x, x, 0, arr_get(heat, 2), 64, 1)" },
+            { "name": "mc_nd_arr_arg", "expression": "mc_integrate_nd(x, [x], [0], [arr_get(heat, 2)], 64, 1)" },
+            { "name": "mc_nd_bad_body", "expression": "mc_integrate_nd(sum(heat) * x, [x], [0], [1], 64, 1)" }
+          ]
+        }
+        """);
+
+        Assert.False(McpTestSupport.IsError(resp));
+        JsonElement root = McpTestSupport.Structured(resp);
+        Assert.Equal(4, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(14, root.GetProperty("okCount").GetInt32());
+        Assert.Equal(1, root.GetProperty("errorCount").GetInt32());
+
+        JsonElement results = root.GetProperty("results");
+        Assert.True(results[0].GetProperty("value").GetDecimal() > 2m);
+        Assert.True(results[1].GetProperty("value").GetDecimal() > 0m);
+        Assert.True(results[2].GetProperty("value").GetDecimal() > 0m);
+        Assert.Equal(2, results[3].GetProperty("values").GetArrayLength());
+        Assert.Equal(4, results[4].GetProperty("values").GetArrayLength());
+        Assert.Equal(1m, results[5].GetProperty("value").GetDecimal());
+        Assert.Equal(4, results[6].GetProperty("values").GetArrayLength());
+        Assert.InRange(results[7].GetProperty("value").GetDecimal(), 2.9m, 3.1m);
+        Assert.Equal(12m, results[8].GetProperty("value").GetDecimal());
+        Assert.Equal(5, results[9].GetProperty("values").GetArrayLength());
+        Assert.Equal(1m, results[10].GetProperty("value").GetDecimal());
+        Assert.Equal(12m, results[11].GetProperty("value").GetDecimal());
+        Assert.InRange(results[12].GetProperty("value").GetDecimal(), 1.9m, 2.1m);
+        Assert.InRange(results[13].GetProperty("value").GetDecimal(), 1.9m, 2.1m);
+        Assert.Equal("Error", results[14].GetProperty("status").GetString());
+        // The integrand is evaluated in an isolated scope that does not see array variables, so `heat` inside `sum(heat) * x` is an undefined name there. The body error keeps its own
+        // code (UNDEFINED_NAME), the offending name and its position in the whole expression (never DOMAIN_ERROR, never an exception).
+        Assert.Equal("UNDEFINED_NAME", results[14].GetProperty("errorCode").GetString());
+        Assert.Equal("mc_integrate_nd(sum(".Length, results[14].GetProperty("errorPosition").GetInt32());
+        Assert.Contains("heat", results[14].GetProperty("errorMessage").GetString(), StringComparison.Ordinal);
     }
 }

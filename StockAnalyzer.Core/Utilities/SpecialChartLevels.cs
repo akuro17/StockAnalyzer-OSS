@@ -34,16 +34,31 @@ public static class PointAndFigureLevels
         if (index < 0 || index >= count) return false;
         if (boxSize <= 0m || reversalAmount < ChartConstants.MinPnfReversalAmount) return false;
 
+        bool isUp = IsUpColumn(opens, closes, index);
+        return TryDescribeColumn(isUp, isUp ? highs[index] : lows[index], boxSize, reversalAmount, out reversalPrice, out updatePrice);
+    }
+
+    /// <summary>
+    /// The same two prices from the direction and the END of a column (the top of an X column, the bottom of an O column): the form the incremental overlay engine has, which knows its
+    /// direction exactly. <see cref="TryDescribe"/> delegates here, so there is one formula. False (both 0) for a non-positive box size or fewer boxes than
+    /// <see cref="ChartConstants.MinPnfReversalAmount"/>.
+    /// </summary>
+    public static bool TryDescribeColumn(bool isUp, decimal columnEnd, decimal boxSize, int reversalAmount, out decimal reversalPrice, out decimal updatePrice)
+    {
+        reversalPrice = 0m;
+        updatePrice = 0m;
+        if (boxSize <= 0m || reversalAmount < ChartConstants.MinPnfReversalAmount) return false;
+
         decimal reversalDistance = boxSize * reversalAmount;
-        if (IsUpColumn(opens, closes, index))
+        if (isUp)
         {
-            reversalPrice = highs[index] - reversalDistance;
-            updatePrice = highs[index] + boxSize;
+            reversalPrice = columnEnd - reversalDistance;
+            updatePrice = columnEnd + boxSize;
         }
         else
         {
-            reversalPrice = lows[index] + reversalDistance;
-            updatePrice = lows[index] - boxSize;
+            reversalPrice = columnEnd + reversalDistance;
+            updatePrice = columnEnd - boxSize;
         }
 
         return true;
@@ -89,7 +104,44 @@ public static class KagiLevels
         var last = segments[columnEnd];
         if (last.Open == last.Close) return false;
 
-        reversalPrice = last.IsBullish ? last.Close - threshold : last.Close + threshold;
+        reversalPrice = ReversalPrice(last.IsBullish, last.Close, threshold);
+        return true;
+    }
+
+    /// <summary>The reversal price from the direction and the end price of the current column: an up column reverses at its end minus the threshold, a down column at its end plus it. The single formula of the Data tab and of the Kagi overlay engine.</summary>
+    public static decimal ReversalPrice(bool isUp, decimal columnEnd, decimal threshold) => isUp ? columnEnd - threshold : columnEnd + threshold;
+}
+
+/// <summary>
+/// The single definition of the "Reversal" and "Update" price of a Renko brick. Before the block chart overlays the same two formulas existed only inline in the Data tab view model;
+/// the overlays (<c>RenkoBarEngine</c>) use this class, and the Data tab keeps its own inline copy until it is switched over in a separate task (a parity test pins both to the same numbers).
+/// <list type="bullet">
+/// <item>Up brick: Reversal = brick bottom - R x size, Update = brick top + size. Down brick: Reversal = brick top + R x size, Update = brick bottom - size.</item>
+/// <item>R (<paramref name="reversalBricks"/>) is measured from the brick EDGE nearest to the reversal (the bottom of an up brick, the top of a down brick), as the calculator does
+/// (<c>close &lt;= bottom - R x size</c> reverses an up trend, both boundaries inclusive).</item>
+/// </list>
+/// Nothing here allocates or throws: false means the value is not defined for the input.
+/// </summary>
+public static class RenkoLevels
+{
+    public static bool TryDescribe(bool isUp, decimal brickHigh, decimal brickLow, decimal size, int reversalBricks, out decimal reversalPrice, out decimal updatePrice)
+    {
+        reversalPrice = 0m;
+        updatePrice = 0m;
+        if (size <= 0m || reversalBricks < ChartConstants.MinRenkoReversalBricks) return false;
+
+        decimal reversalDistance = size * reversalBricks;
+        if (isUp)
+        {
+            reversalPrice = brickLow - reversalDistance;
+            updatePrice = brickHigh + size;
+        }
+        else
+        {
+            reversalPrice = brickHigh + reversalDistance;
+            updatePrice = brickLow - size;
+        }
+
         return true;
     }
 }

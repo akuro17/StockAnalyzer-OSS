@@ -104,7 +104,17 @@ public class ScreenerDefaultParameterCacheParityTests
     //   Old -> new hash: B5E52100F8E585F97D06009A6348E5BB07809ACAA9CB4E2EC5D3AA928D0824A8 -> 0E0E03D9A015FB58CB712F1A321700920D482DCBDBE445EDBE9256987CF61BF4.
     //   No existing line changed: removing the three types returns the prior pin (ValuesOfTheTypesBeforeStatisticalPlanR7AreUnchanged). Every value of the three types equals a
     //   standalone calculation (TheStatisticalPlanR7TypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod).
-    private const string PinnedFingerprint = "0E0E03D9A015FB58CB712F1A321700920D482DCBDBE445EDBE9256987CF61BF4";
+    // SEVENTEENTH re-pin, 2026-11-20 (block chart overlays plan T5; NOT purely additive, OWNER-APPROVED 2026-11-20, decision D-3 = A, lessons_webai_expansion_20261114_0001 second part):
+    //   Changed types: Renko, PointAndFigure, Kagi, ThreeLineBreak (20 lines, 5 variants each; the line count stays 1090). They were enum members since before plan 03 with NO registered class, so every earlier pin has
+    //   their lines as "<type>|<variant>|null"; the block chart overlays registered them and the lines now carry the last value of the default overlay on the 300 test candles
+    //   (Renko and PointAndFigure 111.41697076761336714285714286, Kagi and ThreeLineBreak 111.614824415321480, the same for all five variants: the overlays have no Period setting).
+    //   Old -> new hash: 0E0E03D9A015FB58CB712F1A321700920D482DCBDBE445EDBE9256987CF61BF4 -> 6C58ECD5DC1E8B6A5B597420303579E2A46575E00B6AEA0F9DD0E2AE27018DC6.
+    //   PRECONDITION shown BEFORE the pin was changed (OnlyTheLinesOfTheFourBlockChartTypesMovedSinceTheSixteenthPin, permanent): the line-by-line comparison of the report with the four types put back to "null" finds exactly those
+    //   20 differences and none in any other type, and that reconstruction hashes to the sixteenth pin. Every earlier pin stays reproducible (the permanent proofs put the four types back to "null" via ChangedLineOldValues
+    //   or BuildReportBeforeBlockChartOverlays). Every value equals a standalone calculation (TheBlockChartTypesGiveTheValueOfAStandaloneCalculation_WithAndWithoutAPeriod).
+    private const string PinnedFingerprint = "6C58ECD5DC1E8B6A5B597420303579E2A46575E00B6AEA0F9DD0E2AE27018DC6";
+    /// <summary>The pin before the block chart overlays registered Renko, PointAndFigure, Kagi and ThreeLineBreak (the sixteenth re-pin); reproduced by <see cref="BuildReportBeforeBlockChartOverlays"/>.</summary>
+    private const string FingerprintBeforeBlockChartOverlays = "0E0E03D9A015FB58CB712F1A321700920D482DCBDBE445EDBE9256987CF61BF4";
     private const string FingerprintBeforeStatisticalPlanR7 = "B5E52100F8E585F97D06009A6348E5BB07809ACAA9CB4E2EC5D3AA928D0824A8";
     private const string FingerprintBeforeStatisticalPlanR6 = "1BC8A3D13E73F7AF697134C792DC98659F127FE6BEB5A8F3AE1339B5AFD852C5";
     private const string FingerprintBeforeStatisticalPlanR5 = "1CCEBB29BF8A6BAC8FB13A00B6345E9E976CF644A1BC10DFD6EEF72853FBA770";
@@ -163,7 +173,15 @@ public class ScreenerDefaultParameterCacheParityTests
     private static readonly string[] FormerPlaceholderTypes = { "Garch11", "HurstExponent", "Entropy" };
 
     /// <summary>The value text of every line of a type whose VALUES changed after the earlier pins were taken (eleventh re-pin: SSAAnomaly, one value for all variants).</summary>
-    private static readonly Dictionary<string, string> ChangedLineOldValues = new() { ["SSAAnomaly"] = "-1.43361075590879" };
+    private static readonly Dictionary<string, string> ChangedLineOldValues = new()
+    {
+        ["SSAAnomaly"] = "-1.43361075590879",
+        // The four block chart types were unregistered enum members before the seventeenth re-pin: every earlier pin has their lines as "<type>|<variant>|null".
+        ["Renko"] = NoValueText,
+        ["PointAndFigure"] = NoValueText,
+        ["Kagi"] = NoValueText,
+        ["ThreeLineBreak"] = NoValueText,
+    };
 
     /// <summary>The value text of a former placeholder in every pin before plan 04 (what <c>BuildReport</c> wrote for a calculation without a result).</summary>
     private const string FormerPlaceholderValue = NoValueText;
@@ -439,7 +457,7 @@ public class ScreenerDefaultParameterCacheParityTests
     {
         // SkewnessKurtosis, JarqueBera and LjungBoxQ (and the later R4 types) are removed and NOTHING else is put back (the eleventh re-pin's SSAAnomaly values are current): returns the prior whole-report pin identically.
         var removed = StatisticalPlanR3Types.Concat(StatisticalPlanR4Types).Concat(StatisticalPlanR5Types).Concat(StatisticalPlanR6Types).Concat(StatisticalPlanR7Types).ToHashSet();
-        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        string actual = Fingerprint(string.Join("\n", BuildReportBeforeBlockChartOverlays().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
         _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN " + actual);
         Assert.Equal(FingerprintBeforeStatisticalPlan, actual);
     }
@@ -489,7 +507,7 @@ public class ScreenerDefaultParameterCacheParityTests
     {
         // DownsideDeviation and BipowerVariation (and the later R5 type) are removed and NOTHING else is put back: returns the R3 whole-report pin identically.
         var removed = StatisticalPlanR4Types.Concat(StatisticalPlanR5Types).Concat(StatisticalPlanR6Types).Concat(StatisticalPlanR7Types).ToHashSet();
-        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        string actual = Fingerprint(string.Join("\n", BuildReportBeforeBlockChartOverlays().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
         _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN_R4 " + actual);
         Assert.Equal(FingerprintBeforeStatisticalPlanR4, actual);
     }
@@ -533,7 +551,7 @@ public class ScreenerDefaultParameterCacheParityTests
     {
         // ADFStationarity (and the later R6 type) is removed and NOTHING else is put back: returns the R4 whole-report pin identically.
         var removed = StatisticalPlanR5Types.Concat(StatisticalPlanR6Types).Concat(StatisticalPlanR7Types).ToHashSet();
-        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        string actual = Fingerprint(string.Join("\n", BuildReportBeforeBlockChartOverlays().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
         _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN_R5 " + actual);
         Assert.Equal(FingerprintBeforeStatisticalPlanR5, actual);
     }
@@ -565,7 +583,7 @@ public class ScreenerDefaultParameterCacheParityTests
     {
         // VarianceRatio (and the later R7 types) is removed and NOTHING else is put back: returns the R5 whole-report pin identically.
         var removed = StatisticalPlanR6Types.Concat(StatisticalPlanR7Types).ToHashSet();
-        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        string actual = Fingerprint(string.Join("\n", BuildReportBeforeBlockChartOverlays().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
         _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN_R6 " + actual);
         Assert.Equal(FingerprintBeforeStatisticalPlanR6, actual);
     }
@@ -597,7 +615,7 @@ public class ScreenerDefaultParameterCacheParityTests
     {
         // QuantileBands, TheilSenRegression and CornishFisherVaR are removed and NOTHING else is put back: returns the R6 whole-report pin identically.
         var removed = StatisticalPlanR7Types.ToHashSet();
-        string actual = Fingerprint(string.Join("\n", BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
+        string actual = Fingerprint(string.Join("\n", BuildReportBeforeBlockChartOverlays().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]))) + "\n");
         _output.WriteLine("FINGERPRINT_BEFORE_STATISTICAL_PLAN_R7 " + actual);
         Assert.Equal(FingerprintBeforeStatisticalPlanR7, actual);
     }
@@ -642,6 +660,74 @@ public class ScreenerDefaultParameterCacheParityTests
             {
                 Assert.NotNull(standalone);
             }
+
+            Assert.Equal(standalone, screener);
+        }
+    }
+
+    /// <summary>The four enum members that block chart overlays turned from unregistered placeholders (a line of "null") into registered indicators (seventeenth re-pin).</summary>
+    private static readonly string[] BlockChartOverlayTypeNames = { "Renko", "PointAndFigure", "Kagi", "ThreeLineBreak" };
+
+    private const int VariantsPerType = 5;
+
+    /// <summary>The current report with the lines of the four block chart types put back to what they were before they were registered ("null"); every other line is the current one.</summary>
+    private static string BuildReportBeforeBlockChartOverlays()
+    {
+        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
+        {
+            string[] parts = line.Split('|');
+            return BlockChartOverlayTypeNames.Contains(parts[0]) ? $"{parts[0]}|{parts[1]}|{NoValueText}" : line;
+        });
+        return string.Join("\n", lines) + "\n";
+    }
+
+    /// <summary>
+    /// PRECONDITION of the seventeenth re-pin (owner supplement 2, lessons_webai_expansion_20261114_0001 second part): only the lines of Renko, PointAndFigure, Kagi and ThreeLineBreak moved (20 lines,
+    /// null to a value) and NOTHING else did. Proof: (1) a line-by-line comparison of the current report with the reconstruction (those four types back to "null") finds differences in no other type;
+    /// (2) the reconstruction hashes to the sixteenth pin, so every other line is byte-identical to the report that pin was taken from.
+    /// </summary>
+    [Fact]
+    public void OnlyTheLinesOfTheFourBlockChartTypesMovedSinceTheSixteenthPin()
+    {
+        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] before = BuildReportBeforeBlockChartOverlays().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(before.Length, current.Length);
+
+        var moved = new List<string>();
+        for (int i = 0; i < current.Length; i++)
+        {
+            if (current[i] == before[i]) continue;
+
+            string type = current[i].Split('|')[0];
+            Assert.True(BlockChartOverlayTypeNames.Contains(type), $"a line of {type} moved: '{before[i]}' -> '{current[i]}'");
+            Assert.EndsWith("|null", before[i]);
+            Assert.False(current[i].EndsWith("|null", StringComparison.Ordinal), $"the line of {type} stayed null: '{current[i]}'");
+            moved.Add(current[i]);
+        }
+
+        foreach (string line in moved) _output.WriteLine("MOVED " + line);
+        Assert.Equal(BlockChartOverlayTypeNames.Length * VariantsPerType, moved.Count);
+        Assert.Equal(FingerprintBeforeBlockChartOverlays, Fingerprint(string.Join("\n", before) + "\n"));
+    }
+
+    [Theory]
+    [InlineData(IndicatorType.Renko)]
+    [InlineData(IndicatorType.PointAndFigure)]
+    [InlineData(IndicatorType.Kagi)]
+    [InlineData(IndicatorType.ThreeLineBreak)]
+    public void TheBlockChartTypesGiveTheValueOfAStandaloneCalculation_WithAndWithoutAPeriod(IndicatorType type)
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        // The overlays have no Period setting: a Period key from the screener is ignored, so every variant gives the value of the default settings (the last bar of the Main series).
+        decimal? standalone = StockAnalyzer.Core.Models.Indicators.IndicatorFactory.CreateStatic(type, DefaultCoreIndicatorSettings.GetDefault().Single(s => s.TypeEnum == type).ParameterObject)!.Calculate(candles).MainValues[^1];
+        Assert.NotNull(standalone);
+
+        foreach (int? period in new int?[] { null, 7, 9, 25 })
+        {
+            var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+            decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles);
 
             Assert.Equal(standalone, screener);
         }
