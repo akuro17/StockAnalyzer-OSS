@@ -20,9 +20,9 @@ public sealed class CatalogToolsTests
     private static readonly IndicatorCatalog Catalog = new(Factory, new ScreenerCatalogProvider());
     private static readonly ScreenerCatalog ScreenerCatalogForTests = new(new ScreenerCatalogProvider(), Factory);
 
-    private static async Task<JsonDocument> CallCapabilitiesAsync(string argumentsJson = "{}", McpLimits? limits = null)
+    private static async Task<JsonDocument> CallCapabilitiesAsync(string argumentsJson = "{}", McpLimits? limits = null, bool compactDefaults = false)
     {
-        McpMessageDispatcher dispatcher = await McpTestSupport.InitializedAsync(new IMcpTool[] { new GetCapabilitiesTool(Catalog, ScreenerCatalogForTests) }, limits);
+        McpMessageDispatcher dispatcher = await McpTestSupport.InitializedAsync(new IMcpTool[] { new GetCapabilitiesTool(Catalog, ScreenerCatalogForTests, compactDefaults: compactDefaults) }, limits);
         return (await McpTestSupport.CallAsync(dispatcher, "sa_get_capabilities", argumentsJson))!;
     }
 
@@ -51,8 +51,19 @@ public sealed class CatalogToolsTests
             Assert.False(i.TryGetProperty("outputSeriesNames", out _));
         });
         Assert.Equal("bars", result.GetProperty("periodUnit").GetString());
+        Assert.False(result.GetProperty("compactDefaults").GetBoolean());
         Assert.Equal(new[] { "D1", "W1", "MN1" }, result.GetProperty("supportedTimeFrames").EnumerateArray().Select(t => t.GetString()).ToArray());
         Assert.Equal("Oscillator", Indicator(response, "RSI").GetProperty("category").GetString());
+    }
+
+    [Fact]
+    public async Task CompactDefaultsDisclosureReflectsServerMode()
+    {
+        using var off = await CallCapabilitiesAsync(compactDefaults: false);
+        using var on = await CallCapabilitiesAsync(compactDefaults: true);
+
+        Assert.False(McpTestSupport.Structured(off).GetProperty("compactDefaults").GetBoolean());
+        Assert.True(McpTestSupport.Structured(on).GetProperty("compactDefaults").GetBoolean());
     }
 
     [Fact]

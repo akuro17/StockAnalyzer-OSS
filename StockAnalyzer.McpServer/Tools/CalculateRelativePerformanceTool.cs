@@ -41,14 +41,16 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
     private readonly CandleWindowLoader _loader;
     private readonly ErrorMessageSanitizer _sanitizer;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public CalculateRelativePerformanceTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, ErrorMessageSanitizer sanitizer, McpLimits limits)
+    public CalculateRelativePerformanceTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, ErrorMessageSanitizer sanitizer, McpLimits limits, bool compactDefaults = false)
     {
         _gateway = gateway;
         _symbols = symbols;
         _loader = new CandleWindowLoader(gateway);
         _sanitizer = sanitizer;
         _limits = limits;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_calculate_relative_performance";
@@ -83,7 +85,7 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
         int tail = ToolArgs.PositiveWithin(arguments, TailArgument, _limits.DefaultOutputTailBars, _limits.MaxOutputTailBars);
-        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments, _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null);
 
         int primaryBars = await CountPrimaryBarsAsync(symbol, timeFrame, endDate, lookback, cancellationToken).ConfigureAwait(false);
 

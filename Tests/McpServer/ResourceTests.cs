@@ -49,7 +49,7 @@ public sealed class ResourceTests : IDisposable
         return dispatcher;
     }
 
-    private async Task<McpMessageDispatcher> StartRealAsync()
+    private async Task<McpMessageDispatcher> StartRealAsync(IReadOnlyList<string>? toolsets = null)
     {
         IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -59,7 +59,7 @@ public sealed class ResourceTests : IDisposable
             ["MarketDataSettings:MetadataPath"] = _fixture.Settings.MetadataPath,
             ["MarketDataSettings:TickerListPath"] = _fixture.Settings.TickerListPath,
         }).Build();
-        McpServerRuntime runtime = McpServerComposition.Create(configuration, new LogSink(new StringWriter()));
+        McpServerRuntime runtime = McpServerComposition.Create(configuration, new LogSink(new StringWriter()), toolsets: toolsets);
         _runtimes.Add(runtime);
         await runtime.Dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
         return runtime.Dispatcher;
@@ -328,6 +328,39 @@ public sealed class ResourceTests : IDisposable
         {
             string response = (await dispatcher.DispatchAsync($$$"""{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"{{{uri}}}"}}""", CancellationToken.None))!;
             Assert.True(System.Text.Encoding.UTF8.GetByteCount(response) < limit, uri);
+        }
+    }
+
+    [Fact]
+    public async Task TheServerOffersToolDocumentationTemplate_AndWhitelistsActiveToolsOnly()
+    {
+        McpMessageDispatcher full = await StartRealAsync();
+        using var templates = await SendAsync(full, "resources/templates/list");
+        JsonElement[] list = templates.RootElement.GetProperty("result").GetProperty("resourceTemplates").EnumerateArray().ToArray();
+        JsonElement docTemplate = Assert.Single(list);
+        Assert.Equal("stockanalyzer://docs/tools/{name}", docTemplate.GetProperty("uriTemplate").GetString());
+        Assert.Equal(McpResourceRegistry.MarkdownMimeType, docTemplate.GetProperty("mimeType").GetString());
+
+        using var readCandles = await SendAsync(full, "resources/read", """{"uri":"stockanalyzer://docs/tools/sa_get_candles"}""");
+        JsonElement content = readCandles.RootElement.GetProperty("result").GetProperty("contents")[0];
+        Assert.Equal("stockanalyzer://docs/tools/sa_get_candles", content.GetProperty("uri").GetString());
+        Assert.Equal(McpResourceRegistry.MarkdownMimeType, content.GetProperty("mimeType").GetString());
+        Assert.Contains("# `sa_get_candles`", content.GetProperty("text").GetString(), StringComparison.Ordinal);
+
+        // Excluded by --toolset, wrong case, unknown, or path traversal must all fail with -32002 ResourceNotFound
+        McpMessageDispatcher coreOnly = await StartRealAsync(toolsets: new[] { "core" });
+        foreach (string blockedUri in new[]
+        {
+            "stockanalyzer://docs/tools/sa_run_backtest",
+            "stockanalyzer://docs/tools/SA_GET_CANDLES",
+            "stockanalyzer://docs/tools/sa_does_not_exist",
+            "stockanalyzer://docs/tools/../README",
+            "stockanalyzer://docs/tools/sa_get_candles/../sa_list_tickers",
+            "stockanalyzer://docs/tools/",
+        })
+        {
+            using var blocked = await SendAsync(coreOnly, "resources/read", $$"""{"uri":"{{blockedUri}}"}""");
+            Assert.Equal(JsonRpcErrorCodes.ResourceNotFound, ErrorCode(blocked));
         }
     }
 }

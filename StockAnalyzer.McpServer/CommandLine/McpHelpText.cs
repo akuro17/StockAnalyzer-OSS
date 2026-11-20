@@ -44,6 +44,7 @@ internal static class McpHelpText
         options.Add((McpCommandLine.EnableDiscussionToken, "Offer the opt-in discussion tools: a volatile board in memory on which several AI agents talk about an analysis (nothing is saved under Data); listed below when this option is given."));
         options.Add(($"{McpCommandLine.ToolsetToken} <names>", $"Restrict read-only tools to comma-separated profiles ({string.Join(", ", McpToolsetCatalog.AllowedProfiles)}). Default all."));
         options.Add(($"{McpCommandLine.ResponseFormatToken} <mode>", $"Tool response format: {McpCommandLine.DualFormat} (default, text + structuredContent) or {McpCommandLine.TextOnlyFormat} (text only)."));
+        options.Add((McpCommandLine.CompactDefaultsToken, "Apply compact and rounded defaults on allowlisted tools when callers omit formatting parameters (excludes sa_evaluate_expressions)."));
         AppendTable(text, options);
 
         text.Append($"{NewLine}Configuration:{NewLine}");

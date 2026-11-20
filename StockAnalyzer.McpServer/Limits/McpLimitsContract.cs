@@ -1,5 +1,6 @@
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.MathUtils;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Watchlist;
 
 namespace StockAnalyzer.McpServer.Limits;
@@ -48,10 +49,10 @@ public static class McpLimitsContract
     /// <summary>Hard upper end of <see cref="McpLimits.MaxChartImageBars"/> and of the listed bars.</summary>
     private const int MaxChartImageBarsBandMaximum = 5000;
 
-    private const int Kibibyte = 1024;
-    private const int Mebibyte = 1024 * Kibibyte;
-    private const int MinResponseTokensBand = 1024;
-    private const int MaxResponseTokensBand = (8 * Mebibyte) / 4;
+    private const int Kibibyte = McpResponseTokenLimits.Kibibyte;
+    private const int Mebibyte = McpResponseTokenLimits.Mebibyte;
+    private const int MinResponseTokensBand = McpResponseTokenLimits.Minimum;
+    private const int MaxResponseTokensBand = McpResponseTokenLimits.Maximum;
 
     /// <summary>
     /// Safe upper estimate of the JSON bytes of one sa_run_backtest equity-curve point (date, a decimal equity of up to 28 digits, a decimal drawdown

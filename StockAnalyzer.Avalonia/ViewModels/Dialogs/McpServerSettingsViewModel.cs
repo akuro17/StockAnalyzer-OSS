@@ -38,14 +38,26 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
 
     // Group A: Launch options & Server controls
     [ObservableProperty] private bool _enableDiscussion;
+    [ObservableProperty] private bool _useTextOnlyResponse;
+    [ObservableProperty] private bool _compactDefaults;
+    [ObservableProperty] private int _maxResponseTokens = McpResponseTokenLimits.Default;
     [ObservableProperty] private string _toolset = string.Empty;
     [ObservableProperty] private bool _useAllToolsets = true;
     [ObservableProperty] private bool _useCoreToolset;
     [ObservableProperty] private bool _useTechnicalToolset;
+    [ObservableProperty] private bool _useTechnicalExtendedToolset;
     [ObservableProperty] private bool _useScreenerToolset;
     [ObservableProperty] private bool _useBacktestToolset;
     [ObservableProperty] private bool _usePortfolioToolset;
     [ObservableProperty] private bool _useMlToolset;
+
+    public int MaxResponseTokensMinimum => McpResponseTokenLimits.Minimum;
+    public int MaxResponseTokensMaximum => McpResponseTokenLimits.Maximum;
+    public int MaxResponseTokensIncrement => McpResponseTokenLimits.Kibibyte;
+    public int MaxResponseTokensRecommended => McpResponseTokenLimits.RecommendedStrict;
+
+    [RelayCommand]
+    private void ApplyRecommendedMaxResponseTokens() => MaxResponseTokens = McpResponseTokenLimits.RecommendedStrict;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StopServerCommand))]
@@ -118,6 +130,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
 
     // Per-field validation error properties for UI bindings
     public string ToolsetError => ErrorOf(nameof(Toolset));
+    public string MaxResponseTokensError => ErrorOf(nameof(MaxResponseTokens));
     public string MaxActiveSessionsError => ErrorOf(nameof(MaxActiveSessions));
     public string MaxParticipantsPerSessionError => ErrorOf(nameof(MaxParticipantsPerSession));
     public string MaxMessagesPerSessionError => ErrorOf(nameof(MaxMessagesPerSession));
@@ -148,6 +161,9 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
         {
             var current = BuildSettings();
             return current.EnableDiscussion != _snapshot.EnableDiscussion
+                || current.UseTextOnlyResponse != _snapshot.UseTextOnlyResponse
+                || current.CompactDefaults != _snapshot.CompactDefaults
+                || current.MaxResponseTokens != _snapshot.MaxResponseTokens
                 || !string.Equals(current.Toolset, _snapshot.Toolset, StringComparison.Ordinal)
                 || current.Discussion.MaxActiveSessions != _snapshot.Discussion.MaxActiveSessions
                 || current.Discussion.MaxParticipantsPerSession != _snapshot.Discussion.MaxParticipantsPerSession
@@ -252,6 +268,9 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
         try
         {
             EnableDiscussion = s.EnableDiscussion;
+            UseTextOnlyResponse = s.UseTextOnlyResponse;
+            CompactDefaults = s.CompactDefaults;
+            MaxResponseTokens = s.MaxResponseTokens;
             Toolset = McpToolsetProfiles.NormalizeText(s.Toolset);
             SyncCheckboxesFromToolset(Toolset);
             MaxActiveSessions = s.Discussion.MaxActiveSessions;
@@ -299,6 +318,9 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
         return new McpServerSettings
         {
             EnableDiscussion = EnableDiscussion,
+            UseTextOnlyResponse = UseTextOnlyResponse,
+            CompactDefaults = CompactDefaults,
+            MaxResponseTokens = MaxResponseTokens,
             Toolset = McpToolsetProfiles.NormalizeText(Toolset),
             Discussion = new DiscussionSettings
             {
@@ -341,9 +363,9 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
         if (_isSyncingToolset) return;
         if (value)
         {
-            SetDomainFlagsAndToolset(false, false, false, false, false, false, string.Empty);
+            SetDomainFlagsAndToolset(false, false, false, false, false, false, false, string.Empty);
         }
-        else if (!UseCoreToolset && !UseTechnicalToolset && !UseScreenerToolset && !UseBacktestToolset && !UsePortfolioToolset && !UseMlToolset)
+        else if (!UseCoreToolset && !UseTechnicalToolset && !UseTechnicalExtendedToolset && !UseScreenerToolset && !UseBacktestToolset && !UsePortfolioToolset && !UseMlToolset)
         {
             _isSyncingToolset = true;
             try
@@ -359,6 +381,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
 
     partial void OnUseCoreToolsetChanged(bool value) => UpdateToolsetFromDomainFlags();
     partial void OnUseTechnicalToolsetChanged(bool value) => UpdateToolsetFromDomainFlags();
+    partial void OnUseTechnicalExtendedToolsetChanged(bool value) => UpdateToolsetFromDomainFlags();
     partial void OnUseScreenerToolsetChanged(bool value) => UpdateToolsetFromDomainFlags();
     partial void OnUseBacktestToolsetChanged(bool value) => UpdateToolsetFromDomainFlags();
     partial void OnUsePortfolioToolsetChanged(bool value) => UpdateToolsetFromDomainFlags();
@@ -375,6 +398,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
                 UseAllToolsets = true;
                 UseCoreToolset = false;
                 UseTechnicalToolset = false;
+                UseTechnicalExtendedToolset = false;
                 UseScreenerToolset = false;
                 UseBacktestToolset = false;
                 UsePortfolioToolset = false;
@@ -388,6 +412,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
                 UseAllToolsets = hasAll;
                 UseCoreToolset = !hasAll && parsed.Contains(McpToolsetProfiles.Core, StringComparer.Ordinal);
                 UseTechnicalToolset = !hasAll && parsed.Contains(McpToolsetProfiles.Technical, StringComparer.Ordinal);
+                UseTechnicalExtendedToolset = !hasAll && parsed.Contains(McpToolsetProfiles.TechnicalExtended, StringComparer.Ordinal);
                 UseScreenerToolset = !hasAll && parsed.Contains(McpToolsetProfiles.Screener, StringComparer.Ordinal);
                 UseBacktestToolset = !hasAll && parsed.Contains(McpToolsetProfiles.Backtest, StringComparer.Ordinal);
                 UsePortfolioToolset = !hasAll && parsed.Contains(McpToolsetProfiles.Portfolio, StringComparer.Ordinal);
@@ -404,9 +429,10 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
     {
         if (_isSyncingToolset) return;
 
-        var selected = new List<string>(6);
+        var selected = new List<string>(7);
         if (UseCoreToolset) selected.Add(McpToolsetProfiles.Core);
         if (UseTechnicalToolset) selected.Add(McpToolsetProfiles.Technical);
+        if (UseTechnicalExtendedToolset) selected.Add(McpToolsetProfiles.TechnicalExtended);
         if (UseScreenerToolset) selected.Add(McpToolsetProfiles.Screener);
         if (UseBacktestToolset) selected.Add(McpToolsetProfiles.Backtest);
         if (UsePortfolioToolset) selected.Add(McpToolsetProfiles.Portfolio);
@@ -432,13 +458,14 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
         }
     }
 
-    private void SetDomainFlagsAndToolset(bool core, bool technical, bool screener, bool backtest, bool portfolio, bool ml, string toolset)
+    private void SetDomainFlagsAndToolset(bool core, bool technical, bool technicalExtended, bool screener, bool backtest, bool portfolio, bool ml, string toolset)
     {
         _isSyncingToolset = true;
         try
         {
             UseCoreToolset = core;
             UseTechnicalToolset = technical;
+            UseTechnicalExtendedToolset = technicalExtended;
             UseScreenerToolset = screener;
             UseBacktestToolset = backtest;
             UsePortfolioToolset = portfolio;
@@ -468,7 +495,11 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
             && e.PropertyName != nameof(ServerStatusText)
             && e.PropertyName != nameof(IsServerOperationInProgress)
             && e.PropertyName != nameof(ServerActionMessage)
-            && !e.PropertyName!.StartsWith("Use", StringComparison.Ordinal)
+            && e.PropertyName != nameof(MaxResponseTokensMinimum)
+            && e.PropertyName != nameof(MaxResponseTokensMaximum)
+            && e.PropertyName != nameof(MaxResponseTokensIncrement)
+            && e.PropertyName != nameof(MaxResponseTokensRecommended)
+            && (e.PropertyName == nameof(UseTextOnlyResponse) || !e.PropertyName!.StartsWith("Use", StringComparison.Ordinal))
             && !e.PropertyName.EndsWith("Error", StringComparison.Ordinal))
         {
             ValidateAll();
@@ -485,6 +516,11 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
         if (!string.IsNullOrEmpty(normalizedToolset) && !McpToolsetProfiles.TryParse(normalizedToolset, out _))
         {
             _errors[nameof(Toolset)] = $"Allowed profiles (comma-separated): {string.Join(", ", McpToolsetProfiles.AllowedProfiles)}.";
+        }
+
+        if (!McpResponseTokenLimits.Contains(MaxResponseTokens))
+        {
+            _errors[nameof(MaxResponseTokens)] = $"Must be between {McpResponseTokenLimits.Minimum:N0} and {McpResponseTokenLimits.Maximum:N0}.";
         }
 
         ValidateBand(nameof(MaxActiveSessions), MaxActiveSessions, DiscussionLimits.ActiveSessionsBand);
@@ -533,6 +569,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
     private void RaiseErrorPropertiesChanged()
     {
         OnPropertyChanged(nameof(ToolsetError));
+        OnPropertyChanged(nameof(MaxResponseTokensError));
         OnPropertyChanged(nameof(MaxActiveSessionsError));
         OnPropertyChanged(nameof(MaxParticipantsPerSessionError));
         OnPropertyChanged(nameof(MaxMessagesPerSessionError));

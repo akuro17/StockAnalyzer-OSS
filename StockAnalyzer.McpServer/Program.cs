@@ -42,7 +42,8 @@ try
         enableExecution: commandLine.EnableExecution,
         enableDiscussion: commandLine.EnableDiscussion,
         toolsets: commandLine.Toolsets,
-        responseFormat: commandLine.ResponseFormat);
+        responseFormat: commandLine.ResponseFormat,
+        compactDefaults: commandLine.CompactDefaults);
 }
 catch (Exception error) when (error is McpLimitsException or ExecutionLimitsException or DiscussionLimitsException)
 {

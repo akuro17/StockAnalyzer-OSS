@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
@@ -28,6 +29,8 @@ internal sealed class ToolExecutor
     private readonly IToolCallObserver? _observer;
     private readonly McpResponseFormat _responseFormat;
     private int _observerFailureLogged;
+
+    internal McpResponseFormat ResponseFormat => _responseFormat;
 
     /// <param name="observer">Told once about every call that reaches the executor (see <see cref="IToolCallObserver"/>); null tells nobody and costs nothing.</param>
     /// <param name="responseFormat">Selects whether <c>structuredContent</c> is emitted next to <c>content[0].text</c> (<see cref="McpResponseFormat.Dual"/>) or omitted (<see cref="McpResponseFormat.TextOnly"/>).</param>
@@ -230,7 +233,7 @@ internal sealed class ToolExecutor
         try
         {
             ToolOutput output = await work.WaitAsync(execution.Token).ConfigureAwait(false);
-            return SuccessResult(output, outcome);
+            return SuccessResult(registered.Tool, output, outcome);
         }
         catch (OperationCanceledException)
         {
@@ -312,7 +315,7 @@ internal sealed class ToolExecutor
         return new ToolOutput(await tool.InvokeAsync(arguments, cancellationToken).ConfigureAwait(false), null);
     }
 
-    private string SuccessResult(ToolOutput output, CallOutcome outcome)
+    private string SuccessResult(IMcpTool tool, ToolOutput output, CallOutcome outcome)
     {
         string hint = output.Png is null ? "Request fewer items or a narrower window." : "Request a smaller image (width, height) or fewer bars (barCount).";
         if (output.Png is not null && EstimatedImageResultBytes(output.StructuredJson, output.Png.Length, _responseFormat) > _limits.MaxResponseBytes)
@@ -325,9 +328,10 @@ internal sealed class ToolExecutor
         {
             long multiplier = _responseFormat == McpResponseFormat.TextOnly ? 1L : 2L;
             long imageTextTokens = ((multiplier * Encoding.UTF8.GetByteCount(output.StructuredJson)) + 3L) / 4L;
-            if (imageTextTokens > _limits.MaxResponseTokens)
+            long totalImageTokens = imageTextTokens + EstimateImageVisionTokens(output.Png);
+            if (totalImageTokens > _limits.MaxResponseTokens)
             {
-                return Fail(outcome, TokenLimitExceeded(imageTextTokens));
+                return Fail(outcome, TokenLimitExceeded(totalImageTokens, tool));
             }
         }
 
@@ -343,7 +347,7 @@ internal sealed class ToolExecutor
             long estimatedTokens = ((long)resultBytes + 3L) / 4L;
             if (estimatedTokens > _limits.MaxResponseTokens)
             {
-                return Fail(outcome, TokenLimitExceeded(estimatedTokens));
+                return Fail(outcome, TokenLimitExceeded(estimatedTokens, tool));
             }
         }
 
@@ -351,10 +355,38 @@ internal sealed class ToolExecutor
         return result;
     }
 
-    private ToolException TokenLimitExceeded(long estimatedTokens) => new(
+    private ToolException TokenLimitExceeded(long estimatedTokens, IMcpTool tool) => new(
         ToolErrorCodes.LimitExceeded,
         $"The result is estimated at {estimatedTokens} tokens, exceeding the limit of {_limits.MaxResponseTokens} tokens.",
-        hint: "Pass compactRows: true, compactReport: true, includeSeries: false, summary: true, decimalPlaces: 4, or request a smaller count / narrower window.");
+        hint: tool.CompactUsageHint ?? "Request fewer items, fewer fields, or a narrower window.");
+
+    /// <summary>
+    /// Estimates vision-model tokens for an image block. Reads PNG IHDR dimensions when the 8-byte PNG signature,
+    /// <c>IHDR</c> chunk type, and positive width/height are present; falls back to a byte-size ratio otherwise.
+    /// </summary>
+    internal static long EstimateImageVisionTokens(ReadOnlySpan<byte> png)
+    {
+        if (png.Length == 0)
+        {
+            return 0L;
+        }
+
+        if (png.Length >= 24
+            && png[0] == 0x89 && png[1] == 0x50 && png[2] == 0x4E && png[3] == 0x47
+            && png[4] == 0x0D && png[5] == 0x0A && png[6] == 0x1A && png[7] == 0x0A
+            && png[12] == 0x49 && png[13] == 0x48 && png[14] == 0x44 && png[15] == 0x52)
+        {
+            uint width = BinaryPrimitives.ReadUInt32BigEndian(png.Slice(16, 4));
+            uint height = BinaryPrimitives.ReadUInt32BigEndian(png.Slice(20, 4));
+            if (width > 0 && height > 0)
+            {
+                ulong pixels = (ulong)width * height;
+                return (long)Math.Max(1UL, (pixels + 749UL) / 750UL);
+            }
+        }
+
+        return Math.Max(1L, ((long)png.Length + 29L) / 30L);
+    }
 
     /// <summary>
     /// A lower bound of the result's size in bytes: the JSON once (text-only) or twice (text block and structuredContent) plus the Base64 form of the PNG (4 characters per 3 bytes).

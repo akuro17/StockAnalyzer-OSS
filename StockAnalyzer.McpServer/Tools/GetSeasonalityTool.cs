@@ -31,13 +31,15 @@ internal sealed class GetSeasonalityTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly CandleWindowLoader _loader;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public GetSeasonalityTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits)
+    public GetSeasonalityTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits, bool compactDefaults = false)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
         _loader = new CandleWindowLoader(gateway);
         _limits = limits ?? throw new ArgumentNullException(nameof(limits));
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_get_seasonality";
@@ -84,7 +86,7 @@ internal sealed class GetSeasonalityTool : IMcpTool
         int startMonth = (int)(rawStartMonth ?? DefaultStartMonth);
 
         int years = ToolArgs.PositiveWithin(arguments, YearsArgument, Math.Min(DefaultYears, _limits.MaxSeasonalityYears), _limits.MaxSeasonalityYears);
-        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments, _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null);
 
         List<CandleData> loaded;
         if (endDate is not null)

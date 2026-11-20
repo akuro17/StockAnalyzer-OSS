@@ -1,6 +1,7 @@
 using System.Text.Json;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Limits;
 
 namespace StockAnalyzer.McpServer.Tools;
@@ -16,25 +17,32 @@ internal sealed class GetTickerMetadataTool : IMcpTool
 
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
     private readonly McpLimits _limits;
+    private readonly McpResultHandleStore _resultHandles;
 
-    public GetTickerMetadataTool(IReadOnlyStockAnalyzerGateway gateway, McpLimits limits)
+    public GetTickerMetadataTool(IReadOnlyStockAnalyzerGateway gateway, McpLimits limits, McpResultHandleStore? resultHandles = null)
     {
         _gateway = gateway;
         _limits = limits;
+        _resultHandles = resultHandles ?? new McpResultHandleStore();
     }
 
     public string Name => "sa_get_ticker_metadata";
 
     public string Description =>
-        $"Returns locally stored metadata and latest bar date for 1..{_limits.MaxSymbolsPerMetadataCall} symbols; supports optional {FieldsArgument} filter to reduce tokens. Read-only; never fetches data. " +
+        $"Returns locally stored metadata and latest bar date for 1..{_limits.MaxSymbolsPerMetadataCall} symbols (via {SymbolsArgument} or {McpResultHandleStore.SymbolsFromResultIdArgument}); supports optional {FieldsArgument} filter to reduce tokens. Read-only; never fetches data. " +
         ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
 
+    public string? CompactUsageHint => "Pass fewer fields, fewer symbols, or paginate with resultOffset/resultLimit.";
+
     public string? ExampleArgumentsJson => "{\"symbols\":[\"7203-T\",\"6758-T\"]}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .StringArray(SymbolsArgument, "Ticker symbols; '.' and '-' are interchangeable.", required: true, minItems: 1)
+        .StringArray(SymbolsArgument, $"Ticker symbols (1 to {_limits.MaxSymbolsPerMetadataCall}); '.' and '-' are interchangeable. Mutually exclusive with {McpResultHandleStore.SymbolsFromResultIdArgument}; one of the two is required.", minItems: 1)
+        .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle id from sa_run_screener or sa_filter_tickers ({McpResultHandleStore.StoreResultArgument} true). Mutually exclusive with {SymbolsArgument}.")
+        .Integer(McpResultHandleStore.ResultOffsetArgument, $"0-based start index within {McpResultHandleStore.SymbolsFromResultIdArgument}. Default 0.", defaultValue: 0, minimum: 0)
+        .Integer(McpResultHandleStore.ResultLimitArgument, $"Maximum symbols to read from {McpResultHandleStore.SymbolsFromResultIdArgument} (1..{_limits.MaxSymbolsPerMetadataCall}).", minimum: 1, maximum: _limits.MaxSymbolsPerMetadataCall)
         .StringArray(FieldsArgument, $"Metadata properties to return (camelCase names, for example sector or marketCap); {string.Join(", ", AlwaysWrittenNames)} are always written. Default: every stored property.", minItems: 1)
         .Build();
 
@@ -78,22 +86,44 @@ internal sealed class GetTickerMetadataTool : IMcpTool
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        IReadOnlyList<string> requested = ToolArgs.StringArray(arguments, SymbolsArgument)!;
-        if (requested.Count > _limits.MaxSymbolsPerMetadataCall)
+        IReadOnlyList<string>? requested = ToolArgs.StringArray(arguments, SymbolsArgument);
+        string? resultId = ToolArgs.String(arguments, McpResultHandleStore.SymbolsFromResultIdArgument);
+        if ((requested is not null) == (resultId is not null))
         {
+            string parameter = requested is not null ? McpResultHandleStore.SymbolsFromResultIdArgument : SymbolsArgument;
             throw new ToolException(
-                ToolErrorCodes.LimitExceeded,
-                $"At most {_limits.MaxSymbolsPerMetadataCall} symbols per call.",
-                SymbolsArgument,
-                $"Send {_limits.MaxSymbolsPerMetadataCall} or fewer symbols.");
+                ToolErrorCodes.InvalidArgument,
+                $"Give exactly one of '{SymbolsArgument}' and '{McpResultHandleStore.SymbolsFromResultIdArgument}'.",
+                parameter,
+                "Name the symbols, or pass a stored result handle.");
+        }
+
+        (int sliceOffset, int? sliceLimit) = McpResultHandleStore.ReadSliceArguments(arguments, resultId, 1, _limits.MaxSymbolsPerMetadataCall);
+        IReadOnlyList<string> sourceSymbols;
+        if (resultId is not null)
+        {
+            sourceSymbols = _resultHandles.ResolveSymbolsSlice(resultId, 1, _limits.MaxSymbolsPerMetadataCall, sliceOffset, sliceLimit);
+        }
+        else
+        {
+            if (requested!.Count > _limits.MaxSymbolsPerMetadataCall)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.LimitExceeded,
+                    $"At most {_limits.MaxSymbolsPerMetadataCall} symbols per call.",
+                    SymbolsArgument,
+                    $"Send {_limits.MaxSymbolsPerMetadataCall} or fewer symbols.");
+            }
+
+            sourceSymbols = requested;
         }
 
         IReadOnlySet<string>? onlyFields = ReadFields(arguments);
 
         var symbols = new List<string>();
-        for (int index = 0; index < requested.Count; index++)
+        for (int index = 0; index < sourceSymbols.Count; index++)
         {
-            string canonical = SymbolResolver.Canonical(requested[index], $"{SymbolsArgument}[{index}]");
+            string canonical = SymbolResolver.Canonical(sourceSymbols[index], $"{SymbolsArgument}[{index}]");
             if (!symbols.Contains(canonical, StringComparer.Ordinal))
             {
                 symbols.Add(canonical);
@@ -120,7 +150,7 @@ internal sealed class GetTickerMetadataTool : IMcpTool
         return ToolJson.Build(writer =>
         {
             writer.WriteStartObject();
-            writer.WriteNumber("requestedCount", requested.Count);
+            writer.WriteNumber("requestedCount", sourceSymbols.Count);
             writer.WriteNumber("uniqueCount", symbols.Count);
             writer.WriteStartArray("results");
             foreach (var (symbol, metadata, lastUpdated) in results)

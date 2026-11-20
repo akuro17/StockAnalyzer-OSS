@@ -25,17 +25,20 @@ internal sealed class SeriesOutputOptions
     /// <summary>The most decimal places <c>decimalPlaces</c> may name (owner decision U-02: 0..10).</summary>
     public const int MaxDecimalPlaces = 10;
 
+    /// <summary>Default decimal rounding precision enabled by <c>--compact-defaults</c>.</summary>
+    public const int DefaultCompactDecimalPlaces = 4;
+
     /// <summary>
     /// The description every tool that offers <c>summaryDistribution</c> gives the argument (one text, so the two tools cannot disagree).
     /// </summary>
     public static readonly string SummaryDistributionDescription =
-        $"Adds median, iqr, mad, skewness, excessKurtosis and robustTrendSlope (null, not an error, when trendBars > {SeriesSummaryStatistics.MaxRobustTrendBars}) to each summary; needs summary true. Default false.";
+        $"Add median, iqr, mad, skewness, excessKurtosis, robustTrendSlope (null, not an error, when trendBars>{SeriesSummaryStatistics.MaxRobustTrendBars}); needs summary true. Default false.";
 
     /// <summary>
     /// The description every tool that offers <c>summaryBars</c> gives the argument (one text, so the two tools cannot disagree).
     /// </summary>
     public static string SummaryBarsDescription(McpLimits limits)
-        => $"Trailing calculated bars covered by summary ({SeriesSummaryStatistics.MinTrendBars}..{McpLimitsContract.EffectiveMaxSummaryBars(limits)}); needs summary true. Default: all calculated bars.";
+        => $"Trailing bars for summary ({SeriesSummaryStatistics.MinTrendBars}..{McpLimitsContract.EffectiveMaxSummaryBars(limits)}); needs summary true. Default: all calculated bars.";
 
     private SeriesOutputOptions(bool includeSeries, bool summary, bool summaryDistribution, int trendBars, int? summaryBars, IReadOnlyList<long> lookbackOffsets, int? decimalPlaces)
     {
@@ -72,9 +75,9 @@ internal sealed class SeriesOutputOptions
     /// Reads <c>decimalPlaces</c> (0 to <see cref="MaxDecimalPlaces"/>; below 0 is INVALID_ARGUMENT, above it LIMIT_EXCEEDED); null when the call does not name it.
     /// The one reading of the argument for every tool that offers it.
     /// </summary>
-    public static int? ReadDecimalPlaces(JsonElement arguments)
+    public static int? ReadDecimalPlaces(JsonElement arguments, int? defaultDecimalPlaces = null)
         => ToolArgs.Integer(arguments, DecimalPlacesArgument) is null
-            ? null
+            ? defaultDecimalPlaces
             : ToolArgs.NonNegativeWithin(arguments, DecimalPlacesArgument, 0, MaxDecimalPlaces);
 
     /// <summary>
@@ -89,7 +92,7 @@ internal sealed class SeriesOutputOptions
 
     /// <summary>The schema text of <c>decimalPlaces</c> for a tool that rounds the numbers named by <paramref name="what"/> (output only; no calculation uses a rounded number).</summary>
     public static string DecimalPlacesDescription(string what)
-        => $"Round {what} to 0..{MaxDecimalPlaces} decimal places (away from zero; output only). Default: unrounded.";
+        => $"Round {what} (0..{MaxDecimalPlaces}, output only). Default: unrounded.";
 
     /// <summary>
     /// The double counterpart of <see cref="Round(decimal, int)"/>, for a tool whose statistic is a double: a non-finite value is returned unchanged (the writer decides how it is shown),
@@ -123,71 +126,16 @@ internal sealed class SeriesOutputOptions
     /// <c>includeSeries</c> gets; the rule that a call without series must ask for a summary or past values applies only where the series are on by default
     /// (a tool whose default answer is the latest values, as sa_calculate_indicators_batch, needs no such request).
     /// </summary>
-    public static SeriesOutputOptions Read(JsonElement arguments, McpLimits limits, bool includeSeriesDefault = true)
+    public static SeriesOutputOptions Read(JsonElement arguments, McpLimits limits, bool includeSeriesDefault = true, bool compactDefaults = false)
     {
-        bool includeSeries = ToolArgs.Boolean(arguments, IncludeSeriesArgument) ?? includeSeriesDefault;
-        bool summary = ToolArgs.Boolean(arguments, SummaryArgument) ?? false;
-        bool summaryDistribution = ToolArgs.Boolean(arguments, SummaryDistributionArgument) ?? false;
-        if (summaryDistribution && !summary)
-        {
-            throw new ToolException(
-                ToolErrorCodes.InvalidArgument,
-                $"'{SummaryDistributionArgument}' adds fields to the summary and has no effect without '{SummaryArgument}'.",
-                SummaryDistributionArgument,
-                $"Set {SummaryArgument} to true, or omit {SummaryDistributionArgument}.");
-        }
+        bool effectiveIncludeSeriesDefault = compactDefaults ? false : includeSeriesDefault;
+        bool includeSeries = ToolArgs.Boolean(arguments, IncludeSeriesArgument) ?? effectiveIncludeSeriesDefault;
+        bool? explicitSummary = ToolArgs.Boolean(arguments, SummaryArgument);
+        bool requestedSummaryDistribution = ToolArgs.Boolean(arguments, SummaryDistributionArgument) ?? false;
 
         int trendBars = McpLimitsContract.EffectiveDefaultTrendBars(limits);
-        if (ToolArgs.Integer(arguments, TrendBarsArgument) is { } requested)
-        {
-            int largest = McpLimitsContract.EffectiveMaxTrendBars(limits);
-            if (!summary)
-            {
-                throw new ToolException(
-                    ToolErrorCodes.InvalidArgument,
-                    $"'{TrendBarsArgument}' is the trend window of the summary and has no effect without '{SummaryArgument}'.",
-                    TrendBarsArgument,
-                    $"Set {SummaryArgument} to true, or omit {TrendBarsArgument}.");
-            }
-
-            if (requested < SeriesSummaryStatistics.MinTrendBars)
-            {
-                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{TrendBarsArgument}' must be at least {SeriesSummaryStatistics.MinTrendBars}.", TrendBarsArgument);
-            }
-
-            if (requested > largest)
-            {
-                throw new ToolException(ToolErrorCodes.LimitExceeded, $"Argument '{TrendBarsArgument}' is larger than the limit {largest}.", TrendBarsArgument, $"Use {largest} or less.");
-            }
-
-            trendBars = (int)requested;
-        }
-
-        int? summaryBars = null;
-        if (ToolArgs.Integer(arguments, SummaryBarsArgument) is { } requestedBars)
-        {
-            int largestBars = McpLimitsContract.EffectiveMaxSummaryBars(limits);
-            if (!summary)
-            {
-                throw new ToolException(
-                    ToolErrorCodes.InvalidArgument,
-                    $"'{SummaryBarsArgument}' is the number of last bars the summary covers and has no effect without '{SummaryArgument}'.",
-                    SummaryBarsArgument,
-                    $"Set {SummaryArgument} to true, or omit {SummaryBarsArgument}.");
-            }
-
-            if (requestedBars < SeriesSummaryStatistics.MinTrendBars)
-            {
-                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{SummaryBarsArgument}' must be at least {SeriesSummaryStatistics.MinTrendBars}.", SummaryBarsArgument);
-            }
-
-            if (requestedBars > largestBars)
-            {
-                throw new ToolException(ToolErrorCodes.LimitExceeded, $"Argument '{SummaryBarsArgument}' is larger than the limit {largestBars}.", SummaryBarsArgument, $"Use {largestBars} or less.");
-            }
-
-            summaryBars = (int)requestedBars;
-        }
+        long? requestedTrendBars = ToolArgs.Integer(arguments, TrendBarsArgument);
+        long? requestedSummaryBars = ToolArgs.Integer(arguments, SummaryBarsArgument);
 
         var offsets = new List<long>();
         if (arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(LookbackOffsetsArgument, out JsonElement list))
@@ -222,6 +170,67 @@ internal sealed class SeriesOutputOptions
             }
         }
 
+        bool summary = explicitSummary ?? (compactDefaults && includeSeriesDefault && offsets.Count == 0);
+        if (requestedSummaryDistribution && !summary)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{SummaryDistributionArgument}' adds fields to the summary and has no effect without '{SummaryArgument}'.",
+                SummaryDistributionArgument,
+                $"Set {SummaryArgument} to true, or omit {SummaryDistributionArgument}.");
+        }
+
+        if (requestedTrendBars is { } requested)
+        {
+            int largest = McpLimitsContract.EffectiveMaxTrendBars(limits);
+            if (!summary)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InvalidArgument,
+                    $"'{TrendBarsArgument}' is the trend window of the summary and has no effect without '{SummaryArgument}'.",
+                    TrendBarsArgument,
+                    $"Set {SummaryArgument} to true, or omit {TrendBarsArgument}.");
+            }
+
+            if (requested < SeriesSummaryStatistics.MinTrendBars)
+            {
+                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{TrendBarsArgument}' must be at least {SeriesSummaryStatistics.MinTrendBars}.", TrendBarsArgument);
+            }
+
+            if (requested > largest)
+            {
+                throw new ToolException(ToolErrorCodes.LimitExceeded, $"Argument '{TrendBarsArgument}' is larger than the limit {largest}.", TrendBarsArgument, $"Use {largest} or less.");
+            }
+
+            trendBars = (int)requested;
+        }
+
+        int? summaryBars = null;
+        if (requestedSummaryBars is { } requestedBars)
+        {
+            int largestBars = McpLimitsContract.EffectiveMaxSummaryBars(limits);
+            if (!summary)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InvalidArgument,
+                    $"'{SummaryBarsArgument}' is the number of last bars the summary covers and has no effect without '{SummaryArgument}'.",
+                    SummaryBarsArgument,
+                    $"Set {SummaryArgument} to true, or omit {SummaryBarsArgument}.");
+            }
+
+            if (requestedBars < SeriesSummaryStatistics.MinTrendBars)
+            {
+                throw new ToolException(ToolErrorCodes.InvalidArgument, $"Argument '{SummaryBarsArgument}' must be at least {SeriesSummaryStatistics.MinTrendBars}.", SummaryBarsArgument);
+            }
+
+            if (requestedBars > largestBars)
+            {
+                throw new ToolException(ToolErrorCodes.LimitExceeded, $"Argument '{SummaryBarsArgument}' is larger than the limit {largestBars}.", SummaryBarsArgument, $"Use {largestBars} or less.");
+            }
+
+            summaryBars = (int)requestedBars;
+        }
+
         if (includeSeriesDefault && !includeSeries && !summary && offsets.Count == 0)
         {
             throw new ToolException(
@@ -231,7 +240,8 @@ internal sealed class SeriesOutputOptions
                 $"Also set {SummaryArgument} true or name {LookbackOffsetsArgument}, or leave {IncludeSeriesArgument} out.");
         }
 
-        return new SeriesOutputOptions(includeSeries, summary, summaryDistribution, trendBars, summaryBars, offsets, ReadDecimalPlaces(arguments));
+        int? defaultDecimalPlaces = compactDefaults ? DefaultCompactDecimalPlaces : null;
+        return new SeriesOutputOptions(includeSeries, summary, requestedSummaryDistribution, trendBars, summaryBars, offsets, ReadDecimalPlaces(arguments, defaultDecimalPlaces));
     }
 
     /// <summary>

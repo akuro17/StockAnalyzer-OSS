@@ -28,7 +28,8 @@ internal sealed record McpCommandLineResult(
     bool EnableExecution,
     bool EnableDiscussion = false,
     IReadOnlyList<string>? Toolsets = null,
-    McpResponseFormat ResponseFormat = McpResponseFormat.Dual);
+    McpResponseFormat ResponseFormat = McpResponseFormat.Dual,
+    bool CompactDefaults = false);
 
 /// <summary>
 /// Reads the command-line arguments. A pure function: it touches no stream and starts nothing, so it can run before the
@@ -41,9 +42,10 @@ internal static class McpCommandLine
     public const string EnableExecutionToken = "--enable-execution";
     public const string EnableDiscussionToken = McpToolsetProfiles.EnableDiscussionToken;
     public const string ToolsetToken = McpToolsetProfiles.ToolsetToken;
-    public const string ResponseFormatToken = "--response-format";
-    public const string DualFormat = "dual";
-    public const string TextOnlyFormat = "text-only";
+    public const string ResponseFormatToken = McpToolsetProfiles.ResponseFormatToken;
+    public const string DualFormat = McpToolsetProfiles.DualResponseFormat;
+    public const string TextOnlyFormat = McpToolsetProfiles.TextOnlyResponseFormat;
+    public const string CompactDefaultsToken = McpToolsetProfiles.CompactDefaultsToken;
 
     /// <summary>Exit code of a normal end.</summary>
     public const int ExitOk = 0;
@@ -67,6 +69,7 @@ internal static class McpCommandLine
         bool version = false;
         bool enableExecution = false;
         bool enableDiscussion = false;
+        bool compactDefaults = false;
         string? toolName = null;
         IReadOnlyList<string>? toolsets = null;
         McpResponseFormat? responseFormat = null;
@@ -111,11 +114,20 @@ internal static class McpCommandLine
             {
                 enableDiscussion = true;
             }
+            else if (string.Equals(token, CompactDefaultsToken, StringComparison.Ordinal))
+            {
+                if (compactDefaults)
+                {
+                    return InvalidMessage(DuplicateArgumentMessage(token));
+                }
+
+                compactDefaults = true;
+            }
             else if (string.Equals(token, ToolsetToken, StringComparison.Ordinal))
             {
                 if (toolsets is not null)
                 {
-                    return Invalid(token);
+                    return InvalidMessage(DuplicateArgumentMessage(token));
                 }
 
                 if (index + 1 >= args.Length)
@@ -136,7 +148,7 @@ internal static class McpCommandLine
             {
                 if (responseFormat is not null)
                 {
-                    return Invalid(token);
+                    return InvalidMessage(DuplicateArgumentMessage(token));
                 }
 
                 if (index + 1 >= args.Length)
@@ -168,12 +180,15 @@ internal static class McpCommandLine
         }
 
         McpCommand command = version ? new McpCommand.Version() : help ? new McpCommand.Help(toolName) : new McpCommand.Run();
-        return new McpCommandLineResult(command, enableExecution, enableDiscussion, toolsets, responseFormat ?? McpResponseFormat.Dual);
+        return new McpCommandLineResult(command, enableExecution, enableDiscussion, toolsets, responseFormat ?? McpResponseFormat.Dual, compactDefaults);
     }
 
     /// <summary>The one-line message for an argument that is not accepted; an over-long token is cut so the line stays short.</summary>
     public static string UnknownArgumentMessage(string token)
         => $"Unknown argument '{TruncateForEcho(token)}'. Run with {HelpToken}.";
+
+    public static string DuplicateArgumentMessage(string token)
+        => $"Duplicate argument '{TruncateForEcho(token)}'. Run with {HelpToken}.";
 
     public static string UnknownToolMessage(string name)
         => $"Unknown tool '{TruncateForEcho(name)}'. Run with {HelpToken}.";

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Configuration;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.McpServer.Limits;
 
@@ -75,7 +76,17 @@ public class McpLimitsTests
         Assert.Equal(1024 * 1024, limits.MaxDrawingFileBytes);
         Assert.Equal(200, limits.MaxImageBarsListed);
         Assert.Equal(WatchlistConstants.MaxRelativePerformanceTargets, limits.MaxComparisonTargets);
+        Assert.Equal(McpResponseTokenLimits.Default, limits.MaxResponseTokens);
         Assert.Equal(1, McpLimitsContract.MaxConcurrentToolCalls);
+    }
+
+    [Theory]
+    [InlineData(McpResponseTokenLimits.Minimum)]
+    [InlineData(McpResponseTokenLimits.RecommendedStrict)]
+    [InlineData(McpResponseTokenLimits.Maximum)]
+    public void TheEdgesOfTheResponseTokensBandAreAccepted(int value)
+    {
+        McpLimitsContract.Validate(new McpLimits { MaxResponseTokens = value });
     }
 
     public static TheoryData<string, int> OutOfBand => new()
@@ -123,6 +134,8 @@ public class McpLimitsTests
         { nameof(McpLimits.MaxConcurrentReadOnlyCalls), 17 },
         { nameof(McpLimits.MaxResponseBytes), 65535 },
         { nameof(McpLimits.MaxResponseBytes), 8 * 1024 * 1024 + 1 },
+        { nameof(McpLimits.MaxResponseTokens), McpResponseTokenLimits.Minimum - 1 },
+        { nameof(McpLimits.MaxResponseTokens), McpResponseTokenLimits.Maximum + 1 },
         { nameof(McpLimits.MaxRequestBytes), 4095 },
         { nameof(McpLimits.MaxScreenerSymbols), 5001 },
         { nameof(McpLimits.MaxReturnedMatches), 1001 },

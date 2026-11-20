@@ -44,13 +44,15 @@ internal sealed class ProjectPricePathTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly CandleWindowLoader _loader;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public ProjectPricePathTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits)
+    public ProjectPricePathTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits, bool compactDefaults = false)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
         _loader = new CandleWindowLoader(gateway);
         _limits = limits ?? throw new ArgumentNullException(nameof(limits));
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_project_price_path";
@@ -73,22 +75,22 @@ internal sealed class ProjectPricePathTool : IMcpTool
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"method\":\"Arima\",\"horizonBars\":20}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .String(SymbolArgument, "Ticker symbol; '.' and '-' are interchangeable (7203.T and 7203-T are the same).", required: true)
-        .String(TimeFrameArgument, $"Time frame of the bars ({ToolArgs.SupportedTimeFrameNames}).", required: true, allowedValues: Enum.GetNames<TimeFrame>())
-        .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, bars up to this date are evaluated.")
-        .Integer(LookbackArgument, $"Stored bars loaded up to endDate, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
-        .String(MethodArgument, "Projection extrapolation method (Arima, Fft, Ssa, Hmm).", required: true, allowedValues: AllowedMethods)
-        .Integer(HorizonBarsArgument, $"Number of forward bars to project (1..{_limits.MaxProjectionBars}). Default {DefaultHorizonBars}.", defaultValue: DefaultHorizonBars, minimum: 1, maximum: _limits.MaxProjectionBars)
-        .Number(ConfidenceMultiplierArgument, $"Band width in model standard deviations (0.0..5.0); lower/upper = projected value -/+ this many standard deviations. Default {DefaultConfidenceMultiplier}.")
-        .Integer(ArimaPArgument, "ARIMA autoregressive order p (0..5). Default 1.", defaultValue: 1, minimum: 0, maximum: 5)
-        .Integer(ArimaDArgument, "ARIMA differencing degree d (0..2). Default 1.", defaultValue: 1, minimum: 0, maximum: 2)
-        .Integer(ArimaQArgument, "ARIMA moving-average order q (0..5). Default 1.", defaultValue: 1, minimum: 0, maximum: 5)
-        .Integer(FftHarmonicsArgument, "FFT number of dominant harmonic components (1..10). Default 3.", defaultValue: 3, minimum: 1, maximum: 10)
-        .Integer(SsaEmbeddingDimensionArgument, $"SSA lag window embedding dimension (2..100). Default {IndicatorDefaultConstants.SsaDefaultEmbeddingDimension}.", defaultValue: IndicatorDefaultConstants.SsaDefaultEmbeddingDimension, minimum: 2, maximum: 100)
-        .Integer(SsaNumComponentsArgument, $"SSA number of principal reconstructed components (1..20). Default {IndicatorDefaultConstants.SsaDefaultNumComponents}.", defaultValue: IndicatorDefaultConstants.SsaDefaultNumComponents, minimum: 1, maximum: 20)
-        .Integer(HmmStatesArgument, $"HMM hidden state count (2..3). Default {IndicatorDefaultConstants.HmmStates}.", defaultValue: IndicatorDefaultConstants.HmmStates, minimum: 2, maximum: 3)
-        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("the value, lower and upper of every projected point"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .String(SymbolArgument, "Ticker symbol ('.' == '-', e.g. 7203-T).", required: true)
+        .String(TimeFrameArgument, $"Bar timeframe ({ToolArgs.SupportedTimeFrameNames}).", required: true, allowedValues: Enum.GetNames<TimeFrame>())
+        .String(EndDateArgument, $"Inclusive end date ({ToolJson.DateFormat}).")
+        .Integer(LookbackArgument, $"Stored bars loaded up to endDate (1..{_limits.MaxCandlesPerRequest}).", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
+        .String(MethodArgument, "Extrapolation method.", required: true, allowedValues: AllowedMethods)
+        .Integer(HorizonBarsArgument, $"Forward bars to project (1..{_limits.MaxProjectionBars}). Default {DefaultHorizonBars}.", defaultValue: DefaultHorizonBars, minimum: 1, maximum: _limits.MaxProjectionBars)
+        .Number(ConfidenceMultiplierArgument, $"Band width in model std devs (0.0..5.0). Default {DefaultConfidenceMultiplier}.")
+        .Integer(ArimaPArgument, "ARIMA p order (0..5). Default 1.", defaultValue: 1, minimum: 0, maximum: 5)
+        .Integer(ArimaDArgument, "ARIMA d differencing (0..2). Default 1.", defaultValue: 1, minimum: 0, maximum: 2)
+        .Integer(ArimaQArgument, "ARIMA q order (0..5). Default 1.", defaultValue: 1, minimum: 0, maximum: 5)
+        .Integer(FftHarmonicsArgument, "FFT dominant harmonics (1..10). Default 3.", defaultValue: 3, minimum: 1, maximum: 10)
+        .Integer(SsaEmbeddingDimensionArgument, $"SSA lag dimension (2..100). Default {IndicatorDefaultConstants.SsaDefaultEmbeddingDimension}.", defaultValue: IndicatorDefaultConstants.SsaDefaultEmbeddingDimension, minimum: 2, maximum: 100)
+        .Integer(SsaNumComponentsArgument, $"SSA reconstructed components (1..20). Default {IndicatorDefaultConstants.SsaDefaultNumComponents}.", defaultValue: IndicatorDefaultConstants.SsaDefaultNumComponents, minimum: 1, maximum: 20)
+        .Integer(HmmStatesArgument, $"HMM state count (2..3). Default {IndicatorDefaultConstants.HmmStates}.", defaultValue: IndicatorDefaultConstants.HmmStates, minimum: 2, maximum: 3)
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbol with stored bars. Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("value/lower/upper"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -104,7 +106,7 @@ internal sealed class ProjectPricePathTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
         int horizon = ToolArgs.PositiveWithin(arguments, HorizonBarsArgument, DefaultHorizonBars, _limits.MaxProjectionBars);
-        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments, _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null);
 
         string rawMethod = ToolArgs.String(arguments, MethodArgument)
             ?? throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{MethodArgument}' is required.", MethodArgument);

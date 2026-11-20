@@ -199,6 +199,9 @@ public sealed class TickerMetadataFieldsTests : IDisposable
         Assert.Equal("array", fields.GetProperty("type").GetString());
         Assert.Equal(1, fields.GetProperty("minItems").GetInt32());
         Assert.Equal("string", fields.GetProperty("items").GetProperty("type").GetString());
-        Assert.DoesNotContain("fields", schema.GetProperty("required").EnumerateArray().Select(e => e.GetString()));
+        if (schema.TryGetProperty("required", out JsonElement required))
+        {
+            Assert.DoesNotContain("fields", required.EnumerateArray().Select(e => e.GetString()));
+        }
     }
 }

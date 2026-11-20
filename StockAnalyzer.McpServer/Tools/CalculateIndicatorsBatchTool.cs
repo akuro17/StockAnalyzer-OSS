@@ -37,6 +37,7 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
     private readonly ErrorMessageSanitizer _sanitizer;
     private readonly McpLimits _limits;
     private readonly McpResultHandleStore _resultHandles;
+    private readonly bool _compactDefaults;
 
     public CalculateIndicatorsBatchTool(
         CalculateIndicatorsTool indicators,
@@ -44,7 +45,8 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
         ITickerGroupResolver groupResolver,
         ErrorMessageSanitizer sanitizer,
         McpLimits limits,
-        McpResultHandleStore? resultHandles = null)
+        McpResultHandleStore? resultHandles = null,
+        bool compactDefaults = false)
     {
         _indicators = indicators;
         _symbols = symbols;
@@ -52,6 +54,7 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
         _sanitizer = sanitizer;
         _limits = limits;
         _resultHandles = resultHandles ?? new McpResultHandleStore();
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_calculate_indicators_batch";
@@ -63,28 +66,32 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public string? CompactUsageHint => "Pass includeSeries: false, decimalPlaces: 4, fewer indicators, fewer symbols, or paginate with resultOffset/resultLimit.";
+
     public string? ExampleArgumentsJson =>
         "{\"symbols\":[\"MSFT\",\"7203-T\"],\"timeFrame\":\"D1\",\"indicators\":[{\"id\":\"rsi\",\"type\":\"RSI\",\"parameters\":{\"Period\":14}}]}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .StringArray(SymbolsArgument, $"Symbols to evaluate (1 to {_limits.MaxBatchIndicatorSymbols}); '.' and '-' are interchangeable. Mutually exclusive with {GroupIdArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}; one of the three is required.", minItems: 1)
-        .String(GroupIdArgument, $"Guid of a saved ticker group (from sa_list_ticker_groups) whose members are evaluated. Mutually exclusive with {SymbolsArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.")
-        .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle id from sa_run_screener or sa_filter_tickers ({McpResultHandleStore.StoreResultArgument} true). Mutually exclusive with {SymbolsArgument} and {GroupIdArgument}.")
-        .String(TimeFrameArgument, $"Time frame of the bars. Supported: {ToolArgs.SupportedTimeFrameNames}.", required: true, allowedValues: Enum.GetNames<TimeFrame>())
-        .ObjectArray(IndicatorsArgument, $"The indicators to calculate on every symbol (1 to {_limits.MaxIndicatorsPerCall}); the entries are those of sa_calculate_indicators.", IndicatorItemSchema(), required: true, minItems: 1)
-        .ObjectArray(DerivedArgument, $"Optional series computed from two series of the call (at most {_limits.MaxDerivedSeriesPerCall}), as in sa_calculate_indicators. Omit or send [] for none.", DerivedItemSchema())
-        .Integer(LookbackArgument, $"Stored bars each symbol's calculation runs over, newest last. Default {Math.Min(DefaultLookbackBars, _limits.MaxCandlesPerRequest)}, maximum {_limits.MaxCandlesPerRequest}.", defaultValue: Math.Min(DefaultLookbackBars, _limits.MaxCandlesPerRequest), minimum: 1, maximum: _limits.MaxCandlesPerRequest)
-        .Integer(TailArgument, $"Trailing bars returned per series (needs includeSeries true). Default {DefaultTailBars}, at most {_limits.MaxBatchIndicatorTailBars}.", defaultValue: DefaultTailBars, minimum: 1, maximum: _limits.MaxBatchIndicatorTailBars)
-        .Boolean(SeriesOutputOptions.IncludeSeriesArgument, "true adds series, projectedValues and timestamps (the last outputTailCount bars) to every symbol. Default false: only latestValues, leadingNullCount (and summary, pastValues when asked for).")
-        .Boolean(SeriesOutputOptions.SummaryArgument, "true adds the summary of every series, as in sa_calculate_indicators. Default false.")
-        .Integer(SeriesOutputOptions.TrendBarsArgument, $"Trend window, in bars, of the summary's trendSlope (needs summary true). Default {McpLimitsContract.EffectiveDefaultTrendBars(_limits)}, from {StockAnalyzer.Core.MathUtils.SeriesSummaryStatistics.MinTrendBars} to {McpLimitsContract.EffectiveMaxTrendBars(_limits)}.", defaultValue: McpLimitsContract.EffectiveDefaultTrendBars(_limits), minimum: StockAnalyzer.Core.MathUtils.SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxTrendBars(_limits))
+        .StringArray(SymbolsArgument, $"Symbols (1..{_limits.MaxBatchIndicatorSymbols}; '.' == '-'). Exclusive with {GroupIdArgument}/{McpResultHandleStore.SymbolsFromResultIdArgument}.", minItems: 1)
+        .String(GroupIdArgument, $"Ticker group GUID. Exclusive with {SymbolsArgument}/{McpResultHandleStore.SymbolsFromResultIdArgument}.")
+        .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Result handle id (from storeResult: true). Exclusive with {SymbolsArgument}/{GroupIdArgument}.")
+        .Integer(McpResultHandleStore.ResultOffsetArgument, "0-based handle slice offset. Default 0.", defaultValue: 0, minimum: 0)
+        .Integer(McpResultHandleStore.ResultLimitArgument, $"Max handle symbols to evaluate (1..{_limits.MaxBatchIndicatorSymbols}).", minimum: 1, maximum: _limits.MaxBatchIndicatorSymbols)
+        .String(TimeFrameArgument, $"Bar timeframe ({ToolArgs.SupportedTimeFrameNames}).", required: true, allowedValues: Enum.GetNames<TimeFrame>())
+        .ObjectArray(IndicatorsArgument, $"Indicators per symbol (1..{_limits.MaxIndicatorsPerCall}; see sa_calculate_indicators).", IndicatorItemSchema(), required: true, minItems: 1)
+        .ObjectArray(DerivedArgument, $"Derived series (max {_limits.MaxDerivedSeriesPerCall}; see sa_calculate_indicators).", DerivedItemSchema())
+        .Integer(LookbackArgument, $"Stored bars per symbol (1..{_limits.MaxCandlesPerRequest}). Default {Math.Min(DefaultLookbackBars, _limits.MaxCandlesPerRequest)}.", defaultValue: Math.Min(DefaultLookbackBars, _limits.MaxCandlesPerRequest), minimum: 1, maximum: _limits.MaxCandlesPerRequest)
+        .Integer(TailArgument, $"Trailing bars returned when includeSeries is true (1..{_limits.MaxBatchIndicatorTailBars}). Default {DefaultTailBars}.", defaultValue: DefaultTailBars, minimum: 1, maximum: _limits.MaxBatchIndicatorTailBars)
+        .Boolean(SeriesOutputOptions.IncludeSeriesArgument, "true adds series/projectedValues/timestamps. Default false (latestValues only).")
+        .Boolean(SeriesOutputOptions.SummaryArgument, "true adds per-series summary. Default false.")
+        .Integer(SeriesOutputOptions.TrendBarsArgument, $"Summary trendBars ({StockAnalyzer.Core.MathUtils.SeriesSummaryStatistics.MinTrendBars}..{McpLimitsContract.EffectiveMaxTrendBars(_limits)}; needs summary true). Default {McpLimitsContract.EffectiveDefaultTrendBars(_limits)}.", defaultValue: McpLimitsContract.EffectiveDefaultTrendBars(_limits), minimum: StockAnalyzer.Core.MathUtils.SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxTrendBars(_limits))
         .Integer(SeriesOutputOptions.SummaryBarsArgument, SeriesOutputOptions.SummaryBarsDescription(_limits), minimum: StockAnalyzer.Core.MathUtils.SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxSummaryBars(_limits))
         .Boolean(SeriesOutputOptions.SummaryDistributionArgument, SeriesOutputOptions.SummaryDistributionDescription)
-        .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Offsets (0 or more, at most {_limits.MaxLookbackOffsets}) of bars before the last calculated bar: adds pastValues, as in sa_calculate_indicators.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, $"Round every decimal number of the result to this many decimal places (0 to {SeriesOutputOptions.MaxDecimalPlaces}; away from zero at the midpoint). Counts are never rounded. Default: numbers as calculated.", minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
-        .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, the latest bar of every symbol is the last bar dated on or before it. Default: the latest stored bar.")
-        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1 and MN1 only (ignored for D1): true leaves out a running last period; either value adds the partial-bar keys to every item, as in sa_calculate_indicators. Not given: nothing changes.")
-        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept symbols (and comparison symbols) that are not in the ticker list but have stored daily bars. Default false.")
+        .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Non-negative bar offsets back from last bar for pastValues (max {_limits.MaxLookbackOffsets}).")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("output decimals"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .String(EndDateArgument, $"Inclusive end date ({ToolJson.DateFormat}). Default: latest bar.")
+        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1/MN1 only: true drops incomplete last period; both values add partial-bar keys.")
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbols with stored daily bars. Default false.")
         .Build();
 
     /// <summary>The outcome of one requested symbol: its evaluation, or the reason it has none.</summary>
@@ -102,7 +109,7 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
         JsonElement indicators = arguments.GetProperty(IndicatorsArgument);
         _indicators.CheckIndicatorCount(indicators);
 
-        SeriesOutputOptions output = SeriesOutputOptions.Read(arguments, _limits, includeSeriesDefault: false);
+        SeriesOutputOptions output = SeriesOutputOptions.Read(arguments, _limits, includeSeriesDefault: false, compactDefaults: _compactDefaults);
         if (!output.IncludeSeries && ToolArgs.Integer(arguments, TailArgument) is not null)
         {
             throw new ToolException(
@@ -254,9 +261,10 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
                 "Name the symbols, the group, or a stored result handle.");
         }
 
+        (int sliceOffset, int? sliceLimit) = McpResultHandleStore.ReadSliceArguments(arguments, resultId, 1, _limits.MaxBatchIndicatorSymbols);
         if (resultId is not null)
         {
-            IReadOnlyList<string> stored = _resultHandles.ResolveSymbols(resultId, 1, _limits.MaxBatchIndicatorSymbols);
+            IReadOnlyList<string> stored = _resultHandles.ResolveSymbolsSlice(resultId, 1, _limits.MaxBatchIndicatorSymbols, sliceOffset, sliceLimit);
             return (stored.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), null);
         }
 

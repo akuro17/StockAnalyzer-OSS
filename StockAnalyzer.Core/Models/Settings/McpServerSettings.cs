@@ -26,6 +26,26 @@ public sealed class McpServerSettings
     public string Toolset { get; set; } = string.Empty;
 
     /// <summary>
+    /// When true, StockAnalyzer.McpServer is launched with <c>--response-format text-only</c> so
+    /// <c>outputSchema</c> and <c>structuredContent</c> are omitted from MCP responses.
+    /// Default is false (<c>dual</c>).
+    /// </summary>
+    public bool UseTextOnlyResponse { get; set; }
+
+    /// <summary>
+    /// When true, StockAnalyzer.McpServer is launched with <c>--compact-defaults</c> so eligible
+    /// tools use compact and rounded defaults when callers omit formatting options.
+    /// Default is false.
+    /// </summary>
+    public bool CompactDefaults { get; set; }
+
+    /// <summary>
+    /// Estimated maximum tokens per MCP tool response (<c>AiIntegration:MaxResponseTokens</c>).
+    /// Default equals <see cref="McpResponseTokenLimits.Default"/>.
+    /// </summary>
+    public int MaxResponseTokens { get; set; } = McpResponseTokenLimits.Default;
+
+    /// <summary>
     /// Tunable settings for the discussion hub (AiIntegration:Discussion).
     /// </summary>
     public DiscussionSettings Discussion { get; set; } = new();
@@ -35,7 +55,7 @@ public sealed class McpServerSettings
     /// </summary>
     public string BuildLaunchArguments()
     {
-        var args = new List<string>(3);
+        var args = new List<string>(6);
         if (EnableDiscussion)
         {
             args.Add(McpToolsetProfiles.EnableDiscussionToken);
@@ -48,6 +68,17 @@ public sealed class McpServerSettings
             args.Add(string.Join(",", parsed));
         }
 
+        if (UseTextOnlyResponse)
+        {
+            args.Add(McpToolsetProfiles.ResponseFormatToken);
+            args.Add(McpToolsetProfiles.TextOnlyResponseFormat);
+        }
+
+        if (CompactDefaults)
+        {
+            args.Add(McpToolsetProfiles.CompactDefaultsToken);
+        }
+
         return string.Join(" ", args);
     }
 
@@ -57,6 +88,9 @@ public sealed class McpServerSettings
         {
             EnableDiscussion = EnableDiscussion,
             Toolset = Toolset,
+            UseTextOnlyResponse = UseTextOnlyResponse,
+            CompactDefaults = CompactDefaults,
+            MaxResponseTokens = MaxResponseTokens,
             Discussion = CloneDiscussion(Discussion)
         };
     }

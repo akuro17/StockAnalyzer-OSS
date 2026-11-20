@@ -48,6 +48,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
     private readonly IndicatorChainPlan _chain;
     private readonly ErrorMessageSanitizer _sanitizer;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
     public CalculateIndicatorsTool(
         IReadOnlyStockAnalyzerGateway gateway,
@@ -56,7 +57,8 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         IndicatorSettingsBinder binder,
         IndicatorChainPlan chain,
         ErrorMessageSanitizer sanitizer,
-        McpLimits limits)
+        McpLimits limits,
+        bool compactDefaults = false)
     {
         _gateway = gateway;
         _symbols = symbols;
@@ -66,6 +68,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         _chain = chain;
         _sanitizer = sanitizer;
         _limits = limits;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_calculate_indicators";
@@ -78,6 +81,8 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? CompactUsageHint => "Pass includeSeries: false with summary: true, decimalPlaces: 4, or a smaller outputTailCount / lookbackBars.";
+
     public IReadOnlyDictionary<string, string>? MisnamedArgumentHints { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
         [AsOfDateArgument] = $"This tool names the last-bar date '{EndDateArgument}' (sa_run_screener uses '{AsOfDateArgument}').",
@@ -86,51 +91,51 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"indicators\":[{\"id\":\"sma25\",\"type\":\"SMA\",\"parameters\":{\"Period\":25}}],\"outputTailCount\":200}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .String(SymbolArgument, "Ticker symbol; '.' and '-' are interchangeable (7203.T and 7203-T are the same).", required: true)
-        .String(TimeFrameArgument, $"Time frame of the bars. Supported: {ToolArgs.SupportedTimeFrameNames}.", required: true, allowedValues: Enum.GetNames<TimeFrame>())
+        .String(SymbolArgument, "Ticker symbol ('.' == '-', e.g. 7203-T).", required: true)
+        .String(TimeFrameArgument, $"Bar timeframe ({ToolArgs.SupportedTimeFrameNames}).", required: true, allowedValues: Enum.GetNames<TimeFrame>())
         .ObjectArray(
             IndicatorsArgument,
-            $"The indicators to calculate (1 to {_limits.MaxIndicatorsPerCall}).",
+            $"Indicators to calculate (1..{_limits.MaxIndicatorsPerCall}).",
             IndicatorItemSchema(),
             required: true,
             minItems: 1)
         .ObjectArray(
             DerivedArgument,
-            $"Optional series computed from two series of this call (at most {_limits.MaxDerivedSeriesPerCall}); a derived series may read the ones declared before it. Omit or send [] for none.",
+            $"Derived series computed from earlier series (max {_limits.MaxDerivedSeriesPerCall}).",
             DerivedItemSchema())
-        .Integer(LookbackArgument, $"Stored bars the calculation runs over, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
-        .Integer(TailArgument, $"Number of trailing bars returned per series. Default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
-        .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, the latest bar is the last bar dated on or before it. Default: the latest stored bar.")
-        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1/MN1 only: true drops an incomplete last period, false keeps it; either adds partial-bar keys. Default: omitted (keep last bar, no keys).")
-        .Boolean(SeriesOutputOptions.SummaryArgument, "Add count, latest, mean, stdDev, zScoreOfLatest, percentileRankOfLatest, trendSlope and trendBars per series. Default false.")
-        .Integer(SeriesOutputOptions.TrendBarsArgument, $"Trend window, in bars, of the summary's trendSlope (needs summary true). Default {McpLimitsContract.EffectiveDefaultTrendBars(_limits)}, from {SeriesSummaryStatistics.MinTrendBars} to {McpLimitsContract.EffectiveMaxTrendBars(_limits)}.", defaultValue: McpLimitsContract.EffectiveDefaultTrendBars(_limits), minimum: SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxTrendBars(_limits))
+        .Integer(LookbackArgument, $"Stored bars loaded (1..{_limits.MaxCandlesPerRequest}, newest last).", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
+        .Integer(TailArgument, $"Trailing bars returned per series (1..{_limits.MaxOutputTailBars}). Default {_limits.DefaultOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
+        .String(EndDateArgument, $"Inclusive end date ({ToolJson.DateFormat}). Default: latest bar.")
+        .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1/MN1 only: true drops incomplete last period, false keeps it; both add partial-bar keys.")
+        .Boolean(SeriesOutputOptions.SummaryArgument, "Add per-series stats (count, latest, mean, stdDev, zScoreOfLatest, percentileRankOfLatest, trendSlope, trendBars). Default false.")
+        .Integer(SeriesOutputOptions.TrendBarsArgument, $"Summary trendBars window ({SeriesSummaryStatistics.MinTrendBars}..{McpLimitsContract.EffectiveMaxTrendBars(_limits)}; needs summary true). Default {McpLimitsContract.EffectiveDefaultTrendBars(_limits)}.", defaultValue: McpLimitsContract.EffectiveDefaultTrendBars(_limits), minimum: SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxTrendBars(_limits))
         .Integer(SeriesOutputOptions.SummaryBarsArgument, SeriesOutputOptions.SummaryBarsDescription(_limits), minimum: SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxSummaryBars(_limits))
         .Boolean(SeriesOutputOptions.SummaryDistributionArgument, SeriesOutputOptions.SummaryDistributionDescription)
-        .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Offsets (0..{_limits.MaxLookbackOffsets} items) of bars back from the last calculated bar to return in pastValues.")
+        .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Non-negative bar offsets back from last bar for pastValues (max {_limits.MaxLookbackOffsets}).")
         .Boolean(SeriesOutputOptions.IncludeSeriesArgument, "false omits series/projectedValues/timestamps (needs summary true or lookbackOffsets; excludes outputTailCount). Default true.")
-        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol (and comparison symbols) that is not in the ticker list but has stored daily bars. Default false.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every decimal number of the result"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbols with stored daily bars. Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("output decimals"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     /// <summary>The schema of one entry of <c>indicators</c>: the one definition shared by sa_calculate_indicators and sa_calculate_indicators_batch.</summary>
     internal static ToolSchema IndicatorItemSchema()
         => ToolSchema.Object()
-        .String("id", "Unique id chosen by the client; the result is keyed by it.", required: true)
-        .String("type", "Indicator type name from sa_get_capabilities (case-insensitive), for example RSI.", required: true)
-        .FreeObject("parameters", "Parameter values by name (case-insensitive), for example {\"Period\": 14}. Names, types and ranges: sa_get_capabilities.")
-        .String(IndicatorTimeFrameKey, $"Time frame of the bars this indicator is calculated on: the call's timeFrame (same as omitted) or a coarser one ({ToolArgs.SupportedTimeFrameNames}). A coarser one is aligned to the call's timestamps as the value of the previous closed period.", allowedValues: Enum.GetNames<TimeFrame>())
-        .String("priceSource", "Price the indicator reads (for example Close). Affects indicators that work on one price series. Default: the indicator's default.", allowedValues: Enum.GetNames<PriceType>())
-        .String("sourceIndicatorId", "Id of another indicator in this call whose output series is this indicator's input instead of the price.")
-        .String("sourceOutputSeriesName", "Output series of the source indicator (default: its main series).")
-        .String("dynamicPeriodIndicatorId", "Id of another indicator in this call whose output series drives this indicator's adaptive period.")
-        .String("dynamicPeriodOutputSeriesName", "Output series of the dynamic-period indicator (default: its main series).");
+        .String("id", "Unique client id keying this result.", required: true)
+        .String("type", "Indicator type name (case-insensitive, from sa_get_capabilities).", required: true)
+        .FreeObject("parameters", "Parameter map, e.g. {\"Period\":14} (names/ranges: sa_get_capabilities).")
+        .String(IndicatorTimeFrameKey, $"Indicator timeframe (call's or coarser: {ToolArgs.SupportedTimeFrameNames}); coarser aligns via PreviousClosedPeriod.", allowedValues: Enum.GetNames<TimeFrame>())
+        .String("priceSource", "Input price field (e.g. Close). Default: indicator default.", allowedValues: Enum.GetNames<PriceType>())
+        .String("sourceIndicatorId", "Upstream indicator id feeding price input.")
+        .String("sourceOutputSeriesName", "Output series of sourceIndicatorId (default: main).")
+        .String("dynamicPeriodIndicatorId", "Upstream indicator id driving adaptive period.")
+        .String("dynamicPeriodOutputSeriesName", "Output series of dynamicPeriodIndicatorId (default: main).");
 
     /// <summary>The schema of one entry of <c>derived</c>: shared by sa_calculate_indicators and sa_calculate_indicators_batch.</summary>
     internal static ToolSchema DerivedItemSchema()
         => ToolSchema.Object()
-        .String(DerivedSeriesPlan.IdKey, "Unique id chosen by the client (unique across indicators and derived series); the result is keyed by it.", required: true)
-        .String(DerivedSeriesPlan.OperationKey, $"The operation (exact name): {string.Join(", ", Enum.GetNames<SeriesOperation>())}.", required: true, allowedValues: Enum.GetNames<SeriesOperation>())
-        .FreeObject(DerivedSeriesPlan.LeftKey, $"{{\"{DerivedSeriesPlan.ReferenceKey}\":\"<indicator or earlier derived id>\"}} (+ optional \"{DerivedSeriesPlan.SeriesNameKey}\" for an indicator) or {{\"{DerivedSeriesPlan.ConstantKey}\":<number>}}.", required: true)
+        .String(DerivedSeriesPlan.IdKey, "Unique client id across indicators and derived series.", required: true)
+        .String(DerivedSeriesPlan.OperationKey, "Binary operation.", required: true, allowedValues: Enum.GetNames<SeriesOperation>())
+        .FreeObject(DerivedSeriesPlan.LeftKey, $"{{\"{DerivedSeriesPlan.ReferenceKey}\":\"<id>\",\"{DerivedSeriesPlan.SeriesNameKey}\"?:\"<series>\"}} or {{\"{DerivedSeriesPlan.ConstantKey}\":<num>}}.", required: true)
         .FreeObject(DerivedSeriesPlan.RightKey, $"Same forms as {DerivedSeriesPlan.LeftKey}.", required: true);
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -152,7 +157,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         JsonElement indicators = arguments.GetProperty(IndicatorsArgument);
         CheckIndicatorCount(indicators);
 
-        SeriesOutputOptions output = SeriesOutputOptions.Read(arguments, _limits);
+        SeriesOutputOptions output = SeriesOutputOptions.Read(arguments, _limits, includeSeriesDefault: true, compactDefaults: _compactDefaults);
         if (!output.IncludeSeries && ToolArgs.Integer(arguments, TailArgument) is not null)
         {
             throw new ToolException(

@@ -85,13 +85,15 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly CandleWindowLoader _loader;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public CalculateChartSeriesTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits)
+    public CalculateChartSeriesTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits, bool compactDefaults = false)
     {
         _gateway = gateway;
         _symbols = symbols;
         _loader = new CandleWindowLoader(gateway);
         _limits = limits;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_calculate_chart_series";
@@ -102,43 +104,45 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? CompactUsageHint => "Pass compactRows: true, decimalPlaces: 4, or a smaller outputTailCount.";
+
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"chartType\":\"HeikinAshi\",\"outputTailCount\":200}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .String(SymbolArgument, "Ticker symbol; '.' and '-' are interchangeable (7203.T and 7203-T are the same).", required: true)
-        .String(TimeFrameArgument, $"Time frame of the bars. Supported: {ToolArgs.SupportedTimeFrameNames}.", required: true, allowedValues: Enum.GetNames<TimeFrame>())
-        .String(ChartTypeArgument, $"Target chart type. Supported: {string.Join(", ", SupportedChartTypes)}.", required: true, allowedValues: SupportedChartTypes)
-        .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}). If specified, bars up to this date are evaluated.")
-        .Integer(LookbackArgument, $"Stored bars the calculation runs over, newest last. Default and maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
-        .Integer(TailArgument, $"Number of trailing converted elements returned. Default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
-        .String(SizingModeArgument, $"Sizing mode for Renko, Kagi, P&F. Supported: {string.Join(", ", SizingModes)}. Default AutoAtr.", allowedValues: SizingModes)
-        .String(ReversalModeArgument, $"Alias for sizingMode on Kagi charts. Supported: {string.Join(", ", SizingModes)}.", allowedValues: SizingModes)
-        .Number(ManualSizeArgument, "Manual size (BrickSize/BoxSize/ReversalAmount) when SizingMode is Fixed or fallback Fixed. Must be > 0. Default 1.0.")
-        .Number(BrickSizeArgument, "Alias for manualSize on Renko charts. Must be > 0.")
-        .Number(BoxSizeArgument, "Alias for manualSize on PointAndFigure charts. Must be > 0.")
-        .Number(ReversalAmountArgument, "Alias for manualSize on Kagi charts. Must be > 0.")
-        .Number(PercentageArgument, "Percentage size when SizingMode is Percentage or fallback Percentage. Must be in 0.01..100. Default 1.0.")
-        .Number(BrickPercentArgument, "Alias for percentage on Renko charts. Must be in 0.01..100.")
-        .Number(BoxPercentArgument, "Alias for percentage on PointAndFigure charts. Must be in 0.01..100.")
-        .Number(ReversalPercentArgument, "Alias for percentage on Kagi charts. Must be in 0.01..100.")
-        .Integer(AtrPeriodArgument, $"ATR period for AutoAtr sizing on Renko, Kagi, P&F. Default {ChartConstants.DefaultAtrPeriod}, range 1..500.", defaultValue: ChartConstants.DefaultAtrPeriod, minimum: 1, maximum: 500)
-        .Number(AtrMultiplierArgument, $"ATR multiplier for AutoAtr sizing on Renko, Kagi, P&F. Default {ChartConstants.DefaultAtrMultiplier}, must be > 0.")
-        .String(RoundingModeArgument, $"Rounding mode for Renko, Kagi, P&F. Supported: {string.Join(", ", RoundingModes)}. Default None.", allowedValues: RoundingModes)
-        .String(FallbackModeArgument, $"Fallback mode when ATR is 0 or insufficient on Renko, Kagi, P&F. Supported: {string.Join(", ", FallbackModes)}. Default Percentage.", allowedValues: FallbackModes)
-        .Integer(ReversalArgument, $"Reversal requirement in bricks/boxes (Renko default 2, P&F default {ChartConstants.DefaultReversalAmount}, range 1..10).", defaultValue: 2, minimum: 1, maximum: 10)
-        .Integer(InitialColumnArgument, "Initial column index offset for Kagi charts (default 0, range 0..10000).", defaultValue: 0, minimum: 0, maximum: 10000)
-        .Integer(LineCountArgument, $"Line count requirement for ThreeLineBreak charts (default {ChartConstants.DefaultThreeLineBreakLineCount}, range 1..20).", defaultValue: ChartConstants.DefaultThreeLineBreakLineCount, minimum: 1, maximum: 20)
-        .Number(MinimumMoveArgument, "Minimum movement threshold for ThreeLineBreak charts (default 0). Must be >= 0.")
-        .Number(ToleranceArgument, $"Tolerance for trend detection in ThreeLineBreak charts (default {ChartConstants.ThreeLineBreakTrendThreshold}). Must be >= 0.")
-        .Boolean(IncludeMultiWaveArgument, "Include Multi-Wave pattern analysis on converted elements (Renko, Kagi, P&F, ThreeLineBreak). Default false.")
-        .Boolean(IncludePatternsArgument, "Include Point and Figure pattern analysis (P&F only). Default false.")
-        .Boolean(ShowDoubleBreakoutArgument, "Include Double Top/Bottom breakout signals in P&F pattern analysis. Default true.")
-        .Boolean(ShowTripleBreakoutArgument, "Include Triple Top/Bottom breakout signals in P&F pattern analysis. Default true.")
-        .Boolean(ShowTrendlineBreakoutArgument, "Include Trendline breakout signals in P&F pattern analysis. Default true.")
-        .Boolean(ShowTriangleBreakoutArgument, "Include Triangle breakout signals in P&F pattern analysis. Default true.")
-        .Boolean(ShowCatapultBreakoutArgument, "Include Catapult breakout signals in P&F pattern analysis. Default true.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every price, size, span and score of the result (volume is never rounded)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
-        .Boolean(CompactRowsArgument, $"true returns 'elements' as [] and writes '{ElementColumnsKey}' plus '{ElementRowsKey}' (one row per element, in column order). Default false.")
+        .String(SymbolArgument, "Ticker symbol ('.' == '-', e.g. 7203-T).", required: true)
+        .String(TimeFrameArgument, $"Bar timeframe ({ToolArgs.SupportedTimeFrameNames}).", required: true, allowedValues: Enum.GetNames<TimeFrame>())
+        .String(ChartTypeArgument, $"Target chart type ({string.Join(", ", SupportedChartTypes)}).", required: true, allowedValues: SupportedChartTypes)
+        .String(EndDateArgument, $"Inclusive end date ({ToolJson.DateFormat}).")
+        .Integer(LookbackArgument, $"Stored bars to load (1..{_limits.MaxCandlesPerRequest}, newest last).", defaultValue: _limits.MaxCandlesPerRequest, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
+        .Integer(TailArgument, $"Trailing converted elements returned (1..{_limits.MaxOutputTailBars}). Default {_limits.DefaultOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
+        .String(SizingModeArgument, "Sizing mode for Renko/Kagi/P&F. Default AutoAtr.", allowedValues: SizingModes)
+        .String(ReversalModeArgument, "Alias for sizingMode (Kagi).", allowedValues: SizingModes)
+        .Number(ManualSizeArgument, "Manual box/brick/reversal size (>0; SizingMode Fixed). Default 1.0.")
+        .Number(BrickSizeArgument, "Alias for manualSize (Renko, >0).")
+        .Number(BoxSizeArgument, "Alias for manualSize (PointAndFigure, >0).")
+        .Number(ReversalAmountArgument, "Alias for manualSize (Kagi, >0).")
+        .Number(PercentageArgument, "Percentage size (0.01..100; SizingMode Percentage). Default 1.0.")
+        .Number(BrickPercentArgument, "Alias for percentage (Renko, 0.01..100).")
+        .Number(BoxPercentArgument, "Alias for percentage (PointAndFigure, 0.01..100).")
+        .Number(ReversalPercentArgument, "Alias for percentage (Kagi, 0.01..100).")
+        .Integer(AtrPeriodArgument, $"ATR period for AutoAtr (1..500). Default {ChartConstants.DefaultAtrPeriod}.", defaultValue: ChartConstants.DefaultAtrPeriod, minimum: 1, maximum: 500)
+        .Number(AtrMultiplierArgument, $"ATR multiplier for AutoAtr (>0). Default {ChartConstants.DefaultAtrMultiplier}.")
+        .String(RoundingModeArgument, "Rounding mode for Renko/Kagi/P&F. Default None.", allowedValues: RoundingModes)
+        .String(FallbackModeArgument, "ATR=0 fallback mode for Renko/Kagi/P&F. Default Percentage.", allowedValues: FallbackModes)
+        .Integer(ReversalArgument, $"Reversal bricks/boxes (1..10; Renko default 2, P&F default {ChartConstants.DefaultReversalAmount}).", defaultValue: 2, minimum: 1, maximum: 10)
+        .Integer(InitialColumnArgument, "Initial column index offset (Kagi, 0..10000). Default 0.", defaultValue: 0, minimum: 0, maximum: 10000)
+        .Integer(LineCountArgument, $"Line count (ThreeLineBreak, 1..20). Default {ChartConstants.DefaultThreeLineBreakLineCount}.", defaultValue: ChartConstants.DefaultThreeLineBreakLineCount, minimum: 1, maximum: 20)
+        .Number(MinimumMoveArgument, "Minimum move threshold (ThreeLineBreak, >=0). Default 0.")
+        .Number(ToleranceArgument, $"Trend detection tolerance (ThreeLineBreak, >=0). Default {ChartConstants.ThreeLineBreakTrendThreshold}.")
+        .Boolean(IncludeMultiWaveArgument, "Include Multi-Wave patterns (Renko/Kagi/P&F/ThreeLineBreak). Default false.")
+        .Boolean(IncludePatternsArgument, "Include Point and Figure patterns (P&F only). Default false.")
+        .Boolean(ShowDoubleBreakoutArgument, "Include Double Top/Bottom P&F signals. Default true.")
+        .Boolean(ShowTripleBreakoutArgument, "Include Triple Top/Bottom P&F signals. Default true.")
+        .Boolean(ShowTrendlineBreakoutArgument, "Include Trendline P&F signals. Default true.")
+        .Boolean(ShowTriangleBreakoutArgument, "Include Triangle P&F signals. Default true.")
+        .Boolean(ShowCatapultBreakoutArgument, "Include Catapult P&F signals. Default true.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("prices/sizes/scores (volume unrounded)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Boolean(CompactRowsArgument, $"true empties 'elements' and emits '{ElementColumnsKey}'/'{ElementRowsKey}'. Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -150,8 +154,8 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
         int tail = ToolArgs.PositiveWithin(arguments, TailArgument, _limits.DefaultOutputTailBars, _limits.MaxOutputTailBars);
-        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
-        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments, _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null);
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? _compactDefaults;
 
         ChartSeriesRequest request = BuildRequest(arguments, chartType);
 

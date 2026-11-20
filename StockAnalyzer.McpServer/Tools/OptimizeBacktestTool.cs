@@ -47,11 +47,13 @@ internal sealed class OptimizeBacktestTool : IMcpTool
 
     private readonly BacktestSweep _sweep;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public OptimizeBacktestTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, BacktestConditionBinder conditions, McpLimits limits)
+    public OptimizeBacktestTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, BacktestConditionBinder conditions, McpLimits limits, bool compactDefaults = false)
     {
         _sweep = new BacktestSweep(gateway, symbols, conditions, limits);
         _limits = limits;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_optimize_backtest";
@@ -62,6 +64,8 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         ToolJson.DocLink(Name);
 
     public bool IsHeavy => true;
+
+    public string? CompactUsageHint => "Pass compactReport: true or a smaller topK.";
 
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"conditions\":{\"entryLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":{\"$param\":\"period\"}}},\"comparison\":\"LessThan\",\"right\":30}," +
@@ -100,7 +104,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         bool minimize = string.Equals(ToolArgs.String(arguments, DirectionArgument), Minimize, StringComparison.Ordinal);
         int topK = ToolArgs.PositiveWithin(arguments, TopKArgument, _limits.MaxOptimizationTopK, _limits.MaxOptimizationTopK);
         int minTrades = ToolArgs.NonNegativeWithin(arguments, MinTradesArgument, _limits.DefaultMinInSampleTrades, BacktestSweep.NoUpperBound);
-        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? false;
+        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? _compactDefaults;
         CheckOutOfSampleAgainstRequested(outOfSampleStart, requestedStart, requestedEnd);
 
         BacktestParameterGrid grid = _sweep.ReadGrid(arguments.GetProperty(BacktestParameterGrid.RangesArgument));

@@ -31,13 +31,15 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
     private readonly McpLimits _limits;
     private readonly McpResultHandleStore _resultHandles;
     private readonly CandleWindowLoader _loader;
+    private readonly bool _compactDefaults;
 
     public CalculateCrossAssetStatsTool(
         IReadOnlyStockAnalyzerGateway gateway,
         SymbolResolver symbols,
         ITickerGroupResolver groupResolver,
         McpLimits limits,
-        McpResultHandleStore? resultHandles = null)
+        McpResultHandleStore? resultHandles = null,
+        bool compactDefaults = false)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
@@ -45,6 +47,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         _limits = limits ?? throw new ArgumentNullException(nameof(limits));
         _resultHandles = resultHandles ?? new McpResultHandleStore();
         _loader = new CandleWindowLoader(gateway);
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_calculate_cross_asset_stats";
@@ -62,6 +65,8 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         .StringArray(SymbolsArgument, $"Universe ticker symbols to analyze (2 to {_limits.MaxCrossAssetSymbols}). Mutually exclusive with {GroupIdArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.", minItems: 2)
         .String(GroupIdArgument, $"Guid of a saved ticker group (from sa_list_ticker_groups) to analyze. Mutually exclusive with {SymbolsArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.")
         .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle id from sa_run_screener or sa_filter_tickers ({McpResultHandleStore.StoreResultArgument} true). Mutually exclusive with {SymbolsArgument} and {GroupIdArgument}.")
+        .Integer(McpResultHandleStore.ResultOffsetArgument, $"0-based start index within {McpResultHandleStore.SymbolsFromResultIdArgument}. Default 0.", defaultValue: 0, minimum: 0)
+        .Integer(McpResultHandleStore.ResultLimitArgument, $"Maximum symbols to read from {McpResultHandleStore.SymbolsFromResultIdArgument} (2..{_limits.MaxCrossAssetSymbols}).", minimum: 2, maximum: _limits.MaxCrossAssetSymbols)
         .String(BenchmarkArgument, "Optional benchmark symbol to compute Beta, Alpha, and R2 against.")
         .String(TimeFrameArgument, $"Time frame of the bars. Supported: {ToolArgs.SupportedTimeFrameNames}. Default {TimeFrame.D1}.", allowedValues: Enum.GetNames<TimeFrame>())
         .Integer(LookbackArgument, $"Stored bars each symbol evaluates, newest last. Default {_limits.DefaultCandleCount}, maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.DefaultCandleCount, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
@@ -82,7 +87,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         DateOnly? endDate = ToolArgs.Date(arguments, EndDateArgument);
         bool includeCovariance = ToolArgs.Boolean(arguments, IncludeCovarianceArgument) ?? false;
         bool includeDistributionStats = ToolArgs.Boolean(arguments, IncludeDistributionStatsArgument) ?? false;
-        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments, _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null);
 
         string returnBasis = ToolArgs.String(arguments, ReturnBasisArgument) ?? ReturnStatistics.SimpleReturnBasis;
         if (!string.Equals(returnBasis, ReturnStatistics.SimpleReturnBasis, StringComparison.OrdinalIgnoreCase) &&
@@ -332,9 +337,10 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{SymbolsArgument}', '{GroupIdArgument}' and '{McpResultHandleStore.SymbolsFromResultIdArgument}' cannot be combined.", parameter, "Send one of them, or neither for every registered symbol.");
         }
 
+        (int sliceOffset, int? sliceLimit) = McpResultHandleStore.ReadSliceArguments(arguments, resultId, 2, _limits.MaxCrossAssetSymbols);
         if (resultId is not null)
         {
-            IReadOnlyList<string> stored = _resultHandles.ResolveSymbols(resultId, 2, _limits.MaxCrossAssetSymbols);
+            IReadOnlyList<string> stored = _resultHandles.ResolveSymbolsSlice(resultId, 2, _limits.MaxCrossAssetSymbols, sliceOffset, sliceLimit);
             return stored.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 

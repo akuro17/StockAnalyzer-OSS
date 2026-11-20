@@ -263,7 +263,7 @@ internal sealed class McpMessageDispatcher
                 writer.WriteString("description", registered.Tool.Description);
                 writer.WritePropertyName("inputSchema");
                 registered.Schema.WriteTo(writer);
-                if (registered.OutputSchema is { } outputSchema)
+                if (_executor.ResponseFormat == McpResponseFormat.Dual && registered.OutputSchema is { } outputSchema)
                 {
                     writer.WritePropertyName("outputSchema");
                     outputSchema.WriteTo(writer);
@@ -315,7 +315,6 @@ internal sealed class McpMessageDispatcher
         };
     }
 
-    /// <summary>The server has no parameterised resources; an empty list answers clients that ask.</summary>
     private Action<Utf8JsonWriter> ListResourceTemplates(JsonElement parameters)
     {
         RejectCursor(parameters);
@@ -323,6 +322,16 @@ internal sealed class McpMessageDispatcher
         {
             writer.WriteStartObject();
             writer.WriteStartArray("resourceTemplates");
+            foreach (McpResourceTemplate template in _resources!.Templates)
+            {
+                writer.WriteStartObject();
+                writer.WriteString("uriTemplate", template.UriTemplate);
+                writer.WriteString("name", template.Name);
+                writer.WriteString("description", template.Description);
+                writer.WriteString("mimeType", template.MimeType);
+                writer.WriteEndObject();
+            }
+
             writer.WriteEndArray();
             writer.WriteEndObject();
         };

@@ -31,11 +31,13 @@ internal sealed class SearchNotesTool : IMcpTool
 
     private readonly IReadOnlyNoteSource _source;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public SearchNotesTool(IReadOnlyNoteSource source, McpLimits limits)
+    public SearchNotesTool(IReadOnlyNoteSource source, McpLimits limits, bool compactDefaults = false)
     {
         _source = source;
         _limits = limits;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_search_notes";
@@ -47,6 +49,8 @@ internal sealed class SearchNotesTool : IMcpTool
         ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
+
+    public string? CompactUsageHint => "Pass snippetOnly: true, includeParentContext: false, or a smaller limit.";
 
     public string? ExampleArgumentsJson => "{\"query\":\"earnings guidance\",\"matchMode\":\"All\",\"ticker\":\"7203-T\",\"limit\":20}";
 
@@ -90,7 +94,7 @@ internal sealed class SearchNotesTool : IMcpTool
 
         int limit = ToolArgs.PositiveWithin(arguments, LimitArgument, _limits.MaxReturnedNotes, _limits.MaxReturnedNotes);
         bool includeContext = ToolArgs.Boolean(arguments, IncludeParentContextArgument) ?? false;
-        bool snippetOnly = ToolArgs.Boolean(arguments, SnippetOnlyArgument) ?? false;
+        bool snippetOnly = ToolArgs.Boolean(arguments, SnippetOnlyArgument) ?? _compactDefaults;
 
         var criteria = new NoteFilterCriteria
         {

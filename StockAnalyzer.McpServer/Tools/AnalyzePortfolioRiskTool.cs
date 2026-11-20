@@ -27,14 +27,16 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly McpLimits _limits;
     private readonly CandleWindowLoader _loader;
+    private readonly bool _compactDefaults;
 
-    public AnalyzePortfolioRiskTool(IReadOnlyPortfolioSource source, IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits)
+    public AnalyzePortfolioRiskTool(IReadOnlyPortfolioSource source, IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits, bool compactDefaults = false)
     {
         _source = source;
         _gateway = gateway;
         _symbols = symbols;
         _limits = limits;
         _loader = new CandleWindowLoader(gateway);
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_analyze_portfolio_risk";
@@ -68,7 +70,7 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
                 ConfidenceArgument);
         }
 
-        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments, _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null);
         string? benchmark = null;
         if (ToolArgs.String(arguments, BenchmarkArgument) is { } benchmarkText)
         {

@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -119,6 +120,7 @@ internal static class McpServerComposition
     /// <param name="commandLog">Only for tests: the command log instead of the real one.</param>
     /// <param name="toolsets">Optional CLI <c>--toolset</c> profile names restricting registered read-only tools; null registers all.</param>
     /// <param name="responseFormat">Selects whether <c>tools/call</c> emits <c>structuredContent</c> (<see cref="McpResponseFormat.Dual"/>) or omits it (<see cref="McpResponseFormat.TextOnly"/>).</param>
+    /// <param name="compactDefaults">When true (<c>--compact-defaults</c>), allowlisted tools default to compact/rounded outputs when callers omit formatting parameters.</param>
     public static McpServerRuntime Create(
         IConfiguration configuration,
         LogSink log,
@@ -138,7 +140,8 @@ internal static class McpServerComposition
         IReadOnlyRegisteredIndicatorSource? registeredIndicatorSource = null,
         IReadOnlyDrawingDocumentSource? drawingSource = null,
         IReadOnlyList<string>? toolsets = null,
-        McpResponseFormat responseFormat = McpResponseFormat.Dual)
+        McpResponseFormat responseFormat = McpResponseFormat.Dual,
+        bool compactDefaults = false)
     {
         McpLimits limits = configuration.GetSection(McpLimits.SectionName).Get<McpLimits>() ?? new McpLimits();
         McpLimitsContract.Validate(limits);
@@ -262,11 +265,11 @@ internal static class McpServerComposition
                 DiscussionSettingsValidator.ValidateAgainstHost(discussionSettings, limits.MaxResponseBytes, limits.ToolTimeoutSeconds);
             }
 
-            var capabilitiesTool = new GetCapabilitiesTool(catalog, screenerCatalog, executionSettings);
+            var capabilitiesTool = new GetCapabilitiesTool(catalog, screenerCatalog, executionSettings, compactDefaults);
             var settingsTool = new GetSettingsTool(settings);
             var modelRegistry = services.GetService<IRlModelGenerationRegistry>() as ReadOnlyModelGenerationRegistry ?? new ReadOnlyModelGenerationRegistry();
 
-            var calculateIndicators = new CalculateIndicatorsTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), sanitizer, limits);
+            var calculateIndicators = new CalculateIndicatorsTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), sanitizer, limits, compactDefaults);
             var activeWorkspaceTool = new GetActiveWorkspaceTool(resolvedWorkspaceSource, services.GetRequiredService<IReadOnlyRegisteredIndicatorSource>(), catalog, limits);
             var resultHandles = new McpResultHandleStore();
             var tools = new List<IMcpTool>
@@ -274,29 +277,29 @@ internal static class McpServerComposition
                 new ListTickersTool(gateway, groupResolver, limits),
                 new ListTickerGroupsTool(gateway, resolvedWorkspaceSource, limits),
                 new FilterTickersTool(gateway, groupResolver, screenerBinder, limits, resultHandles),
-                new GetCandlesTool(gateway, symbols, limits),
-                new GetTickerMetadataTool(gateway, limits),
+                new GetCandlesTool(gateway, symbols, limits, compactDefaults),
+                new GetTickerMetadataTool(gateway, limits, resultHandles),
                 capabilitiesTool,
                 settingsTool,
                 calculateIndicators,
-                new CalculateIndicatorsBatchTool(calculateIndicators, symbols, groupResolver, sanitizer, limits, resultHandles),
+                new CalculateIndicatorsBatchTool(calculateIndicators, symbols, groupResolver, sanitizer, limits, resultHandles, compactDefaults),
                 new GetPortfolioSummaryTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway, limits),
-                new AnalyzePortfolioRiskTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway, symbols, limits),
-                new SearchNotesTool(services.GetRequiredService<IReadOnlyNoteSource>(), limits),
+                new AnalyzePortfolioRiskTool(services.GetRequiredService<IReadOnlyPortfolioSource>(), gateway, symbols, limits, compactDefaults),
+                new SearchNotesTool(services.GetRequiredService<IReadOnlyNoteSource>(), limits, compactDefaults),
                 new ListUpcomingCatalystsTool(services.GetRequiredService<IReadOnlyNoteSource>(), limits, timeProvider),
                 activeWorkspaceTool,
                 new RunScreenerTool(gateway, groupResolver, screenerBinder, ScreenerValueExtractor.Default, templateAdvisor, settings, limits, resultHandles),
                 new ListTemplatesTool(gateway, templateAdvisor, backtestBinder),
-                new RunBacktestTool(gateway, symbols, backtestBinder, limits),
-                new ExtractSignalEventsTool(gateway, symbols, backtestBinder, factory, limits),
+                new RunBacktestTool(gateway, symbols, backtestBinder, limits, compactDefaults),
+                new ExtractSignalEventsTool(gateway, symbols, backtestBinder, factory, limits, compactDefaults),
                 new DetectDivergencesTool(gateway, symbols, catalog, indicatorBinder, factory, limits),
-                new OptimizeBacktestTool(gateway, symbols, backtestBinder, limits),
-                new RunWalkForwardTool(gateway, symbols, backtestBinder, limits),
-                new RunPortfolioBacktestTool(gateway, groupResolver, symbols, backtestBinder, limits, resultHandles),
+                new OptimizeBacktestTool(gateway, symbols, backtestBinder, limits, compactDefaults),
+                new RunWalkForwardTool(gateway, symbols, backtestBinder, limits, compactDefaults),
+                new RunPortfolioBacktestTool(gateway, groupResolver, symbols, backtestBinder, limits, resultHandles, compactDefaults),
                 new CalculateReverseWatchTool(gateway, symbols, limits),
-                new CalculateChartSeriesTool(gateway, symbols, limits),
-                new RenderChartImageTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), limits, services.GetRequiredService<IReadOnlyDrawingDocumentSource>()),
-                new CalculateVolumeProfileTool(gateway, symbols, limits),
+                new CalculateChartSeriesTool(gateway, symbols, limits, compactDefaults),
+                new RenderChartImageTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), limits, services.GetRequiredService<IReadOnlyDrawingDocumentSource>(), compactDefaults),
+                new CalculateVolumeProfileTool(gateway, symbols, limits, compactDefaults),
                 new AnalyzeMarketStructureTool(gateway, symbols, limits),
                 new FindSupportResistanceTool(gateway, symbols, limits),
                 new CalculateDrawingValuesTool(gateway, symbols, limits),
@@ -304,10 +307,10 @@ internal static class McpServerComposition
                 new DetectCandlePatternsTool(gateway, symbols, limits),
                 new DetectChartPatternsTool(gateway, symbols, limits),
                 new AnalyzeCyclesTool(gateway, symbols, limits),
-                new ProjectPricePathTool(gateway, symbols, limits),
-                new GetSeasonalityTool(gateway, symbols, limits),
-                new CalculateRelativePerformanceTool(gateway, symbols, sanitizer, limits),
-                new CalculateCrossAssetStatsTool(gateway, symbols, groupResolver, limits, resultHandles),
+                new ProjectPricePathTool(gateway, symbols, limits, compactDefaults),
+                new GetSeasonalityTool(gateway, symbols, limits, compactDefaults),
+                new CalculateRelativePerformanceTool(gateway, symbols, sanitizer, limits, compactDefaults),
+                new CalculateCrossAssetStatsTool(gateway, symbols, groupResolver, limits, resultHandles, compactDefaults),
                 new CalculateMarketBreadthTool(gateway, symbols, groupResolver, limits, resultHandles),
                 new CheckPortfolioRlPreflightTool(symbols, services.GetService<IRlPortfolioService>()),
                 new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders),
@@ -365,37 +368,47 @@ internal static class McpServerComposition
                 tools.Add(new DiscussionGetAnalysisTool(board, identity));
             }
 
-            var resources = new McpResourceRegistry(new[]
-            {
-                new McpResource(
-                    $"{McpResourceRegistry.UriScheme}catalog/indicators",
-                    "Indicator catalogue",
-                    "Every indicator type with its parameters (default, range), output series and flags; the same content as sa_get_capabilities with includeDetails, except its execution block.",
-                    McpResourceRegistry.JsonMimeType,
-                    capabilitiesTool.IndicatorCatalogJson),
-                new McpResource(
-                    $"{McpResourceRegistry.UriScheme}catalog/screener",
-                    "Screener catalogue",
-                    "The columns, patterns, price sources and operators sa_run_screener accepts, and the columns it cannot read.",
-                    McpResourceRegistry.JsonMimeType,
-                    capabilitiesTool.ScreenerCatalogJson),
-                new McpResource(
-                    $"{McpResourceRegistry.UriScheme}settings/current",
-                    "Current settings",
-                    "The allow-listed application settings (limits and defaults); the same content as sa_get_settings. File locations and credentials are never included.",
-                    McpResourceRegistry.JsonMimeType,
-                    () => settingsTool.Build()),
-                new McpResource(
-                    GetActiveWorkspaceTool.ResourceUri,
-                    "Active workspace",
-                    "The chart set-up the user last saved (symbol, time frame, active indicators) and the same indicators as an sa_calculate_indicators request; the same content as sa_get_active_workspace. Unsaved edits are not included.",
-                    McpResourceRegistry.JsonMimeType,
-                    cancellationToken => ReadActiveWorkspaceAsync(activeWorkspaceTool, cancellationToken)),
-            });
-
             var registry = new McpToolRegistry(McpToolsetCatalog.Filter(tools, toolsets));
             registryOfTools = registry;
-            var dispatcher = new McpMessageDispatcher(log, registry, new ToolExecutor(limits, sanitizer, log, observer, responseFormat), resources, identity, new McpPromptRegistry(limits));
+            const string ToolDocPrefix = $"{McpResourceRegistry.UriScheme}docs/tools/";
+            var resources = new McpResourceRegistry(
+                new[]
+                {
+                    new McpResource(
+                        $"{McpResourceRegistry.UriScheme}catalog/indicators",
+                        "Indicator catalogue",
+                        "Every indicator type with its parameters (default, range), output series and flags; the same content as sa_get_capabilities with includeDetails, except its execution block.",
+                        McpResourceRegistry.JsonMimeType,
+                        capabilitiesTool.IndicatorCatalogJson),
+                    new McpResource(
+                        $"{McpResourceRegistry.UriScheme}catalog/screener",
+                        "Screener catalogue",
+                        "The columns, patterns, price sources and operators sa_run_screener accepts, and the columns it cannot read.",
+                        McpResourceRegistry.JsonMimeType,
+                        capabilitiesTool.ScreenerCatalogJson),
+                    new McpResource(
+                        $"{McpResourceRegistry.UriScheme}settings/current",
+                        "Current settings",
+                        "The allow-listed application settings (limits and defaults); the same content as sa_get_settings. File locations and credentials are never included.",
+                        McpResourceRegistry.JsonMimeType,
+                        () => settingsTool.Build()),
+                    new McpResource(
+                        GetActiveWorkspaceTool.ResourceUri,
+                        "Active workspace",
+                        "The chart set-up the user last saved (symbol, time frame, active indicators) and the same indicators as an sa_calculate_indicators request; the same content as sa_get_active_workspace. Unsaved edits are not included.",
+                        McpResourceRegistry.JsonMimeType,
+                        cancellationToken => ReadActiveWorkspaceAsync(activeWorkspaceTool, cancellationToken)),
+                },
+                new[]
+                {
+                    new McpResourceTemplate(
+                        $"{ToolDocPrefix}{{name}}",
+                        "Tool documentation",
+                        "Full Markdown reference for one active MCP tool.",
+                        McpResourceRegistry.MarkdownMimeType,
+                        uri => ResolveToolDocumentationResource(uri, ToolDocPrefix, registry, limits.MaxResponseBytes)),
+                });
+            var dispatcher = new McpMessageDispatcher(log, registry, new ToolExecutor(limits, sanitizer, log, observer, responseFormat), resources, identity, new McpPromptRegistry(limits, registry));
             return new McpServerRuntime(services, limits, dispatcher, registry, prepareExecution);
         }
         catch
@@ -416,6 +429,48 @@ internal static class McpServerComposition
         {
             throw new JsonRpcException(JsonRpcErrorCodes.InternalError, error.Message);
         }
+    }
+
+    private static McpResource? ResolveToolDocumentationResource(string uri, string prefix, McpToolRegistry registry, int maxResponseBytes)
+    {
+        if (!uri.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string rawName = uri[prefix.Length..];
+        if (string.IsNullOrEmpty(rawName)
+            || rawName.IndexOfAny(new[] { '/', '\\' }) >= 0
+            || rawName.Contains("..", StringComparison.Ordinal)
+            || rawName.Any(char.IsWhiteSpace)
+            || !registry.TryGet(rawName, out RegisteredTool? registered))
+        {
+            return null;
+        }
+
+        string toolsDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "docs", "MCP", "tools"));
+        string docPath = Path.GetFullPath(Path.Combine(toolsDir, $"{registered.Tool.Name}.md"));
+        StringComparison pathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        if (!docPath.StartsWith(toolsDir + Path.DirectorySeparatorChar, pathComparison) || !File.Exists(docPath))
+        {
+            return null;
+        }
+
+        return new McpResource(
+            uri,
+            registered.Tool.Name,
+            $"Full Markdown reference for {registered.Tool.Name}.",
+            McpResourceRegistry.MarkdownMimeType,
+            async cancellationToken =>
+            {
+                string text = await File.ReadAllTextAsync(docPath, Encoding.UTF8, cancellationToken).ConfigureAwait(false);
+                if (Encoding.UTF8.GetByteCount(text) > maxResponseBytes)
+                {
+                    throw new JsonRpcException(JsonRpcErrorCodes.InternalError, "Resource exceeds response byte limit.");
+                }
+
+                return text;
+            });
     }
 
     private static IEnumerable<string?> KnownRoots(MarketDataSettings settings)

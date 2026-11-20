@@ -57,13 +57,15 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
     private readonly BacktestConditionBinder _conditions;
     private readonly IIndicatorFactory _indicatorFactory;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
     public ExtractSignalEventsTool(
         IReadOnlyStockAnalyzerGateway gateway,
         SymbolResolver symbols,
         BacktestConditionBinder conditions,
         IIndicatorFactory indicatorFactory,
-        McpLimits limits)
+        McpLimits limits,
+        bool compactDefaults = false)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
@@ -71,6 +73,7 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
         _conditions = conditions ?? throw new ArgumentNullException(nameof(conditions));
         _indicatorFactory = indicatorFactory ?? throw new ArgumentNullException(nameof(indicatorFactory));
         _limits = limits ?? throw new ArgumentNullException(nameof(limits));
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_extract_signal_events";
@@ -80,6 +83,8 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
         ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
+
+    public string? CompactUsageHint => "Pass compactRows: true, includeBooleanSeries: false, or a smaller maxEvents.";
 
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"condition\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30},\"eventMode\":\"FirstTrueBarOfRun\",\"forwardBars\":[5,10],\"maxEvents\":50}";
@@ -124,7 +129,7 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
 
         int maxEvents = ToolArgs.PositiveWithin(arguments, MaxEventsArgument, _limits.MaxReturnedEvents, _limits.MaxReturnedEvents);
         bool includeBooleanSeries = ToolArgs.Boolean(arguments, IncludeBooleanSeriesArgument) ?? false;
-        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? _compactDefaults;
 
         IReadOnlyList<int> forwardBars = ParseForwardBars(arguments);
         bool includeEventStudy = ToolArgs.Boolean(arguments, IncludeEventStudyArgument) ?? false;

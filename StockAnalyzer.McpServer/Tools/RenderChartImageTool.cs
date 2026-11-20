@@ -61,6 +61,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
     private readonly IndicatorRequestBinder _binder;
     private readonly IndicatorChainPlan _chain;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
     public RenderChartImageTool(
         IReadOnlyStockAnalyzerGateway gateway,
@@ -69,7 +70,8 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         IndicatorSettingsBinder binder,
         IndicatorChainPlan chain,
         McpLimits limits,
-        IReadOnlyDrawingDocumentSource? drawings = null)
+        IReadOnlyDrawingDocumentSource? drawings = null,
+        bool compactDefaults = false)
     {
         _gateway = gateway;
         _drawings = drawings;
@@ -78,6 +80,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         _binder = new IndicatorRequestBinder(catalog, binder);
         _chain = chain;
         _limits = limits;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_render_chart_image";
@@ -88,6 +91,8 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
+
+    public string? CompactUsageHint => "Pass includeBarCoordinates: false, smaller width/height, or a smaller barCount.";
 
     public IReadOnlyDictionary<string, string>? MisnamedArgumentHints { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -158,7 +163,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
         bool includeVolume = ToolArgs.Boolean(arguments, IncludeVolumeArgument) ?? true;
         bool includeHistogram = ToolArgs.Boolean(arguments, IncludeHistogramArgument) ?? false;
         bool includeSavedDrawings = ToolArgs.Boolean(arguments, IncludeSavedDrawingsArgument) ?? false;
-        bool includeBarCoordinates = ToolArgs.Boolean(arguments, IncludeBarCoordinatesArgument) ?? true;
+        bool includeBarCoordinates = ToolArgs.Boolean(arguments, IncludeBarCoordinatesArgument) ?? !_compactDefaults;
         bool lightGray = string.Equals(ToolArgs.String(arguments, BackgroundArgument), BackgroundLightGray, StringComparison.Ordinal);
         int barCount = ToolArgs.PositiveWithin(arguments, BarCountArgument, McpLimitsContract.EffectiveDefaultChartImageBars(_limits), McpLimitsContract.EffectiveMaxChartImageBars(_limits));
         int width = ReadSize(arguments, WidthArgument, _limits.DefaultChartImageWidth, AiChartImageStyle.MinImageWidthPx, _limits.MaxChartImageWidth);

@@ -52,7 +52,12 @@ public sealed class McpDocExternalizationTests
             string outputToolDoc = Path.Combine(outputMcpDir, "tools", $"{name}.md");
             Assert.True(File.Exists(repoToolDoc), $"Missing repo tool doc: {repoToolDoc}");
             Assert.True(File.Exists(outputToolDoc), $"Missing output tool doc: {outputToolDoc}");
-            Assert.False(string.IsNullOrWhiteSpace(File.ReadAllText(repoToolDoc)), $"Empty repo tool doc: {repoToolDoc}");
+            string repoDocText = File.ReadAllText(repoToolDoc);
+            Assert.False(string.IsNullOrWhiteSpace(repoDocText), $"Empty repo tool doc: {repoToolDoc}");
+            Assert.Contains("## Contract & Constraints", repoDocText, StringComparison.Ordinal);
+            Assert.Contains("## Arguments (`inputSchema`)", repoDocText, StringComparison.Ordinal);
+            Assert.Contains("## Example Call", repoDocText, StringComparison.Ordinal);
+            Assert.Contains("## Common Errors", repoDocText, StringComparison.Ordinal);
         }
 
         Assert.True(toolCount >= 65, $"Expected at least 65 tools, found {toolCount}.");
@@ -63,7 +68,7 @@ public sealed class McpDocExternalizationTests
     {
         (string defaultJson, JsonElement defaultTools) = await ListToolsAsync(enableExecution: false, enableDiscussion: false);
         int defaultBytes = Encoding.UTF8.GetByteCount(defaultJson);
-        Assert.True(defaultBytes < 120_000, $"Expected default tools/list under 120,000 bytes, got {defaultBytes} bytes.");
+        Assert.True(defaultBytes < 112_000, $"Expected default tools/list under 112,000 bytes, got {defaultBytes} bytes.");
 
         int defaultDescriptionBytes = 0;
         foreach (JsonElement tool in defaultTools.EnumerateArray())

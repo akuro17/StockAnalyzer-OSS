@@ -12,10 +12,15 @@ public static class McpToolsetProfiles
 {
     public const string EnableDiscussionToken = "--enable-discussion";
     public const string ToolsetToken = "--toolset";
+    public const string ResponseFormatToken = "--response-format";
+    public const string DualResponseFormat = "dual";
+    public const string TextOnlyResponseFormat = "text-only";
+    public const string CompactDefaultsToken = "--compact-defaults";
 
     public const string All = "all";
     public const string Core = "core";
     public const string Technical = "technical";
+    public const string TechnicalExtended = "technical-extended";
     public const string Screener = "screener";
     public const string Backtest = "backtest";
     public const string Portfolio = "portfolio";
@@ -27,6 +32,7 @@ public static class McpToolsetProfiles
         All,
         Core,
         Technical,
+        TechnicalExtended,
         Screener,
         Backtest,
         Portfolio,
@@ -38,6 +44,7 @@ public static class McpToolsetProfiles
     {
         Core,
         Technical,
+        TechnicalExtended,
         Screener,
         Backtest,
         Portfolio,

@@ -53,5 +53,11 @@ internal interface IMcpTool
     /// </summary>
     IReadOnlyDictionary<string, string>? MisnamedArgumentHints => null;
 
+    /// <summary>
+    /// Optional tool-specific guidance included in <c>LIMIT_EXCEEDED</c> hints when <c>MaxResponseTokens</c> is exceeded.
+    /// Every argument named here must exist in <see cref="InputSchemaJson"/>. Default is null (falls back to a generic hint).
+    /// </summary>
+    string? CompactUsageHint => null;
+
     Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken);
 }

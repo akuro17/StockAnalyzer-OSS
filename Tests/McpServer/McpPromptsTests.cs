@@ -353,7 +353,7 @@ public sealed class McpPromptsTests : IDisposable
         string sector = await PromptTextAsync(dispatcher, "sector_rotation_analysis");
         string audit = await PromptTextAsync(dispatcher, "backtest_overfitting_audit", """{"symbol":"MSFT","templateId":"3f2b8a52-9c1d-4e6f-8a7b-0123456789ab"}""");
 
-        Assert.Contains("compactRows true", technical);
+        Assert.Contains("count 60, compactRows true and decimalPlaces 4", technical);
         Assert.Contains("includeSeries false, summary true and decimalPlaces 4", technical);
         Assert.Contains("includeBarCoordinates false", technical);
 
@@ -361,5 +361,67 @@ public sealed class McpPromptsTests : IDisposable
         Assert.Contains("decimalPlaces 4", sector);
 
         Assert.Contains("compactReport true and maxReturnedTrades 0", audit);
+    }
+
+    [Fact]
+    public void EveryPromptRequiredToolsList_CoversAllToolsNamedInPromptText()
+    {
+        var registry = new McpPromptRegistry(new McpLimits());
+        foreach (McpPrompt prompt in registry.Prompts)
+        {
+            string text = registry.Build(prompt, new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [McpPromptRegistry.SymbolArgument] = prompt.Arguments.Any(a => a.Name == McpPromptRegistry.SymbolArgument) ? "MSFT" : string.Empty,
+                [McpPromptRegistry.TemplateIdArgument] = prompt.Arguments.Any(a => a.Name == McpPromptRegistry.TemplateIdArgument) ? TemplateId : string.Empty,
+            }.Where(kv => prompt.Arguments.Any(a => a.Name == kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal));
+
+            string[] named = Regex.Matches(text, @"\bsa_[a-z_]+\b").Select(m => m.Value).Distinct(StringComparer.Ordinal).ToArray();
+            foreach (string toolName in named)
+            {
+                Assert.Contains(toolName, prompt.RequiredTools);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(new[] { "core" }, new string[0])]
+    [InlineData(new[] { "core", "technical" }, new string[0])]
+    [InlineData(new[] { "core", "technical", "technical-extended" }, new[] { McpPromptRegistry.TechnicalDiagnosisName })]
+    [InlineData(new[] { "core", "portfolio" }, new[] { McpPromptRegistry.SectorRotationName })]
+    [InlineData(new[] { "core", "screener", "backtest" }, new[] { McpPromptRegistry.BacktestAuditName })]
+    public async Task ToolsetFiltering_HidesUnavailablePromptsFromList_AndRejectsPromptsGetWithInvalidParams(string[] toolsets, string[] expectedPrompts)
+    {
+        McpServerRuntime runtime = McpServerComposition.Create(
+            McpTestSupport.EmptyDataConfiguration(_emptyRoot),
+            new LogSink(new StringWriter()),
+            toolsets: toolsets);
+        _runtimes.Add(runtime);
+        await runtime.Dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        using JsonDocument listResponse = await SendAsync(runtime.Dispatcher, "prompts/list");
+        string[] listed = listResponse.RootElement.GetProperty("result").GetProperty("prompts").EnumerateArray()
+            .Select(p => p.GetProperty("name").GetString()!)
+            .ToArray();
+        Assert.Equal(expectedPrompts, listed);
+
+        var testArguments = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [McpPromptRegistry.TechnicalDiagnosisName] = """{"symbol":"MSFT"}""",
+            [McpPromptRegistry.SectorRotationName] = """{}""",
+            [McpPromptRegistry.BacktestAuditName] = $$"""{"symbol":"MSFT","templateId":"{{TemplateId}}"}""",
+        };
+
+        foreach ((string promptName, string argsJson) in testArguments)
+        {
+            using JsonDocument getResponse = await SendAsync(runtime.Dispatcher, "prompts/get", $$"""{"name":"{{promptName}}","arguments":{{argsJson}}}""");
+            if (expectedPrompts.Contains(promptName, StringComparer.Ordinal))
+            {
+                Assert.False(getResponse.RootElement.TryGetProperty("error", out _), $"Expected '{promptName}' to succeed under toolsets [{string.Join(",", toolsets)}].");
+            }
+            else
+            {
+                Assert.Equal((-32602, $"Unknown prompt: {promptName}"), ErrorOf(getResponse));
+            }
+        }
     }
 }

@@ -72,10 +72,10 @@ Detailed per-tool reference specifications extracted from `StockAnalyzer.McpServ
 
 ## Role-Based Toolset Profiles (`--toolset`)
 
-To reduce `tools/list` prompt token overhead further, pass comma-separated profiles from `all`, `core` (10), `technical` (16), `screener` (5), `backtest` (5), `portfolio` (7), and `ml` (4) via `--toolset`:
+To reduce `tools/list` prompt token overhead further, pass comma-separated profiles from `all`, `core` (10), `technical` (6), `technical-extended` (10), `screener` (5), `backtest` (5), `portfolio` (7), and `ml` (4) via `--toolset`:
 
 - **Minimal Data & Calculator**: `StockAnalyzer.McpServer --toolset core` (10 tools)
+- **Core Technical Diagnosis**: `StockAnalyzer.McpServer --toolset core,technical` (16 tools; add `technical-extended` for batch, converted series, drawings, patterns, cycles, seasonality, and projections)
 - **Screener & Backtest Research**: `StockAnalyzer.McpServer --toolset core,screener,backtest` (20 tools)
-- **Technical Chart Analyst + Discussion**: `StockAnalyzer.McpServer --toolset core,technical --enable-discussion`
-- **Portfolio & Catalysts + Text-Only Output**: `StockAnalyzer.McpServer --toolset core,portfolio --response-format text-only`
+- **Portfolio & Catalysts + Text-Only + Compact Defaults**: `StockAnalyzer.McpServer --toolset core,portfolio --response-format text-only --compact-defaults`
 - **ML/RL Inspection + Sandboxed Execution**: `StockAnalyzer.McpServer --toolset core,ml --enable-execution`

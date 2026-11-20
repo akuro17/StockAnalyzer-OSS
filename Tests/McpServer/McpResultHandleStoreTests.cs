@@ -218,4 +218,203 @@ public sealed class McpResultHandleStoreTests : IDisposable
         Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(unknown));
         Assert.Equal(McpResultHandleStore.SymbolsFromResultIdArgument, McpTestSupport.Structured(unknown).GetProperty("param").GetString());
     }
+
+    [Fact]
+    public void ResolveSymbolsSlice_SlicesAndEnforcesBoundsWithoutSilentTruncation()
+    {
+        var store = new McpResultHandleStore();
+        string[] all = Enumerable.Range(1, 55).Select(i => $"SYM{i:D2}").ToArray();
+        string id = store.Store("sa_run_screener", all).ResultId;
+
+        // Omitting limit when remaining > maxCount throws LIMIT_EXCEEDED with slice hint
+        ToolException unpaged = Assert.Throws<ToolException>(() => store.ResolveSymbolsSlice(id, 1, 50));
+        Assert.Equal(ToolErrorCodes.LimitExceeded, unpaged.Code);
+        Assert.Contains(McpResultHandleStore.ResultOffsetArgument, unpaged.Hint!, StringComparison.Ordinal);
+        Assert.Contains(McpResultHandleStore.ResultLimitArgument, unpaged.Hint!, StringComparison.Ordinal);
+
+        // Explicit slice 0..49 and 50..54
+        Assert.Equal(all[..50], store.ResolveSymbolsSlice(id, 1, 50, offset: 0, limit: 50));
+        Assert.Equal(all[50..], store.ResolveSymbolsSlice(id, 1, 50, offset: 50, limit: 50));
+
+        // Omitted limit when offset brings remaining <= maxCount succeeds
+        Assert.Equal(all[50..], store.ResolveSymbolsSlice(id, 1, 50, offset: 50, limit: null));
+
+        // Offset beyond count -> INVALID_ARGUMENT at resultOffset
+        ToolException outOfRange = Assert.Throws<ToolException>(() => store.ResolveSymbolsSlice(id, 1, 50, offset: 55, limit: 10));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, outOfRange.Code);
+        Assert.Equal(McpResultHandleStore.ResultOffsetArgument, outOfRange.Parameter);
+
+        // Limit above maxCount -> LIMIT_EXCEEDED at resultLimit
+        ToolException limitTooHigh = Assert.Throws<ToolException>(() => store.ResolveSymbolsSlice(id, 1, 50, offset: 0, limit: 51));
+        Assert.Equal(ToolErrorCodes.LimitExceeded, limitTooHigh.Code);
+        Assert.Equal(McpResultHandleStore.ResultLimitArgument, limitTooHigh.Parameter);
+
+        // Trailing slice smaller than minCount (e.g. 54..54 = 1 symbol for cross-asset min=2) -> INVALID_ARGUMENT
+        ToolException tooFewRemaining = Assert.Throws<ToolException>(() => store.ResolveSymbolsSlice(id, 2, 50, offset: 54, limit: 50));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, tooFewRemaining.Code);
+        Assert.Equal(McpResultHandleStore.SymbolsFromResultIdArgument, tooFewRemaining.Parameter);
+    }
+
+    [Fact]
+    public async Task RunScreener_And_FilterTickers_StoreFullResultsAndSupportPreviewSuppression()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        string screenerCondition = """{"left":{"price":"Close"},"comparison":"GreaterThan","right":10}""";
+
+        // 1. Preview truncated (maxReturnedMatches: 1) still stores ALL 3 symbols in the handle
+        using JsonDocument previewDoc = await CallAsync(dispatcher, "sa_run_screener", $$"""{"conditionTree":{{screenerCondition}},"maxReturnedMatches":1,"storeResult":true}""");
+        JsonElement preview = Ok(previewDoc);
+        Assert.Equal(3, preview.GetProperty("matchedSymbolCount").GetInt32());
+        Assert.Equal(1, preview.GetProperty("returnedMatchCount").GetInt32());
+        Assert.Single(preview.GetProperty("matchedSymbols").EnumerateArray());
+        string previewHandle = preview.GetProperty("resultId").GetString()!;
+
+        using JsonDocument metaFromPreview = await CallAsync(dispatcher, "sa_get_ticker_metadata", $$"""{"symbolsFromResultId":"{{previewHandle}}"}""");
+        Assert.Equal(3, Ok(metaFromPreview).GetProperty("uniqueCount").GetInt32());
+
+        // 2. includeMatchedSymbols: false suppresses matchedSymbols & ranking while storing all 3 symbols
+        using JsonDocument suppressedScreener = await CallAsync(
+            dispatcher,
+            "sa_run_screener",
+            $$"""{"conditionTree":{{screenerCondition}},"sortBy":{"price":"Close"},"storeResult":true,"includeMatchedSymbols":false}""");
+        JsonElement suppressedBody = Ok(suppressedScreener);
+        Assert.Equal(3, suppressedBody.GetProperty("matchedSymbolCount").GetInt32());
+        Assert.Equal(0, suppressedBody.GetProperty("returnedMatchCount").GetInt32());
+        Assert.Empty(suppressedBody.GetProperty("matchedSymbols").EnumerateArray());
+        Assert.False(suppressedBody.TryGetProperty("ranking", out _));
+        string suppressedHandle = suppressedBody.GetProperty("resultId").GetString()!;
+
+        using JsonDocument batchFromSuppressed = await CallAsync(
+            dispatcher,
+            "sa_calculate_indicators_batch",
+            $$$"""{"symbolsFromResultId":"{{{suppressedHandle}}}","timeFrame":"D1","indicators":[{"id":"s","type":"SMA","parameters":{"Period":5}}]}""");
+        Assert.Equal(3, Ok(batchFromSuppressed).GetProperty("symbolCount").GetInt32());
+
+        // 3. sa_filter_tickers: limit: 1 stores all 3 symbols; includeMatches: false suppresses matches while storing all 3
+        using JsonDocument pagedFilter = await CallAsync(dispatcher, "sa_filter_tickers", """{"limit":1,"storeResult":true}""");
+        JsonElement pagedBody = Ok(pagedFilter);
+        Assert.Equal(3, pagedBody.GetProperty("totalMatchCount").GetInt32());
+        Assert.Equal(1, pagedBody.GetProperty("returnedCount").GetInt32());
+        string pagedFilterHandle = pagedBody.GetProperty("resultId").GetString()!;
+
+        using JsonDocument metaFromPagedFilter = await CallAsync(dispatcher, "sa_get_ticker_metadata", $$"""{"symbolsFromResultId":"{{pagedFilterHandle}}"}""");
+        Assert.Equal(3, Ok(metaFromPagedFilter).GetProperty("uniqueCount").GetInt32());
+
+        using JsonDocument suppressedFilter = await CallAsync(dispatcher, "sa_filter_tickers", """{"storeResult":true,"includeMatches":false}""");
+        JsonElement suppressedFilterBody = Ok(suppressedFilter);
+        Assert.Equal(3, suppressedFilterBody.GetProperty("totalMatchCount").GetInt32());
+        Assert.Equal(0, suppressedFilterBody.GetProperty("returnedCount").GetInt32());
+        Assert.False(suppressedFilterBody.GetProperty("hasMore").GetBoolean());
+        Assert.Empty(suppressedFilterBody.GetProperty("matches").EnumerateArray());
+        string suppressedFilterHandle = suppressedFilterBody.GetProperty("resultId").GetString()!;
+
+        using JsonDocument metaFromSuppressedFilter = await CallAsync(dispatcher, "sa_get_ticker_metadata", $$"""{"symbolsFromResultId":"{{suppressedFilterHandle}}"}""");
+        Assert.Equal(3, Ok(metaFromSuppressedFilter).GetProperty("uniqueCount").GetInt32());
+
+        // 4. Safeguard 5: suppressing without storeResult: true must fail with INVALID_ARGUMENT
+        using JsonDocument noStoreScreener = await CallAsync(dispatcher, "sa_run_screener", $$"""{"conditionTree":{{screenerCondition}},"includeMatchedSymbols":false}""");
+        Assert.True(McpTestSupport.IsError(noStoreScreener));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(noStoreScreener));
+        Assert.Equal("includeMatchedSymbols", McpTestSupport.Structured(noStoreScreener).GetProperty("param").GetString());
+
+        using JsonDocument noStoreFilter = await CallAsync(dispatcher, "sa_filter_tickers", """{"includeMatches":false}""");
+        Assert.True(McpTestSupport.IsError(noStoreFilter));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(noStoreFilter));
+        Assert.Equal("includeMatches", McpTestSupport.Structured(noStoreFilter).GetProperty("param").GetString());
+    }
+
+    [Fact]
+    public async Task ConsumerTools_PaginateStoredHandleWithResultOffsetAndResultLimit_AndMetadataSupportsHandles()
+    {
+        // Seed a 55-symbol fixture to verify >50 handle pagination across all 5 consumer tools
+        string[] fiftyFive = Enumerable.Range(1, 55).Select(i => $"T{i:D2}").ToArray();
+        using ReadOnlyDataTreeFixture largeFixture = ReadOnlyDataTreeFixture.Create(60, fiftyFive);
+        decimal[] closes = Enumerable.Range(0, 60).Select(i => 100m + i * 0.5m).ToArray();
+        foreach (string sym in fiftyFive)
+        {
+            StockAnalyzer.Core.Tests.TestHelpers.ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(largeFixture.DailyDirectory, sym, closes);
+        }
+
+        IConfiguration configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(McpTestSupport.DataTreeConfiguration(largeFixture))
+            .Build();
+        using McpServerRuntime runtime = McpServerComposition.Create(configuration, new LogSink(new StringWriter()));
+        await runtime.Dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        string screenerCondition = """{"left":{"price":"Close"},"comparison":"GreaterThan","right":10}""";
+        using JsonDocument stored = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_run_screener",
+            $$"""{"conditionTree":{{screenerCondition}},"storeResult":true,"includeMatchedSymbols":false}"""))!;
+        JsonElement storedBody = Ok(stored);
+        Assert.Equal(55, storedBody.GetProperty("matchedSymbolCount").GetInt32());
+        Assert.Empty(storedBody.GetProperty("matchedSymbols").EnumerateArray());
+        string handleId = storedBody.GetProperty("resultId").GetString()!;
+
+        // Without resultLimit, a >50 handle must still fail with LIMIT_EXCEEDED (no silent truncation)
+        using JsonDocument batchUnpaged = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_calculate_indicators_batch",
+            $$$"""{"symbolsFromResultId":"{{{handleId}}}","timeFrame":"D1","indicators":[{"id":"s","type":"SMA","parameters":{"Period":5}}]}"""))!;
+        Assert.True(McpTestSupport.IsError(batchUnpaged));
+        Assert.Equal(ToolErrorCodes.LimitExceeded, McpTestSupport.ErrorCodeOf(batchUnpaged));
+
+        // Page 1 (0..49 = 50) & Page 2 (50..54 = 5) on sa_calculate_indicators_batch
+        using JsonDocument batchPage1 = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_calculate_indicators_batch",
+            $$$"""{"symbolsFromResultId":"{{{handleId}}}","resultOffset":0,"resultLimit":50,"timeFrame":"D1","indicators":[{"id":"s","type":"SMA","parameters":{"Period":5}}]}"""))!;
+        using JsonDocument batchPage2 = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_calculate_indicators_batch",
+            $$$"""{"symbolsFromResultId":"{{{handleId}}}","resultOffset":50,"resultLimit":50,"timeFrame":"D1","indicators":[{"id":"s","type":"SMA","parameters":{"Period":5}}]}"""))!;
+        Assert.Equal(50, Ok(batchPage1).GetProperty("symbolCount").GetInt32());
+        Assert.Equal(5, Ok(batchPage2).GetProperty("symbolCount").GetInt32());
+
+        // Cross-asset stats slice
+        using JsonDocument crossPage2 = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_calculate_cross_asset_stats",
+            $$"""{"symbolsFromResultId":"{{handleId}}","resultOffset":50,"resultLimit":5,"timeFrame":"D1","lookbackBars":40}"""))!;
+        Assert.Equal(5, Ok(crossPage2).GetProperty("symbols").GetArrayLength());
+
+        // Portfolio backtest slice
+        string backtestConds = """{"entryLong":{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"price":"Close","offset":1}},"exitLong":{"left":{"price":"Close"},"comparison":"LessThan","right":{"price":"Close","offset":1}}}""";
+        using JsonDocument portfolioPage2 = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_run_portfolio_backtest",
+            $$"""{"symbolsFromResultId":"{{handleId}}","resultOffset":50,"resultLimit":5,"conditions":{{backtestConds}}}"""))!;
+        Assert.Equal(5, Ok(portfolioPage2).GetProperty("symbolCount").GetInt32());
+
+        // Market breadth slice
+        using JsonDocument breadthPage1 = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_calculate_market_breadth",
+            $$"""{"symbolsFromResultId":"{{handleId}}","resultOffset":0,"resultLimit":25,"timeFrame":"D1","lookbackBars":40,"outputTailCount":5}"""))!;
+        Assert.Equal(25, Ok(breadthPage1).GetProperty("symbolCount").GetInt32());
+
+        // sa_get_ticker_metadata handle consumption + slice + mutual exclusivity + resultOffset without handle
+        using JsonDocument metaSlice = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_get_ticker_metadata",
+            $$"""{"symbolsFromResultId":"{{handleId}}","resultOffset":50,"resultLimit":5}"""))!;
+        Assert.Equal(5, Ok(metaSlice).GetProperty("uniqueCount").GetInt32());
+        Assert.Equal("T51", Ok(metaSlice).GetProperty("results")[0].GetProperty("symbol").GetString());
+
+        using JsonDocument metaConflict = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_get_ticker_metadata",
+            $$"""{"symbols":["T01"],"symbolsFromResultId":"{{handleId}}"}"""))!;
+        Assert.True(McpTestSupport.IsError(metaConflict));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(metaConflict));
+        Assert.Equal(McpResultHandleStore.SymbolsFromResultIdArgument, McpTestSupport.Structured(metaConflict).GetProperty("param").GetString());
+
+        using JsonDocument offsetWithoutHandle = (await McpTestSupport.CallAsync(
+            runtime.Dispatcher,
+            "sa_get_ticker_metadata",
+            """{"symbols":["T01"],"resultOffset":0}"""))!;
+        Assert.True(McpTestSupport.IsError(offsetWithoutHandle));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(offsetWithoutHandle));
+        Assert.Equal(McpResultHandleStore.ResultOffsetArgument, McpTestSupport.Structured(offsetWithoutHandle).GetProperty("param").GetString());
+    }
 }

@@ -12,6 +12,7 @@ internal static class McpToolsetCatalog
     public const string AllProfile = McpToolsetProfiles.All;
     public const string CoreProfile = McpToolsetProfiles.Core;
     public const string TechnicalProfile = McpToolsetProfiles.Technical;
+    public const string TechnicalExtendedProfile = McpToolsetProfiles.TechnicalExtended;
     public const string ScreenerProfile = McpToolsetProfiles.Screener;
     public const string BacktestProfile = McpToolsetProfiles.Backtest;
     public const string PortfolioProfile = McpToolsetProfiles.Portfolio;
@@ -35,21 +36,22 @@ internal static class McpToolsetCatalog
                 "sa_evaluate_expressions"),
             [TechnicalProfile] = Set(
                 "sa_calculate_indicators",
+                "sa_analyze_market_structure",
+                "sa_find_support_resistance",
+                "sa_detect_candle_patterns",
+                "sa_detect_divergences",
+                "sa_render_chart_image"),
+            [TechnicalExtendedProfile] = Set(
                 "sa_calculate_indicators_batch",
                 "sa_calculate_chart_series",
                 "sa_calculate_reverse_watch",
                 "sa_calculate_volume_profile",
-                "sa_analyze_market_structure",
-                "sa_find_support_resistance",
                 "sa_calculate_drawing_values",
                 "sa_get_chart_drawings",
-                "sa_detect_candle_patterns",
                 "sa_detect_chart_patterns",
                 "sa_analyze_cycles",
                 "sa_project_price_path",
-                "sa_get_seasonality",
-                "sa_detect_divergences",
-                "sa_render_chart_image"),
+                "sa_get_seasonality"),
             [ScreenerProfile] = Set(
                 "sa_run_screener",
                 "sa_list_templates",

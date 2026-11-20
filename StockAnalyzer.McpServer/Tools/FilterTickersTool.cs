@@ -27,6 +27,7 @@ internal sealed class FilterTickersTool : IMcpTool
     private const string ScreenerArgument = "screener";
     private const string ConditionKey = "conditionTree";
     private const string IncludeFieldsArgument = "includeFields";
+    private const string IncludeMatchesArgument = "includeMatches";
     private const string OffsetArgument = "offset";
     private const string LimitArgument = "limit";
     private const string FieldKey = "field";
@@ -98,7 +99,8 @@ internal sealed class FilterTickersTool : IMcpTool
         .Integer(OffsetArgument, "Number of matches to skip. Default 0.", defaultValue: 0, minimum: 0)
         .Integer(LimitArgument, $"Page size. Default {_limits.DefaultTickerPageSize}, at most {_limits.MaxTickersPerPage}.", defaultValue: _limits.DefaultTickerPageSize, minimum: 1, maximum: _limits.MaxTickersPerPage)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Evaluate listed symbols that are not in the ticker list but have stored daily bars. Applies to symbols only. Default false.")
-        .Boolean(McpResultHandleStore.StoreResultArgument, $"Store returned match symbols in memory and return {McpResultHandleStore.ResultIdKey} for downstream tools. Default false.")
+        .Boolean(McpResultHandleStore.StoreResultArgument, $"Store all matching symbols in memory and return {McpResultHandleStore.ResultIdKey} for downstream tools. Default false.")
+        .Boolean(IncludeMatchesArgument, $"Include matches in the response. Default true; false requires {McpResultHandleStore.StoreResultArgument} true and cannot be combined with {IncludeFieldsArgument}.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -107,8 +109,26 @@ internal sealed class FilterTickersTool : IMcpTool
         int limit = ToolArgs.PositiveWithin(arguments, LimitArgument, _limits.DefaultTickerPageSize, _limits.MaxTickersPerPage);
         bool allowUnregistered = ToolArgs.Boolean(arguments, SymbolResolver.AllowUnregisteredArgument) ?? false;
         bool storeResult = ToolArgs.Boolean(arguments, McpResultHandleStore.StoreResultArgument) ?? false;
+        bool includeMatches = ToolArgs.Boolean(arguments, IncludeMatchesArgument) ?? true;
         IReadOnlyList<FilterRule> rules = ReadRules(arguments);
         IReadOnlyList<string> includeFields = ReadIncludeFields(arguments);
+        if (!includeMatches && !storeResult)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{IncludeMatchesArgument}' false requires '{McpResultHandleStore.StoreResultArgument}' true.",
+                IncludeMatchesArgument,
+                $"Set {McpResultHandleStore.StoreResultArgument} to true, or omit {IncludeMatchesArgument}.");
+        }
+
+        if (!includeMatches && includeFields.Count > 0)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{IncludeFieldsArgument}' cannot be used when '{IncludeMatchesArgument}' is false.",
+                IncludeFieldsArgument,
+                $"Omit {IncludeFieldsArgument} or set {IncludeMatchesArgument} to true.");
+        }
 
         // The shape of everything the client sent, and the symbols its screener condition names, are checked before any rule is evaluated,
         // so a mistake in the screener is reported whatever the rules leave over. Only the number of symbols that reach the screener depends on the data.
@@ -146,8 +166,8 @@ internal sealed class FilterTickersTool : IMcpTool
             matches = screened.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList();
         }
 
-        List<string> page = matches.Skip(offset).Take(limit).ToList();
-        string? storedResultId = storeResult ? _resultHandles.Store(Name, page).ResultId : null;
+        string? storedResultId = storeResult ? _resultHandles.Store(Name, matches).ResultId : null;
+        List<string> page = includeMatches ? matches.Skip(offset).Take(limit).ToList() : new List<string>();
         var rows = new Dictionary<string, TickerRow>(StringComparer.Ordinal);
         if (includeFields.Count > 0)
         {
@@ -187,7 +207,7 @@ internal sealed class FilterTickersTool : IMcpTool
             writer.WriteNumber("offset", offset);
             writer.WriteNumber("limit", limit);
             writer.WriteNumber("returnedCount", page.Count);
-            writer.WriteBoolean("hasMore", (long)offset + page.Count < matches.Count);
+            writer.WriteBoolean("hasMore", includeMatches && (long)offset + page.Count < matches.Count);
             if (storedResultId is not null)
             {
                 writer.WriteString(McpResultHandleStore.ResultIdKey, storedResultId);

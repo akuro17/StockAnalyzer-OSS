@@ -42,11 +42,13 @@ internal sealed class RunWalkForwardTool : IMcpTool
 
     private readonly BacktestSweep _sweep;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public RunWalkForwardTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, BacktestConditionBinder conditions, McpLimits limits)
+    public RunWalkForwardTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, BacktestConditionBinder conditions, McpLimits limits, bool compactDefaults = false)
     {
         _sweep = new BacktestSweep(gateway, symbols, conditions, limits);
         _limits = limits;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_run_walk_forward_analysis";
@@ -58,6 +60,8 @@ internal sealed class RunWalkForwardTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public string? CompactUsageHint => "Pass compactReport: true or fewer windows.";
+
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"conditions\":{\"entryLong\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"GreaterThan\",\"right\":{\"indicator\":\"SMA\",\"parameters\":{\"Period\":{\"$param\":\"period\"}}}}," +
         "\"exitLong\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"LessThan\",\"right\":{\"indicator\":\"SMA\",\"parameters\":{\"Period\":{\"$param\":\"period\"}}}}}," +
@@ -65,39 +69,39 @@ internal sealed class RunWalkForwardTool : IMcpTool
         "\"windows\":{\"generator\":{\"mode\":\"Rolling\",\"inSampleBars\":500,\"outOfSampleBars\":125,\"stepBars\":125}}}";
 
     public string InputSchemaJson => BacktestSweep.WithRangesAndObjective(ToolSchema.Object()
-        .String(SymbolArgument, "The symbol to test (a ticker from sa_list_tickers).", required: true)
-        .FreeObject(ConditionsArgument, "The conditions of sa_run_backtest with {\"$param\": name} placeholders where numbers go.", required: true))
+        .String(SymbolArgument, "Symbol to test (from sa_list_tickers).", required: true)
+        .FreeObject(ConditionsArgument, "sa_run_backtest conditions with {\"$param\": name} placeholders.", required: true))
         .NestedObject(
             WindowsArgument,
-            $"Exactly one of {GeneratorKey} and {ListKey}.",
+            $"Exactly one of {GeneratorKey} or {ListKey}.",
             ToolSchema.Object()
                 .NestedObject(
                     GeneratorKey,
-                    "Windows measured in bars of the time frame.",
+                    "Bar-count window generator.",
                     ToolSchema.Object()
-                        .String("mode", "Rolling (the in-sample length stays, the window moves) or Anchored (the first bar stays, the in-sample part grows).", required: true, allowedValues: Enum.GetNames<WalkForwardMode>())
-                        .Integer("inSampleBars", "Bars of the in-sample part (Anchored: of the first window).", required: true, minimum: 1)
-                        .Integer("outOfSampleBars", "Bars of the out-of-sample part.", required: true, minimum: 1)
-                        .Integer("stepBars", "Bars the next window is moved (Rolling) or grown (Anchored).", required: true, minimum: 1))
+                        .String("mode", "Rolling (fixed window) or Anchored (expanding start).", required: true, allowedValues: Enum.GetNames<WalkForwardMode>())
+                        .Integer("inSampleBars", "In-sample bar count.", required: true, minimum: 1)
+                        .Integer("outOfSampleBars", "Out-of-sample bar count.", required: true, minimum: 1)
+                        .Integer("stepBars", "Step/growth bar count per window.", required: true, minimum: 1))
                 .ObjectArray(
                     ListKey,
-                    "Windows given by date (inclusive).",
+                    "Explicit inclusive date windows.",
                     ToolSchema.Object()
                         .String("inSampleStart", "yyyy-MM-dd", required: true)
-                        .String("inSampleEnd", "yyyy-MM-dd; before outOfSampleStart.", required: true)
+                        .String("inSampleEnd", "yyyy-MM-dd; < outOfSampleStart.", required: true)
                         .String("outOfSampleStart", "yyyy-MM-dd", required: true)
                         .String("outOfSampleEnd", "yyyy-MM-dd", required: true),
                     minItems: 1),
             required: true)
-        .Integer(MinTradesArgument, $"The fewest trades a combination must make in the in-sample part to be eligible as the best one. Default {_limits.DefaultMinInSampleTrades}; 0 allows a combination that never traded.", defaultValue: _limits.DefaultMinInSampleTrades, minimum: 0)
-        .String(StartArgument, "Generator only: first day of the period the windows are cut from, yyyy-MM-dd. Default: the start of the stored history.")
-        .String(EndArgument, "Generator only: last day of that period, yyyy-MM-dd. Default: the latest stored bar.")
-        .String(TimeFrameArgument, $"Time frame of the bars ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
-        .FreeObject(BacktestSettingsBinder.AccountArgument, "Capital, cost, sizing and margin settings, as for sa_run_backtest; numbers may be placeholders.")
-        .FreeObject(BacktestSettingsBinder.RiskArgument, "{stopLossRatio, takeProfitRatio, dynamicExits}, as for sa_run_backtest; numbers may be placeholders.")
-        .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings, as for sa_run_backtest; numbers may be placeholders.")
-        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
-        .Boolean(BacktestReportJson.CompactReportArgument, "Write every window metric (is*/oos*) as its bare number (null when its status is not Valid) and list non-Valid ones of evaluated windows in unavailableMetrics [{name, status}] (only when any exist). Default false.")
+        .Integer(MinTradesArgument, $"Min in-sample trades for eligibility. Default {_limits.DefaultMinInSampleTrades}; 0 allows zero-trade.", defaultValue: _limits.DefaultMinInSampleTrades, minimum: 0)
+        .String(StartArgument, "Generator start date (yyyy-MM-dd). Default: history start.")
+        .String(EndArgument, "Generator end date (yyyy-MM-dd). Default: latest bar.")
+        .String(TimeFrameArgument, $"Bar timeframe ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
+        .FreeObject(BacktestSettingsBinder.AccountArgument, "Account settings (sa_run_backtest syntax; placeholders allowed).")
+        .FreeObject(BacktestSettingsBinder.RiskArgument, "{stopLossRatio, takeProfitRatio, dynamicExits} (placeholders allowed).")
+        .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings (sa_run_backtest syntax; placeholders allowed).")
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbol with stored bars. Default false.")
+        .Boolean(BacktestReportJson.CompactReportArgument, "Emit bare window metrics (null if non-Valid) + unavailableMetrics [{name, status}]. Default false.")
         .Build();
 
     /// <summary>One window as the run plans it: its mode label and the first and last day of both parts.</summary>
@@ -120,7 +124,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
         ObjectiveMetric objective = OptimizationObjectives.Resolve(ToolArgs.String(arguments, ObjectiveArgument)!, ObjectiveArgument);
         bool minimize = string.Equals(ToolArgs.String(arguments, DirectionArgument), Minimize, StringComparison.Ordinal);
         int minInSampleTrades = ToolArgs.NonNegativeWithin(arguments, MinTradesArgument, _limits.DefaultMinInSampleTrades, NoUpperBound);
-        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? false;
+        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? _compactDefaults;
         JsonElement windowsElement = arguments.GetProperty(WindowsArgument);
         bool hasGenerator = windowsElement.TryGetProperty(GeneratorKey, out JsonElement generator);
         bool hasList = windowsElement.TryGetProperty(ListKey, out JsonElement list);

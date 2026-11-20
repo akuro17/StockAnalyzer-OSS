@@ -49,6 +49,8 @@ internal sealed class ListTickersTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? CompactUsageHint => "Pass a smaller limit, omit includeMetadataSummary, or select fewer fields.";
+
     public string? ExampleArgumentsJson => "{\"limit\":20,\"searchQuery\":\"TOYOTA\"}";
 
     public string InputSchemaJson => ToolSchema.Object()

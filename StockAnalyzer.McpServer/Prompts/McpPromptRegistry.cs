@@ -22,7 +22,13 @@ internal sealed record McpPromptValues(IReadOnlyDictionary<string, string> Value
 /// A workflow prompt: a fixed, deterministic list of read-only tool calls an AI client is asked to make for one analysis, and how to report it. The text depends only on the argument values:
 /// no clock, no stored data and no setting is read, so the same arguments always give the same prompt.
 /// </summary>
-internal sealed record McpPrompt(string Name, string Title, string Description, IReadOnlyList<McpPromptArgument> Arguments, Func<McpPromptValues, string> BuildText);
+internal sealed record McpPrompt(
+    string Name,
+    string Title,
+    string Description,
+    IReadOnlyList<McpPromptArgument> Arguments,
+    IReadOnlyList<string> RequiredTools,
+    Func<McpPromptValues, string> BuildText);
 
 /// <summary>The argument was missing, unknown, not a string or out of its range; the message is the -32602 text.</summary>
 internal sealed class McpPromptArgumentException : Exception
@@ -64,11 +70,11 @@ internal sealed class McpPromptRegistry
     private readonly int _maxLookbackBars;
     private readonly int _defaultMinInSampleTrades;
 
-    public McpPromptRegistry(McpLimits limits)
+    public McpPromptRegistry(McpLimits limits, McpToolRegistry? availableTools = null)
     {
         _maxLookbackBars = limits.MaxCandlesPerRequest;
         _defaultMinInSampleTrades = limits.DefaultMinInSampleTrades;
-        Prompts = new[]
+        McpPrompt[] allPrompts =
         {
             new McpPrompt(
                 TechnicalDiagnosisName,
@@ -78,6 +84,18 @@ internal sealed class McpPromptRegistry
                 {
                     new McpPromptArgument(SymbolArgument, "Ticker symbol, for example 7203-T (the form every tool accepts; a formula of two symbols is allowed).", Required: true),
                     new McpPromptArgument(TimeFrameArgument, $"Time frame: {SupportedTimeFrameList()}.", Required: false, DefaultTimeFrame),
+                },
+                new[]
+                {
+                    "sa_get_candles",
+                    "sa_calculate_indicators",
+                    "sa_get_capabilities",
+                    "sa_analyze_market_structure",
+                    "sa_find_support_resistance",
+                    "sa_detect_candle_patterns",
+                    "sa_detect_chart_patterns",
+                    "sa_detect_divergences",
+                    "sa_render_chart_image",
                 },
                 TechnicalDiagnosis),
             new McpPrompt(
@@ -89,6 +107,12 @@ internal sealed class McpPromptRegistry
                     new McpPromptArgument(GroupIdArgument, "Id (GUID) of a ticker group from sa_list_ticker_groups. When omitted the workflow starts by listing the groups.", Required: false),
                     new McpPromptArgument(LookbackBarsArgument, $"Daily bars to look back, 1 to {_maxLookbackBars.ToString(CultureInfo.InvariantCulture)}.", Required: false, DefaultSectorLookbackBars.ToString(CultureInfo.InvariantCulture)),
                 },
+                new[]
+                {
+                    "sa_list_ticker_groups",
+                    "sa_calculate_market_breadth",
+                    "sa_calculate_relative_performance",
+                },
                 SectorRotation),
             new McpPrompt(
                 BacktestAuditName,
@@ -99,8 +123,19 @@ internal sealed class McpPromptRegistry
                     new McpPromptArgument(SymbolArgument, "Ticker symbol the template is tested on.", Required: true),
                     new McpPromptArgument(TemplateIdArgument, "Id (GUID) of a saved backtest-condition template from sa_list_templates.", Required: true),
                 },
+                new[]
+                {
+                    "sa_get_template_detail",
+                    "sa_run_backtest",
+                    "sa_run_walk_forward_analysis",
+                    "sa_get_capabilities",
+                    "sa_optimize_backtest",
+                },
                 BacktestAudit),
         };
+        Prompts = availableTools is null
+            ? allPrompts
+            : allPrompts.Where(prompt => prompt.RequiredTools.All(tool => availableTools.TryGet(tool, out _))).ToArray();
         _byName = Prompts.ToDictionary(prompt => prompt.Name, StringComparer.Ordinal);
     }
 
@@ -195,7 +230,7 @@ internal sealed class McpPromptRegistry
         var text = new StringBuilder();
         text.AppendLine($"Diagnose {symbol} on the {frame} time frame from the stored bars of the StockAnalyzer MCP server. Use only the tools below, in this order, and take every number from a tool result (never from a picture).");
         text.AppendLine();
-        text.AppendLine($"1. sa_get_candles with symbol {symbol} and timeFrame {frame}: the latest bars. Note the last bar date; every later step uses it as the end of the data and nothing after it may be assumed. Pass compactRows true and decimalPlaces 4 to reduce token usage.");
+        text.AppendLine($"1. sa_get_candles with symbol {symbol} and timeFrame {frame}: the latest bars. Note the last bar date; every later step uses it as the end of the data and nothing after it may be assumed. Pass count 60, compactRows true and decimalPlaces 4 to reduce token usage.");
         text.AppendLine("2. sa_calculate_indicators on the same symbol and time frame: a trend average pair (for example SMA or EMA), a momentum oscillator (for example RSI), MACD and a volatility measure (for example ATR). Type names and parameters come from sa_get_capabilities. Pass includeSeries false, summary true and decimalPlaces 4 to receive compact statistics instead of full bar arrays.");
         text.AppendLine("3. sa_analyze_market_structure: the swing highs and lows with the date each was confirmed, and the current structure (higher highs and lows, or the reverse).");
         text.AppendLine("4. sa_find_support_resistance: the nearest levels above and below the last close.");

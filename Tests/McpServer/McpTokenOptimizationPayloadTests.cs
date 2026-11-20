@@ -1,5 +1,7 @@
+using System.Buffers.Binary;
 using System.IO;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,6 +10,8 @@ using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services.Notes;
 using StockAnalyzer.McpServer;
+using StockAnalyzer.McpServer.Execution;
+using StockAnalyzer.McpServer.Limits;
 using StockAnalyzer.McpServer.Protocol;
 using StockAnalyzer.McpServer.Tools;
 using StockAnalyzer.TestSupport;
@@ -57,7 +61,7 @@ public sealed class McpTokenOptimizationPayloadTests : IDisposable
         }
     }
 
-    private async Task<McpMessageDispatcher> StartAsync(params (string Key, string Value)[] overrides)
+    private async Task<McpMessageDispatcher> StartWithCompactDefaultsAsync(bool compactDefaults, params (string Key, string Value)[] overrides)
     {
         Dictionary<string, string?> values = McpTestSupport.DataTreeConfiguration(_fixture);
         foreach ((string key, string value) in overrides)
@@ -69,11 +73,15 @@ public sealed class McpTokenOptimizationPayloadTests : IDisposable
         McpServerRuntime runtime = McpServerComposition.Create(
             new ConfigurationBuilder().AddInMemoryCollection(values).Build(),
             new LogSink(new StringWriter()),
-            noteSource: new SqliteReadOnlyNoteSource(dbPath));
+            noteSource: new SqliteReadOnlyNoteSource(dbPath),
+            compactDefaults: compactDefaults);
         _runtimes.Add(runtime);
         await runtime.Dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
         return runtime.Dispatcher;
     }
+
+    private async Task<McpMessageDispatcher> StartAsync(params (string Key, string Value)[] overrides)
+        => await StartWithCompactDefaultsAsync(compactDefaults: false, overrides);
 
     private static async Task<JsonDocument> CallAsync(McpMessageDispatcher dispatcher, string tool, string arguments)
         => (await McpTestSupport.CallAsync(dispatcher, tool, arguments))!;
@@ -453,5 +461,207 @@ public sealed class McpTokenOptimizationPayloadTests : IDisposable
         Assert.True(extracted.Length <= 200);
         Assert.False(char.IsLowSurrogate(extracted[0]));
         Assert.False(char.IsHighSurrogate(extracted[^1]));
+    }
+
+    // ---- CompactUsageHint & PNG IHDR vision-token accounting ---------------------------------------------------------------------
+
+    [Fact]
+    public async Task TokenLimitExceeded_UsesToolSpecificHintWithoutSuggestingInvalidArguments()
+    {
+        await AddNoteAsync(new string('n', 5000), day: 15);
+        McpMessageDispatcher dispatcher = await StartAsync(("AiIntegration:MaxResponseTokens", "1024"));
+
+        // sa_search_notes exceeds 1024 tokens and must suggest snippetOnly/limit, never compactRows/compactReport
+        using JsonDocument notesExceeded = await CallAsync(dispatcher, "sa_search_notes", "{}");
+        Assert.True(McpTestSupport.IsError(notesExceeded));
+        Assert.Equal(ToolErrorCodes.LimitExceeded, McpTestSupport.ErrorCodeOf(notesExceeded));
+        string hint = McpTestSupport.Structured(notesExceeded).GetProperty("hint").GetString()!;
+        Assert.Contains("snippetOnly", hint, StringComparison.Ordinal);
+        Assert.DoesNotContain("compactRows", hint, StringComparison.Ordinal);
+        Assert.DoesNotContain("compactReport", hint, StringComparison.Ordinal);
+        Assert.DoesNotContain("includeSeries", hint, StringComparison.Ordinal);
+
+        // Verify every CompactUsageHint across all 65 tools only mentions arguments declared in its own InputSchemaJson
+        string emptyRoot = Path.Combine(Path.GetTempPath(), "sa_hint_check_" + Guid.NewGuid().ToString("N"));
+        using McpServerRuntime full = McpServerComposition.Create(
+            McpTestSupport.EmptyDataConfiguration(emptyRoot),
+            new LogSink(TextWriter.Null),
+            enableExecution: true,
+            enableDiscussion: true);
+
+        string[] knownTokenOptions =
+        {
+            "compactRows", "compactReport", "includeSeries", "summary", "decimalPlaces", "count",
+            "startDate", "endDate", "outputTailCount", "lookbackBars", "indicators", "symbols",
+            "includeBooleanSeries", "maxEvents", "maxReturnedTrades", "includeEquityCurve",
+            "maxReturnedTradesPerSymbol", "topK", "windows", "includeBins", "binCount",
+            "snippetOnly", "includeParentContext", "limit", "includeMetadataSummary", "fields",
+            "includeBarCoordinates", "width", "height", "barCount",
+        };
+
+        foreach (RegisteredTool registered in full.Tools.Tools)
+        {
+            if (registered.Tool.CompactUsageHint is not { } toolHint)
+            {
+                continue;
+            }
+
+            var props = registered.Schema.GetProperty("properties").EnumerateObject().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+            foreach (string arg in knownTokenOptions)
+            {
+                if (Regex.IsMatch(toolHint, $@"\b{Regex.Escape(arg)}\b", RegexOptions.CultureInvariant))
+                {
+                    Assert.True(props.Contains(arg), $"Tool '{registered.Tool.Name}' CompactUsageHint mentions '{arg}' which is not in its InputSchemaJson.");
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task MaxResponseTokens_ImageToolAccountsForPngIhdrAndFallbackVisionTokens()
+    {
+        // Valid 1200x800 PNG header -> ceil(960000 / 750) = 1280 vision tokens
+        byte[] validPng = new byte[64];
+        byte[] pngSig = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        pngSig.CopyTo(validPng, 0);
+        validPng[12] = (byte)'I';
+        validPng[13] = (byte)'H';
+        validPng[14] = (byte)'D';
+        validPng[15] = (byte)'R';
+        BinaryPrimitives.WriteUInt32BigEndian(validPng.AsSpan(16, 4), 1200);
+        BinaryPrimitives.WriteUInt32BigEndian(validPng.AsSpan(20, 4), 800);
+        Assert.Equal(1280L, ToolExecutor.EstimateImageVisionTokens(validPng));
+
+        // Zero-width/corrupted PNG -> falls back to ceil(len / 30), never 0
+        byte[] zeroWidthPng = (byte[])validPng.Clone();
+        BinaryPrimitives.WriteUInt32BigEndian(zeroWidthPng.AsSpan(16, 4), 0);
+        Assert.Equal(3L, ToolExecutor.EstimateImageVisionTokens(zeroWidthPng));
+        Assert.Equal(500L, ToolExecutor.EstimateImageVisionTokens(new byte[15_000]));
+        Assert.Equal(0L, ToolExecutor.EstimateImageVisionTokens(ReadOnlySpan<byte>.Empty));
+
+        // Image tool with small JSON (~10 tokens) + 1280 vision tokens > MaxResponseTokens (1024) -> LIMIT_EXCEEDED
+        var imageTool = new FakeImageTool("sa_img_budget", (_, _) => Task.FromResult(new ToolImageResult("{\"ok\":true}", validPng)));
+        var limits = new McpLimits { MaxResponseTokens = 1024 };
+        var log = new LogSink(TextWriter.Null);
+        var executor = new ToolExecutor(limits, new ErrorMessageSanitizer(Array.Empty<string?>()), log);
+        var dispatcher = new McpMessageDispatcher(log, new McpToolRegistry(new IMcpTool[] { imageTool }), executor);
+        await dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        using JsonDocument exceeded = (await McpTestSupport.CallAsync(dispatcher, "sa_img_budget"))!;
+        Assert.True(McpTestSupport.IsError(exceeded));
+        Assert.Equal(ToolErrorCodes.LimitExceeded, McpTestSupport.ErrorCodeOf(exceeded));
+        Assert.Contains("tokens", McpTestSupport.Structured(exceeded).GetProperty("message").GetString()!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ---- --compact-defaults opt-in defaults & exclusions ----------------------------------------------------------------------
+
+    [Fact]
+    public async Task CompactDefaults_AppliesAllowlistedCompactAndRoundedDefaults_AndExplicitCallerValuesWin()
+    {
+        await AddNoteAsync("Long note body " + new string('x', 500), 10);
+        McpMessageDispatcher compactDispatcher = await StartWithCompactDefaultsAsync(compactDefaults: true);
+
+        // sa_get_capabilities discloses compactDefaults: true
+        using JsonDocument caps = await CallAsync(compactDispatcher, "sa_get_capabilities", "{}");
+        Assert.True(Ok(caps).GetProperty("compactDefaults").GetBoolean());
+
+        // sa_get_candles defaults compactRows: true (candles empty, candleRows populated)
+        using JsonDocument candlesCompact = await CallAsync(compactDispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1","count":5}""");
+        JsonElement candlesResult = Ok(candlesCompact);
+        Assert.Empty(candlesResult.GetProperty("candles").EnumerateArray());
+        Assert.Equal(5, candlesResult.GetProperty("candleRows").GetArrayLength());
+
+        // Explicit compactRows: false overrides compact defaults
+        using JsonDocument candlesExplicit = await CallAsync(compactDispatcher, "sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1","count":5,"compactRows":false}""");
+        JsonElement candlesExplicitResult = Ok(candlesExplicit);
+        Assert.Equal(5, candlesExplicitResult.GetProperty("candles").GetArrayLength());
+        Assert.False(candlesExplicitResult.TryGetProperty("candleRows", out _));
+
+        // sa_calculate_indicators defaults includeSeries: false, summary: true, decimalPlaces: 4 when omitted
+        using JsonDocument indCompact = await CallAsync(compactDispatcher, "sa_calculate_indicators", """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"sma","type":"SMA","parameters":{"Period":5}}]}""");
+        JsonElement indSma = Ok(indCompact).GetProperty("results").GetProperty("sma");
+        Assert.False(indSma.TryGetProperty("series", out _));
+        Assert.True(indSma.TryGetProperty("summary", out _));
+
+        // When lookbackOffsets is supplied without summary, compact defaults do NOT force summary: true
+        using JsonDocument indPastOnly = await CallAsync(compactDispatcher, "sa_calculate_indicators", """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"sma","type":"SMA","parameters":{"Period":5}}],"lookbackOffsets":[0]}""");
+        JsonElement indPastResult = Ok(indPastOnly).GetProperty("results").GetProperty("sma");
+        Assert.False(indPastResult.TryGetProperty("series", out _));
+        Assert.False(indPastResult.TryGetProperty("summary", out _));
+        Assert.True(indPastResult.TryGetProperty("pastValues", out _));
+
+        // sa_calculate_volume_profile: compactRows: true by default, EXCEPT when caller sets includeBins: false
+        using JsonDocument vpCompact = await CallAsync(compactDispatcher, "sa_calculate_volume_profile", """{"symbol":"MSFT","timeFrame":"D1","binCount":10}""");
+        JsonElement vpCompactResult = Ok(vpCompact);
+        Assert.Empty(vpCompactResult.GetProperty("bins").EnumerateArray());
+        Assert.True(vpCompactResult.TryGetProperty("binRows", out _));
+
+        using JsonDocument vpNoBins = await CallAsync(compactDispatcher, "sa_calculate_volume_profile", """{"symbol":"MSFT","timeFrame":"D1","binCount":10,"includeBins":false}""");
+        JsonElement vpNoBinsResult = Ok(vpNoBins);
+        Assert.False(vpNoBinsResult.TryGetProperty("bins", out _));
+        Assert.False(vpNoBinsResult.TryGetProperty("binRows", out _));
+
+        // sa_search_notes: snippetOnly: true by default
+        using JsonDocument notesCompact = await CallAsync(compactDispatcher, "sa_search_notes", """{}""");
+        JsonElement note0 = Ok(notesCompact).GetProperty("notes")[0];
+        Assert.True(note0.GetProperty("bodyTruncated").GetBoolean());
+
+        // sa_render_chart_image: includeBarCoordinates: false by default
+        using JsonDocument chartCompact = await CallAsync(compactDispatcher, "sa_render_chart_image", """{"symbol":"MSFT","timeFrame":"D1","barCount":30}""");
+        JsonElement chartResult = Ok(chartCompact);
+        Assert.False(chartResult.TryGetProperty("bars", out JsonElement barsArr) && barsArr.GetArrayLength() > 0);
+
+        // sa_run_backtest: compactReport: true & compactRows: true by default
+        using JsonDocument btCompact = await CallAsync(compactDispatcher, "sa_run_backtest", $$"""{"symbol":"MSFT","timeFrame":"D1","conditions":{{Trading}}{{Period}}}""");
+        JsonElement btResult = Ok(btCompact);
+        Assert.True(btResult.GetProperty("report").TryGetProperty("metricUnits", out _));
+        Assert.Empty(btResult.GetProperty("trades").GetProperty("items").EnumerateArray());
+        Assert.True(btResult.GetProperty("trades").TryGetProperty("rows", out _));
+
+        // CRITICAL SAFEGUARD: sa_evaluate_expressions MUST NOT apply decimalPlaces: 4 under --compact-defaults
+        using JsonDocument calcCompact = await CallAsync(compactDispatcher, "sa_evaluate_expressions", """{"expressions":[{"name":"ratio","expression":"1 / 7"}]}""");
+        JsonElement calcResult = Ok(calcCompact);
+        Assert.False(calcResult.TryGetProperty("decimalPlaces", out _));
+        decimal ratioVal = calcResult.GetProperty("results")[0].GetProperty("value").GetDecimal();
+        Assert.NotEqual(0.1429m, ratioVal);
+        Assert.True(Math.Abs(ratioVal - (1m / 7m)) < 0.0000000001m);
+
+        using JsonDocument rejectedImplicitSeriesFalse = await CallAsync(
+            compactDispatcher,
+            "sa_calculate_indicators",
+            """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"sma","type":"SMA","parameters":{"Period":5}}],"summary":false}""");
+        AssertError(rejectedImplicitSeriesFalse, ToolErrorCodes.InvalidArgument, "includeSeries");
+
+        using JsonDocument rejectedExplicitSeriesFalse = await CallAsync(
+            compactDispatcher,
+            "sa_calculate_indicators",
+            """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"sma","type":"SMA","parameters":{"Period":5}}],"includeSeries":false,"summary":false}""");
+        AssertError(rejectedExplicitSeriesFalse, ToolErrorCodes.InvalidArgument, "includeSeries");
+    }
+
+    private static void AssertError(JsonDocument response, string expectedCode, string expectedParam)
+    {
+        Assert.True(McpTestSupport.IsError(response));
+        Assert.Equal(expectedCode, McpTestSupport.ErrorCodeOf(response));
+        Assert.Equal(expectedParam, McpTestSupport.Structured(response).GetProperty("param").GetString());
+    }
+
+    private sealed class FakeImageTool : IMcpImageTool
+    {
+        private readonly Func<JsonElement, CancellationToken, Task<ToolImageResult>> _invoke;
+
+        public FakeImageTool(string name, Func<JsonElement, CancellationToken, Task<ToolImageResult>> invoke)
+        {
+            Name = name;
+            _invoke = invoke;
+        }
+
+        public string Name { get; }
+        public string Description => "Test image tool.";
+        public string InputSchemaJson => ToolSchema.Object().Build();
+        public bool IsHeavy => false;
+
+        public Task<ToolImageResult> InvokeImageAsync(JsonElement arguments, CancellationToken cancellationToken)
+            => _invoke(arguments, cancellationToken);
     }
 }

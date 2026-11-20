@@ -29,6 +29,7 @@ internal sealed class RunScreenerTool : IMcpTool
     private const string GroupIdArgument = "groupId";
     private const string TimeFrameArgument = "timeFrame";
     private const string ValuesArgument = "includeMatchedValues";
+    private const string IncludeMatchedSymbolsArgument = "includeMatchedSymbols";
     private const string MaxMatchesArgument = "maxReturnedMatches";
     private const string AsOfDateArgument = "asOfDate";
     private const string EndDateArgument = "endDate";
@@ -115,7 +116,8 @@ internal sealed class RunScreenerTool : IMcpTool
         .Boolean(ValuesArgument, "Add the values each comparison read, per returned symbol. Default false.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept symbols that are not in the ticker list but have stored daily bars. Default false.")
         .Integer(MaxMatchesArgument, $"Most matched symbols to return. Default and maximum {_limits.MaxReturnedMatches}.", defaultValue: _limits.MaxReturnedMatches, minimum: 1, maximum: _limits.MaxReturnedMatches)
-        .Boolean(McpResultHandleStore.StoreResultArgument, $"Store returned matchedSymbols in memory and return {McpResultHandleStore.ResultIdKey} for downstream tools. Default false.")
+        .Boolean(McpResultHandleStore.StoreResultArgument, $"Store all matched symbols in memory and return {McpResultHandleStore.ResultIdKey} for downstream tools. Default false.")
+        .Boolean(IncludeMatchedSymbolsArgument, $"Include matchedSymbols (and ranking) in the response. Default true; false requires {McpResultHandleStore.StoreResultArgument} true and cannot be combined with {ValuesArgument}.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -162,6 +164,24 @@ internal sealed class RunScreenerTool : IMcpTool
         bool includeValues = ToolArgs.Boolean(arguments, ValuesArgument) ?? false;
         bool allowUnregistered = ToolArgs.Boolean(arguments, SymbolResolver.AllowUnregisteredArgument) ?? false;
         bool storeResult = ToolArgs.Boolean(arguments, McpResultHandleStore.StoreResultArgument) ?? false;
+        bool includeMatchedSymbols = ToolArgs.Boolean(arguments, IncludeMatchedSymbolsArgument) ?? true;
+        if (!includeMatchedSymbols && !storeResult)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{IncludeMatchedSymbolsArgument}' false requires '{McpResultHandleStore.StoreResultArgument}' true.",
+                IncludeMatchedSymbolsArgument,
+                $"Set {McpResultHandleStore.StoreResultArgument} to true, or omit {IncludeMatchedSymbolsArgument}.");
+        }
+
+        if (!includeMatchedSymbols && includeValues)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{ValuesArgument}' cannot be true when '{IncludeMatchedSymbolsArgument}' is false.",
+                ValuesArgument,
+                $"Omit {ValuesArgument} or set {IncludeMatchedSymbolsArgument} to true.");
+        }
 
         // Both modes end in the same pieces: the leaves (for matched values), a condition that sizes the history, and a way to run it.
         IReadOnlyList<ScreenerLeaf> leaves;
@@ -339,8 +359,8 @@ internal sealed class RunScreenerTool : IMcpTool
             ordered = matched.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList();
         }
 
-        List<string> returned = ordered.Take(maxMatches).ToList();
-        string? storedResultId = storeResult ? _resultHandles.Store(Name, returned).ResultId : null;
+        string? storedResultId = storeResult ? _resultHandles.Store(Name, ordered).ResultId : null;
+        List<string> returned = includeMatchedSymbols ? ordered.Take(maxMatches).ToList() : new List<string>();
         Dictionary<string, TickerMetadata?>? metadata = null;
         ValueBars? candles = null;
         IScreenerSecondaryCandles? secondary = null;
@@ -436,7 +456,7 @@ internal sealed class RunScreenerTool : IMcpTool
             }
 
             writer.WriteEndArray();
-            if (sortValues is not null)
+            if (sortValues is not null && includeMatchedSymbols)
             {
                 writer.WriteStartArray("ranking");
                 for (int index = 0; index < returned.Count; index++)

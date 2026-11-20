@@ -4,7 +4,9 @@ using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
+using StockAnalyzer.McpServer;
 using StockAnalyzer.McpServer.Catalog;
+using StockAnalyzer.McpServer.Execution;
 using StockAnalyzer.McpServer.Limits;
 using StockAnalyzer.McpServer.Protocol;
 using StockAnalyzer.McpServer.Tools;
@@ -92,6 +94,41 @@ public sealed class McpOutputSchemaTests
 
         Assert.Equal(new[] { "sa_get_candles", "sa_get_capabilities", "sa_list_tickers" }, toolsWithOutputSchema.OrderBy(n => n).ToArray());
         Assert.Contains("sa_dummy_tool", toolsWithoutOutputSchema);
+    }
+
+    [Fact]
+    public async Task ProofA_ToolsList_TextOnlyOmitsOutputSchemaOnAllTools()
+    {
+        var gateway = new OutputSchemaFakeGateway();
+        var limits = new McpLimits();
+        var catalogProvider = new ScreenerCatalogProvider();
+        var factory = IndicatorFactory.Default;
+        var catalog = new IndicatorCatalog(factory, catalogProvider);
+        var screenerCatalog = new ScreenerCatalog(catalogProvider, factory);
+        var symbols = new SymbolResolver(gateway);
+
+        var tools = new IMcpTool[]
+        {
+            new ListTickersTool(gateway, limits),
+            new GetCandlesTool(gateway, symbols, limits),
+            new GetCapabilitiesTool(catalog, screenerCatalog),
+        };
+        var log = new LogSink(System.IO.TextWriter.Null);
+        var executor = new ToolExecutor(limits, new ErrorMessageSanitizer(Array.Empty<string?>()), log, responseFormat: McpResponseFormat.TextOnly);
+        var dispatcher = new McpMessageDispatcher(log, new McpToolRegistry(tools), executor);
+
+        await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"test"}}}""", CancellationToken.None);
+        string? listResponse = await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":2,"method":"tools/list"}""", CancellationToken.None);
+        Assert.NotNull(listResponse);
+
+        using var doc = JsonDocument.Parse(listResponse);
+        JsonElement toolsArray = doc.RootElement.GetProperty("result").GetProperty("tools");
+        Assert.Equal(3, toolsArray.GetArrayLength());
+        foreach (JsonElement tool in toolsArray.EnumerateArray())
+        {
+            Assert.False(tool.TryGetProperty("outputSchema", out _), $"{tool.GetProperty("name").GetString()} must omit outputSchema in TextOnly mode.");
+            Assert.Equal(new[] { "name", "description", "inputSchema", "annotations" }, tool.EnumerateObject().Select(p => p.Name).ToArray());
+        }
     }
 
     [Theory]

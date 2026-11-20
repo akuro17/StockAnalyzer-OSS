@@ -22,13 +22,16 @@ internal sealed class GetCapabilitiesTool : IMcpTool
     private readonly IndicatorCatalog _catalog;
     private readonly ScreenerCatalog _screenerCatalog;
     private readonly SandboxedExecutionSettings? _execution;
+    private readonly bool _compactDefaults;
 
     /// <param name="execution">The settings of the execution tools when <c>--enable-execution</c> is given; null when they are not offered.</param>
-    public GetCapabilitiesTool(IndicatorCatalog catalog, ScreenerCatalog screenerCatalog, SandboxedExecutionSettings? execution = null)
+    /// <param name="compactDefaults">True when the server was started with <c>--compact-defaults</c>.</param>
+    public GetCapabilitiesTool(IndicatorCatalog catalog, ScreenerCatalog screenerCatalog, SandboxedExecutionSettings? execution = null, bool compactDefaults = false)
     {
         _catalog = catalog;
         _screenerCatalog = screenerCatalog;
         _execution = execution;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_get_capabilities";
@@ -82,6 +85,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
             .ObjectArray("excludedObjectives", "Excluded optimization objectives.", optItem, required: true);
 
         return ToolSchema.OpenObject()
+            .Boolean("compactDefaults", "True when server started with --compact-defaults.", required: true)
             .Integer("indicatorCount", "Number of indicators matching the filter.", required: true)
             .String("periodUnit", "Unit of period parameters.", required: true)
             .StringArray("supportedTimeFrames", "Supported bar time frames.", required: true)
@@ -135,6 +139,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
         return ToolJson.Build(writer =>
         {
             writer.WriteStartObject();
+            writer.WriteBoolean("compactDefaults", _compactDefaults);
             writer.WriteNumber("indicatorCount", entries.Count);
             writer.WriteString("periodUnit", PeriodUnit);
             writer.WriteStartArray("supportedTimeFrames");

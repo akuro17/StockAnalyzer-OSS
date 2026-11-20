@@ -71,6 +71,8 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
         .StringArray(SymbolsArgument, $"Universe ticker symbols to analyze (up to {_limits.MaxBreadthSymbols}). Mutually exclusive with {GroupIdArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.", minItems: 1)
         .String(GroupIdArgument, $"Guid of a saved ticker group (from sa_list_ticker_groups) to analyze. Mutually exclusive with {SymbolsArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.")
         .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle id from sa_run_screener or sa_filter_tickers ({McpResultHandleStore.StoreResultArgument} true). Mutually exclusive with {SymbolsArgument} and {GroupIdArgument}.")
+        .Integer(McpResultHandleStore.ResultOffsetArgument, $"0-based start index within {McpResultHandleStore.SymbolsFromResultIdArgument}. Default 0.", defaultValue: 0, minimum: 0)
+        .Integer(McpResultHandleStore.ResultLimitArgument, $"Maximum symbols to read from {McpResultHandleStore.SymbolsFromResultIdArgument} (1..{_limits.MaxBreadthSymbols}).", minimum: 1, maximum: _limits.MaxBreadthSymbols)
         .String(TimeFrameArgument, $"Time frame of the bars. Supported: {ToolArgs.SupportedTimeFrameNames}. Default {TimeFrame.D1}.", allowedValues: Enum.GetNames<TimeFrame>())
         .Integer(LookbackArgument, $"Stored bars each symbol evaluates, newest last. Default {_limits.DefaultCandleCount}, maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.DefaultCandleCount, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Integer(TailArgument, $"Number of trailing bars returned per series. Default {_limits.DefaultOutputTailBars}, at most {_limits.MaxOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
@@ -289,9 +291,10 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{SymbolsArgument}', '{GroupIdArgument}' and '{McpResultHandleStore.SymbolsFromResultIdArgument}' cannot be combined.", parameter, "Send one of them, or neither for every registered symbol.");
         }
 
+        (int sliceOffset, int? sliceLimit) = McpResultHandleStore.ReadSliceArguments(arguments, resultId, 1, _limits.MaxBreadthSymbols);
         if (resultId is not null)
         {
-            IReadOnlyList<string> stored = _resultHandles.ResolveSymbols(resultId, 1, _limits.MaxBreadthSymbols);
+            IReadOnlyList<string> stored = _resultHandles.ResolveSymbolsSlice(resultId, 1, _limits.MaxBreadthSymbols, sliceOffset, sliceLimit);
             return stored.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
 

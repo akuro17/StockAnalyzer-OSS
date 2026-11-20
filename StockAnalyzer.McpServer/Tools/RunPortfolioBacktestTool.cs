@@ -47,6 +47,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
     private readonly BacktestConditionBinder _conditions;
     private readonly McpLimits _limits;
     private readonly McpResultHandleStore _resultHandles;
+    private readonly bool _compactDefaults;
 
     public RunPortfolioBacktestTool(
         IReadOnlyStockAnalyzerGateway gateway,
@@ -54,7 +55,8 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         SymbolResolver symbols,
         BacktestConditionBinder conditions,
         McpLimits limits,
-        McpResultHandleStore? resultHandles = null)
+        McpResultHandleStore? resultHandles = null,
+        bool compactDefaults = false)
     {
         _gateway = gateway;
         _groupResolver = groupResolver;
@@ -62,6 +64,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         _conditions = conditions;
         _limits = limits;
         _resultHandles = resultHandles ?? new McpResultHandleStore();
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_run_portfolio_backtest";
@@ -72,6 +75,8 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public string? CompactUsageHint => "Pass compactReport: true, maxReturnedTradesPerSymbol: 0, or omit includeEquityCurve.";
+
     public string? ExampleArgumentsJson =>
         "{\"symbols\":[\"AAPL\",\"MSFT\"],\"timeFrame\":\"D1\",\"conditions\":{\"entryLong\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"GreaterThan\",\"right\":{\"price\":\"Close\",\"offset\":1}},\"exitLong\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"LessThan\",\"right\":{\"price\":\"Close\",\"offset\":1}}}}";
 
@@ -79,6 +84,8 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         .StringArray(SymbolsArgument, $"Symbols to test (1 to {_limits.MaxPortfolioBacktestSymbols}). Mutually exclusive with {GroupIdArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.", minItems: 1)
         .String(GroupIdArgument, $"Guid of a saved ticker group (from sa_list_ticker_groups) to test. Mutually exclusive with {SymbolsArgument} and {McpResultHandleStore.SymbolsFromResultIdArgument}.")
         .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle id from sa_run_screener or sa_filter_tickers ({McpResultHandleStore.StoreResultArgument} true). Mutually exclusive with {SymbolsArgument} and {GroupIdArgument}.")
+        .Integer(McpResultHandleStore.ResultOffsetArgument, $"0-based start index within {McpResultHandleStore.SymbolsFromResultIdArgument}. Default 0.", defaultValue: 0, minimum: 0)
+        .Integer(McpResultHandleStore.ResultLimitArgument, $"Maximum symbols to read from {McpResultHandleStore.SymbolsFromResultIdArgument} (1..{_limits.MaxPortfolioBacktestSymbols}).", minimum: 1, maximum: _limits.MaxPortfolioBacktestSymbols)
         .FreeObject(ConditionsArgument, "The entry, exit and reverse conditions. Exactly one of conditions and templateId.")
         .String(TemplateIdArgument, "Id of a saved backtest-condition template (sa_list_templates with templateType backtestCondition). Exactly one of conditions and templateId.")
         .String(AllocationArgument, "Capital allocation model across symbols. Only 'Equal' is supported.", allowedValues: new[] { "Equal" })
@@ -106,7 +113,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
                 "The independent sleeves model evaluates each symbol with isolated capital.");
         }
 
-        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? false;
+        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? _compactDefaults;
         string allocation = ToolArgs.String(arguments, AllocationArgument) ?? "Equal";
         if (!string.Equals(allocation, "Equal", StringComparison.OrdinalIgnoreCase))
         {
@@ -614,11 +621,12 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"Give exactly one of '{SymbolsArgument}', '{GroupIdArgument}' or '{McpResultHandleStore.SymbolsFromResultIdArgument}'.", SymbolsArgument);
         }
 
+        (int sliceOffset, int? sliceLimit) = McpResultHandleStore.ReadSliceArguments(arguments, resultId, 1, _limits.MaxPortfolioBacktestSymbols);
         var warnings = new List<string>();
 
         if (resultId is not null)
         {
-            IReadOnlyList<string> stored = _resultHandles.ResolveSymbols(resultId, 1, _limits.MaxPortfolioBacktestSymbols);
+            IReadOnlyList<string> stored = _resultHandles.ResolveSymbolsSlice(resultId, 1, _limits.MaxPortfolioBacktestSymbols, sliceOffset, sliceLimit);
             return (stored.Distinct(StringComparer.OrdinalIgnoreCase).ToList(), warnings);
         }
 

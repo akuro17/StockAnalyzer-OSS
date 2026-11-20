@@ -54,11 +54,14 @@ public sealed class McpToolsetAndResponseFormatTests : IDisposable
     // ---- Partition completeness invariant -----------------------------------------------------------------------------
 
     [Fact]
-    public void ToolsetCatalog_SixProfilesFormExactPartitionOfAll47ReadOnlyTools()
+    public void ToolsetCatalog_SevenProfilesFormExactPartitionOfAll47ReadOnlyTools()
     {
         McpServerRuntime full = CreateRuntime();
         string[] allReadOnlyNames = full.Tools.Tools.Select(t => t.Tool.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
         Assert.Equal(47, allReadOnlyNames.Length);
+        Assert.Equal(7, McpToolsetCatalog.Profiles.Count);
+        Assert.Equal(6, McpToolsetCatalog.Profiles["technical"].Count);
+        Assert.Equal(10, McpToolsetCatalog.Profiles["technical-extended"].Count);
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach ((string profile, IReadOnlySet<string> members) in McpToolsetCatalog.Profiles)
@@ -79,8 +82,9 @@ public sealed class McpToolsetAndResponseFormatTests : IDisposable
     [InlineData("all", new[] { "all" })]
     [InlineData("core", new[] { "core" })]
     [InlineData("core,technical", new[] { "core", "technical" })]
+    [InlineData("core,technical-extended", new[] { "core", "technical-extended" })]
     [InlineData("core,core,ml", new[] { "core", "ml" })]
-    [InlineData("core,technical,screener,backtest,portfolio,ml", new[] { "core", "technical", "screener", "backtest", "portfolio", "ml" })]
+    [InlineData("core,technical,technical-extended,screener,backtest,portfolio,ml", new[] { "core", "technical", "technical-extended", "screener", "backtest", "portfolio", "ml" })]
     public void TryParse_AcceptsValidProfilesAndFoldsDuplicates(string raw, string[] expected)
     {
         Assert.True(McpToolsetCatalog.TryParse(raw, out IReadOnlyList<string> parsed));
@@ -109,10 +113,11 @@ public sealed class McpToolsetAndResponseFormatTests : IDisposable
     [Fact]
     public void Parse_ReadsToolsetAndResponseFormatOptions()
     {
-        McpCommandLineResult parsed = McpCommandLine.Parse(new[] { "--toolset", "core,technical", "--response-format", "text-only", "--enable-execution" });
+        McpCommandLineResult parsed = McpCommandLine.Parse(new[] { "--toolset", "core,technical", "--response-format", "text-only", "--enable-execution", "--compact-defaults" });
 
         Assert.IsType<McpCommand.Run>(parsed.Command);
         Assert.True(parsed.EnableExecution);
+        Assert.True(parsed.CompactDefaults);
         Assert.Equal(new[] { "core", "technical" }, parsed.Toolsets);
         Assert.Equal(McpResponseFormat.TextOnly, parsed.ResponseFormat);
     }
@@ -124,6 +129,7 @@ public sealed class McpToolsetAndResponseFormatTests : IDisposable
 
         Assert.IsType<McpCommand.Run>(parsed.Command);
         Assert.Null(parsed.Toolsets);
+        Assert.False(parsed.CompactDefaults);
         Assert.Equal(McpResponseFormat.Dual, parsed.ResponseFormat);
     }
 
@@ -147,13 +153,15 @@ public sealed class McpToolsetAndResponseFormatTests : IDisposable
     [InlineData(new[] { "--toolset", "core," }, "Invalid --toolset value 'core,'.")]
     [InlineData(new[] { "--toolset", "bogus" }, "Invalid --toolset value 'bogus'.")]
     [InlineData(new[] { "--toolset", "--help" }, "Invalid --toolset value '--help'.")]
-    [InlineData(new[] { "--toolset", "core", "--toolset", "ml" }, "Unknown argument '--toolset'.")]
+    [InlineData(new[] { "--toolset", "core", "--toolset", "ml" }, "Duplicate argument '--toolset'.")]
     [InlineData(new[] { "--toolset", "core", "--version" }, "Unknown argument '--version'.")]
     [InlineData(new[] { "--version", "--toolset", "core" }, "Unknown argument '--toolset'.")]
     [InlineData(new[] { "--response-format" }, "Invalid --response-format value ''.")]
     [InlineData(new[] { "--response-format", "json" }, "Invalid --response-format value 'json'.")]
     [InlineData(new[] { "--response-format", "TEXT-ONLY" }, "Invalid --response-format value 'TEXT-ONLY'.")]
-    [InlineData(new[] { "--response-format", "dual", "--response-format", "text-only" }, "Unknown argument '--response-format'.")]
+    [InlineData(new[] { "--response-format", "dual", "--response-format", "text-only" }, "Duplicate argument '--response-format'.")]
+    [InlineData(new[] { "--help", "--help" }, "Unknown argument '--help'.")]
+    [InlineData(new[] { "--compact-defaults", "--compact-defaults" }, "Duplicate argument '--compact-defaults'.")]
     [InlineData(new[] { "--response-format", "text-only", "--version" }, "Unknown argument '--version'.")]
     public void Parse_RejectsBadToolsetOrResponseFormatArguments(string[] args, string expectedPrefix)
     {
@@ -181,6 +189,7 @@ public sealed class McpToolsetAndResponseFormatTests : IDisposable
 
         Assert.Contains("--toolset <names>", overview);
         Assert.Contains("--response-format <mode>", overview);
+        Assert.Contains("--compact-defaults", overview);
     }
 
     // ---- Runtime tools/list filtering ---------------------------------------------------------------------------------

@@ -77,6 +77,9 @@ public class McpServerSettingsManager : IMcpServerSettingsManager
                     {
                         EnableDiscussion = dto.McpServer?.EnableDiscussion ?? false,
                         Toolset = McpToolsetProfiles.NormalizeText(dto.McpServer?.Toolset),
+                        UseTextOnlyResponse = dto.McpServer?.UseTextOnlyResponse ?? false,
+                        CompactDefaults = dto.McpServer?.CompactDefaults ?? false,
+                        MaxResponseTokens = dto.AiIntegration?.MaxResponseTokens ?? McpResponseTokenLimits.Default,
                         Discussion = dto.AiIntegration?.Discussion is not null
                             ? McpServerSettings.CloneDiscussion(dto.AiIntegration.Discussion)
                             : new DiscussionSettings()
@@ -104,10 +107,13 @@ public class McpServerSettingsManager : IMcpServerSettingsManager
                 McpServer = new McpServerSectionDto
                 {
                     EnableDiscussion = settings.EnableDiscussion,
-                    Toolset = McpToolsetProfiles.NormalizeText(settings.Toolset)
+                    Toolset = McpToolsetProfiles.NormalizeText(settings.Toolset),
+                    UseTextOnlyResponse = settings.UseTextOnlyResponse,
+                    CompactDefaults = settings.CompactDefaults
                 },
                 AiIntegration = new AiIntegrationSectionDto
                 {
+                    MaxResponseTokens = settings.MaxResponseTokens,
                     Discussion = McpServerSettings.CloneDiscussion(settings.Discussion)
                 }
             };
@@ -147,10 +153,13 @@ public class McpServerSettingsManager : IMcpServerSettingsManager
     {
         public bool EnableDiscussion { get; set; }
         public string? Toolset { get; set; }
+        public bool UseTextOnlyResponse { get; set; }
+        public bool CompactDefaults { get; set; }
     }
 
     internal sealed class AiIntegrationSectionDto
     {
+        public int? MaxResponseTokens { get; set; }
         public DiscussionSettings Discussion { get; set; } = new();
     }
 }

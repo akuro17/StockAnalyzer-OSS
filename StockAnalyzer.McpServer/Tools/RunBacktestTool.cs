@@ -45,13 +45,15 @@ internal sealed class RunBacktestTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly BacktestConditionBinder _conditions;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public RunBacktestTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, BacktestConditionBinder conditions, McpLimits limits)
+    public RunBacktestTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, BacktestConditionBinder conditions, McpLimits limits, bool compactDefaults = false)
     {
         _gateway = gateway;
         _symbols = symbols;
         _conditions = conditions;
         _limits = limits;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_run_backtest";
@@ -63,25 +65,27 @@ internal sealed class RunBacktestTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public string? CompactUsageHint => "Pass compactReport: true, compactRows: true, maxReturnedTrades: 0, or omit includeEquityCurve.";
+
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"conditions\":{\"entryLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30},\"exitLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"GreaterThan\",\"right\":70}},\"maxReturnedTrades\":50}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .String(SymbolArgument, "The symbol to test (a ticker from sa_list_tickers).", required: true)
-        .FreeObject(ConditionsArgument, "The entry, exit and reverse conditions (see the tool description). Exactly one of conditions and templateId.")
-        .String(TemplateIdArgument, "Id of a saved backtest-condition template (sa_list_templates with templateType backtestCondition). Exactly one of conditions and templateId.")
-        .String(StartArgument, "First evaluated day, yyyy-MM-dd. Default: the start of the stored history.")
-        .String(EndArgument, "Last evaluated day, yyyy-MM-dd. Default: the latest stored bar.")
-        .String(TimeFrameArgument, $"Time frame of the bars ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
-        .FreeObject(BacktestSettingsBinder.AccountArgument, "Capital, cost, sizing and margin settings (see the tool description). Omitted values are the factory defaults.")
-        .FreeObject(BacktestSettingsBinder.RiskArgument, "Optional stop-loss, take-profit and dynamic exits: {stopLossRatio, takeProfitRatio, dynamicExits{maxHoldingBars, atrStop, atrTarget, trailingStop}}.")
-        .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings: {annualRiskFreeRate, annualMar} (simple rates, 0.02 = 2%), {annualPeriodsD1} (daily bars per year), {bootstrapSeed, bootstrapIterations} (whole numbers). Omitted values are the factory defaults.")
-        .Integer(MaxTradesArgument, $"Most trades to list. Default and maximum {_limits.MaxReturnedTrades}; 0 lists none.", defaultValue: _limits.MaxReturnedTrades, minimum: 0, maximum: _limits.MaxReturnedTrades)
-        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
-        .String(EquityCurveArgument, $"Add the equity curve: None (default), Weekly or Monthly (the last evaluated bar of each ISO week or calendar month) or Bar (every evaluated bar; LIMIT_EXCEEDED above {McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} points).", allowedValues: BacktestDiagnostics.CurveNames)
-        .Integer(DrawdownEpisodesArgument, $"Add the deepest drawdown episodes. Default 0 adds none; maximum {_limits.MaxDrawdownEpisodes}.", defaultValue: 0, minimum: 0, maximum: _limits.MaxDrawdownEpisodes)
-        .Boolean(PeriodicReturnsArgument, "Add monthly and yearly returns of the equity. Default false.")
+        .String(SymbolArgument, "Symbol to test (from sa_list_tickers).", required: true)
+        .FreeObject(ConditionsArgument, "Entry/exit/reverse conditions tree. Mutually exclusive with templateId (one required).")
+        .String(TemplateIdArgument, "Saved backtestCondition template GUID. Mutually exclusive with conditions (one required).")
+        .String(StartArgument, "First evaluated date (yyyy-MM-dd). Default: history start.")
+        .String(EndArgument, "Last evaluated date (yyyy-MM-dd). Default: latest bar.")
+        .String(TimeFrameArgument, $"Bar timeframe ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
+        .FreeObject(BacktestSettingsBinder.AccountArgument, "Account capital, cost, sizing, margin, and execution-realism settings. Default: factory defaults.")
+        .FreeObject(BacktestSettingsBinder.RiskArgument, "Stop-loss, take-profit, and exits: {stopLossRatio, takeProfitRatio, dynamicExits{maxHoldingBars, atrStop, atrTarget, trailingStop}}.")
+        .FreeObject(BacktestSettingsBinder.ReportArgument, "Report config: {annualRiskFreeRate, annualMar, annualPeriodsD1, bootstrapSeed, bootstrapIterations}. Default: factory defaults.")
+        .Integer(MaxTradesArgument, $"Max trades returned (0..{_limits.MaxReturnedTrades}; 0 lists none). Default {_limits.MaxReturnedTrades}.", defaultValue: _limits.MaxReturnedTrades, minimum: 0, maximum: _limits.MaxReturnedTrades)
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbol with stored bars. Default false.")
+        .String(EquityCurveArgument, $"Equity curve resolution (Bar LIMIT_EXCEEDED >{McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} pts). Default None.", allowedValues: BacktestDiagnostics.CurveNames)
+        .Integer(DrawdownEpisodesArgument, $"Deepest drawdown episodes count (0..{_limits.MaxDrawdownEpisodes}). Default 0.", defaultValue: 0, minimum: 0, maximum: _limits.MaxDrawdownEpisodes)
+        .Boolean(PeriodicReturnsArgument, "Include monthly and yearly equity returns. Default false.")
         .Boolean(BacktestReportJson.CompactReportArgument, BacktestReportJson.CompactReportDescription)
-        .Boolean(CompactRowsArgument, "true returns trades.items (and equityCurve.points when requested) as [] and writes columns plus rows (one array per trade/point). Default false.")
+        .Boolean(CompactRowsArgument, "true empties trades.items/equityCurve.points and emits columns/rows arrays. Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -100,8 +104,8 @@ internal sealed class RunBacktestTool : IMcpTool
             ToolArgs.NonNegativeWithin(arguments, DrawdownEpisodesArgument, 0, _limits.MaxDrawdownEpisodes),
             ToolArgs.Boolean(arguments, PeriodicReturnsArgument) ?? false);
         BacktestDiagnostics.EnsureTimeFrameSupported(diagnosticsRequest, timeFrame);
-        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? false;
-        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
+        bool compactReport = ToolArgs.Boolean(arguments, BacktestReportJson.CompactReportArgument) ?? _compactDefaults;
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? _compactDefaults;
 
         // Everything the client sent is checked before any data is read.
         string? templateText = ToolArgs.String(arguments, TemplateIdArgument);

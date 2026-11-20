@@ -61,6 +61,68 @@
                                    TextWrapping="Wrap"/>
                     </StackPanel>
 
+                    <StackPanel Margin="0,0,0,8">
+                        <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                            <TextBlock Text="{l:Localize McpServer_Field_UseTextOnlyResponse}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <ToggleSwitch Grid.Row="1"
+                                          Classes="SettingInput"
+                                          IsChecked="{Binding UseTextOnlyResponse}"
+                                          AutomationProperties.AutomationId="McpServerSettings_UseTextOnlyResponse"/>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize McpServer_Desc_UseTextOnlyResponse}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <StackPanel Margin="0,0,0,8">
+                        <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
+                            <TextBlock Text="{l:Localize McpServer_Field_CompactDefaults}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <ToggleSwitch Grid.Row="1"
+                                          Classes="SettingInput"
+                                          IsChecked="{Binding CompactDefaults}"
+                                          AutomationProperties.AutomationId="McpServerSettings_CompactDefaults"/>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>
+                        <TextBlock Text="{l:Localize McpServer_Desc_CompactDefaults}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+
+                    <StackPanel Margin="0,0,0,8" Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                            <TextBlock Text="{l:Localize McpServer_Field_MaxResponseTokens}" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                            <Button Grid.Column="1"
+                                    Content="{l:Localize McpServer_Btn_ApplyRecommendedTokens}"
+                                    Command="{Binding ApplyRecommendedMaxResponseTokensCommand}"
+                                    Height="28"
+                                    Padding="10,0"
+                                    VerticalContentAlignment="Center"
+                                    AutomationProperties.AutomationId="McpServerSettings_Btn_ApplyRecommendedTokens"/>
+                            <NumericUpDown Grid.Column="2"
+                                           Classes="SettingInput"
+                                           Minimum="{Binding MaxResponseTokensMinimum}"
+                                           Maximum="{Binding MaxResponseTokensMaximum}"
+                                           Value="{Binding MaxResponseTokens}"
+                                           Increment="{Binding MaxResponseTokensIncrement}"
+                                           FormatString="0"
+                                           AutomationProperties.AutomationId="McpServerSettings_MaxResponseTokens"/>
+                        </Grid>
+                        <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,2"/>
+                        <TextBlock Text="{l:Localize McpServer_Desc_MaxResponseTokens}"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Text.Secondary}"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding MaxResponseTokensError}"
+                                   IsVisible="{Binding MaxResponseTokensError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                   AutomationProperties.AutomationId="McpServerSettings_Error_MaxResponseTokens"
+                                   FontSize="{DynamicResource HelperFontSize}"
+                                   Foreground="{DynamicResource Brush.Semantic.Error}"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+
                     <!-- Toolset Filter -->
                     <StackPanel Margin="0,0,0,8" Spacing="6">
                         <TextBlock Text="{l:Localize McpServer_Field_Toolset}" FontWeight="SemiBold" TextWrapping="Wrap"/>
@@ -68,6 +130,7 @@
                             <CheckBox Content="{l:Localize McpServer_Toolset_All}" IsChecked="{Binding UseAllToolsets}" Margin="0,0,16,4" AutomationProperties.AutomationId="McpServerSettings_Toolset_All"/>
                             <CheckBox Content="{l:Localize McpServer_Toolset_Core}" IsChecked="{Binding UseCoreToolset}" Margin="0,0,16,4" AutomationProperties.AutomationId="McpServerSettings_Toolset_Core"/>
                             <CheckBox Content="{l:Localize McpServer_Toolset_Technical}" IsChecked="{Binding UseTechnicalToolset}" Margin="0,0,16,4" AutomationProperties.AutomationId="McpServerSettings_Toolset_Technical"/>
+                            <CheckBox Content="{l:Localize McpServer_Toolset_TechnicalExtended}" IsChecked="{Binding UseTechnicalExtendedToolset}" Margin="0,0,16,4" AutomationProperties.AutomationId="McpServerSettings_Toolset_TechnicalExtended"/>
                             <CheckBox Content="{l:Localize McpServer_Toolset_Screener}" IsChecked="{Binding UseScreenerToolset}" Margin="0,0,16,4" AutomationProperties.AutomationId="McpServerSettings_Toolset_Screener"/>
                             <CheckBox Content="{l:Localize McpServer_Toolset_Backtest}" IsChecked="{Binding UseBacktestToolset}" Margin="0,0,16,4" AutomationProperties.AutomationId="McpServerSettings_Toolset_Backtest"/>
                             <CheckBox Content="{l:Localize McpServer_Toolset_Portfolio}" IsChecked="{Binding UsePortfolioToolset}" Margin="0,0,16,4" AutomationProperties.AutomationId="McpServerSettings_Toolset_Portfolio"/>

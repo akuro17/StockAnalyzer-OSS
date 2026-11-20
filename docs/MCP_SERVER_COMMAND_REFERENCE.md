@@ -25,7 +25,7 @@
 |                     - catalog/screener                                - 9 Execution Tools  |
 |                     - settings/current                                  (--enable-execution) |
 |                     - workspace/active                                - 9 Discussion Tools |
-|                                                                         (--enable-discussion)|
+|                     - docs/tools/{name} (resource template)             (--enable-discussion)|
 |                               |                                                |  |
 +-------------------------------|------------------------------------------------|--+
                                 |                                                |
@@ -62,17 +62,19 @@ CLI tokens are case-sensitive and parsed strictly from left to right.
 | `--version` | None | Prints binary informational version and supported MCP protocol versions. | Must be the only argument. Combining with any other token results in exit code `64`. |
 | `--enable-execution` | None | Enables opt-in sandboxed execution tools (model training, ONNX prediction, reinforcement learning). | Operates in an OS temporary sandbox directory (`EphemeralSandbox.Root`). Data directory is never modified. |
 | `--enable-discussion` | None | Enables the opt-in discussion tools (section 8): a volatile board in memory on which several AI agents talk about an analysis, and the per-process command log of tool calls. | Combinable with `--enable-execution` in any order. Nothing is written under `Data`; the board is never saved. The optional command-log file (`AiIntegration:Discussion:CommandLogToFile`, off by default) goes below `<OS temp>/StockAnalyzer/discussion`. Settings: `AiIntegration:Discussion`; one outside its band is exit code `2`. |
-| `--toolset` | `<list>` | Filters read-only tools in `tools/list` to the comma-separated profiles (`all`, `core`, `technical`, `screener`, `backtest`, `portfolio`, `ml`). | Execution (`--enable-execution`) and discussion (`--enable-discussion`) tools remain governed by their own flags. Case-sensitive; an empty value, duplicate `--toolset`, or unknown profile raises exit code `64`. |
+| `--toolset` | `<list>` | Filters read-only tools in `tools/list` and workflow prompts in `prompts/list`/`prompts/get` to the comma-separated profiles (`all`, `core`, `technical`, `technical-extended`, `screener`, `backtest`, `portfolio`, `ml`). | Execution (`--enable-execution`) and discussion (`--enable-discussion`) tools remain governed by their own flags. Case-sensitive; an empty value, duplicate `--toolset`, or unknown profile raises exit code `64`. |
 | `--response-format` | `dual`\|`text-only` | Controls whether tool responses include both `content[0].text` and `structuredContent` (`dual`, default) or omit `structuredContent` (`text-only`). | Case-sensitive; a duplicate `--response-format` or unknown value raises exit code `64`. |
+| `--compact-defaults` | None | Applies compact/tabular formatting and `decimalPlaces: 4` defaults on allowlisted analytical tools when callers omit formatting parameters (e.g. `compactRows: true`, `includeSeries: false` + `summary: true`, `compactReport: true`, `snippetOnly: true`, `includeBarCoordinates: false`). `sa_extract_signal_events` defaults `compactRows: true` only; `sa_evaluate_expressions` and echoed caller inputs are strictly excluded. | Reported by `sa_get_capabilities.compactDefaults`. Duplicate `--compact-defaults` raises exit code `64`. |
 
 #### 2.2.1 `--toolset` Profiles & Role-Based Launch Templates
 
-`McpToolsetCatalog` partitions the 47 read-only tools into 6 non-overlapping domain profiles (`all` selects all 47). Execution tools (`--enable-execution`) and discussion tools (`--enable-discussion`) remain governed by their own flags.
+`McpToolsetCatalog` partitions the 47 read-only tools into 7 non-overlapping domain profiles (`all` selects all 47). Execution tools (`--enable-execution`) and discussion tools (`--enable-discussion`) remain governed by their own flags. Note: the legacy 16-tool `technical` profile was split into `technical` (6 core tools) and `technical-extended` (10 specialized tools); existing setups specifying `--toolset technical` (or upgrading with the GUI `Technical` profile enabled) should also select `technical-extended` if those 10 tools are required.
 
 | Profile | Read-Only Tools | Typical Role |
 |---|---:|---|
 | `core` | 10 | Tickers, groups, filter rules, candles, metadata, coverage, capabilities, settings, active workspace, expression calculator |
-| `technical` | 16 | Indicators, batch indicators, chart series, Reverse Watch, Volume Profile, Market Structure, Support/Resistance, drawing values, chart/candle patterns, cycles, price projection, seasonality, divergences, chart PNG render |
+| `technical` | 6 | Core technical diagnosis: `sa_calculate_indicators`, `sa_analyze_market_structure`, `sa_find_support_resistance`, `sa_detect_candle_patterns`, `sa_detect_divergences`, `sa_render_chart_image` |
+| `technical-extended` | 10 | Specialized & batch technical tools: `sa_calculate_indicators_batch`, `sa_calculate_chart_series`, `sa_calculate_reverse_watch`, `sa_calculate_volume_profile`, `sa_calculate_drawing_values`, `sa_get_chart_drawings`, `sa_detect_chart_patterns`, `sa_analyze_cycles`, `sa_project_price_path`, `sa_get_seasonality` |
 | `screener` | 5 | Screener scan, saved templates (`sa_list_templates`, `sa_get_template_detail`, `sa_build_template`), condition validator |
 | `backtest` | 5 | Single-symbol backtest, grid optimizer, walk-forward analysis, portfolio backtest, signal event extractor |
 | `portfolio` | 7 | Portfolio summary, portfolio VaR/CVaR risk, notes search, upcoming catalysts, relative performance, cross-asset stats, market breadth |
@@ -168,7 +170,7 @@ Tunable parameters configured in `appsettings.json` under section `AiIntegration
 | `MaxPivotStrength` | `int` | `50` | `1` | `500` | Largest `pivotLeftStrength` and `pivotRightStrength` of `anchorMode` `AutoPivots` in `sa_calculate_drawing_values`. Exceeding it raises `LIMIT_EXCEEDED`. |
 | `MaxConcurrentReadOnlyCalls` | `int` | `2` | `1` | `16` | Light read-only tool calls (not heavy, not execution) that may run at the same time. A heavy or execution call waits until none runs and then runs alone; `1` makes every call strictly one at a time. |
 | `MaxResponseBytes` | `int` | `4194304` | `65536` | `8388608` | Maximum byte size of a serialized JSON-RPC response payload (default: 4 MB, max: 8 MB). |
-| `MaxResponseTokens` | `int` | `1048576` | `1024` | `2097152` | Soft token budget gate (`ceil(utf8Bytes / 4)`) checked on text payloads before building the response envelope. Exceeding it returns `LIMIT_EXCEEDED` with reduction hints. |
+| `MaxResponseTokens` | `int` | `1048576` | `1024` | `2097152` | Soft token budget gate: non-image tools evaluate `ceil(utf8Bytes / 4)` on the serialized `CallResult` payload (both `content[0].text` and `structuredContent` in `dual` mode; text only in `text-only` mode); image tools pre-estimate `ceil(multiplier * utf8(StructuredJson) / 4) + EstimateImageVisionTokens(Png)` before building `CallResult`. Exceeding it returns `LIMIT_EXCEEDED` with `CompactUsageHint`. |
 | `MaxRequestBytes` | `int` | `1048576` | `4096` | `8388608` | Maximum byte size of an incoming JSON-RPC request line (default: 1 MB, max: 8 MB). |
 | `MaxScreenerSymbols` | `int` | `500` | `1` | `5000` | Maximum number of symbols evaluated during an explicit universe screener run; also the most symbols that may reach the screener of one `sa_filter_tickers` call (the symbols its rules kept). |
 | `MaxReturnedMatches` | `int` | `200` | `1` | `1000` | Maximum number of matched symbols returned by `sa_run_screener`. |
@@ -223,20 +225,26 @@ URI Scheme: `stockanalyzer://`
 | `stockanalyzer://settings/current` | `application/json` | Current settings | The allow-listed application settings (limits and defaults); the same content as `sa_get_settings`. File locations and credentials are never included. |
 | `stockanalyzer://workspace/active` | `application/json` | Active workspace | The chart set-up the user last saved (symbol, time frame, active indicators) and the same indicators as an `sa_calculate_indicators` request; the same content as `sa_get_active_workspace`. Unsaved edits are not included. An unreadable file is JSON-RPC error `-32603` (retry). |
 
+Resource templates (`resources/templates/list`):
+
+| URI Template | MIME Type | Name | Content Description |
+|---|---|---|---|
+| `stockanalyzer://docs/tools/{name}` | `text/markdown` | Tool documentation | On-demand full Markdown reference for one active registered MCP tool (`McpToolRegistry.TryGet` whitelist, resolved strictly under `<BaseDirectory>/docs/MCP/tools/<name>.md`, bounded by `MaxResponseBytes`). Path segments, traversal (`..`), whitespace, or inactive/unknown tool names return JSON-RPC error `-32002`. |
+
 ---
 
 ### 4.1 MCP Prompts
 
-`initialize` also advertises the `prompts` capability. A prompt is a fixed, deterministic list of read-only tool calls and how to report them; it reads no clock, data or setting, calls nothing itself and writes nothing, and the same arguments always give the same text. Every tool a prompt names is a read-only tool of this server (a test checks it).
+`initialize` also advertises the `prompts` capability. A prompt is a fixed, deterministic list of read-only tool calls and how to report them; it reads no clock, data or setting, calls nothing itself and writes nothing, and the same arguments always give the same text. `McpPromptRegistry` filters both `prompts/list` and `prompts/get` against active `--toolset` registrations so only prompts whose required tools are all registered are offered (requesting an unavailable prompt raises `-32602`). Every tool a prompt names is a read-only tool of this server (a test checks it).
 
 - `prompts/list` (after `initialize`, no pagination: a `cursor` is `-32602 Invalid cursor.`) returns `prompts` with `name`, `title`, `description` and `arguments` (`name`, `description`, `required`).
-- `prompts/get` (after `initialize`) takes `name` and `arguments` (an object whose values are all strings) and returns `description` and `messages` (one `user` message with `content` `{type: text, text}`). A missing or unknown name, a missing required argument, an unknown argument, a value that is not a string and a value out of range are `-32602`.
+- `prompts/get` (after `initialize`) takes `name` and `arguments` (an object whose values are all strings) and returns `description` and `messages` (one `user` message with `content` `{type: text, text}`). A missing, unknown, or `--toolset`-excluded prompt name, a missing required argument, an unknown argument, a value that is not a string and a value out of range are `-32602`. Prompt bodies embed token-saving guidance (such as `compactRows: true`, `decimalPlaces: 4`, `includeSeries: false` with `summary: true`, `includeBarCoordinates: false`, `outputTailCount: 20`, `compactReport: true`, and `maxReturnedTrades: 0`).
 
-| Prompt | Arguments | Tools the text names |
-|---|---|---|
-| `technical_diagnosis` | `symbol` (required), `timeFrame` (`D1`, `W1`, `MN1`; default `D1`) | `sa_get_candles`, `sa_calculate_indicators`, `sa_analyze_market_structure`, `sa_find_support_resistance`, `sa_detect_candle_patterns`, `sa_detect_chart_patterns`, `sa_detect_divergences`, `sa_render_chart_image` (optional) |
-| `sector_rotation_analysis` | `groupId` (optional), `lookbackBars` (daily bars, `1`..`MaxCandlesPerRequest`; default `200`) | `sa_list_ticker_groups`, `sa_calculate_market_breadth`, `sa_calculate_relative_performance` |
-| `backtest_overfitting_audit` | `symbol` (required), `templateId` (required, a GUID) | `sa_get_template_detail`, `sa_run_backtest`, `sa_run_walk_forward_analysis`, `sa_optimize_backtest` |
+| Prompt | Arguments | Tools the text names | Minimum `--toolset` Profiles |
+|---|---|---|---|
+| `technical_diagnosis` | `symbol` (required), `timeFrame` (`D1`, `W1`, `MN1`; default `D1`) | `sa_get_candles`, `sa_calculate_indicators`, `sa_analyze_market_structure`, `sa_find_support_resistance`, `sa_detect_candle_patterns`, `sa_detect_chart_patterns`, `sa_detect_divergences`, `sa_render_chart_image` (optional) | `core,technical,technical-extended` (`technical-extended` required for `sa_detect_chart_patterns`; `sa_get_capabilities` also in `RequiredTools`) |
+| `sector_rotation_analysis` | `groupId` (optional), `lookbackBars` (daily bars, `1`..`MaxCandlesPerRequest`; default `200`) | `sa_list_ticker_groups`, `sa_calculate_market_breadth`, `sa_calculate_relative_performance` | `core,portfolio` |
+| `backtest_overfitting_audit` | `symbol` (required), `templateId` (required, a GUID) | `sa_get_template_detail`, `sa_run_backtest`, `sa_run_walk_forward_analysis`, `sa_optimize_backtest` | `core,screener,backtest` (`sa_get_capabilities` also in `RequiredTools`) |
 
 `symbol` follows the one rule of every tool (at most 32 characters, no whitespace, path or drive separators or control characters; a formula of two symbols is allowed) and the text gets its canonical form (for example `7203-T`); `groupId` and `templateId` are GUIDs read as the tools read them (braces and the `N` form are accepted) and given to the text in the lower-case `D` form. None of them is looked up: the tools answer for an unknown symbol, group or template. Every prompt asks for the report in the language of the user's request and ends with the line that the result is an analysis of stored data, not a recommendation to trade. The audit asks the client to choose and state `parameterRanges`, `objective` and `windows`; no sufficiency number or verdict threshold is fixed. `sa_sync_market_data` is intentionally not provided (owner decision U-15): the server never writes to `Data/`.
 
@@ -260,7 +268,7 @@ URI Scheme: `stockanalyzer://`
 | `INVALID_INDICATOR_PARAMETER` | Indicator Tools | Specified parameter name is invalid or value is outside `CoreParameterRange`. |
 | `INVALID_OUTPUT_SERIES` | Indicator Tools | Requested output series name does not exist on the specified indicator. |
 | `CONDITION_LIMIT_EXCEEDED` | Screener / Backtest | Condition tree depth, node count, or offset exceeds configured limits. |
-| `LIMIT_EXCEEDED` | All Tools | A requested count (symbols, items, bars, nodes) exceeds the `McpLimits` allowance, or the whole result is larger than `MaxResponseBytes`. |
+| `LIMIT_EXCEEDED` | All Tools | A requested count (symbols, items, bars, nodes) exceeds the `McpLimits` allowance, the text payload exceeds `MaxResponseTokens`, or the serialized envelope exceeds `MaxResponseBytes`. |
 | `INSUFFICIENT_MARKET_DATA` | Calculation Tools | Stored candle history has fewer bars than required for the calculation. |
 | `TEMPLATE_NOT_FOUND` | Template Tools | Specified template GUID does not exist. |
 | `TEMPLATE_MIGRATION_PENDING` | Template Tools | Referenced template is in a legacy format requiring GUI migration before CLI execution. |
@@ -364,17 +372,20 @@ Returns locally stored metadata (company names, region, sector, industry, curren
 
 | Argument | Type | Req | Default | Bounds | Allowed Values | Description |
 |---|---|---|---|---|---|---|
-| `symbols` | `string[]` | Yes | - | MinItems: `1`, MaxItems: `MaxSymbolsPerMetadataCall` | - | Array of ticker symbols. |
+| `symbols` | `string[]` | No* | - | MinItems: `1`, MaxItems: `MaxSymbolsPerMetadataCall` | - | Array of ticker symbols. Mutually exclusive with `symbolsFromResultId`; one of the two is required. |
+| `symbolsFromResultId` | `string` | No* | - | - | - | Handle id (`resultId`) from `sa_run_screener` or `sa_filter_tickers` (`storeResult: true`). Mutually exclusive with `symbols`. |
+| `resultOffset` | `integer` | No | `0` | Min: `0` | - | 0-based start index within `symbolsFromResultId`. |
+| `resultLimit` | `integer` | No | - | Min: `1`, Max: `MaxSymbolsPerMetadataCall` | - | Maximum symbols to read from `symbolsFromResultId`. |
 | `fields` | `string[]` | No | all fields | MinItems: `1` | camelCase metadata property names | Only these metadata properties are written, in the fixed order of the tool (never the order of `fields`). `symbol`, `found` and `timeSeriesLastUpdated` are always written (naming them is accepted and changes nothing). Duplicates are ignored; the match is case-sensitive. `[]` is `INVALID_ARGUMENT` at `fields`; an unknown name is `INVALID_ARGUMENT` at `fields[i]` and the hint lists the valid names. Not sent: the whole metadata, byte for byte as before. |
 
 - **Boundary Conditions**: Duplicate symbols are returned once after canonicalization. Missing symbols return records with `found: false`.
 - **Return Fields**: `requestedCount`, `uniqueCount`, `results` (array of `{symbol, found, timeSeriesLastUpdated, metadata}`).
-- **Error Codes**: `LIMIT_EXCEEDED`.
+- **Error Codes**: `LIMIT_EXCEEDED`, `INVALID_ARGUMENT` (`symbolsFromResultId` unknown/expired or conflicting source).
 
 ---
 
 ### 6.5 `sa_get_capabilities`
-Returns the technical indicator catalog, parameter definitions, output series, supported timeframes, screener capabilities, the objectives `sa_optimize_backtest` and `sa_run_walk_forward_analysis` can rank by (`backtestOptimization`) and (with `--enable-execution`) the execution block.
+Returns the technical indicator catalog, parameter definitions, output series, supported timeframes, screener capabilities, `--compact-defaults` flag status (`compactDefaults`), the objectives `sa_optimize_backtest` and `sa_run_walk_forward_analysis` can rank by (`backtestOptimization`) and (with `--enable-execution`) the execution block.
 
 - **Heavy**: `false`
 - **Arguments**:
@@ -387,7 +398,7 @@ Returns the technical indicator catalog, parameter definitions, output series, s
 | `includeScreenerCatalog` | `boolean` | No | `false` | - | - | Adds the screener catalogue (columns, criteria, price sources, operators). |
 
 - **Boundary Conditions**: An unknown name in `indicatorTypeFilter` raises `UNKNOWN_INDICATOR`. The indicator count comes from the runtime registry.
-- **Return Fields**: `indicatorCount`, `periodUnit` (`"bars"`), `supportedTimeFrames`, `indicators` (array of `{type, isRegistered, displayName, category, backtestEligibility, isCrossTicker, screenerEligibility (details only; `Allowed`, `NonCausal` or `SynchronousCalculationUnsupported`, differs from `backtestEligibility` for the indicators that compare two symbols), parameters[{name, displayName, description, type, default, min, max, guiMin, guiMax}], outputSeriesNames, nonCausalSeries}`), `unitUndefined`, optional `screener`, `backtestOptimization{objectives[], excludedObjectives[{name, reason}]}`, `execution` (reports `enabled`; the limits and fixed values only with `--enable-execution`).
+- **Return Fields**: `indicatorCount`, `periodUnit` (`"bars"`), `supportedTimeFrames`, `compactDefaults` (`boolean`, `true` when started with `--compact-defaults`), `indicators` (array of `{type, isRegistered, displayName, category, backtestEligibility, isCrossTicker, screenerEligibility (details only; `Allowed`, `NonCausal` or `SynchronousCalculationUnsupported`, differs from `backtestEligibility` for the indicators that compare two symbols), parameters[{name, displayName, description, type, default, min, max, guiMin, guiMax}], outputSeriesNames, nonCausalSeries}`), `unitUndefined`, optional `screener`, `backtestOptimization{objectives[], excludedObjectives[{name, reason}]}`, `execution` (reports `enabled`; the limits and fixed values only with `--enable-execution`).
 - **Error Codes**: `UNKNOWN_INDICATOR`.
 
 ---
@@ -481,7 +492,8 @@ Evaluates a condition tree against the latest bar of a symbol universe, with the
 | `includeMatchedValues` | `boolean` | No | `false` | - | - | Returns the values each comparison read, per returned symbol. |
 | `maxReturnedMatches` | `integer` | No | `MaxReturnedMatches` | Min: `1`, Max: `MaxReturnedMatches` | - | Maximum matched symbols returned. |
 | `allowUnregistered` | `boolean` | No | `false` | - | - | Accepts explicit `symbols` and `ComparisonSymbol` values that are not in the ticker list but have stored daily bars; they are named in `warnings`. Not for `groupId`. |
-| `storeResult` | `boolean` | No | `false` | - | - | Stores the returned `matchedSymbols` in the runtime LRU handle store and adds `resultId` (e.g. `"res_0001"`) after `truncated` for downstream tools via `symbolsFromResultId`. |
+| `storeResult` | `boolean` | No | `false` | - | - | Stores all matched symbols (prior to `maxReturnedMatches` truncation or `includeMatchedSymbols` omission) in the runtime LRU handle store and adds `resultId` (e.g. `"res_0001"`) after `truncated` for downstream tools via `symbolsFromResultId`. |
+| `includeMatchedSymbols` | `boolean` | No | `true` | - | - | Includes `matchedSymbols` (and `ranking`) in the response. `false` requires `storeResult: true` (`INVALID_ARGUMENT` otherwise) and cannot be combined with `includeMatchedValues: true`. |
 
 - **Boundary Conditions**: Omitting both `symbols` and `groupId` screens every available symbol. A comparison that cannot be calculated does not match. Look-ahead indicators are refused. Two-ticker indicators (`Correlation`, `CrossCorrelation`, `RollingBeta`, `RollingAlpha`, `RollingRSquared`, `CointegrationSpread`, `PairRatio`, `PairSpread`, `Ratiocator`; the last seven are still refused by `sa_run_backtest`) need `ComparisonSymbol` (an empty one is refused: the chart's Price-vs-Volume mode is not available here). The comparison symbol's bars are paired by calendar date with no fill, so a date the comparison symbol lacks gives no value; the chart and `sa_calculate_indicators` forward-fill (at most 30 bars) first, so symbols with different holidays can differ. Universe-breadth indicators (`McClellanOscillator`, `MarketBreadth`, also refused by `sa_run_backtest`) are lifted for Screener via `ScreenerIndicatorEligibility` and pre-fetched once per distinct `UniverseBreadthKey` via `IMarketBreadthSeriesProvider` when `UniverseGroupId` is a valid workspace group GUID (current group composition used). A condition side that names one of them without a valid `UniverseGroupId` (missing, blank, `Guid.Empty`, non-GUID) is refused with `INVALID_INDICATOR_PARAMETER` (parameter `<condition path>.left.parameters.UniverseGroupId` or `<condition path>.right.parameters.UniverseGroupId`), and a stored Screener template with such a side carries a warning from `ScreenerTemplateAdvisor` in the template tools; no group is bound automatically.
   - **Two-ticker indicators on `W1`/`MN1`**: both symbols are read through the same bar selection (date cut, aggregation, partial-period rule, each symbol with its own reference date). A `W1` or `MN1` bar is dated by the period start (the Monday, the 1st) and the two symbols are matched by that exact date, so a holiday that only one market has does not change the date of the period (the chart and `sa_calculate_indicators` match `W1`/`MN1` comparison symbols by ISO week or calendar month, the same periods): a period that one symbol has no bar in has no value for it, a window that contains it has no value, the condition does not match and `warnings` stays silent; `sortBy` then gives `sortValue` `null`. A comparison symbol stored only to a mid-week day loses that week as partial (with `completeBarsOnly: true`) while the screened symbol keeps it.
@@ -694,8 +706,9 @@ Filters tickers with rules sent in the call (the Tickers-tab rule filter, withou
 | `includeFields` | `string[]` | No | `[]` | at most the number of known column names and aliases | known column names or aliases | Columns added to each returned match (`null` when not available). |
 | `offset` | `integer` | No | `0` | Min: `0` | - | Matches to skip. |
 | `limit` | `integer` | No | `100` | Min: `1`, Max: `MaxTickersPerPage` | - | Page size. |
-| `allowUnregistered` | `boolean` | No | `false` | - | - | Evaluates listed `symbols` that are not in the ticker list but have stored daily bars (named in `warnings`). A listed symbol with no stored daily bar is `SYMBOL_NOT_FOUND`. Not for `groupId` or the whole-list universe. |
-| `storeResult` | `boolean` | No | `false` | - | - | Stores the returned page `matches` symbols in the runtime LRU handle store and adds `resultId` after `hasMore` for downstream tools via `symbolsFromResultId`. |
+| `allowUnregistered` | `boolean` | No | `false` | - | - | Evaluates listed `symbols` that are not in the ticker list but have stored daily bars (named in `warnings`). A listed symbol with no stored bar is `SYMBOL_NOT_FOUND`. Not for `groupId` or the whole-list universe. |
+| `storeResult` | `boolean` | No | `false` | - | - | Stores all matching symbols (prior to `offset`/`limit` paging or `includeMatches` omission) in the runtime LRU handle store and adds `resultId` after `hasMore` for downstream tools via `symbolsFromResultId`. |
+| `includeMatches` | `boolean` | No | `true` | - | - | Includes `matches` in the response. `false` requires `storeResult: true` (`INVALID_ARGUMENT` otherwise) and cannot be combined with `includeFields`. |
 
 - **Operators by field kind**: numeric fields: `==`, `=`, `Equals`, `!=`, `NotEquals`, `>`, `GreaterThan`, `>=`, `GreaterThanOrEqual`, `<`, `LessThan`, `<=`, `LessThanOrEqual` (`value` must be a number). Text, flag and date-time fields (compared through their text, ignoring case): `*=`, `Contains`, `!*=`, `NotContains`, `!Contains`, `==`, `=`, `Equals`, `!=`, `NotEquals`. The `Tag` field: the text operators plus `ContainsTag` (tags are separated by comma or semicolon). With `isCompareToField`, numeric compares with numeric and text with text; `Tag` may be compared with any field.
 - **Evaluation order**: universe, rules, screener (on the symbols the rules kept), sort (ordinal, ascending), paging.
@@ -789,7 +802,7 @@ Extracts bars where user-specified backtest conditions evaluate to `true`, along
 | `order` | `string` | No | `OldestFirst` | - | `OldestFirst`, `NewestFirst` | Sort order of returned events. |
 | `includeBooleanSeries` | `boolean` | No | `false` | - | - | Include full aligned boolean series across the evaluated range. |
 | `includeEventStudy` | `boolean` | No | `false` | - | - | `true` adds `eventStudy` (after `events`, before `booleanSeries`). It needs `forwardBars`: without it `INVALID_ARGUMENT` at `includeEventStudy` ("'includeEventStudy' requires 'forwardBars' to be specified."), refused before any bar is loaded. |
-| `compactRows` | `boolean` | No | `false` | - | - | `true` writes `events` as `[]`, `eventColumns`, and `eventRows` (tuples with 4-element `[path, left, right, result]` comparisons). `false` or omitted is byte-identical. |
+| `compactRows` | `boolean` | No | `false` (`true` under `--compact-defaults`; no `decimalPlaces` rounding) | - | - | `true` writes `events` as `[]`, `eventColumns`, and `eventRows` (tuples with 4-element `[path, left, right, result]` comparisons). `false` or omitted (when `--compact-defaults` is off) is byte-identical. |
 | `allowUnregistered` | `boolean` | No | `false` | - | - | Accept an unregistered symbol with stored daily bars. |
 
 - **Event Structure**:
@@ -1065,6 +1078,8 @@ Calculates cross-asset return statistics across 2 to `MaxCrossAssetSymbols` (def
 | `symbols` | `string[]` | No* | - | 2..`MaxCrossAssetSymbols` (50) | - | Universe ticker symbols. Mutually exclusive with `groupId` and `symbolsFromResultId`. |
 | `groupId` | `string` | No* | - | - | - | Guid of a saved ticker group (from `sa_list_ticker_groups`). Mutually exclusive with `symbols` and `symbolsFromResultId`. |
 | `symbolsFromResultId` | `string` | No* | - | - | - | Handle id (`resultId`) from `sa_run_screener` or `sa_filter_tickers` (`storeResult: true`). Mutually exclusive with `symbols` and `groupId`. |
+| `resultOffset` | `integer` | No | `0` | Min: `0` | - | 0-based start index within `symbolsFromResultId`. |
+| `resultLimit` | `integer` | No | - | Min: `2`, Max: `MaxCrossAssetSymbols` | - | Maximum symbols to read from `symbolsFromResultId`. |
 | `benchmark` | `string` | No | - | - | - | Optional benchmark ticker symbol for Beta, Alpha, and $R^2$ calculation. |
 | `timeFrame` | `string` | No | `D1` | - | `D1`, `W1`, `MN1` | Bar timeframe for analysis. |
 | `lookbackBars` | `integer` | No | `DefaultCandleCount` (200) | 1..`MaxCandlesPerRequest` | - | Stored bars loaded per symbol up to `endDate`. |
@@ -1103,6 +1118,8 @@ Calculates internal market structure and breadth analytics across a universe of 
 | `symbols` | `string[]` | No* | - | 1..`MaxBreadthSymbols` (500) | - | Universe ticker symbols. Mutually exclusive with `groupId` and `symbolsFromResultId`. |
 | `groupId` | `string` | No* | - | - | - | Guid of a saved ticker group (from `sa_list_ticker_groups`). Mutually exclusive with `symbols` and `symbolsFromResultId`. |
 | `symbolsFromResultId` | `string` | No* | - | - | - | Handle id (`resultId`) from `sa_run_screener` or `sa_filter_tickers` (`storeResult: true`). Mutually exclusive with `symbols` and `groupId`. |
+| `resultOffset` | `integer` | No | `0` | Min: `0` | - | 0-based start index within `symbolsFromResultId`. |
+| `resultLimit` | `integer` | No | - | Min: `1`, Max: `MaxBreadthSymbols` | - | Maximum symbols to read from `symbolsFromResultId`. |
 | `timeFrame` | `string` | No | `D1` | - | `D1`, `W1`, `MN1` | Bar timeframe for analysis. |
 | `lookbackBars` | `integer` | No | `DefaultCandleCount` (200) | 1..`MaxCandlesPerRequest` | - | Stored bars loaded per symbol up to `endDate`. |
 | `outputTailCount` | `integer` | No | `DefaultOutputTailBars` (200) | 1..`MaxOutputTailBars` | - | Number of trailing bars returned per series. |
@@ -1138,6 +1155,8 @@ Executes an identical backtest strategy across a basket of up to `MaxPortfolioBa
 | `symbols` | `string[]` | No* | - | 1..`MaxPortfolioBacktestSymbols` (50) | - | Target ticker symbols to run backtest against (duplicates folded). Mutually exclusive with `groupId` and `symbolsFromResultId`. |
 | `groupId` | `string` | No* | - | 1..`MaxPortfolioBacktestSymbols` (50) members | - | Guid of a saved ticker group (from `sa_list_ticker_groups`). Mutually exclusive with `symbols` and `symbolsFromResultId`. |
 | `symbolsFromResultId` | `string` | No* | - | - | - | Handle id (`resultId`) from `sa_run_screener` or `sa_filter_tickers` (`storeResult: true`). Mutually exclusive with `symbols` and `groupId`. |
+| `resultOffset` | `integer` | No | `0` | Min: `0` | - | 0-based start index within `symbolsFromResultId`. |
+| `resultLimit` | `integer` | No | - | Min: `1`, Max: `MaxPortfolioBacktestSymbols` | - | Maximum symbols to read from `symbolsFromResultId`. |
 | `conditions` | `object` | No** | - | Up to 6 roots | - | Backtest entry/exit condition tree (identical across sleeves). Mutually exclusive with `templateId`. |
 | `templateId` | `string` | No** | - | - | - | Guid of a saved backtest-condition template (from `sa_list_templates`). Mutually exclusive with `conditions`. |
 | `timeFrame` | `string` | No | `D1` | - | `D1`, `W1`, `MN1` | Bar timeframe for evaluation. |
@@ -1364,6 +1383,8 @@ Calculates the same indicators as `sa_calculate_indicators` on many symbols in o
 | `symbols` | `string[]` | No* | - | MinItems: `1`, MaxItems: `MaxBatchIndicatorSymbols` | - | Symbols to evaluate (repeats are evaluated once, request order is kept). Mutually exclusive with `groupId` and `symbolsFromResultId`; exactly one of the three is required (`INVALID_ARGUMENT` otherwise). |
 | `groupId` | `string` | No* | - | at most `MaxBatchIndicatorSymbols` members | - | Guid of a saved ticker group (`sa_list_ticker_groups`). Mutually exclusive with `symbols` and `symbolsFromResultId`. |
 | `symbolsFromResultId` | `string` | No* | - | - | - | Handle id (`resultId`) from `sa_run_screener` or `sa_filter_tickers` (`storeResult: true`). Mutually exclusive with `symbols` and `groupId`. |
+| `resultOffset` | `integer` | No | `0` | Min: `0` | - | 0-based start index within `symbolsFromResultId`. |
+| `resultLimit` | `integer` | No | - | Min: `1`, Max: `MaxBatchIndicatorSymbols` | - | Maximum symbols to read from `symbolsFromResultId`. |
 | `timeFrame` | `string` | Yes | - | - | `D1`, `W1`, `MN1` | Bar duration. |
 | `indicators` | `object[]` | Yes | - | MinItems: `1`, MaxItems: `MaxIndicatorsPerCall` | - | The entries of `sa_calculate_indicators` (the same schema). |
 | `derived` | `object[]` | No | `[]` | MaxItems: `MaxDerivedSeriesPerCall` | - | Derived series, as in `sa_calculate_indicators`. |
@@ -1883,7 +1904,7 @@ Add `--enable-discussion` to the arguments of the registration (examples only; v
 - **VS Code** (`.vscode/mcp.json`): `{"servers":{"stockanalyzer":{"type":"stdio","command":"<absolute path of StockAnalyzer.McpServer.exe>","args":["--enable-discussion"]}}}`
 - **Antigravity** (MCP server management, "View raw config"): `{"mcpServers":{"stockanalyzer":{"command":"<absolute path of StockAnalyzer.McpServer.exe>","args":["--enable-discussion"]}}}`
 - **StockAnalyzer GUI (Integrated Launch & Configuration)**:
-  - Open **Settings > McpServer** to toggle discussion mode (`--enable-discussion`), configure `--toolset` role/domain filtering (`all`, `core`, `technical`, `screener`, `backtest`, `portfolio`, `ml`), stop or restart the GUI-managed `StockAnalyzer.McpServer` process, and tune all 22 parameters from `AiIntegration:Discussion`. User preferences are atomically saved to `Data/Config/user_mcpserver_settings.json` and automatically merged on top of `appsettings.json`.
+  - Open **Settings > McpServer** to toggle discussion mode (`--enable-discussion`), text-only response formatting (`--response-format text-only`), compact/rounded defaults (`--compact-defaults`), configure `--toolset` role/domain filtering (`all`, `core`, `technical`, `technical-extended`, `screener`, `backtest`, `portfolio`, `ml`), set `MaxResponseTokens` (`1024..2097152`, step `1024`, recommended preset `24576`), stop or restart the GUI-managed `StockAnalyzer.McpServer` process, and tune all 22 parameters from `AiIntegration:Discussion`. User preferences are atomically saved to `Data/Config/user_mcpserver_settings.json` (`McpServer.*`, `AiIntegration.MaxResponseTokens`, `AiIntegration.Discussion`) and automatically merged on top of `appsettings.json`.
   - Click **Tools > McpServer** to directly launch `StockAnalyzer.McpServer.exe` adjacent to the host application with configured launch arguments (`--enable-discussion`, `--toolset ...`) and active process lifecycle management.
 - Both options together: `"args": ["--enable-discussion", "--enable-execution"]` (any order).
 

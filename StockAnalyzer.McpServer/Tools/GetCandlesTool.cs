@@ -27,12 +27,14 @@ internal sealed class GetCandlesTool : IMcpTool
     private readonly CandleWindowLoader _loader;
     private readonly SymbolResolver _symbols;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public GetCandlesTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits)
+    public GetCandlesTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits, bool compactDefaults = false)
     {
         _loader = new CandleWindowLoader(gateway);
         _symbols = symbols;
         _limits = limits;
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_get_candles";
@@ -42,6 +44,8 @@ internal sealed class GetCandlesTool : IMcpTool
         ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
+
+    public string? CompactUsageHint => "Pass compactRows: true, decimalPlaces: 4, or a smaller count / narrower startDate-endDate window.";
 
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"count\":200}";
 
@@ -112,8 +116,8 @@ internal sealed class GetCandlesTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{StartDateArgument}' is after '{EndDateArgument}'.", StartDateArgument);
         }
 
-        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
-        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments, _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null);
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? _compactDefaults;
         bool completeBarsOnly = ToolArgs.Boolean(arguments, PartialBarOutput.CompleteBarsOnlyArgument) ?? false;
         bool aggregated = TimeFrameAggregator.IsPeriodFrame(timeFrame);
         bool filterByDate = start is not null || end is not null;

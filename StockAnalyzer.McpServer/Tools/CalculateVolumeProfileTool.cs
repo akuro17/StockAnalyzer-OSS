@@ -42,13 +42,15 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
     private readonly SymbolResolver _symbols;
     private readonly CandleWindowLoader _loader;
     private readonly McpLimits _limits;
+    private readonly bool _compactDefaults;
 
-    public CalculateVolumeProfileTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits)
+    public CalculateVolumeProfileTool(IReadOnlyStockAnalyzerGateway gateway, SymbolResolver symbols, McpLimits limits, bool compactDefaults = false)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
         _loader = new CandleWindowLoader(gateway);
         _limits = limits ?? throw new ArgumentNullException(nameof(limits));
+        _compactDefaults = compactDefaults;
     }
 
     public string Name => "sa_calculate_volume_profile";
@@ -58,6 +60,8 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
+
+    public string? CompactUsageHint => "Pass compactRows: true (or includeBins: false), decimalPlaces: 4, or a smaller binCount.";
 
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"basis\":\"Volume\",\"binCount\":24,\"valueAreaPercent\":0.7}";
@@ -103,9 +107,9 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"{BinCountArgument} must be between 2 and {_limits.MaxVolumeProfileBins}.", BinCountArgument);
         }
 
-        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments, _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null);
         bool includeBins = ToolArgs.Boolean(arguments, IncludeBinsArgument) ?? true;
-        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? false;
+        bool compactRows = ToolArgs.Boolean(arguments, CompactRowsArgument) ?? (_compactDefaults && includeBins);
         if (compactRows && !includeBins)
         {
             throw new ToolException(

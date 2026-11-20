@@ -47,12 +47,57 @@ public sealed class McpServerSettingsViewModelTests : IDisposable
         await vm.LoadTask;
 
         Assert.False(vm.EnableDiscussion);
+        Assert.False(vm.UseTextOnlyResponse);
+        Assert.False(vm.CompactDefaults);
+        Assert.Equal(McpResponseTokenLimits.Default, vm.MaxResponseTokens);
+        Assert.Equal(McpResponseTokenLimits.Minimum, vm.MaxResponseTokensMinimum);
+        Assert.Equal(McpResponseTokenLimits.Maximum, vm.MaxResponseTokensMaximum);
+        Assert.Equal(McpResponseTokenLimits.RecommendedStrict, vm.MaxResponseTokensRecommended);
         Assert.Equal(4, vm.MaxActiveSessions);
         Assert.Equal(6, vm.MaxParticipantsPerSession);
         Assert.Equal(300, vm.MaxMessagesPerSession);
         Assert.Equal(20, vm.MaxWaitSeconds);
         Assert.False(vm.IsModified);
         Assert.True(vm.IsValid);
+    }
+
+    [Fact]
+    public async Task ViewModel_TokenOptimizationOptions_ValidateLaunchArgsAndResetCorrectly()
+    {
+        var manager = new McpServerSettingsManager(_testFilePath);
+        using var vm = new McpServerSettingsViewModel(manager);
+        await vm.LoadTask;
+
+        vm.UseTextOnlyResponse = true;
+        vm.CompactDefaults = true;
+        Assert.True(vm.IsModified);
+        Assert.Equal("--response-format text-only --compact-defaults", vm.LaunchArgumentsPreview);
+
+        vm.ApplyRecommendedMaxResponseTokensCommand.Execute(null);
+        Assert.Equal(McpResponseTokenLimits.RecommendedStrict, vm.MaxResponseTokens);
+        Assert.True(vm.IsValid);
+        Assert.True(string.IsNullOrEmpty(vm.MaxResponseTokensError));
+
+        vm.MaxResponseTokens = McpResponseTokenLimits.Minimum - 1;
+        Assert.False(vm.IsValid);
+        Assert.False(string.IsNullOrEmpty(vm.MaxResponseTokensError));
+
+        vm.MaxResponseTokens = McpResponseTokenLimits.Maximum + 1;
+        Assert.False(vm.IsValid);
+        Assert.False(string.IsNullOrEmpty(vm.MaxResponseTokensError));
+
+        vm.MaxResponseTokens = McpResponseTokenLimits.RecommendedStrict;
+        Assert.True(vm.IsValid);
+        Assert.True(string.IsNullOrEmpty(vm.MaxResponseTokensError));
+
+        await vm.SaveChangesAsync();
+        Assert.False(vm.IsModified);
+
+        vm.ResetToDefault();
+        Assert.False(vm.UseTextOnlyResponse);
+        Assert.False(vm.CompactDefaults);
+        Assert.Equal(McpResponseTokenLimits.Default, vm.MaxResponseTokens);
+        Assert.True(vm.IsModified);
     }
 
     [Fact]
@@ -190,13 +235,14 @@ public sealed class McpServerSettingsViewModelTests : IDisposable
         Assert.True(string.IsNullOrEmpty(vm.ToolsetError));
 
         vm.UseCoreToolset = true;
+        vm.UseTechnicalExtendedToolset = true;
         vm.UseBacktestToolset = true;
 
         Assert.False(vm.UseAllToolsets);
-        Assert.Equal("core,backtest", vm.Toolset);
+        Assert.Equal("core,technical-extended,backtest", vm.Toolset);
         Assert.True(vm.IsModified);
         Assert.True(vm.IsValid);
-        Assert.Equal("--toolset core,backtest", vm.LaunchArgumentsPreview);
+        Assert.Equal("--toolset core,technical-extended,backtest", vm.LaunchArgumentsPreview);
 
         // Invalid toolset profile fails validation
         vm.Toolset = "core,unknown_profile";
@@ -210,6 +256,7 @@ public sealed class McpServerSettingsViewModelTests : IDisposable
         vm.UseAllToolsets = true;
         Assert.Equal(string.Empty, vm.Toolset);
         Assert.False(vm.UseCoreToolset);
+        Assert.False(vm.UseTechnicalExtendedToolset);
         Assert.False(vm.UseBacktestToolset);
         Assert.True(vm.IsValid);
     }

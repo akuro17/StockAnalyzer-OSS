@@ -100,6 +100,7 @@ sa_*.tmp
 !docs/SA_UI_INTERACTION.md
 !docs/SA_UI_SUBWINDOW_STANDARD.md
 !docs/ja/SA_DEBUG_LOGGING_SPEC.md
+!docs/MCP/tools/sa_*.md
 propose_comment.md
 
 # Local configuration files and environment secrets
