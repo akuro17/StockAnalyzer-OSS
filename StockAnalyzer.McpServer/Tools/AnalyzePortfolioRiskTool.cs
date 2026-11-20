@@ -54,7 +54,7 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
         .Integer(LookbackArgument, $"Daily bars the returns are taken from, newest last. Default {_limits.DefaultCandleCount}, maximum {_limits.MaxCandlesPerRequest}.", defaultValue: _limits.DefaultCandleCount, minimum: 1, maximum: _limits.MaxCandlesPerRequest)
         .Number(ConfidenceArgument, $"Confidence level of the value at risk, from {PortfolioRiskCalculator.MinConfidenceLevel} to {PortfolioRiskCalculator.MaxConfidenceLevel}. Default {DefaultConfidenceLevel}.")
         .String(BenchmarkArgument, "Optional benchmark symbol; adds the portfolio beta.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every exposure, risk figure, weight and volatility (confidenceLevel is echoed as sent)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every exposure, risk figure, weight and volatility (confidenceLevel is echoed as sent)", _compactDefaults), defaultValue: _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null, minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)

@@ -30,6 +30,7 @@ internal sealed class RunBacktestTool : IMcpTool
     private const string DrawdownEpisodesArgument = BacktestDiagnostics.DrawdownEpisodesArgument;
     private const string PeriodicReturnsArgument = BacktestDiagnostics.PeriodicReturnsArgument;
     private const string CompactRowsArgument = "compactRows";
+    internal const int DefaultCompactMaxReturnedTrades = 20;
 
     private static readonly string[] TradeColumns =
     {
@@ -69,24 +70,34 @@ internal sealed class RunBacktestTool : IMcpTool
 
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"conditions\":{\"entryLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30},\"exitLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"GreaterThan\",\"right\":70}},\"maxReturnedTrades\":50}";
 
-    public string InputSchemaJson => ToolSchema.Object()
-        .String(SymbolArgument, "Symbol to test (from sa_list_tickers).", required: true)
-        .FreeObject(ConditionsArgument, "Entry/exit/reverse conditions tree. Mutually exclusive with templateId (one required).")
-        .String(TemplateIdArgument, "Saved backtestCondition template GUID. Mutually exclusive with conditions (one required).")
-        .String(StartArgument, "First evaluated date (yyyy-MM-dd). Default: history start.")
-        .String(EndArgument, "Last evaluated date (yyyy-MM-dd). Default: latest bar.")
-        .String(TimeFrameArgument, $"Bar timeframe ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
-        .FreeObject(BacktestSettingsBinder.AccountArgument, "Account capital, cost, sizing, margin, and execution-realism settings. Default: factory defaults.")
-        .FreeObject(BacktestSettingsBinder.RiskArgument, "Stop-loss, take-profit, and exits: {stopLossRatio, takeProfitRatio, dynamicExits{maxHoldingBars, atrStop, atrTarget, trailingStop}}.")
-        .FreeObject(BacktestSettingsBinder.ReportArgument, "Report config: {annualRiskFreeRate, annualMar, annualPeriodsD1, bootstrapSeed, bootstrapIterations}. Default: factory defaults.")
-        .Integer(MaxTradesArgument, $"Max trades returned (0..{_limits.MaxReturnedTrades}; 0 lists none). Default {_limits.MaxReturnedTrades}.", defaultValue: _limits.MaxReturnedTrades, minimum: 0, maximum: _limits.MaxReturnedTrades)
-        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbol with stored bars. Default false.")
-        .String(EquityCurveArgument, $"Equity curve resolution (Bar LIMIT_EXCEEDED >{McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} pts). Default None.", allowedValues: BacktestDiagnostics.CurveNames)
-        .Integer(DrawdownEpisodesArgument, $"Deepest drawdown episodes count (0..{_limits.MaxDrawdownEpisodes}). Default 0.", defaultValue: 0, minimum: 0, maximum: _limits.MaxDrawdownEpisodes)
-        .Boolean(PeriodicReturnsArgument, "Include monthly and yearly equity returns. Default false.")
-        .Boolean(BacktestReportJson.CompactReportArgument, BacktestReportJson.CompactReportDescription)
-        .Boolean(CompactRowsArgument, "true empties trades.items/equityCurve.points and emits columns/rows arrays. Default false.")
-        .Build();
+    public string InputSchemaJson
+    {
+        get
+        {
+            int defaultMaxTrades = DefaultMaxReturnedTrades();
+            return ToolSchema.Object()
+                .String(SymbolArgument, "Symbol to test (from sa_list_tickers).", required: true)
+                .FreeObject(ConditionsArgument, "Entry/exit/reverse conditions tree. Mutually exclusive with templateId (one required).")
+                .String(TemplateIdArgument, "Saved backtestCondition template GUID. Mutually exclusive with conditions (one required).")
+                .String(StartArgument, "First evaluated date (yyyy-MM-dd). Default: history start.")
+                .String(EndArgument, "Last evaluated date (yyyy-MM-dd). Default: latest bar.")
+                .String(TimeFrameArgument, $"Bar timeframe ({string.Join(", ", ReadOnlyGatewayContract.SupportedBacktestTimeFrames)}). Default {ReadOnlyGatewayContract.BacktestTimeFrame}.", allowedValues: ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Select(t => t.ToString()).ToArray())
+                .FreeObject(BacktestSettingsBinder.AccountArgument, "Account capital, cost, sizing, margin, and execution-realism settings. Default: factory defaults.")
+                .FreeObject(BacktestSettingsBinder.RiskArgument, "Stop-loss, take-profit, and exits: {stopLossRatio, takeProfitRatio, dynamicExits{maxHoldingBars, atrStop, atrTarget, trailingStop}}.")
+                .FreeObject(BacktestSettingsBinder.ReportArgument, "Report config: {annualRiskFreeRate, annualMar, annualPeriodsD1, bootstrapSeed, bootstrapIterations}. Default: factory defaults.")
+                .Integer(MaxTradesArgument, $"Max trades returned (0..{_limits.MaxReturnedTrades}; 0 lists none). Default {defaultMaxTrades}.", defaultValue: defaultMaxTrades, minimum: 0, maximum: _limits.MaxReturnedTrades)
+                .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbol with stored bars. Default false.")
+                .String(EquityCurveArgument, $"Equity curve resolution (Bar LIMIT_EXCEEDED >{McpLimitsContract.EffectiveMaxEquityCurvePoints(_limits)} pts). Default None.", allowedValues: BacktestDiagnostics.CurveNames)
+                .Integer(DrawdownEpisodesArgument, $"Deepest drawdown episodes count (0..{_limits.MaxDrawdownEpisodes}). Default 0.", defaultValue: 0, minimum: 0, maximum: _limits.MaxDrawdownEpisodes)
+                .Boolean(PeriodicReturnsArgument, "Include monthly and yearly equity returns. Default false.")
+                .Boolean(BacktestReportJson.CompactReportArgument, BacktestReportJson.GetCompactReportDescription(_compactDefaults))
+                .Boolean(CompactRowsArgument, $"true empties trades.items/equityCurve.points and emits columns/rows arrays. Default {(_compactDefaults ? "true" : "false")}.")
+                .Build();
+        }
+    }
+
+    private int DefaultMaxReturnedTrades()
+        => _compactDefaults ? Math.Min(DefaultCompactMaxReturnedTrades, _limits.MaxReturnedTrades) : _limits.MaxReturnedTrades;
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
@@ -98,7 +109,7 @@ internal sealed class RunBacktestTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"{StartArgument} must not be after {EndArgument}.", StartArgument);
         }
 
-        int maxTrades = ToolArgs.NonNegativeWithin(arguments, MaxTradesArgument, _limits.MaxReturnedTrades, _limits.MaxReturnedTrades);
+        int maxTrades = ToolArgs.NonNegativeWithin(arguments, MaxTradesArgument, DefaultMaxReturnedTrades(), _limits.MaxReturnedTrades);
         var diagnosticsRequest = new BacktestDiagnosticsRequest(
             ToolArgs.String(arguments, EquityCurveArgument) is { } curveName ? BacktestDiagnostics.ParseCurve(curveName) : null,
             ToolArgs.NonNegativeWithin(arguments, DrawdownEpisodesArgument, 0, _limits.MaxDrawdownEpisodes),

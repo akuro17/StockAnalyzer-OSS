@@ -101,7 +101,7 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
         .Integer(MaxEventsArgument, $"Most events to return. Default and maximum {_limits.MaxReturnedEvents}.", defaultValue: _limits.MaxReturnedEvents, minimum: 1, maximum: _limits.MaxReturnedEvents)
         .String(OrderArgument, $"Output ordering: {OldestFirstOrder} (default) or {NewestFirstOrder}.", allowedValues: OrderValues)
         .Boolean(IncludeBooleanSeriesArgument, "Include boolean series for every bar in the evaluation window. Default false.")
-        .Boolean(CompactRowsArgument, $"true returns 'events' as [] and writes '{EventColumnsKey}' plus '{EventRowsKey}' (one row per event, comparisons as [path, left, right, result]). Default false.")
+        .Boolean(CompactRowsArgument, $"true returns 'events' as [] and writes '{EventColumnsKey}' plus '{EventRowsKey}' (one row per event, comparisons as [path, left, right, result]). Default {(_compactDefaults ? "true" : "false")}.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
         .Build();
 

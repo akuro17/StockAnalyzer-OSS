@@ -136,6 +136,13 @@ public class DefaultCoreIndicatorSettingsTests
         var defaults = DefaultCoreIndicatorSettings.GetDefault();
         Assert.DoesNotContain(defaults, s => s.TypeEnum == IndicatorType.AMA);
     }
+
+    [Fact]
+    public void GetDefault_ThreeLineBreakSignal_ShouldNotBeRegisteredInDefaults()
+    {
+        var defaults = DefaultCoreIndicatorSettings.GetDefault();
+        Assert.DoesNotContain(defaults, s => s.TypeEnum == IndicatorType.ThreeLineBreakSignal);
+    }
 #pragma warning restore CS0618
 
 

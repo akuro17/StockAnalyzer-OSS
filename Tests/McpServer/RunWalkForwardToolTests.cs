@@ -681,7 +681,7 @@ public sealed class RunWalkForwardToolTests : IDisposable
         JsonElement tool = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().Single(t => t.GetProperty("name").GetString() == "sa_run_walk_forward_analysis");
 
         string description = tool.GetProperty("description").GetString()!;
-        Assert.Contains("docs/MCP/tools/sa_run_walk_forward_analysis.md", description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_run_walk_forward_analysis", description, StringComparison.Ordinal);
         string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_run_walk_forward_analysis.md"));
         Assert.Contains("barSharpeEfficiency", doc);
         JsonElement windows = tool.GetProperty("inputSchema").GetProperty("properties").GetProperty("windows");

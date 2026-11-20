@@ -161,7 +161,7 @@ public class ScreenerIndicatorGroup
                 IndicatorType.KagiChart, IndicatorType.KagiOverlay,
                 IndicatorType.PointAndFigure, IndicatorType.PointAndFigureChart,
                 IndicatorType.PointAndFigureOverlay, IndicatorType.ThreeLineBreak,
-                IndicatorType.ThreeLineBreakSignal, IndicatorType.DarvasBox,
+                IndicatorType.DarvasBox,
                 IndicatorType.DarvasBoxSignal, IndicatorType.VortexSignal,
                 IndicatorType.MarketStructureShift, IndicatorType.VolumeProfileLevels
             }, "Indicator", "ScreenerGroup_Chart"),

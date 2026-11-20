@@ -499,7 +499,7 @@ internal sealed class McpMessageDispatcher
             throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, "Tool arguments must be an object.");
         }
 
-        if (!_registry.TryGet(name.GetString()!, out RegisteredTool? registered))
+        if (!_registry.TryGetCallable(name.GetString()!, out RegisteredTool? registered))
         {
             throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, $"Unknown tool: {name.GetString()}");
         }

@@ -121,6 +121,7 @@ internal static class McpServerComposition
     /// <param name="toolsets">Optional CLI <c>--toolset</c> profile names restricting registered read-only tools; null registers all.</param>
     /// <param name="responseFormat">Selects whether <c>tools/call</c> emits <c>structuredContent</c> (<see cref="McpResponseFormat.Dual"/>) or omits it (<see cref="McpResponseFormat.TextOnly"/>).</param>
     /// <param name="compactDefaults">When true (<c>--compact-defaults</c>), allowlisted tools default to compact/rounded outputs when callers omit formatting parameters.</param>
+    /// <param name="progressiveDiscovery">When true (<c>--progressive-discovery</c>), <c>tools/list</c> exposes only <c>sa_search_tools</c> and <c>sa_invoke_tool</c> while keeping all active tools callable on demand.</param>
     public static McpServerRuntime Create(
         IConfiguration configuration,
         LogSink log,
@@ -141,7 +142,8 @@ internal static class McpServerComposition
         IReadOnlyDrawingDocumentSource? drawingSource = null,
         IReadOnlyList<string>? toolsets = null,
         McpResponseFormat responseFormat = McpResponseFormat.Dual,
-        bool compactDefaults = false)
+        bool compactDefaults = false,
+        bool progressiveDiscovery = false)
     {
         McpLimits limits = configuration.GetSection(McpLimits.SectionName).Get<McpLimits>() ?? new McpLimits();
         McpLimitsContract.Validate(limits);
@@ -364,11 +366,30 @@ internal static class McpServerComposition
                 tools.Add(new DiscussionReadTool(board, identity, discussionSettings));
                 tools.Add(new DiscussionStatusTool(board, identity));
                 tools.Add(new DiscussionCloseTool(board, identity));
-                tools.Add(new DiscussionAttachAnalysisTool(board, identity, () => registryOfTools!));
+                tools.Add(new DiscussionAttachAnalysisTool(board, identity, () => registryOfTools!, progressiveDiscovery));
                 tools.Add(new DiscussionGetAnalysisTool(board, identity));
             }
 
-            var registry = new McpToolRegistry(McpToolsetCatalog.Filter(tools, toolsets));
+            List<IMcpTool> activeTools = McpToolsetCatalog.Filter(tools, toolsets);
+            McpToolRegistry registry;
+            if (!progressiveDiscovery)
+            {
+                registry = new McpToolRegistry(activeTools);
+            }
+            else
+            {
+                var profilesByName = new Dictionary<string, string>(activeTools.Count, StringComparer.Ordinal);
+                foreach (IMcpTool active in activeTools)
+                {
+                    profilesByName[active.Name] = McpToolsetCatalog.ProfileOf(active);
+                }
+
+                var searchTool = new SearchToolsTool(() => registryOfTools!, profilesByName, responseFormat);
+                var invokeTool = new InvokeToolProxyTool();
+                var metaTools = new IMcpTool[] { invokeTool, searchTool };
+                registry = new McpToolRegistry(metaTools, activeTools.Concat(metaTools));
+            }
+
             registryOfTools = registry;
             const string ToolDocPrefix = $"{McpResourceRegistry.UriScheme}docs/tools/";
             var resources = new McpResourceRegistry(
@@ -408,7 +429,13 @@ internal static class McpServerComposition
                         McpResourceRegistry.MarkdownMimeType,
                         uri => ResolveToolDocumentationResource(uri, ToolDocPrefix, registry, limits.MaxResponseBytes)),
                 });
-            var dispatcher = new McpMessageDispatcher(log, registry, new ToolExecutor(limits, sanitizer, log, observer, responseFormat), resources, identity, new McpPromptRegistry(limits, registry));
+            var dispatcher = new McpMessageDispatcher(
+                log,
+                registry,
+                new ToolExecutor(limits, sanitizer, log, observer, responseFormat, registry, progressiveDiscovery),
+                resources,
+                identity,
+                new McpPromptRegistry(limits, registry));
             return new McpServerRuntime(services, limits, dispatcher, registry, prepareExecution);
         }
         catch
@@ -443,7 +470,7 @@ internal static class McpServerComposition
             || rawName.IndexOfAny(new[] { '/', '\\' }) >= 0
             || rawName.Contains("..", StringComparison.Ordinal)
             || rawName.Any(char.IsWhiteSpace)
-            || !registry.TryGet(rawName, out RegisteredTool? registered))
+            || !registry.TryGetCallable(rawName, out RegisteredTool? registered))
         {
             return null;
         }

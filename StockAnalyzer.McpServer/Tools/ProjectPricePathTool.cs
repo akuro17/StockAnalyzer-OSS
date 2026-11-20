@@ -90,7 +90,7 @@ internal sealed class ProjectPricePathTool : IMcpTool
         .Integer(SsaNumComponentsArgument, $"SSA reconstructed components (1..20). Default {IndicatorDefaultConstants.SsaDefaultNumComponents}.", defaultValue: IndicatorDefaultConstants.SsaDefaultNumComponents, minimum: 1, maximum: 20)
         .Integer(HmmStatesArgument, $"HMM state count (2..3). Default {IndicatorDefaultConstants.HmmStates}.", defaultValue: IndicatorDefaultConstants.HmmStates, minimum: 2, maximum: 3)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbol with stored bars. Default false.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("value/lower/upper"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("value/lower/upper", _compactDefaults), defaultValue: _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null, minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)

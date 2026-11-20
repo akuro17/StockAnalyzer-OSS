@@ -270,7 +270,9 @@ public class BlockChartOverlayContractTests
             BlockChartOverlayTypes.All.OrderBy(t => t.ToString(), StringComparer.Ordinal).ToArray());
 
         Assert.False(BlockChartOverlayTypes.Contains(IndicatorType.RenkoOverlay));
+#pragma warning disable CS0618 // Deliberately testing obsolete ThreeLineBreakSignal exclusion
         Assert.False(BlockChartOverlayTypes.Contains(IndicatorType.ThreeLineBreakSignal));
+#pragma warning restore CS0618
     }
 
     [Fact]

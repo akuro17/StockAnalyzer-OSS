@@ -375,17 +375,20 @@ public sealed class McpPromptsTests : IDisposable
                 [McpPromptRegistry.TemplateIdArgument] = prompt.Arguments.Any(a => a.Name == McpPromptRegistry.TemplateIdArgument) ? TemplateId : string.Empty,
             }.Where(kv => prompt.Arguments.Any(a => a.Name == kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal));
 
+            IReadOnlyList<string> declaredTools = prompt.OptionalTools is null
+                ? prompt.RequiredTools
+                : prompt.RequiredTools.Concat(prompt.OptionalTools).ToArray();
             string[] named = Regex.Matches(text, @"\bsa_[a-z_]+\b").Select(m => m.Value).Distinct(StringComparer.Ordinal).ToArray();
             foreach (string toolName in named)
             {
-                Assert.Contains(toolName, prompt.RequiredTools);
+                Assert.Contains(toolName, declaredTools);
             }
         }
     }
 
     [Theory]
     [InlineData(new[] { "core" }, new string[0])]
-    [InlineData(new[] { "core", "technical" }, new string[0])]
+    [InlineData(new[] { "core", "technical" }, new[] { McpPromptRegistry.TechnicalDiagnosisName })]
     [InlineData(new[] { "core", "technical", "technical-extended" }, new[] { McpPromptRegistry.TechnicalDiagnosisName })]
     [InlineData(new[] { "core", "portfolio" }, new[] { McpPromptRegistry.SectorRotationName })]
     [InlineData(new[] { "core", "screener", "backtest" }, new[] { McpPromptRegistry.BacktestAuditName })]
@@ -417,6 +420,18 @@ public sealed class McpPromptsTests : IDisposable
             if (expectedPrompts.Contains(promptName, StringComparer.Ordinal))
             {
                 Assert.False(getResponse.RootElement.TryGetProperty("error", out _), $"Expected '{promptName}' to succeed under toolsets [{string.Join(",", toolsets)}].");
+                if (promptName == McpPromptRegistry.TechnicalDiagnosisName)
+                {
+                    string promptText = getResponse.RootElement.GetProperty("result").GetProperty("messages")[0].GetProperty("content").GetProperty("text").GetString()!;
+                    if (toolsets.Contains("technical-extended", StringComparer.Ordinal))
+                    {
+                        Assert.Contains("sa_detect_chart_patterns", promptText, StringComparison.Ordinal);
+                    }
+                    else
+                    {
+                        Assert.DoesNotContain("sa_detect_chart_patterns", promptText, StringComparison.Ordinal);
+                    }
+                }
             }
             else
             {

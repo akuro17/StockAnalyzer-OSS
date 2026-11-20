@@ -75,7 +75,7 @@ public sealed class CalculateDrawingValuesCrossLineDatePriceRangeTests : IDispos
         string description = tool.GetProperty("description").GetString()!;
         Assert.Contains("DatePriceRange", description);
         Assert.Contains("CrossLine", description);
-        Assert.Contains("docs/MCP/tools/sa_calculate_drawing_values.md", description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_calculate_drawing_values", description, StringComparison.Ordinal);
         string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_calculate_drawing_values.md"));
         Assert.Contains("not annualised", doc);
         Assert.Contains("CrossLine (1 point)", doc);

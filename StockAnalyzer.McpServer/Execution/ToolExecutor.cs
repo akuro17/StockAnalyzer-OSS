@@ -19,6 +19,8 @@ namespace StockAnalyzer.McpServer.Execution;
 /// </summary>
 internal sealed class ToolExecutor
 {
+    private static readonly JsonElement EmptyArguments = JsonDocument.Parse("{}").RootElement;
+
     private readonly McpLimits _limits;
     private readonly ErrorMessageSanitizer _sanitizer;
     private readonly LogSink _log;
@@ -28,19 +30,32 @@ internal sealed class ToolExecutor
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _inFlight = new(StringComparer.Ordinal);
     private readonly IToolCallObserver? _observer;
     private readonly McpResponseFormat _responseFormat;
+    private readonly McpToolRegistry? _registry;
+    private readonly bool _progressiveDiscovery;
     private int _observerFailureLogged;
 
     internal McpResponseFormat ResponseFormat => _responseFormat;
 
     /// <param name="observer">Told once about every call that reaches the executor (see <see cref="IToolCallObserver"/>); null tells nobody and costs nothing.</param>
     /// <param name="responseFormat">Selects whether <c>structuredContent</c> is emitted next to <c>content[0].text</c> (<see cref="McpResponseFormat.Dual"/>) or omitted (<see cref="McpResponseFormat.TextOnly"/>).</param>
-    public ToolExecutor(McpLimits limits, ErrorMessageSanitizer sanitizer, LogSink log, IToolCallObserver? observer = null, McpResponseFormat responseFormat = McpResponseFormat.Dual)
+    /// <param name="registry">Optional tool registry used to unwrap <see cref="InvokeToolProxyTool"/> calls in progressive discovery mode.</param>
+    /// <param name="progressiveDiscovery">When true, hidden non-listed callable tools emit progressive discovery argument hints instead of referencing <c>tools/list</c>.</param>
+    public ToolExecutor(
+        McpLimits limits,
+        ErrorMessageSanitizer sanitizer,
+        LogSink log,
+        IToolCallObserver? observer = null,
+        McpResponseFormat responseFormat = McpResponseFormat.Dual,
+        McpToolRegistry? registry = null,
+        bool progressiveDiscovery = false)
     {
         _limits = limits;
         _sanitizer = sanitizer;
         _log = log;
         _observer = observer;
         _responseFormat = responseFormat;
+        _registry = registry;
+        _progressiveDiscovery = progressiveDiscovery;
         _readOnlySlots = Math.Max(1, limits.MaxConcurrentReadOnlyCalls); // the start-up check keeps it inside 1..16; a semaphore cannot have no slot
         _readOnlyTurn = new SemaphoreSlim(_readOnlySlots, _readOnlySlots);
     }
@@ -89,22 +104,47 @@ internal sealed class ToolExecutor
         var outcome = new CallOutcome();
         using var callCancellation = CancellationTokenSource.CreateLinkedTokenSource(shutdown);
         bool registeredForCancel = _inFlight.TryAdd(requestKey, callCancellation);
+        RegisteredTool effectiveTool = registered;
+        JsonElement effectiveArgs = arguments;
         try
         {
+            string? outerHint = ShouldUseProgressiveHint(registered.Tool) ? ToolArgumentValidator.ProgressiveUnknownArgumentHint : null;
             try
             {
-                ToolArgumentValidator.Validate(registered.Schema, arguments, registered.Tool.MisnamedArgumentHints);
+                ToolArgumentValidator.Validate(registered.Schema, arguments, registered.Tool.MisnamedArgumentHints, outerHint);
             }
             catch (ToolException error)
             {
                 return Fail(outcome, error);
             }
 
+            if (registered.Tool is InvokeToolProxyTool)
+            {
+                if (!TryResolveProxyTarget(arguments, out RegisteredTool? target, out JsonElement innerArgs, out ToolException? unwrapError))
+                {
+                    return Fail(outcome, unwrapError!);
+                }
+
+                // Target identity is committed before inner validation so observer attribution reflects the resolved target tool.
+                effectiveTool = target!;
+                effectiveArgs = innerArgs;
+                try
+                {
+                    string? innerHint = _progressiveDiscovery ? ToolArgumentValidator.ProgressiveUnknownArgumentHint : null;
+                    ToolArgumentValidator.Validate(effectiveTool.Schema, effectiveArgs, effectiveTool.Tool.MisnamedArgumentHints, innerHint);
+                }
+                catch (ToolException error)
+                {
+                    string path = error.Parameter is null ? "arguments" : "arguments." + error.Parameter;
+                    return Fail(outcome, new ToolException(error.Code, error.Message, path, error.Hint));
+                }
+            }
+
             // A tool that does not use the turn (a bounded wait for other participants) runs beside the other calls and never holds the turn they wait for.
             TurnHold hold = TurnHold.None;
-            if (registered.Tool.UsesExecutionTurn)
+            if (effectiveTool.Tool.UsesExecutionTurn)
             {
-                bool exclusive = registered.Tool.IsHeavy || registered.Tool.IsExecution;
+                bool exclusive = effectiveTool.Tool.IsHeavy || effectiveTool.Tool.IsExecution;
                 (TurnResult result, TurnHold acquired) = await AcquireTurnAsync(exclusive, callCancellation.Token).ConfigureAwait(false);
                 if (result == TurnResult.Cancelled)
                 {
@@ -119,7 +159,7 @@ internal sealed class ToolExecutor
                 hold = acquired;
             }
 
-            return await RunAsync(registered, arguments, callCancellation, hold, outcome).ConfigureAwait(false);
+            return await RunAsync(effectiveTool, effectiveArgs, callCancellation, hold, outcome).ConfigureAwait(false);
         }
         finally
         {
@@ -128,8 +168,55 @@ internal sealed class ToolExecutor
                 _inFlight.TryRemove(requestKey, out _);
             }
 
-            Notify(requestKey, registered, arguments, outcome, started);
+            Notify(requestKey, effectiveTool, effectiveArgs, outcome, started);
         }
+    }
+
+    private bool ShouldUseProgressiveHint(IMcpTool tool)
+        => _progressiveDiscovery
+            && tool is not InvokeToolProxyTool and not SearchToolsTool
+            && (_registry is null || !_registry.TryGet(tool.Name, out _));
+
+    private bool TryResolveProxyTarget(
+        JsonElement arguments,
+        out RegisteredTool? target,
+        out JsonElement innerArguments,
+        out ToolException? error)
+    {
+        target = null;
+        innerArguments = EmptyArguments;
+
+        string targetName = ToolArgs.String(arguments, "toolName") ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(targetName))
+        {
+            error = new ToolException(ToolErrorCodes.InvalidArgument, "Argument 'toolName' must not be empty.", "toolName");
+            return false;
+        }
+
+        if (string.Equals(targetName, InvokeToolProxyTool.ToolName, StringComparison.Ordinal)
+            || string.Equals(targetName, SearchToolsTool.ToolName, StringComparison.Ordinal))
+        {
+            error = new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"Tool '{targetName}' cannot be invoked through {InvokeToolProxyTool.ToolName}.",
+                "toolName");
+            return false;
+        }
+
+        if (_registry is null || !_registry.TryGetCallable(targetName, out RegisteredTool? resolved))
+        {
+            error = new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"Tool '{targetName}' is not available in this server configuration.",
+                "toolName",
+                "Call sa_search_tools to list available tools.");
+            return false;
+        }
+
+        target = resolved;
+        innerArguments = arguments.TryGetProperty("arguments", out JsonElement innerObj) ? innerObj : EmptyArguments;
+        error = null;
+        return true;
     }
 
     /// <summary>

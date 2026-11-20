@@ -85,7 +85,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         .FreeObject(BacktestSettingsBinder.RiskArgument, "{stopLossRatio, takeProfitRatio, dynamicExits}, as for sa_run_backtest; numbers may be placeholders.")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings, as for sa_run_backtest; numbers may be placeholders.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
-        .Boolean(BacktestReportJson.CompactReportArgument, "Write every metric in ranking[].metrics as its bare number (null when its status is not Valid) and list non-Valid ones in unavailableMetrics [{name, status}] (only when any exist). Default false.")
+        .Boolean(BacktestReportJson.CompactReportArgument, $"Write every metric in ranking[].metrics as its bare number (null when its status is not Valid) and list non-Valid ones in unavailableMetrics [{{name, status}}] (only when any exist). Default {(_compactDefaults ? "true" : "false")}.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)

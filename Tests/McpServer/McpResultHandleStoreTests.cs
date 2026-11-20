@@ -280,6 +280,7 @@ public sealed class McpResultHandleStoreTests : IDisposable
         JsonElement suppressedBody = Ok(suppressedScreener);
         Assert.Equal(3, suppressedBody.GetProperty("matchedSymbolCount").GetInt32());
         Assert.Equal(0, suppressedBody.GetProperty("returnedMatchCount").GetInt32());
+        Assert.False(suppressedBody.GetProperty("truncated").GetBoolean());
         Assert.Empty(suppressedBody.GetProperty("matchedSymbols").EnumerateArray());
         Assert.False(suppressedBody.TryGetProperty("ranking", out _));
         string suppressedHandle = suppressedBody.GetProperty("resultId").GetString()!;
@@ -348,6 +349,7 @@ public sealed class McpResultHandleStoreTests : IDisposable
             $$"""{"conditionTree":{{screenerCondition}},"storeResult":true,"includeMatchedSymbols":false}"""))!;
         JsonElement storedBody = Ok(stored);
         Assert.Equal(55, storedBody.GetProperty("matchedSymbolCount").GetInt32());
+        Assert.False(storedBody.GetProperty("truncated").GetBoolean());
         Assert.Empty(storedBody.GetProperty("matchedSymbols").EnumerateArray());
         string handleId = storedBody.GetProperty("resultId").GetString()!;
 

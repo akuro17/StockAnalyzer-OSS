@@ -438,7 +438,7 @@ internal sealed class RunScreenerTool : IMcpTool
 
             writer.WriteNumber("matchedSymbolCount", ordered.Count);
             writer.WriteNumber("returnedMatchCount", returned.Count);
-            writer.WriteBoolean("truncated", ordered.Count > returned.Count);
+            writer.WriteBoolean("truncated", includeMatchedSymbols && ordered.Count > returned.Count);
             if (storedResultId is not null)
             {
                 writer.WriteString(McpResultHandleStore.ResultIdKey, storedResultId);

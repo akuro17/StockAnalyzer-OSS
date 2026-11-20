@@ -57,7 +57,6 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `RCI` | `63` | `CoreSmaParameter` | `Period` (int, default `9`, range `[1, 1000]`) | `false` | `"Main"` |
 | `Stoch` | `64` | `CoreStochasticParameter` | `KPeriod` (int, default `14`, range `[1, 1000]`), `DPeriod` (int, default `3`, range `[1, 1000]`), `Smooth` (int, default `3`, range `[1, 1000]`) | `false` | `"Main"`, `"Slow %K"`, `"Slow %D"`, `"PercentK"`, `"PercentD"` |
 | `WilliamsR` | `88` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
-| `ThreeLineBreakSignal` | `93` | `(none)` | (no parameters) | `false` | `"Main"`, `"Histogram"` |
 | `DarvasBoxSignal` | `94` | `CoreDarvasBoxSignalParameter` | `HighPeriod` (int, default `20`), `ConfirmationPeriod` (int, default `3`) | `false` | `"Main"` |
 | `VortexSignal` | `95` | `CoreSmaParameter` | `Period` (int, default `14`, range `[1, 1000]`) | `false` | `"Main"` |
 | `ElderForceIndex` | `96` | `CoreSmaParameter` | `Period` (int, default `13`, range `[1, 1000]`) | `false` | `"Main"` |

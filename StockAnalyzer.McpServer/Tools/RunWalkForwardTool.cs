@@ -101,7 +101,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
         .FreeObject(BacktestSettingsBinder.RiskArgument, "{stopLossRatio, takeProfitRatio, dynamicExits} (placeholders allowed).")
         .FreeObject(BacktestSettingsBinder.ReportArgument, "Report settings (sa_run_backtest syntax; placeholders allowed).")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbol with stored bars. Default false.")
-        .Boolean(BacktestReportJson.CompactReportArgument, "Emit bare window metrics (null if non-Valid) + unavailableMetrics [{name, status}]. Default false.")
+        .Boolean(BacktestReportJson.CompactReportArgument, $"Emit bare window metrics (null if non-Valid) + unavailableMetrics [{{name, status}}]. Default {(_compactDefaults ? "true" : "false")}.")
         .Build();
 
     /// <summary>One window as the run plans it: its mode label and the first and last day of both parts.</summary>

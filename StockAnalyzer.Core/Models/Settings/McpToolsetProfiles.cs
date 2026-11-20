@@ -16,6 +16,7 @@ public static class McpToolsetProfiles
     public const string DualResponseFormat = "dual";
     public const string TextOnlyResponseFormat = "text-only";
     public const string CompactDefaultsToken = "--compact-defaults";
+    public const string ProgressiveDiscoveryToken = "--progressive-discovery";
 
     public const string All = "all";
     public const string Core = "core";
@@ -25,6 +26,9 @@ public static class McpToolsetProfiles
     public const string Backtest = "backtest";
     public const string Portfolio = "portfolio";
     public const string Ml = "ml";
+
+    /// <summary>Recommended lightweight AI client profile combination (~10K tools/list tokens).</summary>
+    public const string RecommendedPresetToolset = $"{Core},{Technical}";
 
     /// <summary>All profile tokens accepted by <c>--toolset</c>, case-sensitive lower-case ASCII.</summary>
     public static IReadOnlyList<string> AllowedProfiles { get; } = new[]

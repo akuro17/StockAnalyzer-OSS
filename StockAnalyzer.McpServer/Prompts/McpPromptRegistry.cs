@@ -28,7 +28,8 @@ internal sealed record McpPrompt(
     string Description,
     IReadOnlyList<McpPromptArgument> Arguments,
     IReadOnlyList<string> RequiredTools,
-    Func<McpPromptValues, string> BuildText);
+    Func<McpPromptValues, string> BuildText,
+    IReadOnlyList<string>? OptionalTools = null);
 
 /// <summary>The argument was missing, unknown, not a string or out of its range; the message is the -32602 text.</summary>
 internal sealed class McpPromptArgumentException : Exception
@@ -74,6 +75,7 @@ internal sealed class McpPromptRegistry
     {
         _maxLookbackBars = limits.MaxCandlesPerRequest;
         _defaultMinInSampleTrades = limits.DefaultMinInSampleTrades;
+        bool includeChartPatterns = availableTools is null || availableTools.TryGetCallable("sa_detect_chart_patterns", out _);
         McpPrompt[] allPrompts =
         {
             new McpPrompt(
@@ -93,11 +95,11 @@ internal sealed class McpPromptRegistry
                     "sa_analyze_market_structure",
                     "sa_find_support_resistance",
                     "sa_detect_candle_patterns",
-                    "sa_detect_chart_patterns",
                     "sa_detect_divergences",
                     "sa_render_chart_image",
                 },
-                TechnicalDiagnosis),
+                values => TechnicalDiagnosis(values, includeChartPatterns),
+                OptionalTools: new[] { "sa_detect_chart_patterns" }),
             new McpPrompt(
                 SectorRotationName,
                 "Sector rotation analysis",
@@ -135,7 +137,7 @@ internal sealed class McpPromptRegistry
         };
         Prompts = availableTools is null
             ? allPrompts
-            : allPrompts.Where(prompt => prompt.RequiredTools.All(tool => availableTools.TryGet(tool, out _))).ToArray();
+            : allPrompts.Where(prompt => prompt.RequiredTools.All(tool => availableTools.TryGetCallable(tool, out _))).ToArray();
         _byName = Prompts.ToDictionary(prompt => prompt.Name, StringComparer.Ordinal);
     }
 
@@ -223,7 +225,7 @@ internal sealed class McpPromptRegistry
 
     private static string SupportedTimeFrameList() => string.Join(", ", ReadOnlyGatewayContract.SupportedTimeFrames);
 
-    private static string TechnicalDiagnosis(McpPromptValues values)
+    private static string TechnicalDiagnosis(McpPromptValues values, bool includeChartPatterns)
     {
         string symbol = values[SymbolArgument];
         string frame = values[TimeFrameArgument];
@@ -234,7 +236,9 @@ internal sealed class McpPromptRegistry
         text.AppendLine("2. sa_calculate_indicators on the same symbol and time frame: a trend average pair (for example SMA or EMA), a momentum oscillator (for example RSI), MACD and a volatility measure (for example ATR). Type names and parameters come from sa_get_capabilities. Pass includeSeries false, summary true and decimalPlaces 4 to receive compact statistics instead of full bar arrays.");
         text.AppendLine("3. sa_analyze_market_structure: the swing highs and lows with the date each was confirmed, and the current structure (higher highs and lows, or the reverse).");
         text.AppendLine("4. sa_find_support_resistance: the nearest levels above and below the last close.");
-        text.AppendLine("5. sa_detect_candle_patterns and sa_detect_chart_patterns: patterns that ended on or near the last bar.");
+        text.AppendLine(includeChartPatterns
+            ? "5. sa_detect_candle_patterns and sa_detect_chart_patterns: patterns that ended on or near the last bar."
+            : "5. sa_detect_candle_patterns: patterns that ended on or near the last bar.");
         text.AppendLine("6. sa_detect_divergences: divergences between price and the oscillators of step 2.");
         text.AppendLine("7. Optional: sa_render_chart_image with the same symbol and time frame, only as a reading aid; the numbers still come from the tools above. Pass includeBarCoordinates false when calling sa_render_chart_image.");
         text.AppendLine();

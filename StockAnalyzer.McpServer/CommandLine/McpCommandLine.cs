@@ -29,7 +29,8 @@ internal sealed record McpCommandLineResult(
     bool EnableDiscussion = false,
     IReadOnlyList<string>? Toolsets = null,
     McpResponseFormat ResponseFormat = McpResponseFormat.Dual,
-    bool CompactDefaults = false);
+    bool CompactDefaults = false,
+    bool ProgressiveDiscovery = false);
 
 /// <summary>
 /// Reads the command-line arguments. A pure function: it touches no stream and starts nothing, so it can run before the
@@ -46,6 +47,7 @@ internal static class McpCommandLine
     public const string DualFormat = McpToolsetProfiles.DualResponseFormat;
     public const string TextOnlyFormat = McpToolsetProfiles.TextOnlyResponseFormat;
     public const string CompactDefaultsToken = McpToolsetProfiles.CompactDefaultsToken;
+    public const string ProgressiveDiscoveryToken = McpToolsetProfiles.ProgressiveDiscoveryToken;
 
     /// <summary>Exit code of a normal end.</summary>
     public const int ExitOk = 0;
@@ -70,6 +72,7 @@ internal static class McpCommandLine
         bool enableExecution = false;
         bool enableDiscussion = false;
         bool compactDefaults = false;
+        bool progressiveDiscovery = false;
         string? toolName = null;
         IReadOnlyList<string>? toolsets = null;
         McpResponseFormat? responseFormat = null;
@@ -122,6 +125,15 @@ internal static class McpCommandLine
                 }
 
                 compactDefaults = true;
+            }
+            else if (string.Equals(token, ProgressiveDiscoveryToken, StringComparison.Ordinal))
+            {
+                if (progressiveDiscovery)
+                {
+                    return InvalidMessage(DuplicateArgumentMessage(token));
+                }
+
+                progressiveDiscovery = true;
             }
             else if (string.Equals(token, ToolsetToken, StringComparison.Ordinal))
             {
@@ -180,7 +192,7 @@ internal static class McpCommandLine
         }
 
         McpCommand command = version ? new McpCommand.Version() : help ? new McpCommand.Help(toolName) : new McpCommand.Run();
-        return new McpCommandLineResult(command, enableExecution, enableDiscussion, toolsets, responseFormat ?? McpResponseFormat.Dual, compactDefaults);
+        return new McpCommandLineResult(command, enableExecution, enableDiscussion, toolsets, responseFormat ?? McpResponseFormat.Dual, compactDefaults, progressiveDiscovery);
     }
 
     /// <summary>The one-line message for an argument that is not accepted; an over-long token is cut so the line stays short.</summary>

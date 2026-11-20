@@ -76,9 +76,11 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         .Integer(BinCountArgument, $"Number of vertical price bins (2..{_limits.MaxVolumeProfileBins}). Default {ChartConstants.DefaultVolumeProfileRowSize}.", defaultValue: ChartConstants.DefaultVolumeProfileRowSize, minimum: 2, maximum: _limits.MaxVolumeProfileBins)
         .Number(ValueAreaPercentArgument, $"Target fraction of total profile volume inside the value area (0.0 < valueAreaPercent <= 1.0). Default {ChartConstants.DefaultValueAreaPercent}.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("priceMin, priceMax, the bin bounds, poc and the value area bounds (volumes are never rounded)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("priceMin, priceMax, the bin bounds, poc and the value area bounds (volumes are never rounded)", _compactDefaults), defaultValue: _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null, minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Boolean(IncludeBinsArgument, "false leaves out the bins array only (poc, valueArea and the volume totals stay). Default true.")
-        .Boolean(CompactRowsArgument, $"true returns 'bins' as [] and writes '{BinColumnsKey}' plus '{BinRowsKey}' ([priceLow, priceHigh, volume] rows; cannot be combined with {IncludeBinsArgument} false). Default false.")
+        .Boolean(CompactRowsArgument, _compactDefaults
+            ? $"true returns 'bins' as [] and writes '{BinColumnsKey}' plus '{BinRowsKey}' ([priceLow, priceHigh, volume] rows; cannot be combined with {IncludeBinsArgument} false). Default true (when {IncludeBinsArgument} is true)."
+            : $"true returns 'bins' as [] and writes '{BinColumnsKey}' plus '{BinRowsKey}' ([priceLow, priceHigh, volume] rows; cannot be combined with {IncludeBinsArgument} false). Default false.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)

@@ -7,6 +7,7 @@ using System.Linq;
 
 namespace StockAnalyzer.Core.Tests
 {
+#pragma warning disable CS0618 // Deliberately testing obsolete ThreeLineBreakSignal
     public class CoreThreeLineBreakSignalIndicatorTests
     {
         private static List<CoreCandleData> CreateTestCandles(IEnumerable<decimal> closePrices)
@@ -28,5 +29,23 @@ namespace StockAnalyzer.Core.Tests
             Assert.True(result.HasSeries("Histogram"));
             Assert.Equal(5, result.GetSeries("Histogram").Count);
         }
+
+        [Fact]
+        public void Calculate_FlatPrices_ProducesHistogramSeries()
+        {
+            var tlb = new CoreThreeLineBreakSignalIndicator();
+            var baseDate = DateTime.UtcNow.Date;
+            var flatCandles = new List<CoreCandleData>();
+            for (int i = 0; i < 10; i++)
+            {
+                flatCandles.Add(new(baseDate.AddDays(i), 100m, 100m, 100m, 100m, 1000));
+            }
+
+            var result = tlb.Calculate(flatCandles);
+            Assert.True(result.IsSuccessful);
+            Assert.True(result.HasSeries("Histogram"));
+            Assert.Equal(10, result.GetSeries("Histogram").Count);
+        }
     }
+#pragma warning restore CS0618
 }

@@ -139,7 +139,7 @@ internal sealed class RenderChartImageTool : IMcpImageTool
                 .Boolean(IncludeVolumeArgument, "Draw the volume panel under the price panel. Default true.")
                 .Boolean(IncludeHistogramArgument, "Also draw the histogram series of each oscillator (for example the MACD histogram) as bars from zero behind its lines. Default false.")
                 .Boolean(IncludeSavedDrawingsArgument, $"Also draw the user's saved horizontal lines, vertical lines, trend lines, rays and parallel channels on the price panel in the fixed colour {AiChartImageStyle.SavedDrawingHex} (the drawings of the same daily, weekly or monthly chart). Default false.")
-                .Boolean(IncludeBarCoordinatesArgument, "Include per-bar pixel coordinate entries in bars array; false saves tokens. Default true.")
+                .Boolean(IncludeBarCoordinatesArgument, $"Include per-bar pixel coordinate entries in bars array; false saves tokens. Default {(_compactDefaults ? "false" : "true")}.")
                 .Integer(
                     LookbackArgument,
                     $"Stored bars loaded up to endDate for indicator/drawing calculations. Default and max {_limits.MaxCandlesPerRequest}.",

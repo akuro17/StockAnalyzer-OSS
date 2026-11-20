@@ -242,7 +242,7 @@ public sealed class ScreenerTimeFrameTests : IDisposable
             .Single(tool => tool.GetProperty("name").GetString() == "sa_run_screener").GetProperty("description").GetString()!;
         Assert.Contains("timeFrame", description, StringComparison.Ordinal);
         Assert.Contains("sortBy", description, StringComparison.Ordinal);
-        Assert.Contains("docs/MCP/tools/sa_run_screener.md", description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_run_screener", description, StringComparison.Ordinal);
         string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_run_screener.md"));
         foreach (string word in new[] { "W1", "MN1", "completeBarsOnly", "partialLastBar", "skippedPartialBarCount", "sortBy", "ranking" })
         {

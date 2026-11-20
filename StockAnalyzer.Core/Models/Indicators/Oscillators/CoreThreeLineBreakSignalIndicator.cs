@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Models;
@@ -6,7 +7,7 @@ using StockAnalyzer.Core.Models.Parameters;
 
 namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 {
-    [StockAnalyzerIndicator(IndicatorType.ThreeLineBreakSignal)]
+    [Obsolete("De-registered from IndicatorFactory.")]
     public class CoreThreeLineBreakSignalIndicator : CoreIndicatorBase
     {
         public override string Name => "Three Line Break Signal";

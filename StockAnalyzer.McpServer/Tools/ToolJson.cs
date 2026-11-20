@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using StockAnalyzer.McpServer.Resources;
 
 namespace StockAnalyzer.McpServer.Tools;
 
@@ -16,7 +17,7 @@ internal static class ToolJson
     /// <summary>A moment in UTC with a fixed 24-character shape (milliseconds always written, even when zero), so the text sorts in time order.</summary>
     public const string TimestampUtcFormat = "yyyy-MM-dd'T'HH:mm:ss.fff'Z'";
 
-    public static string DocLink(string toolName) => $"See docs/MCP/tools/{toolName}.md.";
+    public static string DocLink(string toolName) => $"Docs: {McpResourceRegistry.UriScheme}docs/tools/{toolName}";
 
     public static string Build(Action<Utf8JsonWriter> write)
     {

@@ -33,6 +33,12 @@ internal static class BacktestReportJson
     public const string CompactReportDescription =
         "Write each metric as a bare number (null unless Valid), plus unavailableMetrics and metricUnits. Default false.";
 
+    /// <summary>Returns the <see cref="CompactReportArgument"/> schema description reflecting whether <c>--compact-defaults</c> is active.</summary>
+    public static string GetCompactReportDescription(bool compactDefaults = false)
+        => compactDefaults
+            ? "Write each metric as a bare number (null unless Valid), plus unavailableMetrics and metricUnits. Default true."
+            : CompactReportDescription;
+
     public static void Write(Utf8JsonWriter writer, BacktestReport report, bool compact = false)
     {
         CompactMetrics? compactMetrics = compact ? new CompactMetrics() : null;

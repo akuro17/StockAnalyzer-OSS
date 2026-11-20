@@ -40,6 +40,13 @@ public sealed class McpServerSettings
     public bool CompactDefaults { get; set; }
 
     /// <summary>
+    /// When true, StockAnalyzer.McpServer is launched with <c>--progressive-discovery</c> so
+    /// <c>tools/list</c> exposes only <c>sa_search_tools</c> and <c>sa_invoke_tool</c>.
+    /// Default is false.
+    /// </summary>
+    public bool ProgressiveDiscovery { get; set; }
+
+    /// <summary>
     /// Estimated maximum tokens per MCP tool response (<c>AiIntegration:MaxResponseTokens</c>).
     /// Default equals <see cref="McpResponseTokenLimits.Default"/>.
     /// </summary>
@@ -55,7 +62,7 @@ public sealed class McpServerSettings
     /// </summary>
     public string BuildLaunchArguments()
     {
-        var args = new List<string>(6);
+        var args = new List<string>(7);
         if (EnableDiscussion)
         {
             args.Add(McpToolsetProfiles.EnableDiscussionToken);
@@ -79,6 +86,11 @@ public sealed class McpServerSettings
             args.Add(McpToolsetProfiles.CompactDefaultsToken);
         }
 
+        if (ProgressiveDiscovery)
+        {
+            args.Add(McpToolsetProfiles.ProgressiveDiscoveryToken);
+        }
+
         return string.Join(" ", args);
     }
 
@@ -90,6 +102,7 @@ public sealed class McpServerSettings
             Toolset = Toolset,
             UseTextOnlyResponse = UseTextOnlyResponse,
             CompactDefaults = CompactDefaults,
+            ProgressiveDiscovery = ProgressiveDiscovery,
             MaxResponseTokens = MaxResponseTokens,
             Discussion = CloneDiscussion(Discussion)
         };

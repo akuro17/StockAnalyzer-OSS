@@ -372,7 +372,7 @@ public sealed class BacktestExecutionRealismKeysTests : IDisposable
         string description = listing.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
             .Single(t => t.GetProperty("name").GetString() == "sa_run_backtest").GetProperty("description").GetString()!;
 
-        Assert.Contains("docs/MCP/tools/sa_run_backtest.md", description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_run_backtest", description, StringComparison.Ordinal);
         string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_run_backtest.md"));
         Assert.All(McpBacktestSettingsExposure.ExecutionRealismKeys, key => Assert.Contains(key, doc));
         Assert.Contains($"has no effect without {McpBacktestSettingsExposure.MaxVolumeParticipationRatioKey}", doc);

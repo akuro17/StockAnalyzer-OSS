@@ -374,7 +374,7 @@ public sealed class PortfolioHistoryToolTests : IDisposable
         Assert.Equal(1, properties.GetProperty("limit").GetProperty("minimum").GetInt32());
         Assert.Equal(200, properties.GetProperty("limit").GetProperty("maximum").GetInt32());
         string description = tool.GetProperty("description").GetString()!;
-        Assert.Contains("docs/MCP/tools/sa_get_portfolio_summary.md", description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_get_portfolio_summary", description, StringComparison.Ordinal);
         string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_get_portfolio_summary.md"));
         Assert.Contains("never returned", doc);
         Assert.Contains("no allocation", doc, StringComparison.OrdinalIgnoreCase);

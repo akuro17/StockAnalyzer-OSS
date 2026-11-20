@@ -37,7 +37,7 @@ public sealed class EvaluateExpressionsToolTests
             .Single(t => t.GetProperty("name").GetString() == "sa_evaluate_expressions");
 
         string description = tool.GetProperty("description").GetString()!;
-        Assert.Contains("docs/MCP/tools/sa_evaluate_expressions.md", description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_evaluate_expressions", description, StringComparison.Ordinal);
 
         string docPath = System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_evaluate_expressions.md");
         string toolDoc = System.IO.File.ReadAllText(docPath);

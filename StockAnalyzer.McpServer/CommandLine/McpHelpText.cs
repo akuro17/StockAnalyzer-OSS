@@ -45,6 +45,7 @@ internal static class McpHelpText
         options.Add(($"{McpCommandLine.ToolsetToken} <names>", $"Restrict read-only tools to comma-separated profiles ({string.Join(", ", McpToolsetCatalog.AllowedProfiles)}). Default all."));
         options.Add(($"{McpCommandLine.ResponseFormatToken} <mode>", $"Tool response format: {McpCommandLine.DualFormat} (default, text + structuredContent) or {McpCommandLine.TextOnlyFormat} (text only)."));
         options.Add((McpCommandLine.CompactDefaultsToken, "Apply compact and rounded defaults on allowlisted tools when callers omit formatting parameters (excludes sa_evaluate_expressions)."));
+        options.Add((McpCommandLine.ProgressiveDiscoveryToken, $"Expose only {SearchToolsTool.ToolName} and {InvokeToolProxyTool.ToolName} in tools/list; discover and invoke active tools on demand."));
         AppendTable(text, options);
 
         text.Append($"{NewLine}Configuration:{NewLine}");
@@ -60,13 +61,21 @@ internal static class McpHelpText
 
         text.Append($"{NewLine}Tools (--help <tool> shows the arguments):{NewLine}");
         AppendTable(text, VisibleTools(registry, includeExecutionTools).Select(tool => (tool.Name, Summary(tool.Description))));
+        if (registry.CallableTools.Count > registry.Tools.Count)
+        {
+            int discoverableCount = registry.CallableTools.Count(registered =>
+                registered.Tool is not SearchToolsTool and not InvokeToolProxyTool
+                && (includeExecutionTools || !registered.Tool.IsExecution));
+            text.Append($"{NewLine}  Note: Progressive discovery is active ({discoverableCount} additional active tools are discoverable via {SearchToolsTool.ToolName} or --help <tool>).{NewLine}");
+        }
+
         return text.ToString();
     }
 
     /// <summary>The detail of one tool; false (with the message for standard error) when the name is not an offered tool.</summary>
     public static bool TryTool(McpToolRegistry registry, bool includeExecutionTools, string name, out string text, out string error)
     {
-        if (!registry.TryGet(name, out RegisteredTool? registered) || (registered.Tool.IsExecution && !includeExecutionTools))
+        if (!registry.TryGetCallable(name, out RegisteredTool? registered) || (registered.Tool.IsExecution && !includeExecutionTools))
         {
             text = string.Empty;
             error = McpCommandLine.UnknownToolMessage(name);

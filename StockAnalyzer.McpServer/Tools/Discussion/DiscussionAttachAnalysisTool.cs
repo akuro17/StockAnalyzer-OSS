@@ -24,13 +24,20 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool
     private readonly IDiscussionGateway _gateway;
     private readonly ClientIdentity? _identity;
     private readonly Func<McpToolRegistry> _registry;
+    private readonly bool _progressiveDiscovery;
 
     /// <param name="registry">Resolved at call time: this tool is itself a member of the registry it looks up.</param>
-    public DiscussionAttachAnalysisTool(IDiscussionGateway gateway, ClientIdentity? identity, Func<McpToolRegistry> registry)
+    /// <param name="progressiveDiscovery">When true, unknown inner arguments direct callers to <c>sa_search_tools</c> rather than <c>tools/list</c>.</param>
+    public DiscussionAttachAnalysisTool(
+        IDiscussionGateway gateway,
+        ClientIdentity? identity,
+        Func<McpToolRegistry> registry,
+        bool progressiveDiscovery = false)
     {
         _gateway = gateway;
         _identity = identity;
         _registry = registry;
+        _progressiveDiscovery = progressiveDiscovery;
     }
 
     public string Name => "sa_discussion_attach_analysis";
@@ -86,7 +93,8 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool
         RegisteredTool inner = Resolve(toolName);
         try
         {
-            ToolArgumentValidator.Validate(inner.Schema, innerArguments, inner.Tool.MisnamedArgumentHints);
+            string? unknownHint = _progressiveDiscovery ? ToolArgumentValidator.ProgressiveUnknownArgumentHint : null;
+            ToolArgumentValidator.Validate(inner.Schema, innerArguments, inner.Tool.MisnamedArgumentHints, unknownHint);
         }
         catch (ToolException error)
         {
@@ -130,17 +138,19 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool
     private RegisteredTool Resolve(string toolName)
     {
         McpToolRegistry registry = _registry();
-        if (registry.TryGet(toolName, out RegisteredTool? registered) && IsAllowed(registered))
+        if (registry.TryGetCallable(toolName, out RegisteredTool? registered) && IsAllowed(registered))
         {
             return registered;
         }
 
-        string allowed = string.Join(", ", registry.Tools.Where(IsAllowed).Select(t => t.Tool.Name).OrderBy(name => name, StringComparer.Ordinal));
+        string allowed = string.Join(", ", registry.CallableTools.Where(IsAllowed).Select(t => t.Tool.Name).OrderBy(name => name, StringComparer.Ordinal));
         throw new ToolException(ToolErrorCodes.InvalidArgument, "tool is not an analysis tool that can be attached.", "tool", $"Allowed tools: {allowed}.");
     }
 
     private static bool IsAllowed(RegisteredTool registered)
-        => !registered.Tool.IsExecution && registered.Tool is not IMcpImageTool && registered.Tool is not DiscussionToolBase and not DiscussionAttachAnalysisTool;
+        => !registered.Tool.IsExecution
+            && registered.Tool is not IMcpImageTool
+            && registered.Tool is not DiscussionToolBase and not DiscussionAttachAnalysisTool and not SearchToolsTool and not InvokeToolProxyTool;
 
     private static void WriteIdentity(Utf8JsonWriter writer, string sessionId, string token)
     {

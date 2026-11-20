@@ -360,6 +360,8 @@ public class BlockChartOverlayIndicatorTests
     {
         Assert.Equal(ChannelNormalization.None, FeatureChannelNormalizationDefaults.ForIndicator(IndicatorType.RSI));
         Assert.Equal(ChannelNormalization.WindowZScore, FeatureChannelNormalizationDefaults.ForIndicator(IndicatorType.ATR));
+#pragma warning disable CS0618 // Deliberately testing obsolete ThreeLineBreakSignal normalization default
         Assert.Equal(ChannelNormalization.WindowZScore, FeatureChannelNormalizationDefaults.ForIndicator(IndicatorType.ThreeLineBreakSignal));
+#pragma warning restore CS0618
     }
 }

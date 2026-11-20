@@ -91,8 +91,10 @@ internal sealed class SeriesOutputOptions
     }
 
     /// <summary>The schema text of <c>decimalPlaces</c> for a tool that rounds the numbers named by <paramref name="what"/> (output only; no calculation uses a rounded number).</summary>
-    public static string DecimalPlacesDescription(string what)
-        => $"Round {what} (0..{MaxDecimalPlaces}, output only). Default: unrounded.";
+    public static string DecimalPlacesDescription(string what, bool compactDefaults = false)
+        => compactDefaults
+            ? $"Round {what} (0..{MaxDecimalPlaces}, output only). Default {DefaultCompactDecimalPlaces}."
+            : $"Round {what} (0..{MaxDecimalPlaces}, output only). Default: unrounded.";
 
     /// <summary>
     /// The double counterpart of <see cref="Round(decimal, int)"/>, for a tool whose statistic is a double: a non-finite value is returned unchanged (the writer decides how it is shown),
@@ -126,9 +128,14 @@ internal sealed class SeriesOutputOptions
     /// <c>includeSeries</c> gets; the rule that a call without series must ask for a summary or past values applies only where the series are on by default
     /// (a tool whose default answer is the latest values, as sa_calculate_indicators_batch, needs no such request).
     /// </summary>
-    public static SeriesOutputOptions Read(JsonElement arguments, McpLimits limits, bool includeSeriesDefault = true, bool compactDefaults = false)
+    public static SeriesOutputOptions Read(
+        JsonElement arguments,
+        McpLimits limits,
+        bool includeSeriesDefault = true,
+        bool compactDefaults = false,
+        bool hasExplicitOutputTail = false)
     {
-        bool effectiveIncludeSeriesDefault = compactDefaults ? false : includeSeriesDefault;
+        bool effectiveIncludeSeriesDefault = (compactDefaults && !(includeSeriesDefault && hasExplicitOutputTail)) ? false : includeSeriesDefault;
         bool includeSeries = ToolArgs.Boolean(arguments, IncludeSeriesArgument) ?? effectiveIncludeSeriesDefault;
         bool? explicitSummary = ToolArgs.Boolean(arguments, SummaryArgument);
         bool requestedSummaryDistribution = ToolArgs.Boolean(arguments, SummaryDistributionArgument) ?? false;
@@ -170,7 +177,7 @@ internal sealed class SeriesOutputOptions
             }
         }
 
-        bool summary = explicitSummary ?? (compactDefaults && includeSeriesDefault && offsets.Count == 0);
+        bool summary = explicitSummary ?? (compactDefaults && includeSeriesDefault && !includeSeries && offsets.Count == 0);
         if (requestedSummaryDistribution && !summary)
         {
             throw new ToolException(

@@ -341,7 +341,7 @@ public sealed class CalculateCrossAssetStatsToolTests : IDisposable
         string description = tool.GetProperty("description").GetString()!;
         Assert.Contains("includeDistributionStats", description);
         Assert.Contains("valueAtRisk", description);
-        Assert.Contains("docs/MCP/tools/sa_calculate_cross_asset_stats.md", description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_calculate_cross_asset_stats", description, StringComparison.Ordinal);
         string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_calculate_cross_asset_stats.md"));
         Assert.Contains("LOSS IS NEGATIVE", doc);
         Assert.Contains("valueAtRisk", doc);

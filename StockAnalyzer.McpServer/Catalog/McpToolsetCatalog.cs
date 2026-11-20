@@ -17,6 +17,8 @@ internal static class McpToolsetCatalog
     public const string BacktestProfile = McpToolsetProfiles.Backtest;
     public const string PortfolioProfile = McpToolsetProfiles.Portfolio;
     public const string MlProfile = McpToolsetProfiles.Ml;
+    public const string ExecutionProfile = "execution";
+    public const string DiscussionProfile = "discussion";
 
     public static IReadOnlyList<string> AllowedProfiles => McpToolsetProfiles.AllowedProfiles;
 
@@ -119,6 +121,30 @@ internal static class McpToolsetCatalog
         }
 
         return filtered;
+    }
+
+    /// <summary>Returns the canonical profile name (<c>core</c>.. <c>ml</c>, <c>execution</c>, or <c>discussion</c>) for an active domain tool.</summary>
+    public static string ProfileOf(IMcpTool tool)
+    {
+        if (tool.IsExecution)
+        {
+            return ExecutionProfile;
+        }
+
+        if (IsDiscussionTool(tool))
+        {
+            return DiscussionProfile;
+        }
+
+        foreach ((string profile, IReadOnlySet<string> names) in ToolsByProfile)
+        {
+            if (names.Contains(tool.Name))
+            {
+                return profile;
+            }
+        }
+
+        throw new InvalidOperationException($"Tool '{tool.Name}' has no registered toolset profile.");
     }
 
     private static bool IsDiscussionTool(IMcpTool tool) => tool.Name.StartsWith("sa_discussion_", StringComparison.Ordinal);

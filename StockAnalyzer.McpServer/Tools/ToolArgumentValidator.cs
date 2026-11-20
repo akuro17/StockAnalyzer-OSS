@@ -9,11 +9,24 @@ namespace StockAnalyzer.McpServer.Tools;
 /// </summary>
 internal static class ToolArgumentValidator
 {
-    /// <param name="misnamedHints">Optional hints for top-level names that are unknown here but named by a sibling tool (see <see cref="IMcpTool.MisnamedArgumentHints"/>); null keeps the generic hint.</param>
-    public static void Validate(JsonElement schema, JsonElement arguments, IReadOnlyDictionary<string, string>? misnamedHints = null)
-        => ValidateObject(string.Empty, schema, arguments, misnamedHints);
+    public const string ProgressiveUnknownArgumentHint =
+        "Call sa_search_tools with toolNames and includeSchema: true to inspect accepted arguments.";
 
-    private static void ValidateObject(string prefix, JsonElement schema, JsonElement arguments, IReadOnlyDictionary<string, string>? misnamedHints = null)
+    /// <param name="misnamedHints">Optional hints for top-level names that are unknown here but named by a sibling tool (see <see cref="IMcpTool.MisnamedArgumentHints"/>); null keeps the generic hint.</param>
+    /// <param name="unknownArgumentHint">Optional fallback hint when a top-level argument is unknown and no misnamed hint applies; null keeps the legacy <c>tools/list</c> hint.</param>
+    public static void Validate(
+        JsonElement schema,
+        JsonElement arguments,
+        IReadOnlyDictionary<string, string>? misnamedHints = null,
+        string? unknownArgumentHint = null)
+        => ValidateObject(string.Empty, schema, arguments, misnamedHints, unknownArgumentHint);
+
+    private static void ValidateObject(
+        string prefix,
+        JsonElement schema,
+        JsonElement arguments,
+        IReadOnlyDictionary<string, string>? misnamedHints = null,
+        string? unknownArgumentHint = null)
     {
         JsonElement properties = schema.GetProperty("properties");
         bool hasObject = arguments.ValueKind == JsonValueKind.Object;
@@ -27,7 +40,7 @@ internal static class ToolArgumentValidator
                 {
                     string hint = prefix.Length == 0 && misnamedHints is not null && misnamedHints.TryGetValue(argument.Name, out string? misnamed)
                         ? misnamed
-                        : "Call tools/list to see the accepted arguments.";
+                        : unknownArgumentHint ?? "Call tools/list to see the accepted arguments.";
                     throw new ToolException(ToolErrorCodes.InvalidArgument, $"Unknown argument '{path}'.", path, hint);
                 }
 

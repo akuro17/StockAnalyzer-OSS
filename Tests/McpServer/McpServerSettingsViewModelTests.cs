@@ -101,6 +101,34 @@ public sealed class McpServerSettingsViewModelTests : IDisposable
     }
 
     [Fact]
+    public async Task ViewModel_ApplyRecommendedTokenPreset_ConfiguresPresetWithoutAlteringDiscussion()
+    {
+        var manager = new McpServerSettingsManager(_testFilePath);
+        using var vm = new McpServerSettingsViewModel(manager);
+        await vm.LoadTask;
+
+        vm.EnableDiscussion = true;
+        vm.ApplyRecommendedTokenPresetCommand.Execute(null);
+
+        Assert.True(vm.EnableDiscussion);
+        Assert.Equal(McpToolsetProfiles.RecommendedPresetToolset, vm.Toolset);
+        Assert.False(vm.UseAllToolsets);
+        Assert.True(vm.UseCoreToolset);
+        Assert.True(vm.UseTechnicalToolset);
+        Assert.False(vm.UseTechnicalExtendedToolset);
+        Assert.False(vm.UseScreenerToolset);
+        Assert.False(vm.UseBacktestToolset);
+        Assert.False(vm.UsePortfolioToolset);
+        Assert.False(vm.UseMlToolset);
+        Assert.True(vm.UseTextOnlyResponse);
+        Assert.True(vm.CompactDefaults);
+        Assert.Equal(McpResponseTokenLimits.RecommendedStrict, vm.MaxResponseTokens);
+        Assert.True(vm.IsValid);
+        Assert.True(vm.IsModified);
+        Assert.Equal("--enable-discussion --toolset core,technical --response-format text-only --compact-defaults", vm.LaunchArgumentsPreview);
+    }
+
+    [Fact]
     public async Task ViewModel_ModifyingProperty_SetsIsModifiedTrue()
     {
         var manager = new McpServerSettingsManager(_testFilePath);
@@ -304,6 +332,30 @@ public sealed class McpServerSettingsViewModelTests : IDisposable
         Assert.False(vm.IsServerOperationInProgress);
         Assert.Equal(1, processService.RestartCallCount);
         Assert.False(string.IsNullOrEmpty(vm.ValidationMessage));
+    }
+
+    [Fact]
+    public async Task ViewModel_ProgressiveDiscovery_UpdatesPreviewAndRemainsUntouchedByRecommendedPreset()
+    {
+        var manager = new McpServerSettingsManager(_testFilePath);
+        using var vm = new McpServerSettingsViewModel(manager);
+        await vm.LoadTask;
+
+        Assert.False(vm.ProgressiveDiscovery);
+
+        vm.ApplyRecommendedTokenPresetCommand.Execute(null);
+        Assert.False(vm.ProgressiveDiscovery);
+
+        vm.ProgressiveDiscovery = true;
+        Assert.True(vm.IsModified);
+        Assert.Contains("--progressive-discovery", vm.LaunchArgumentsPreview, StringComparison.Ordinal);
+
+        await vm.SaveChangesAsync();
+        Assert.False(vm.IsModified);
+
+        vm.ResetToDefault();
+        Assert.False(vm.ProgressiveDiscovery);
+        Assert.True(vm.IsModified);
     }
 
     private sealed class FakeMcpServerProcessService : IMcpServerProcessService

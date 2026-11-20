@@ -229,7 +229,7 @@ public sealed class CatalogToolsTests
         JsonElement entry = Indicator(response, typeName);
         Assert.Equal("SynchronousCalculationUnsupported", entry.GetProperty("backtestEligibility").GetString());
         Assert.Equal("Allowed", entry.GetProperty("screenerEligibility").GetString());
-        Assert.Contains("docs/MCP/tools/sa_get_capabilities.md", new GetCapabilitiesTool(Catalog, ScreenerCatalogForTests).Description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_get_capabilities", new GetCapabilitiesTool(Catalog, ScreenerCatalogForTests).Description, StringComparison.Ordinal);
         string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_get_capabilities.md"));
         Assert.Contains("universe breadth", doc, StringComparison.OrdinalIgnoreCase);
     }

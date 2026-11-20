@@ -56,8 +56,10 @@ internal sealed class GetCandlesTool : IMcpTool
         .String(StartDateArgument, $"First date to include ({ToolJson.DateFormat}).")
         .String(EndDateArgument, $"Last date to include ({ToolJson.DateFormat}).")
         .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1 and MN1 only: drop the last bar when its period has not ended yet (see lastBarPartial). Default false.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, $"Round open, high, low and close to this many decimal places (0 to {SeriesOutputOptions.MaxDecimalPlaces}; away from zero at the midpoint). Volume is never rounded. Default: prices as stored.", minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
-        .Boolean(CompactRowsArgument, $"true returns 'candles' as an empty array and the bars as '{CandleColumnsKey}' plus '{CandleRowsKey}' (one row per bar, in the order of the columns). Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, _compactDefaults
+            ? $"Round open, high, low and close to this many decimal places (0 to {SeriesOutputOptions.MaxDecimalPlaces}; away from zero at the midpoint). Volume is never rounded. Default {SeriesOutputOptions.DefaultCompactDecimalPlaces}."
+            : $"Round open, high, low and close to this many decimal places (0 to {SeriesOutputOptions.MaxDecimalPlaces}; away from zero at the midpoint). Volume is never rounded. Default: prices as stored.", defaultValue: _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null, minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Boolean(CompactRowsArgument, $"true returns 'candles' as an empty array and the bars as '{CandleColumnsKey}' plus '{CandleRowsKey}' (one row per bar, in the order of the columns). Default {(_compactDefaults ? "true" : "false")}.")
         .Build();
 
     public string? OutputSchemaJson => OutputSchema;

@@ -47,7 +47,9 @@ internal sealed class GetSeasonalityTool : IMcpTool
     public string Description =>
         "Extracts the historical calendar seasonality matrix and monthly fractional return statistics for a symbol. " +
         "Output contains raw monthly return ratios and averages; no advice or win-rate is synthesized. " +
-        $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds returnRatio and average (away from zero at the midpoint; output only); without it the ratios are as calculated.";
+        (_compactDefaults
+            ? $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds returnRatio and average (away from zero at the midpoint; output only); default {SeriesOutputOptions.DefaultCompactDecimalPlaces} decimal places."
+            : $"{SeriesOutputOptions.DecimalPlacesArgument} (0 to {SeriesOutputOptions.MaxDecimalPlaces}, optional) rounds returnRatio and average (away from zero at the midpoint; output only); without it the ratios are as calculated.");
 
     public bool IsHeavy => false;
 
@@ -62,7 +64,7 @@ internal sealed class GetSeasonalityTool : IMcpTool
         .Integer(StartMonthArgument, "Starting calendar month for the 1-year cycle (1..12). Default 1.", defaultValue: DefaultStartMonth, minimum: 1, maximum: 12)
         .Integer(YearsArgument, $"Number of overlaid calendar years to analyze (1..{_limits.MaxSeasonalityYears}). Default {DefaultYears}.", defaultValue: DefaultYears, minimum: 1, maximum: _limits.MaxSeasonalityYears)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept a symbol that is not in the ticker list but has stored bars. Default false.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("returnRatio and average"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("returnRatio and average", _compactDefaults), defaultValue: _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null, minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)

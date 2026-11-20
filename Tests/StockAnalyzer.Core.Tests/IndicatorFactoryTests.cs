@@ -163,6 +163,17 @@ public class IndicatorFactoryTests
         Assert.False(factory.IsRegistered(IndicatorType.AMA));
         Assert.Null(factory.Create(IndicatorType.AMA));
     }
+
+    [Fact]
+    public void Create_WithObsoleteThreeLineBreakSignal_ShouldReturnNullNotThrow()
+    {
+        // ThreeLineBreakSignal is deprecated and de-registered from the factory,
+        // but the enum member is kept (Obsolete) for ordinal stability.
+        IIndicatorFactory factory = new IndicatorFactory();
+
+        Assert.False(factory.IsRegistered(IndicatorType.ThreeLineBreakSignal));
+        Assert.Null(factory.Create(IndicatorType.ThreeLineBreakSignal));
+    }
 #pragma warning restore CS0618
 
     [Fact]

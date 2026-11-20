@@ -141,7 +141,9 @@ public enum IndicatorType
     [Description("Negative Volume Index")] NegativeVolumeIndex,
     [Description("Darvas Box")] DarvasBox,
     [Description("Three Line Break")] ThreeLineBreak,
-    [Description("Three Line Break Signal")] ThreeLineBreakSignal,
+    [Description("Three Line Break Signal")]
+    [Obsolete("Deprecated reversal signal indicator. Kept for enum ordinal stability of existing serialized templates; no longer registered in IndicatorFactory.")]
+    ThreeLineBreakSignal,
     [Description("Darvas Box Signal")] DarvasBoxSignal,
     [Description("Vortex Signal")] VortexSignal,
 

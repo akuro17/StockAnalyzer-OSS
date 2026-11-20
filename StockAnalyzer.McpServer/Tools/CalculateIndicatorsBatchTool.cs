@@ -88,7 +88,7 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
         .Integer(SeriesOutputOptions.SummaryBarsArgument, SeriesOutputOptions.SummaryBarsDescription(_limits), minimum: StockAnalyzer.Core.MathUtils.SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxSummaryBars(_limits))
         .Boolean(SeriesOutputOptions.SummaryDistributionArgument, SeriesOutputOptions.SummaryDistributionDescription)
         .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Non-negative bar offsets back from last bar for pastValues (max {_limits.MaxLookbackOffsets}).")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("output decimals"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("output decimals", _compactDefaults), defaultValue: _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null, minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .String(EndDateArgument, $"Inclusive end date ({ToolJson.DateFormat}). Default: latest bar.")
         .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1/MN1 only: true drops incomplete last period; both values add partial-bar keys.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbols with stored daily bars. Default false.")

@@ -225,23 +225,4 @@ public class ScreenerSprint3Tests
         Assert.True(snrNormal.HasSeries("ThresholdLow"));
         Assert.True(snrNormal.HasSeries("SignalPurity"));
     }
-
-    [Fact]
-    public void ThreeLineBreakSignal_FlatPrices_ProducesHistogramSeries()
-    {
-        var tlb = IndicatorFactory.Default.Create(IndicatorType.ThreeLineBreakSignal);
-        Assert.NotNull(tlb);
-
-        var baseDate = System.DateTime.UtcNow.Date;
-        var flatCandles = new List<CoreCandleData>();
-        for (int i = 0; i < 10; i++)
-        {
-            flatCandles.Add(new(baseDate.AddDays(i), 100m, 100m, 100m, 100m, 1000));
-        }
-
-        var result = tlb.Calculate(flatCandles);
-        Assert.True(result.IsSuccessful);
-        Assert.True(result.HasSeries("Histogram"));
-        Assert.Equal(10, result.GetSeries("Histogram").Count);
-    }
 }

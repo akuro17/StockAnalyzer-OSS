@@ -40,6 +40,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
     [ObservableProperty] private bool _enableDiscussion;
     [ObservableProperty] private bool _useTextOnlyResponse;
     [ObservableProperty] private bool _compactDefaults;
+    [ObservableProperty] private bool _progressiveDiscovery;
     [ObservableProperty] private int _maxResponseTokens = McpResponseTokenLimits.Default;
     [ObservableProperty] private string _toolset = string.Empty;
     [ObservableProperty] private bool _useAllToolsets = true;
@@ -58,6 +59,15 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
 
     [RelayCommand]
     private void ApplyRecommendedMaxResponseTokens() => MaxResponseTokens = McpResponseTokenLimits.RecommendedStrict;
+
+    [RelayCommand]
+    private void ApplyRecommendedTokenPreset()
+    {
+        Toolset = McpToolsetProfiles.RecommendedPresetToolset;
+        UseTextOnlyResponse = true;
+        CompactDefaults = true;
+        MaxResponseTokens = McpResponseTokenLimits.RecommendedStrict;
+    }
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StopServerCommand))]
@@ -163,6 +173,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
             return current.EnableDiscussion != _snapshot.EnableDiscussion
                 || current.UseTextOnlyResponse != _snapshot.UseTextOnlyResponse
                 || current.CompactDefaults != _snapshot.CompactDefaults
+                || current.ProgressiveDiscovery != _snapshot.ProgressiveDiscovery
                 || current.MaxResponseTokens != _snapshot.MaxResponseTokens
                 || !string.Equals(current.Toolset, _snapshot.Toolset, StringComparison.Ordinal)
                 || current.Discussion.MaxActiveSessions != _snapshot.Discussion.MaxActiveSessions
@@ -270,6 +281,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
             EnableDiscussion = s.EnableDiscussion;
             UseTextOnlyResponse = s.UseTextOnlyResponse;
             CompactDefaults = s.CompactDefaults;
+            ProgressiveDiscovery = s.ProgressiveDiscovery;
             MaxResponseTokens = s.MaxResponseTokens;
             Toolset = McpToolsetProfiles.NormalizeText(s.Toolset);
             SyncCheckboxesFromToolset(Toolset);
@@ -320,6 +332,7 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
             EnableDiscussion = EnableDiscussion,
             UseTextOnlyResponse = UseTextOnlyResponse,
             CompactDefaults = CompactDefaults,
+            ProgressiveDiscovery = ProgressiveDiscovery,
             MaxResponseTokens = MaxResponseTokens,
             Toolset = McpToolsetProfiles.NormalizeText(Toolset),
             Discussion = new DiscussionSettings

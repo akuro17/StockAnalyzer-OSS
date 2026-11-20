@@ -611,12 +611,13 @@ public sealed class McpTokenOptimizationPayloadTests : IDisposable
         JsonElement chartResult = Ok(chartCompact);
         Assert.False(chartResult.TryGetProperty("bars", out JsonElement barsArr) && barsArr.GetArrayLength() > 0);
 
-        // sa_run_backtest: compactReport: true & compactRows: true by default
+        // sa_run_backtest: compactReport: true, compactRows: true, maxReturnedTrades: <= 20 by default
         using JsonDocument btCompact = await CallAsync(compactDispatcher, "sa_run_backtest", $$"""{"symbol":"MSFT","timeFrame":"D1","conditions":{{Trading}}{{Period}}}""");
         JsonElement btResult = Ok(btCompact);
         Assert.True(btResult.GetProperty("report").TryGetProperty("metricUnits", out _));
         Assert.Empty(btResult.GetProperty("trades").GetProperty("items").EnumerateArray());
         Assert.True(btResult.GetProperty("trades").TryGetProperty("rows", out _));
+        Assert.True(btResult.GetProperty("trades").GetProperty("returnedTrades").GetInt32() <= RunBacktestTool.DefaultCompactMaxReturnedTrades);
 
         // CRITICAL SAFEGUARD: sa_evaluate_expressions MUST NOT apply decimalPlaces: 4 under --compact-defaults
         using JsonDocument calcCompact = await CallAsync(compactDispatcher, "sa_evaluate_expressions", """{"expressions":[{"name":"ratio","expression":"1 / 7"}]}""");
@@ -637,6 +638,82 @@ public sealed class McpTokenOptimizationPayloadTests : IDisposable
             "sa_calculate_indicators",
             """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"sma","type":"SMA","parameters":{"Period":5}}],"includeSeries":false,"summary":false}""");
         AssertError(rejectedExplicitSeriesFalse, ToolErrorCodes.InvalidArgument, "includeSeries");
+
+        // Omitting includeSeries while passing outputTailCount under --compact-defaults implies includeSeries: true
+        using JsonDocument tailImpliesSeries = await CallAsync(
+            compactDispatcher,
+            "sa_calculate_indicators",
+            """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"sma","type":"SMA","parameters":{"Period":5}}],"outputTailCount":5}""");
+        JsonElement tailResult = Ok(tailImpliesSeries);
+        Assert.Equal(5, tailResult.GetProperty("returnedBarCount").GetInt32());
+        JsonElement tailSma = tailResult.GetProperty("results").GetProperty("sma");
+        Assert.Equal(5, tailSma.GetProperty("series").GetProperty("SMA").GetArrayLength());
+        Assert.False(tailSma.TryGetProperty("summary", out _));
+
+        // Explicit includeSeries: false + outputTailCount MUST still fail with INVALID_ARGUMENT
+        using JsonDocument explicitFalseWithTail = await CallAsync(
+            compactDispatcher,
+            "sa_calculate_indicators",
+            """{"symbol":"MSFT","timeFrame":"D1","indicators":[{"id":"sma","type":"SMA","parameters":{"Period":5}}],"includeSeries":false,"summary":true,"outputTailCount":5}""");
+        AssertError(explicitFalseWithTail, ToolErrorCodes.InvalidArgument, "outputTailCount");
+
+        // sa_calculate_indicators_batch still rejects outputTailCount when includeSeries is omitted
+        using JsonDocument batchOmittedSeriesWithTail = await CallAsync(
+            compactDispatcher,
+            "sa_calculate_indicators_batch",
+            """{"symbols":["MSFT"],"timeFrame":"D1","indicators":[{"id":"sma","type":"SMA","parameters":{"Period":5}}],"outputTailCount":2}""");
+        AssertError(batchOmittedSeriesWithTail, ToolErrorCodes.InvalidArgument, "outputTailCount");
+
+        // tools/list under --compact-defaults reflects active defaults in InputSchemaJson
+        using JsonDocument compactList = JsonDocument.Parse((await compactDispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":99,"method":"tools/list"}""", CancellationToken.None))!);
+        var schemasByName = compactList.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .ToDictionary(t => t.GetProperty("name").GetString()!, t => t.GetProperty("inputSchema").GetProperty("properties"), StringComparer.Ordinal);
+
+        Assert.Contains("Default false", schemasByName["sa_calculate_indicators"].GetProperty("includeSeries").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("Default true", schemasByName["sa_calculate_indicators"].GetProperty("summary").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Equal(4, schemasByName["sa_calculate_indicators"].GetProperty("decimalPlaces").GetProperty("default").GetInt32());
+        Assert.Equal(4, schemasByName["sa_calculate_indicators_batch"].GetProperty("decimalPlaces").GetProperty("default").GetInt32());
+        Assert.Equal(4, schemasByName["sa_get_candles"].GetProperty("decimalPlaces").GetProperty("default").GetInt32());
+        Assert.Contains("Default true.", schemasByName["sa_get_candles"].GetProperty("compactRows").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Equal(20, schemasByName["sa_run_backtest"].GetProperty("maxReturnedTrades").GetProperty("default").GetInt32());
+        Assert.Contains("Default true.", schemasByName["sa_run_backtest"].GetProperty("compactReport").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("Default true.", schemasByName["sa_run_backtest"].GetProperty("compactRows").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("Default true.", schemasByName["sa_search_notes"].GetProperty("snippetOnly").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("Default false.", schemasByName["sa_render_chart_image"].GetProperty("includeBarCoordinates").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Contains("Default true", schemasByName["sa_calculate_volume_profile"].GetProperty("compactRows").GetProperty("description").GetString()!, StringComparison.Ordinal);
+        Assert.Equal(4, schemasByName["sa_get_seasonality"].GetProperty("decimalPlaces").GetProperty("default").GetInt32());
+        Assert.False(schemasByName["sa_evaluate_expressions"].GetProperty("decimalPlaces").TryGetProperty("default", out _));
+    }
+
+    [Fact]
+    public async Task CompactDefaults_RunBacktest_CapsDefaultMaxReturnedTradesAtTwentyAndAllowsExplicitOverride()
+    {
+        using ReadOnlyDataTreeFixture fastFixture = ReadOnlyDataTreeFixture.Create(180, "FAST");
+        decimal[] closes = Enumerable.Range(0, 180).Select(i => Math.Round(100m + (decimal)(10 * Math.Sin(i / 1.2)), 2)).ToArray();
+        StockAnalyzer.Core.Tests.TestHelpers.ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(fastFixture.DailyDirectory, "FAST", closes);
+
+        using McpServerRuntime runtime = McpServerComposition.Create(
+            new ConfigurationBuilder().AddInMemoryCollection(McpTestSupport.DataTreeConfiguration(fastFixture)).Build(),
+            new LogSink(new StringWriter()),
+            compactDefaults: true);
+        await runtime.Dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        using JsonDocument compactDoc = await CallAsync(runtime.Dispatcher, "sa_run_backtest", $$"""{"symbol":"FAST","timeFrame":"D1","conditions":{{Trading}}}""");
+        JsonElement compactTrades = Ok(compactDoc).GetProperty("trades");
+        int totalTrades = compactTrades.GetProperty("totalTrades").GetInt32();
+        Assert.True(totalTrades > RunBacktestTool.DefaultCompactMaxReturnedTrades, $"Expected >{RunBacktestTool.DefaultCompactMaxReturnedTrades} trades, got {totalTrades}.");
+        Assert.Equal(RunBacktestTool.DefaultCompactMaxReturnedTrades, compactTrades.GetProperty("returnedTrades").GetInt32());
+        Assert.True(compactTrades.GetProperty("truncated").GetBoolean());
+        Assert.Equal(RunBacktestTool.DefaultCompactMaxReturnedTrades, compactTrades.GetProperty("rows").GetArrayLength());
+
+        using JsonDocument overrideDoc = await CallAsync(runtime.Dispatcher, "sa_run_backtest", $$"""{"symbol":"FAST","timeFrame":"D1","conditions":{{Trading}},"maxReturnedTrades":50}""");
+        JsonElement overrideTrades = Ok(overrideDoc).GetProperty("trades");
+        Assert.Equal(Math.Min(50, totalTrades), overrideTrades.GetProperty("returnedTrades").GetInt32());
+
+        using JsonDocument zeroDoc = await CallAsync(runtime.Dispatcher, "sa_run_backtest", $$"""{"symbol":"FAST","timeFrame":"D1","conditions":{{Trading}},"maxReturnedTrades":0}""");
+        JsonElement zeroTrades = Ok(zeroDoc).GetProperty("trades");
+        Assert.Equal(0, zeroTrades.GetProperty("returnedTrades").GetInt32());
+        Assert.Empty(zeroTrades.GetProperty("rows").EnumerateArray());
     }
 
     private static void AssertError(JsonDocument response, string expectedCode, string expectedParam)

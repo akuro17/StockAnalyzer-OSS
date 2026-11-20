@@ -79,6 +79,7 @@ public class McpServerSettingsManager : IMcpServerSettingsManager
                         Toolset = McpToolsetProfiles.NormalizeText(dto.McpServer?.Toolset),
                         UseTextOnlyResponse = dto.McpServer?.UseTextOnlyResponse ?? false,
                         CompactDefaults = dto.McpServer?.CompactDefaults ?? false,
+                        ProgressiveDiscovery = dto.McpServer?.ProgressiveDiscovery ?? false,
                         MaxResponseTokens = dto.AiIntegration?.MaxResponseTokens ?? McpResponseTokenLimits.Default,
                         Discussion = dto.AiIntegration?.Discussion is not null
                             ? McpServerSettings.CloneDiscussion(dto.AiIntegration.Discussion)
@@ -109,7 +110,8 @@ public class McpServerSettingsManager : IMcpServerSettingsManager
                     EnableDiscussion = settings.EnableDiscussion,
                     Toolset = McpToolsetProfiles.NormalizeText(settings.Toolset),
                     UseTextOnlyResponse = settings.UseTextOnlyResponse,
-                    CompactDefaults = settings.CompactDefaults
+                    CompactDefaults = settings.CompactDefaults,
+                    ProgressiveDiscovery = settings.ProgressiveDiscovery
                 },
                 AiIntegration = new AiIntegrationSectionDto
                 {
@@ -155,6 +157,7 @@ public class McpServerSettingsManager : IMcpServerSettingsManager
         public string? Toolset { get; set; }
         public bool UseTextOnlyResponse { get; set; }
         public bool CompactDefaults { get; set; }
+        public bool ProgressiveDiscovery { get; set; }
     }
 
     internal sealed class AiIntegrationSectionDto

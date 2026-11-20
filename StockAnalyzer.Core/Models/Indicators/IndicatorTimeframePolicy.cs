@@ -39,7 +39,9 @@ public static class IndicatorTimeframePolicy
         IndicatorType.KagiOverlay,
         IndicatorType.PointAndFigureChart,
         IndicatorType.PointAndFigureOverlay,
+#pragma warning disable CS0618 // Keep legacy timeframe normalization for obsolete serialized templates
         IndicatorType.ThreeLineBreakSignal,
+#pragma warning restore CS0618
     }).ToFrozenSet();
 
     /// <summary>

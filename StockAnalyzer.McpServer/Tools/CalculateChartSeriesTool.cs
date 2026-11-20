@@ -141,8 +141,8 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
         .Boolean(ShowTrendlineBreakoutArgument, "Include Trendline P&F signals. Default true.")
         .Boolean(ShowTriangleBreakoutArgument, "Include Triangle P&F signals. Default true.")
         .Boolean(ShowCatapultBreakoutArgument, "Include Catapult P&F signals. Default true.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("prices/sizes/scores (volume unrounded)"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
-        .Boolean(CompactRowsArgument, $"true empties 'elements' and emits '{ElementColumnsKey}'/'{ElementRowsKey}'. Default false.")
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("prices/sizes/scores (volume unrounded)", _compactDefaults), defaultValue: _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null, minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Boolean(CompactRowsArgument, $"true empties 'elements' and emits '{ElementColumnsKey}'/'{ElementRowsKey}'. Default {(_compactDefaults ? "true" : "false")}.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)

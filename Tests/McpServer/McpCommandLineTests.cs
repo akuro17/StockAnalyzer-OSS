@@ -581,6 +581,22 @@ public sealed class McpCommandLineTests : IDisposable
         }
     }
 
+    [Fact]
+    public void Parse_RecognizesProgressiveDiscoveryFlagAndRejectsDuplicates()
+    {
+        McpCommandLineResult parsed = McpCommandLine.Parse(new[] { "--progressive-discovery", "--toolset", "core" });
+        Assert.IsType<McpCommand.Run>(parsed.Command);
+        Assert.True(parsed.ProgressiveDiscovery);
+        Assert.Equal(new[] { "core" }, parsed.Toolsets);
+
+        McpCommandLineResult duplicate = McpCommandLine.Parse(new[] { "--progressive-discovery", "--progressive-discovery" });
+        var invalid = Assert.IsType<McpCommand.Invalid>(duplicate.Command);
+        Assert.Equal(McpCommandLine.DuplicateArgumentMessage(McpCommandLine.ProgressiveDiscoveryToken), invalid.Message);
+
+        McpCommandLineResult afterVersion = McpCommandLine.Parse(new[] { "--version", "--progressive-discovery" });
+        Assert.IsType<McpCommand.Invalid>(afterVersion.Command);
+    }
+
     // ---- helpers -----------------------------------------------------------------------------------------------------
 
     private static string Unknown(string token) => "invalid:" + McpCommandLine.UnknownArgumentMessage(token);

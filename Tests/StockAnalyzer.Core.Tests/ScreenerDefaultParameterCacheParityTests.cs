@@ -112,7 +112,13 @@ public class ScreenerDefaultParameterCacheParityTests
     //   PRECONDITION shown BEFORE the pin was changed (OnlyTheLinesOfTheFourBlockChartTypesMovedSinceTheSixteenthPin, permanent): the line-by-line comparison of the report with the four types put back to "null" finds exactly those
     //   20 differences and none in any other type, and that reconstruction hashes to the sixteenth pin. Every earlier pin stays reproducible (the permanent proofs put the four types back to "null" via ChangedLineOldValues
     //   or BuildReportBeforeBlockChartOverlays). Every value equals a standalone calculation (TheBlockChartTypesGiveTheValueOfAStandaloneCalculation_WithAndWithoutAPeriod).
-    private const string PinnedFingerprint = "6C58ECD5DC1E8B6A5B597420303579E2A46575E00B6AEA0F9DD0E2AE27018DC6";
+    // EIGHTEENTH re-pin, 2026-11-20 (ThreeLineBreakSignal de-registration, OWNER-APPROVED Option A):
+    //   Changed type: ThreeLineBreakSignal (5 lines, 5 variants each; the line count stays 1090). Marked [Obsolete] and de-registered from IndicatorFactory, so its lines changed from "0" to "null".
+    //   Old -> new hash: 6C58ECD5DC1E8B6A5B597420303579E2A46575E00B6AEA0F9DD0E2AE27018DC6 -> 3657C9EBEC9F6B81AFA500F155B639C95DB4FC298C05986B1D94904AFBA403C8.
+    //   Every earlier pin stays reproducible (OnlyTheLinesOfThreeLineBreakSignalMovedSinceTheSeventeenthPin puts ThreeLineBreakSignal back to "0" via ChangedLineOldValues and hashes to the seventeenth pin).
+    private const string PinnedFingerprint = "3657C9EBEC9F6B81AFA500F155B639C95DB4FC298C05986B1D94904AFBA403C8";
+    /// <summary>The pin before ThreeLineBreakSignal was de-registered from IndicatorFactory (the seventeenth re-pin).</summary>
+    private const string FingerprintBeforeThreeLineBreakSignalDeregistration = "6C58ECD5DC1E8B6A5B597420303579E2A46575E00B6AEA0F9DD0E2AE27018DC6";
     /// <summary>The pin before the block chart overlays registered Renko, PointAndFigure, Kagi and ThreeLineBreak (the sixteenth re-pin); reproduced by <see cref="BuildReportBeforeBlockChartOverlays"/>.</summary>
     private const string FingerprintBeforeBlockChartOverlays = "0E0E03D9A015FB58CB712F1A321700920D482DCBDBE445EDBE9256987CF61BF4";
     private const string FingerprintBeforeStatisticalPlanR7 = "B5E52100F8E585F97D06009A6348E5BB07809ACAA9CB4E2EC5D3AA928D0824A8";
@@ -181,6 +187,8 @@ public class ScreenerDefaultParameterCacheParityTests
         ["PointAndFigure"] = NoValueText,
         ["Kagi"] = NoValueText,
         ["ThreeLineBreak"] = NoValueText,
+        // Eighteenth re-pin: ThreeLineBreakSignal was de-registered from IndicatorFactory (its last value on the 300 test candles was "0").
+        ["ThreeLineBreakSignal"] = "0",
     };
 
     /// <summary>The value text of a former placeholder in every pin before plan 04 (what <c>BuildReport</c> wrote for a calculation without a result).</summary>
@@ -670,15 +678,51 @@ public class ScreenerDefaultParameterCacheParityTests
 
     private const int VariantsPerType = 5;
 
-    /// <summary>The current report with the lines of the four block chart types put back to what they were before they were registered ("null"); every other line is the current one.</summary>
-    private static string BuildReportBeforeBlockChartOverlays()
+    private static string BuildReportBeforeThreeLineBreakSignalDeregistration()
     {
         var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
+        {
+            string[] parts = line.Split('|');
+            return parts[0] == "ThreeLineBreakSignal" ? $"{parts[0]}|{parts[1]}|0" : line;
+        });
+        return string.Join("\n", lines) + "\n";
+    }
+
+    /// <summary>The current report with the lines of the four block chart types put back to what they were before they were registered ("null"), and ThreeLineBreakSignal back to "0"; every other line is the current one.</summary>
+    private static string BuildReportBeforeBlockChartOverlays()
+    {
+        var lines = BuildReportBeforeThreeLineBreakSignalDeregistration().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
         {
             string[] parts = line.Split('|');
             return BlockChartOverlayTypeNames.Contains(parts[0]) ? $"{parts[0]}|{parts[1]}|{NoValueText}" : line;
         });
         return string.Join("\n", lines) + "\n";
+    }
+
+    /// <summary>
+    /// Proof of the eighteenth re-pin: only the lines of ThreeLineBreakSignal moved ("0" to "null", 5 lines) and NOTHING else did.
+    /// </summary>
+    [Fact]
+    public void OnlyTheLinesOfThreeLineBreakSignalMovedSinceTheSeventeenthPin()
+    {
+        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] before = BuildReportBeforeThreeLineBreakSignalDeregistration().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(before.Length, current.Length);
+
+        var moved = new List<string>();
+        for (int i = 0; i < current.Length; i++)
+        {
+            if (current[i] == before[i]) continue;
+
+            string type = current[i].Split('|')[0];
+            Assert.Equal("ThreeLineBreakSignal", type);
+            Assert.EndsWith("|0", before[i]);
+            Assert.EndsWith($"|{NoValueText}", current[i]);
+            moved.Add(current[i]);
+        }
+
+        Assert.Equal(VariantsPerType, moved.Count);
+        Assert.Equal(FingerprintBeforeThreeLineBreakSignalDeregistration, Fingerprint(string.Join("\n", before) + "\n"));
     }
 
     /// <summary>
@@ -689,7 +733,7 @@ public class ScreenerDefaultParameterCacheParityTests
     [Fact]
     public void OnlyTheLinesOfTheFourBlockChartTypesMovedSinceTheSixteenthPin()
     {
-        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] current = BuildReportBeforeThreeLineBreakSignalDeregistration().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         string[] before = BuildReportBeforeBlockChartOverlays().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(before.Length, current.Length);
 

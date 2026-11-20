@@ -107,14 +107,18 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         .Integer(TailArgument, $"Trailing bars returned per series (1..{_limits.MaxOutputTailBars}). Default {_limits.DefaultOutputTailBars}.", defaultValue: _limits.DefaultOutputTailBars, minimum: 1, maximum: _limits.MaxOutputTailBars)
         .String(EndDateArgument, $"Inclusive end date ({ToolJson.DateFormat}). Default: latest bar.")
         .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1/MN1 only: true drops incomplete last period, false keeps it; both add partial-bar keys.")
-        .Boolean(SeriesOutputOptions.SummaryArgument, "Add per-series stats (count, latest, mean, stdDev, zScoreOfLatest, percentileRankOfLatest, trendSlope, trendBars). Default false.")
+        .Boolean(SeriesOutputOptions.SummaryArgument, _compactDefaults
+            ? "Add per-series stats (count, latest, mean, stdDev, zScoreOfLatest, percentileRankOfLatest, trendSlope, trendBars). Default true (unless includeSeries is true or lookbackOffsets is given)."
+            : "Add per-series stats (count, latest, mean, stdDev, zScoreOfLatest, percentileRankOfLatest, trendSlope, trendBars). Default false.")
         .Integer(SeriesOutputOptions.TrendBarsArgument, $"Summary trendBars window ({SeriesSummaryStatistics.MinTrendBars}..{McpLimitsContract.EffectiveMaxTrendBars(_limits)}; needs summary true). Default {McpLimitsContract.EffectiveDefaultTrendBars(_limits)}.", defaultValue: McpLimitsContract.EffectiveDefaultTrendBars(_limits), minimum: SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxTrendBars(_limits))
         .Integer(SeriesOutputOptions.SummaryBarsArgument, SeriesOutputOptions.SummaryBarsDescription(_limits), minimum: SeriesSummaryStatistics.MinTrendBars, maximum: McpLimitsContract.EffectiveMaxSummaryBars(_limits))
         .Boolean(SeriesOutputOptions.SummaryDistributionArgument, SeriesOutputOptions.SummaryDistributionDescription)
         .IntegerArray(SeriesOutputOptions.LookbackOffsetsArgument, $"Non-negative bar offsets back from last bar for pastValues (max {_limits.MaxLookbackOffsets}).")
-        .Boolean(SeriesOutputOptions.IncludeSeriesArgument, "false omits series/projectedValues/timestamps (needs summary true or lookbackOffsets; excludes outputTailCount). Default true.")
+        .Boolean(SeriesOutputOptions.IncludeSeriesArgument, _compactDefaults
+            ? "false omits series/projectedValues/timestamps (needs summary true or lookbackOffsets; excludes outputTailCount). Default false (true when outputTailCount is given)."
+            : "false omits series/projectedValues/timestamps (needs summary true or lookbackOffsets; excludes outputTailCount). Default true.")
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Allow unregistered symbols with stored daily bars. Default false.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("output decimals"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("output decimals", _compactDefaults), defaultValue: _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null, minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Build();
 
     /// <summary>The schema of one entry of <c>indicators</c>: the one definition shared by sa_calculate_indicators and sa_calculate_indicators_batch.</summary>
@@ -157,8 +161,9 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
         JsonElement indicators = arguments.GetProperty(IndicatorsArgument);
         CheckIndicatorCount(indicators);
 
-        SeriesOutputOptions output = SeriesOutputOptions.Read(arguments, _limits, includeSeriesDefault: true, compactDefaults: _compactDefaults);
-        if (!output.IncludeSeries && ToolArgs.Integer(arguments, TailArgument) is not null)
+        bool hasExplicitTail = ToolArgs.Integer(arguments, TailArgument) is not null;
+        SeriesOutputOptions output = SeriesOutputOptions.Read(arguments, _limits, includeSeriesDefault: true, compactDefaults: _compactDefaults, hasExplicitOutputTail: hasExplicitTail);
+        if (!output.IncludeSeries && hasExplicitTail)
         {
             throw new ToolException(
                 ToolErrorCodes.InvalidArgument,

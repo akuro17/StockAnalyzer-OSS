@@ -187,22 +187,45 @@ public sealed class McpServerSettingsManagerTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false, "", false, false, "")]
-    [InlineData(true, "", false, false, "--enable-discussion")]
-    [InlineData(false, "core,backtest", false, false, "--toolset core,backtest")]
-    [InlineData(false, "", true, false, "--response-format text-only")]
-    [InlineData(false, "", false, true, "--compact-defaults")]
-    [InlineData(true, " core,screener,core ", true, true, "--enable-discussion --toolset core,screener --response-format text-only --compact-defaults")]
-    public void BuildLaunchArguments_CombinesDiscussionToolsetResponseFormatAndCompactDefaults(bool enableDiscussion, string toolset, bool useTextOnly, bool compactDefaults, string expectedArgs)
+    [InlineData(false, "", false, false, false, "")]
+    [InlineData(true, "", false, false, false, "--enable-discussion")]
+    [InlineData(false, "core,backtest", false, false, false, "--toolset core,backtest")]
+    [InlineData(false, "", true, false, false, "--response-format text-only")]
+    [InlineData(false, "", false, true, false, "--compact-defaults")]
+    [InlineData(false, "", false, false, true, "--progressive-discovery")]
+    [InlineData(true, " core,screener,core ", true, true, true, "--enable-discussion --toolset core,screener --response-format text-only --compact-defaults --progressive-discovery")]
+    public void BuildLaunchArguments_CombinesDiscussionToolsetResponseFormatCompactDefaultsAndProgressiveDiscovery(
+        bool enableDiscussion,
+        string toolset,
+        bool useTextOnly,
+        bool compactDefaults,
+        bool progressiveDiscovery,
+        string expectedArgs)
     {
         var settings = new McpServerSettings
         {
             EnableDiscussion = enableDiscussion,
             Toolset = toolset,
             UseTextOnlyResponse = useTextOnly,
-            CompactDefaults = compactDefaults
+            CompactDefaults = compactDefaults,
+            ProgressiveDiscovery = progressiveDiscovery
         };
 
         Assert.Equal(expectedArgs, settings.BuildLaunchArguments());
+    }
+
+    [Fact]
+    public async Task SaveAsync_And_LoadAsync_RoundTripProgressiveDiscovery()
+    {
+        var manager = new McpServerSettingsManager(_testFilePath);
+        await manager.SaveAsync(new McpServerSettings
+        {
+            ProgressiveDiscovery = true,
+            CompactDefaults = true,
+        });
+
+        var reloaded = await new McpServerSettingsManager(_testFilePath).LoadAsync();
+        Assert.True(reloaded.ProgressiveDiscovery);
+        Assert.True(reloaded.Clone().ProgressiveDiscovery);
     }
 }

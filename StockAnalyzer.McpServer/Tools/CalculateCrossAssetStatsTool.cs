@@ -74,7 +74,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
         .String(ReturnBasisArgument, "Return calculation basis: 'SimpleReturn' (default) or 'LogReturn'.", allowedValues: new[] { ReturnStatistics.SimpleReturnBasis, ReturnStatistics.LogReturnBasis })
         .String(HoldingPeriodModeArgument, $"Common return dates whose returns cover different holding periods (multiBarReturnCount): '{nameof(HoldingPeriodAlignmentMode.IncludeAll)}' (default) uses them unchanged, '{nameof(HoldingPeriodAlignmentMode.StrictEqualHoldingPeriod)}' leaves them out.", allowedValues: Enum.GetNames<HoldingPeriodAlignmentMode>())
         .Boolean(IncludeCovarianceArgument, "Whether to include the sample covariance matrix in the result. Default false.")
-        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every correlation, covariance, beta, alpha, R2 and distribution statistic"), minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Integer(SeriesOutputOptions.DecimalPlacesArgument, SeriesOutputOptions.DecimalPlacesDescription("every correlation, covariance, beta, alpha, R2 and distribution statistic", _compactDefaults), defaultValue: _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null, minimum: 0, maximum: SeriesOutputOptions.MaxDecimalPlaces)
         .Boolean(IncludeDistributionStatsArgument, "Whether to add downsideBeta / upsideBeta to betaAlpha (needs a benchmark) and the symbolStats array (mean, stdDev, downsideDeviation, skewness, excessKurtosis, jarqueBeraStat, jarqueBeraPValue, cornishFisherVar95; the VaR is the negative lower-tail return). Default false: the output is unchanged.")
         .Build();
 

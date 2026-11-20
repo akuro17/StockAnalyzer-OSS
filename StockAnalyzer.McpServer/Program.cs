@@ -43,7 +43,8 @@ try
         enableDiscussion: commandLine.EnableDiscussion,
         toolsets: commandLine.Toolsets,
         responseFormat: commandLine.ResponseFormat,
-        compactDefaults: commandLine.CompactDefaults);
+        compactDefaults: commandLine.CompactDefaults,
+        progressiveDiscovery: commandLine.ProgressiveDiscovery);
 }
 catch (Exception error) when (error is McpLimitsException or ExecutionLimitsException or DiscussionLimitsException)
 {

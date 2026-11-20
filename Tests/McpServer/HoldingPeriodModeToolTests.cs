@@ -139,7 +139,7 @@ public sealed class HoldingPeriodModeToolTests : IDisposable
         Assert.Equal(new[] { "IncludeAll", "StrictEqualHoldingPeriod" }, argument.GetProperty("enum").EnumerateArray().Select(v => v.GetString()).ToArray());
         string description = tool.GetProperty("description").GetString()!;
         Assert.Contains("holdingPeriodMode", description);
-        Assert.Contains("docs/MCP/tools/sa_calculate_cross_asset_stats.md", description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_calculate_cross_asset_stats", description, StringComparison.Ordinal);
         string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_calculate_cross_asset_stats.md"));
         Assert.Contains("holdingPeriodMode IncludeAll (default)", doc);
         Assert.Contains("excludedMultiBarDateCount", doc);

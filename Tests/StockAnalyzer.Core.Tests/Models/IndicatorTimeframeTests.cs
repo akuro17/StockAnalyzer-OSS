@@ -20,7 +20,9 @@ public sealed class IndicatorTimeframeTests
         IndicatorType.Renko, IndicatorType.RenkoChart, IndicatorType.RenkoOverlay,
         IndicatorType.Kagi, IndicatorType.KagiChart, IndicatorType.KagiOverlay,
         IndicatorType.PointAndFigure, IndicatorType.PointAndFigureChart, IndicatorType.PointAndFigureOverlay,
+#pragma warning disable CS0618 // Deliberately testing obsolete ThreeLineBreakSignal timeframe policy
         IndicatorType.ThreeLineBreak, IndicatorType.ThreeLineBreakSignal,
+#pragma warning restore CS0618
     };
 
     private static CoreIndicatorSettings Sma(int period = 20) => new()

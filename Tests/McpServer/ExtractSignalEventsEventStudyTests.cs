@@ -246,7 +246,7 @@ public sealed class ExtractSignalEventsEventStudyTests : IDisposable
 
         Assert.Equal("boolean", property.GetProperty("type").GetString());
         string description = tool.GetProperty("description").GetString()!;
-        Assert.Contains("docs/MCP/tools/sa_extract_signal_events.md", description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_extract_signal_events", description, StringComparison.Ordinal);
         string doc = System.IO.File.ReadAllText(System.IO.Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_extract_signal_events.md"));
         Assert.Contains("positiveRatio", doc);
         Assert.Contains("not a significance test", doc);

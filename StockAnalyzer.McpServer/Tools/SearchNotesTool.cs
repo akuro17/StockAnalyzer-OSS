@@ -63,7 +63,7 @@ internal sealed class SearchNotesTool : IMcpTool
         .String(CreatedToArgument, $"Last creation date to include ({ToolJson.DateFormat}).")
         .Integer(LimitArgument, $"Most notes returned. Default and maximum {_limits.MaxReturnedNotes}.", defaultValue: _limits.MaxReturnedNotes, minimum: 1, maximum: _limits.MaxReturnedNotes)
         .Boolean(IncludeParentContextArgument, "true adds a preview of the replied-to and the quoted note. Default false.")
-        .Boolean(SnippetOnlyArgument, $"true caps note body at {NoteToolSupport.BodySnippetMaxChars} characters and adds bodyTruncated. Default false.")
+        .Boolean(SnippetOnlyArgument, $"true caps note body at {NoteToolSupport.BodySnippetMaxChars} characters and adds bodyTruncated. Default {(_compactDefaults ? "true" : "false")}.")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)

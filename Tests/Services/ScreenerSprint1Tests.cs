@@ -88,7 +88,6 @@ public class ScreenerSprint1Tests
     [InlineData(IndicatorType.SSAAnomaly, "Main", "AnomalyStateSeries", "EnterThresholdSeries")]
     [InlineData(IndicatorType.SSAResidualBand, "Main", "UpperBand", "BandWidth")]
     [InlineData(IndicatorType.SSASNR, "Main", "SignalPurity", "ThresholdHighSeries")]
-    [InlineData(IndicatorType.ThreeLineBreakSignal, "Main", "Histogram", null)]
     [InlineData(IndicatorType.Vortex, "Main", "VIPlus", "VIMinus")]
     public void MultiSeriesIndicators_AllSubSeriesRegisteredAndResolvable(
         IndicatorType type,

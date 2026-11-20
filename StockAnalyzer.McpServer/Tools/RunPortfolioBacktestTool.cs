@@ -98,7 +98,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         .Integer(MaxTradesPerSymbolArgument, $"Most trades to list per symbol (default 0; maximum {_limits.MaxReturnedTrades}).", defaultValue: 0, minimum: 0, maximum: _limits.MaxReturnedTrades)
         .String(EquityCurveArgument, "Add composite equity curve: None (default), Weekly or Monthly.", allowedValues: AllowedEquityCurveResolutions)
         .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept symbols that are not in the ticker list but have stored bars. Default false.")
-        .Boolean(BacktestReportJson.CompactReportArgument, BacktestReportJson.CompactReportDescription)
+        .Boolean(BacktestReportJson.CompactReportArgument, BacktestReportJson.GetCompactReportDescription(_compactDefaults))
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)

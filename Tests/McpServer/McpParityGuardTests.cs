@@ -94,7 +94,7 @@ public sealed class McpParityGuardTests : IDisposable
         McpServerRuntime runtime = CreateRuntime();
         Assert.True(runtime.Tools.TryGet("sa_run_backtest", out RegisteredTool? tool));
 
-        Assert.Contains("docs/MCP/tools/sa_run_backtest.md", tool.Tool.Description, StringComparison.Ordinal);
+        Assert.Contains("stockanalyzer://docs/tools/sa_run_backtest", tool.Tool.Description, StringComparison.Ordinal);
         string doc = File.ReadAllText(Path.Combine(StockAnalyzer.TestSupport.TestRepositoryRoot.Find(), "docs", "MCP", "tools", "sa_run_backtest.md"));
         foreach (AllowedBacktestSetting setting in McpBacktestSettingsExposure.Allowed)
         {
