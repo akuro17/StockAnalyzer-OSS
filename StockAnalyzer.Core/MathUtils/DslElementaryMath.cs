@@ -1256,6 +1256,338 @@ public static class DslElementaryMath
         return MathErrorCode.None;
     }
 
+    // ---- DSL v5 Polynomial Solvers (strict leading coefficient, roots reported with multiplicity) ----
+    // SolveCubic / SolveQuartic above stay unchanged for their existing callers: they fall back to a lower degree for a degenerate
+    // leading coefficient and report distinct roots only. The *Dsl variants reject a degenerate leading coefficient and repeat a root
+    // once per multiplicity.
+
+    private const double RepeatedRootDiscriminantTolerance = 1e-15;
+    private const double BiquadraticAsymmetryTolerance = 1e-14;
+    private const double RepeatedResolventRootTolerance = 1e-15;
+
+    /// <summary>
+    /// Relative tolerance of <see cref="SolveQuarticDsl"/> for a quadratic factor whose discriminant <c>D</c> is slightly negative only because of rounding:
+    /// <c>-eps * max(P^2, 4|C|) &lt;= D &lt; 0</c> is treated as <c>D = 0</c> (a repeated real root). Measured rounding noise of the factor discriminants of
+    /// repeated-root quartics is at most about 1.6e-9 (Task 1b grid, <c>docs/sa_probe_dsl_v5_quartic_multiplicity_grid</c>).
+    /// Trade-off: a genuine complex pair whose imaginary part is below roughly <c>0.5 * sqrt(eps * max(P^2, 4|C|))</c> is reported as a repeated real root.
+    /// Selection record: the worst measured rounding noise (1.61e-9) is capped by the owner's absolute limit 1e-8, a margin of about 6.2x. (The planning rule "10x the
+    /// measurement, rounded up to a power of ten" would give 1e-7, which exceeds that limit; the limit won.)
+    /// Absolute defensive limit decided by the owner: this value must not be raised above 1e-8; a larger need is a stop-and-confirm event, not a tuning knob.
+    /// </summary>
+    private const double QuarticFactorDiscriminantRelativeTolerance = 1e-8;
+
+    /// <summary>
+    /// Real roots of <c>a x^3 + b x^2 + c x + d = 0</c>, ascending, one entry per multiplicity (1..3 entries).
+    /// <c>|a| &lt;= 1e-12</c> (raw or relative to the largest coefficient) -> <see cref="MathErrorCode.DomainError"/>; unlike the legacy
+    /// <see cref="SolveCubic"/> this variant never degrades to a lower degree.
+    /// </summary>
+    /// <remarks>
+    /// With <c>y = x + shift</c> (<c>y^3 + p y + q = 0</c>): <c>|p| &lt; 1e-15</c> and <c>|q| &lt; 1e-15</c> give the triple root <c>[-shift, -shift, -shift]</c>
+    /// (roots closer together than about 3e-8 are therefore not resolved). Otherwise <c>y = scale * z</c> with <c>scale = max(sqrt|p|, cbrt|q|)</c> and the
+    /// discriminant <c>disc = qn^2 / 4 + pn^3 / 27</c> of the scaled cubic (<c>pn = p / scale^2</c>, <c>qn = q / scale^3</c>) is compared with <c>1e-15</c>, so the
+    /// repeated-root decision does not depend on the absolute spacing of the roots (D-1). <c>|disc| &lt;= 1e-15</c> is mutually exclusive:
+    /// <c>|pn| &lt; 1e-15</c> gives the single real root <c>[-cbrt(q) - shift]</c>; otherwise one simple and one double root.
+    /// </remarks>
+    public static MathErrorCode SolveCubicDsl(decimal a, decimal b, decimal c, decimal d, Span<decimal> roots, out int rootCount)
+    {
+        rootCount = 0;
+        if (roots.Length < 3)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        if (Math.Abs(a) <= DegenerateCoefficientEpsilon)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        Span<decimal> coeffs = [a, b, c, d];
+        if (!TryScalePolynomialCoefficients(coeffs, out decimal maxAbs) ||
+            Math.Abs(coeffs[0]) <= DegenerateCoefficientEpsilon * maxAbs)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        double da = (double)coeffs[0];
+        double A = (double)coeffs[1] / da;
+        double B = (double)coeffs[2] / da;
+        double C = (double)coeffs[3] / da;
+        double shift = A / 3.0;
+        double p = B - A * A / 3.0;
+        double q = (2.0 * A * A * A / 27.0) - (A * B / 3.0) + C;
+
+        Span<double> raw = stackalloc double[3];
+        int count;
+        if (Math.Abs(p) < RepeatedRootDiscriminantTolerance && Math.Abs(q) < RepeatedRootDiscriminantTolerance)
+        {
+            // Triple root (p and q are both rounding noise around zero).
+            raw[0] = -shift;
+            raw[1] = -shift;
+            raw[2] = -shift;
+            count = 3;
+        }
+        else
+        {
+            // Scale-free branch selection: with y = scale * z the depressed cubic z^3 + pn z + qn = 0 has max(sqrt|pn|, cbrt|qn|) = 1, so the
+            // discriminant tolerance is relative to the spacing of the roots instead of an absolute number (D-1: roots closer than ~5e-3 apart
+            // used to be mistaken for a repeated root).
+            double scale = Math.Max(Math.Sqrt(Math.Abs(p)), Math.Cbrt(Math.Abs(q)));
+            double pn = p / (scale * scale);
+            double qn = q / (scale * scale * scale);
+            double disc = 0.25 * qn * qn + (pn * pn * pn) / 27.0;
+            if (disc > RepeatedRootDiscriminantTolerance)
+            {
+                double s = Math.Sqrt(disc);
+                raw[0] = (scale * (Math.Cbrt(-0.5 * qn + s) + Math.Cbrt(-0.5 * qn - s))) - shift;
+                count = 1;
+            }
+            else if (Math.Abs(disc) <= RepeatedRootDiscriminantTolerance)
+            {
+                if (Math.Abs(pn) < RepeatedRootDiscriminantTolerance)
+                {
+                    // p negligible against q: y^3 + q = 0 has one real root.
+                    raw[0] = (-scale * Math.Cbrt(qn)) - shift;
+                    count = 1;
+                }
+                else
+                {
+                    // One simple root and one double root.
+                    double simple = (scale * 3.0 * qn / pn) - shift;
+                    double repeated = (scale * -1.5 * qn / pn) - shift;
+                    raw[0] = simple;
+                    raw[1] = repeated;
+                    raw[2] = repeated;
+                    count = 3;
+                }
+            }
+            else
+            {
+                double r = 2.0 * Math.Sqrt(-pn / 3.0);
+                double cosArg = Math.Clamp((1.5 * qn / pn) * Math.Sqrt(-3.0 / pn), -1.0, 1.0);
+                double phi = Math.Acos(cosArg) / 3.0;
+                raw[0] = (scale * r * Math.Cos(phi)) - shift;
+                raw[1] = (scale * r * Math.Cos(phi - MathConstants.TwoPi / 3.0)) - shift;
+                raw[2] = (scale * r * Math.Cos(phi - 2.0 * MathConstants.TwoPi / 3.0)) - shift;
+                count = 3;
+            }
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            raw[i] = PolishCubicRoot(raw[i], A, B, C);
+            MathResult<decimal> narrowed = NarrowDouble(raw[i]);
+            if (!narrowed.IsOk)
+            {
+                return narrowed.Error;
+            }
+
+            roots[i] = narrowed.Value;
+        }
+
+        SortSpan(roots.Slice(0, count));
+        rootCount = count;
+        return MathErrorCode.None;
+    }
+
+    /// <summary>
+    /// Real roots of <c>a x^4 + b x^3 + c x^2 + d x + e = 0</c>, ascending, with a root of a zero-discriminant quadratic factor repeated
+    /// twice (0..4 entries). <c>|a| &lt;= 1e-12</c> (raw or relative to the largest coefficient) -> <see cref="MathErrorCode.DomainError"/>;
+    /// this variant never degrades to a lower degree.
+    /// </summary>
+    /// <remarks>
+    /// Multiplicity rule: the quartic is split into two real quadratic factors (Ferrari); a factor whose discriminant is zero contributes its root twice, and no
+    /// numerical clustering of nearby roots is performed. The legacy <see cref="SolveQuartic"/> reports distinct real roots only, and its Ferrari path (<c>q != 0</c>)
+    /// pairs the factors with the wrong <c>+-w</c> roots (backlog: <c>docs/ja/Future_Improvements.md</c>); do not call it from new code.
+    /// Rounding tolerance: a factor discriminant <c>D</c> with <c>-eps * max(P^2, 4|C|) &lt;= D &lt; 0</c> is treated as 0 (<see cref="QuarticFactorDiscriminantRelativeTolerance"/>,
+    /// <c>eps = 1e-8</c>); a complex pair with a smaller imaginary part is therefore reported as a repeated real root.
+    /// Known limit: a root of multiplicity 4 that is not exactly representable (for example <c>(x - 0.3)^4</c>) is resolved to about 1e-4 only and may be returned as 0 or 2 roots,
+    /// because the factor coefficients are then pure rounding noise and the relative basis cannot recover them.
+    /// </remarks>
+    public static MathErrorCode SolveQuarticDsl(decimal a, decimal b, decimal c, decimal d, decimal e, Span<decimal> roots, out int rootCount)
+    {
+        rootCount = 0;
+        if (roots.Length < 4)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        if (Math.Abs(a) <= DegenerateCoefficientEpsilon)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        Span<decimal> coeffs = [a, b, c, d, e];
+        if (!TryScalePolynomialCoefficients(coeffs, out decimal maxAbs) ||
+            Math.Abs(coeffs[0]) <= DegenerateCoefficientEpsilon * maxAbs)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        double da = (double)coeffs[0];
+        double B = (double)coeffs[1] / da;
+        double C = (double)coeffs[2] / da;
+        double D = (double)coeffs[3] / da;
+        double E = (double)coeffs[4] / da;
+
+        double shift = B * 0.25;
+        double b2 = B * B;
+        double p = C - 0.375 * b2;
+        double q = 0.125 * b2 * B - 0.5 * B * C + D;
+        double r = (-3.0 / 256.0) * b2 * b2 + 0.0625 * b2 * C - 0.25 * B * D + E;
+
+        Span<double> raw = stackalloc double[4];
+        int count = 0;
+
+        if (Math.Abs(q) < BiquadraticAsymmetryTolerance)
+        {
+            // Biquadratic y^4 + p y^2 + r = 0 with y = x + shift; u = y^2 solves u^2 + p u + r = 0.
+            double disc = SnapNegligibleDiscriminant(p * p - 4.0 * r, p * p, r);
+            if (disc >= 0.0)
+            {
+                double sd = Math.Sqrt(disc);
+                double u1 = 0.5 * (-p - sd);
+                double u2 = 0.5 * (-p + sd);
+                bool repeatedU = Math.Abs(u2 - u1) <= RepeatedResolventRootTolerance;
+                int multiplicity = repeatedU ? 2 : 1;
+                count = AppendBiquadraticRoots(raw, count, u1, shift, multiplicity);
+                if (!repeatedU)
+                {
+                    count = AppendBiquadraticRoots(raw, count, u2, shift, 1);
+                }
+            }
+        }
+        else
+        {
+            // Ferrari resolvent in u = w^2 = 2z - p (see SolveQuartic): u^3 + 2p u^2 + (p^2 - 4r) u - q^2 = 0.
+            double uCoeffB = 2.0 * p;
+            double uCoeffC = p * p - 4.0 * r;
+            double uCoeffD = -q * q;
+            double u = SolveResolventMaxRealRoot(uCoeffB, uCoeffC, uCoeffD);
+            if ((u <= 0.0 || (p > 0.0 && u <= 1e-6 * p)) && uCoeffC > 0.0)
+            {
+                u = (q * q) / uCoeffC;
+            }
+
+            for (int iter = 0; iter < 3 && u > 0.0; iter++)
+            {
+                double gVal = ((u + uCoeffB) * u + uCoeffC) * u + uCoeffD;
+                double gDeriv = (3.0 * u + 2.0 * uCoeffB) * u + uCoeffC;
+                if (Math.Abs(gDeriv) <= 1e-300)
+                {
+                    break;
+                }
+
+                double uNext = u - gVal / gDeriv;
+                if (!(uNext > 0.0) || !double.IsFinite(uNext))
+                {
+                    break;
+                }
+
+                double gNext = ((uNext + uCoeffB) * uNext + uCoeffC) * uNext + uCoeffD;
+                if (Math.Abs(gNext) <= Math.Abs(gVal))
+                {
+                    u = uNext;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            double w2 = u < 0.0 && u > -1e-12 ? 0.0 : u;
+            double z = 0.5 * (w2 + p);
+            if (w2 >= 0.0)
+            {
+                double w = Math.Sqrt(w2);
+                double halfQOverW = w > 1e-15 ? 0.5 * q / w : 0.0;
+                // (y^2 + w y + s)(y^2 - w y + t) with s = z - q/(2w), t = z + q/(2w):
+                // factor A (discriminant w^2 - 4s) has the roots (-w +- sqrt)/2, factor B (discriminant w^2 - 4t) has the roots (+w +- sqrt)/2.
+                double sA = z - halfQOverW;
+                double tB = z + halfQOverW;
+                count = AppendQuadraticFactorRoots(raw, count, w, SnapNegligibleDiscriminant(w2 - 4.0 * sA, w2, sA), shift, sign: -1.0);
+                count = AppendQuadraticFactorRoots(raw, count, w, SnapNegligibleDiscriminant(w2 - 4.0 * tB, w2, tB), shift, sign: 1.0);
+            }
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            raw[i] = PolishQuarticRoot(raw[i], B, C, D, E);
+            MathResult<decimal> narrowed = NarrowDouble(raw[i]);
+            if (!narrowed.IsOk)
+            {
+                return narrowed.Error;
+            }
+
+            roots[i] = narrowed.Value;
+        }
+
+        SortSpan(roots.Slice(0, count));
+        rootCount = count;
+        return MathErrorCode.None;
+    }
+
+    /// <summary>Appends the real roots <c>x = +-sqrt(u) - shift</c> of one biquadratic factor, each repeated <paramref name="multiplicity"/> times (a zero <c>u</c> contributes <c>-shift</c> twice per multiplicity).</summary>
+    private static int AppendBiquadraticRoots(Span<double> raw, int count, double u, double shift, int multiplicity)
+    {
+        if (u < 0.0)
+        {
+            return count;
+        }
+
+        double su = Math.Sqrt(u);
+        if (su > 0.0)
+        {
+            for (int m = 0; m < multiplicity; m++)
+            {
+                raw[count++] = -su - shift;
+            }
+
+            for (int m = 0; m < multiplicity; m++)
+            {
+                raw[count++] = su - shift;
+            }
+        }
+        else
+        {
+            for (int m = 0; m < 2 * multiplicity; m++)
+            {
+                raw[count++] = -shift;
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// Returns 0 for a slightly negative quadratic-factor discriminant (<c>-eps * max(P^2, 4|C|) &lt;= D &lt; 0</c>, see
+    /// <see cref="QuarticFactorDiscriminantRelativeTolerance"/>) and <paramref name="discriminant"/> otherwise. The factor is <c>y^2 + P y + C</c>.
+    /// </summary>
+    private static double SnapNegligibleDiscriminant(double discriminant, double pSquared, double c)
+    {
+        if (discriminant >= 0.0)
+        {
+            return discriminant;
+        }
+
+        double scale = Math.Max(pSquared, 4.0 * Math.Abs(c));
+        return discriminant >= -QuarticFactorDiscriminantRelativeTolerance * scale ? 0.0 : discriminant;
+    }
+
+    /// <summary>Appends the real roots <c>(sign*w +- sqrt(D))/2 - shift</c> of one Ferrari quadratic factor with discriminant <paramref name="factorDiscriminant"/> (<c>D</c>); a zero discriminant repeats the root.</summary>
+    private static int AppendQuadraticFactorRoots(Span<double> raw, int count, double w, double factorDiscriminant, double shift, double sign)
+    {
+        if (factorDiscriminant < 0.0)
+        {
+            return count;
+        }
+
+        double sd = Math.Sqrt(factorDiscriminant);
+        double first = 0.5 * (sign * w - sd) - shift;
+        raw[count++] = first;
+        raw[count++] = sd > 0.0 ? 0.5 * (sign * w + sd) - shift : first;
+        return count;
+    }
+
     private static bool TryScalePolynomialCoefficients(Span<decimal> coeffs, out decimal maxAbs)
     {
         maxAbs = 0m;

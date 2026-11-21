@@ -308,7 +308,7 @@
   "McpServer_Field_CompactDefaults": "Compact Output Defaults (--compact-defaults)",
   "McpServer_Desc_CompactDefaults": "When enabled, allowlisted tools default to compact tabular rows, compact reports, and 4 decimal places when callers omit formatting arguments (sa_evaluate_expressions and echoed inputs remain unrounded).",
   "McpServer_Field_ProgressiveDiscovery": "Progressive Tool Discovery (--progressive-discovery)",
-  "McpServer_Desc_ProgressiveDiscovery": "When enabled, tools/list exposes only sa_search_tools and sa_invoke_tool (~700 tokens) so the AI discovers schemas and invokes permitted active tools on demand.",
+  "McpServer_Desc_ProgressiveDiscovery": "When enabled, tools/list exposes only sa_search_tools and sa_invoke_tool (plus sa_invoke_action when execution or discussion tools are enabled) so the AI discovers schemas and invokes permitted active tools on demand.",
   "McpServer_Field_MaxResponseTokens": "Max Response Tokens (AiIntegration:MaxResponseTokens)",
   "McpServer_Desc_MaxResponseTokens": "Maximum estimated tokens (UTF-8 bytes / 4, plus PNG vision tokens) allowed for one tool response. Default: 1048576 (4 MiB). Recommended strict budget for large AI clients: 24,000 - 32,000 (preset: 24,576).",
   "McpServer_Btn_ApplyRecommendedTokens": "Apply Recommended (24,576)",

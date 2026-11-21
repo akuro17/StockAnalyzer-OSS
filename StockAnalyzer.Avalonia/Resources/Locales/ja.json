@@ -308,7 +308,7 @@
   "McpServer_Field_CompactDefaults": "コンパクト出力既定 (--compact-defaults)",
   "McpServer_Desc_CompactDefaults": "有効にすると、許可リスト対象ツールで省略時の出力をコンパクト配列・レポート・小数第4位丸めに切り替えます（sa_evaluate_expressions と入力エコー値は丸め対象外）。",
   "McpServer_Field_ProgressiveDiscovery": "段階的ツール探索 (--progressive-discovery)",
-  "McpServer_Desc_ProgressiveDiscovery": "有効にすると、tools/list に sa_search_tools と sa_invoke_tool のみ（約700トークン）を公開し、AI が必要に応じてスキーマ検索・実行を行います。",
+  "McpServer_Desc_ProgressiveDiscovery": "有効にすると、tools/list に sa_search_tools と sa_invoke_tool（実行または議論モード有効時は sa_invoke_action も含む）のみを公開し、AI が必要に応じてスキーマ検索・実行を行います。",
   "McpServer_Field_MaxResponseTokens": "最大レスポンストークン数 (AiIntegration:MaxResponseTokens)",
   "McpServer_Desc_MaxResponseTokens": "1回のツール応答で許容する推定最大トークン数（UTF-8 バイト数 / 4 + 画像ビジョン計算）。既定値: 1048576 (4 MiB)。AI クライアント向け厳格予算の推奨範囲: 24,000〜32,000（推奨値: 24,576）。",
   "McpServer_Btn_ApplyRecommendedTokens": "推奨値 (24,576) を設定",

@@ -8,7 +8,7 @@ namespace StockAnalyzer.Core.Calculator;
 /// Evaluator dispatch for Phase 3 scalar matrix projections (<c>det2</c>, <c>det3</c>, <c>solve2_x</c>, <c>solve2_y</c>)
 /// and v4 matrix diagnostics, correlation/covariance validation, weighted statistics, and regression/PCA projections.
 /// </summary>
-internal static class CalculatorMatrixFunctions
+internal static partial class CalculatorMatrixFunctions
 {
     public static bool TryEvaluate(
         string name,
@@ -114,8 +114,7 @@ internal static class CalculatorMatrixFunctions
                 return true;
 
             default:
-                outcome = default;
-                return false;
+                return TryEvaluateGeneralLinearAlgebra(name, position, args, ref budget, ref arena, out outcome);
         }
     }
 

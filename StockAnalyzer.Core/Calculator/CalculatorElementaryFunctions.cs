@@ -219,6 +219,70 @@ internal static class CalculatorElementaryFunctions
                 return true;
             }
 
+            case "c_mul_re":
+            case "c_mul_im":
+                outcome = ComplexComponent(
+                    DslElementaryMath.ComplexMultiply(new DslComplex(args[0], args[1]), new DslComplex(args[2], args[3])),
+                    takeReal: name == "c_mul_re",
+                    position,
+                    name);
+                return true;
+
+            case "c_div_re":
+            case "c_div_im":
+                outcome = ComplexComponent(
+                    DslElementaryMath.ComplexDivide(new DslComplex(args[0], args[1]), new DslComplex(args[2], args[3])),
+                    takeReal: name == "c_div_re",
+                    position,
+                    name);
+                return true;
+
+            case "c_ln_re":
+            case "c_ln_im":
+                outcome = ComplexComponent(
+                    DslElementaryMath.ComplexLn(new DslComplex(args[0], args[1])),
+                    takeReal: name == "c_ln_re",
+                    position,
+                    name);
+                return true;
+
+            case "c_sqrt_re":
+            case "c_sqrt_im":
+                outcome = ComplexComponent(
+                    DslElementaryMath.ComplexSqrt(new DslComplex(args[0], args[1])),
+                    takeReal: name == "c_sqrt_re",
+                    position,
+                    name);
+                return true;
+
+            case "c_pow_re":
+            case "c_pow_im":
+                // 0^w = 0 for every w with Re(w) > 0 (including Im(w) != 0); every other case is the principal-branch exp(w ln z).
+                outcome = args[0] == 0m && args[1] == 0m && args[2] > 0m
+                    ? CalculatorEvaluator.Ok(0m)
+                    : ComplexComponent(
+                        DslElementaryMath.ComplexPow(new DslComplex(args[0], args[1]), new DslComplex(args[2], args[3])),
+                        takeReal: name == "c_pow_re",
+                        position,
+                        name);
+                return true;
+
+            case "if_gt":
+                outcome = CalculatorEvaluator.Ok(args[0] > args[1] ? args[2] : args[3]);
+                return true;
+
+            case "if_ge":
+                outcome = CalculatorEvaluator.Ok(args[0] >= args[1] ? args[2] : args[3]);
+                return true;
+
+            case "if_eq":
+                outcome = EvaluateIfEqual(position, args);
+                return true;
+
+            case "step":
+                outcome = CalculatorEvaluator.Ok(args[0] >= 0m ? 1m : 0m);
+                return true;
+
             case "bayes":
                 outcome = FromMathResult(DslElementaryMath.Bayes(args[0], args[1], args[2]), position, name);
                 return true;
@@ -339,6 +403,36 @@ internal static class CalculatorElementaryFunctions
                 outcome = default;
                 return false;
         }
+    }
+
+    private static CalculatorOutcome ComplexComponent(
+        MathResult<DslComplex> result,
+        bool takeReal,
+        int position,
+        string name)
+        => result.IsOk
+            ? CalculatorEvaluator.Ok(takeReal ? result.Value.Re : result.Value.Im)
+            : FromMathError(result.Error, position, name);
+
+    /// <summary><c>if_eq(a, b, whenTrue, whenFalse[, eps])</c>: exact equality, or <c>|a - b| &lt;= eps</c> when <c>eps</c> (non-negative) is given.</summary>
+    private static CalculatorOutcome EvaluateIfEqual(int position, scoped ReadOnlySpan<decimal> args)
+    {
+        bool equal;
+        if (args.Length >= 5)
+        {
+            if (args[4] < 0m)
+            {
+                return FromMathError(MathErrorCode.DomainError, position, "if_eq");
+            }
+
+            equal = Math.Abs(checked(args[0] - args[1])) <= args[4];
+        }
+        else
+        {
+            equal = args[0] == args[1];
+        }
+
+        return CalculatorEvaluator.Ok(equal ? args[2] : args[3]);
     }
 
     private static CalculatorOutcome EvaluateQuadraticRoot(

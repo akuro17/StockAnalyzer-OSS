@@ -166,6 +166,17 @@ public sealed class CalculatorBodyErrorCodeTests
         "quad_gauss_legendre(zzz * x, x, 0, 1, 8)",
         "quad_gk21(zzz * x, x, 0, 1)",
         "quad_romberg(zzz * x, x, 0, 1)",
+        "quad_gauss_chebyshev(zzz * x, x, 1, 4)",
+        "quad_gauss_laguerre(zzz * x, x, 0, 4)",
+        "quad_gauss_hermite(zzz * x, x, 4)",
+        "quad_gauss_jacobi(zzz * x, x, 0, 0, 4)",
+        "quad_gauss_lobatto(zzz * x, x, 0, 1, 5)",
+        "ode_rk4([zzz * y], t, [y], 0, 1, [1], 8)",
+        "ode_rk45([zzz * y], t, [y], 0, 1, [1])",
+        "opt_brent(zzz * x, x, 0, 1)",
+        "opt_golden(zzz * x, x, 0, 1)",
+        "opt_nelder_mead(zzz * x, [x], [1])",
+        "opt_bfgs(zzz * x, [x], [1])",
     };
 
     public static IEnumerable<object[]> HigherOrderCalls => HigherOrderCallsWithUndefinedBody.Select(call => new object[] { call });

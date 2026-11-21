@@ -67,15 +67,26 @@ internal sealed class McpPromptRegistry
 
     private const string ClosingLine = "This is an analysis of stored data, not a recommendation to trade.";
 
+    private const string ProgressiveDiscoveryLine =
+        $"Progressive discovery is enabled: inspect each tool's inputSchema with {SearchToolsTool.ToolName} (pass toolNames and includeSchema: true) and run each step through {InvokeToolProxyTool.ToolName} (pass toolName and arguments) instead of calling hidden tool names directly.";
+
     private readonly Dictionary<string, McpPrompt> _byName;
     private readonly int _maxLookbackBars;
     private readonly int _defaultMinInSampleTrades;
+    private readonly bool _progressiveDiscovery;
 
-    public McpPromptRegistry(McpLimits limits, McpToolRegistry? availableTools = null)
+    public McpPromptRegistry(McpLimits limits, McpToolRegistry? availableTools = null, bool progressiveDiscovery = false)
     {
         _maxLookbackBars = limits.MaxCandlesPerRequest;
         _defaultMinInSampleTrades = limits.DefaultMinInSampleTrades;
+        _progressiveDiscovery = progressiveDiscovery;
         bool includeChartPatterns = availableTools is null || availableTools.TryGetCallable("sa_detect_chart_patterns", out _);
+        string[]? progressiveOptionalTools = progressiveDiscovery
+            ? new[] { SearchToolsTool.ToolName, InvokeToolProxyTool.ToolName }
+            : null;
+        string[] technicalOptionalTools = progressiveDiscovery
+            ? new[] { "sa_detect_chart_patterns", SearchToolsTool.ToolName, InvokeToolProxyTool.ToolName }
+            : new[] { "sa_detect_chart_patterns" };
         McpPrompt[] allPrompts =
         {
             new McpPrompt(
@@ -99,7 +110,7 @@ internal sealed class McpPromptRegistry
                     "sa_render_chart_image",
                 },
                 values => TechnicalDiagnosis(values, includeChartPatterns),
-                OptionalTools: new[] { "sa_detect_chart_patterns" }),
+                OptionalTools: technicalOptionalTools),
             new McpPrompt(
                 SectorRotationName,
                 "Sector rotation analysis",
@@ -115,7 +126,8 @@ internal sealed class McpPromptRegistry
                     "sa_calculate_market_breadth",
                     "sa_calculate_relative_performance",
                 },
-                SectorRotation),
+                SectorRotation,
+                OptionalTools: progressiveOptionalTools),
             new McpPrompt(
                 BacktestAuditName,
                 "Backtest overfitting audit",
@@ -133,7 +145,8 @@ internal sealed class McpPromptRegistry
                     "sa_get_capabilities",
                     "sa_optimize_backtest",
                 },
-                BacktestAudit),
+                BacktestAudit,
+                OptionalTools: progressiveOptionalTools),
         };
         Prompts = availableTools is null
             ? allPrompts
@@ -176,8 +189,12 @@ internal sealed class McpPromptRegistry
             }
         }
 
-        return prompt.BuildText(new McpPromptValues(values));
+        string text = prompt.BuildText(new McpPromptValues(values));
+        return _progressiveDiscovery ? PrependProgressiveDiscoveryLine(text) : text;
     }
+
+    private static string PrependProgressiveDiscoveryLine(string text)
+        => ProgressiveDiscoveryLine + Environment.NewLine + Environment.NewLine + text;
 
     private string Check(string name, string value)
     {

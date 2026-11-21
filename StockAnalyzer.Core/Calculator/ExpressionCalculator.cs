@@ -386,6 +386,98 @@ public static class ExpressionCalculator
         new("fd_second", 4, 4, "fd_second(expr, var, x, h)"),
         new("fd_richardson", 4, 5, "fd_richardson(expr, var, x, h[, order])"),
         new("fd_pde_1d", 5, 7, "fd_pde_1d(u0, alpha, dx, dt, nSteps[, scheme, bcType])"),
+        // v5 Domain A: general N x N linear algebra and decompositions (matrices are row-major 1D arrays)
+        new("vec_dot", 2, 2, "vec_dot(a, b)"),
+        new("vec_norm", 1, 1, "vec_norm(v)"),
+        new("vec_normalize", 1, 1, "vec_normalize(v)"),
+        new("cross3d", 2, 2, "cross3d(u, v)"),
+        new("mat_transpose", 3, 3, "mat_transpose(A, rows, cols)"),
+        new("mat_mul", 6, 6, "mat_mul(A, rA, cA, B, rB, cB)"),
+        new("mat_det", 2, 2, "mat_det(A, n)"),
+        new("mat_solve", 3, 3, "mat_solve(A, n, b)"),
+        new("mat_inv", 2, 2, "mat_inv(A, n)"),
+        new("mat_lstsq", 4, 4, "mat_lstsq(A, rows, cols, b)"),
+        new("mat_chol", 2, 2, "mat_chol(A, n)"),
+        new("mat_qr_q", 3, 3, "mat_qr_q(A, rows, cols)"),
+        new("mat_qr_r", 3, 3, "mat_qr_r(A, rows, cols)"),
+        new("mat_eig_sym_vals", 2, 2, "mat_eig_sym_vals(A, n)"),
+        new("mat_eig_sym_vecs", 2, 2, "mat_eig_sym_vecs(A, n)"),
+        new("mat_svd_s", 3, 3, "mat_svd_s(A, rows, cols)"),
+        new("mat_svd_u", 3, 3, "mat_svd_u(A, rows, cols)"),
+        new("mat_svd_vt", 3, 3, "mat_svd_vt(A, rows, cols)"),
+        new("mat_rot2d", 1, 1, "mat_rot2d(angleRad)"),
+        // v5 Domain B: weighted Gaussian quadrature and ODE solvers
+        new("quad_gauss_chebyshev", 4, 4, "quad_gauss_chebyshev(expr, var, kind, n)"),
+        new("quad_gauss_laguerre", 4, 4, "quad_gauss_laguerre(expr, var, alpha, n)"),
+        new("quad_gauss_hermite", 3, 3, "quad_gauss_hermite(expr, var, n)"),
+        new("quad_gauss_jacobi", 5, 5, "quad_gauss_jacobi(expr, var, alpha, beta, n)"),
+        new("quad_gauss_lobatto", 5, 5, "quad_gauss_lobatto(expr, var, a, b, n)"),
+        new("ode_rk4", 7, 7, "ode_rk4(rhsExprs, tVar, yVars, t0, t1, y0, nSteps)"),
+        new("ode_rk45", 6, 7, "ode_rk45(rhsExprs, tVar, yVars, t0, t1, y0[, tol])"),
+        // v5 Domain C: cubic/quartic real roots and complex arithmetic (real/imaginary projections)
+        new("solve_cubic", 4, 4, "solve_cubic(a, b, c, d)"),
+        new("solve_quartic", 5, 5, "solve_quartic(a, b, c, d, e)"),
+        new("c_mul_re", 4, 4, "c_mul_re(aRe, aIm, bRe, bIm)"),
+        new("c_mul_im", 4, 4, "c_mul_im(aRe, aIm, bRe, bIm)"),
+        new("c_div_re", 4, 4, "c_div_re(aRe, aIm, bRe, bIm)"),
+        new("c_div_im", 4, 4, "c_div_im(aRe, aIm, bRe, bIm)"),
+        new("c_ln_re", 2, 2, "c_ln_re(re, im)"),
+        new("c_ln_im", 2, 2, "c_ln_im(re, im)"),
+        new("c_sqrt_re", 2, 2, "c_sqrt_re(re, im)"),
+        new("c_sqrt_im", 2, 2, "c_sqrt_im(re, im)"),
+        new("c_pow_re", 4, 4, "c_pow_re(zRe, zIm, wRe, wIm)"),
+        new("c_pow_im", 4, 4, "c_pow_im(zRe, zIm, wRe, wIm)"),
+        // v5 Domain D: numerical optimization
+        new("opt_brent", 4, 5, "opt_brent(expr, var, a, b[, tol])"),
+        new("opt_golden", 4, 5, "opt_golden(expr, var, a, b[, tol])"),
+        new("opt_nelder_mead", 3, 4, "opt_nelder_mead(expr, vars, x0[, tol])"),
+        new("opt_bfgs", 3, 4, "opt_bfgs(expr, vars, x0[, tol])"),
+        // v5 Domain E: bivariate statistics, correlations and hypothesis tests
+        new("cov_s", 2, 2, "cov_s(x, y)"),
+        new("cov_p", 2, 2, "cov_p(x, y)"),
+        new("corr_pearson", 2, 2, "corr_pearson(x, y)"),
+        new("corr_spearman", 2, 2, "corr_spearman(x, y)"),
+        new("corr_kendall", 2, 2, "corr_kendall(x, y)"),
+        new("ccf", 3, 3, "ccf(x, y, lag)"),
+        new("ttest_1samp", 2, 2, "ttest_1samp(x, mu0)"),
+        new("ttest_2samp", 2, 2, "ttest_2samp(x, y)"),
+        new("jb_test", 1, 1, "jb_test(x)"),
+        new("ljung_box", 2, 2, "ljung_box(x, lags)"),
+        new("ks_2samp", 2, 2, "ks_2samp(x, y)"),
+        // v5 Domain F: piecewise conditionals and pure-decimal 1D array operations
+        new("if_gt", 4, 4, "if_gt(a, b, whenTrue, whenFalse)"),
+        new("if_ge", 4, 4, "if_ge(a, b, whenTrue, whenFalse)"),
+        new("if_eq", 4, 5, "if_eq(a, b, whenTrue, whenFalse[, eps])"),
+        new("step", 1, 1, "step(x)"),
+        new("arr_zip_sub", 2, 2, "arr_zip_sub(a, b)"),
+        new("arr_zip_div", 2, 2, "arr_zip_div(a, b)"),
+        new("arr_scale", 2, 2, "arr_scale(a, c)"),
+        new("arr_cumsum", 1, 1, "arr_cumsum(a)"),
+        new("arr_cumprod", 1, 1, "arr_cumprod(a)"),
+        new("arr_sort", 1, 2, "arr_sort(a[, order])"),
+        new("arr_rank", 1, 2, "arr_rank(a[, order])"),
+        new("arr_argmax", 1, 1, "arr_argmax(a)"),
+        new("arr_argmin", 1, 1, "arr_argmin(a)"),
+        // v5 Domain G: 1D interpolation
+        new("interp_linear", 3, 3, "interp_linear(xs, ys, x)"),
+        new("interp_cubic_spline", 3, 3, "interp_cubic_spline(xs, ys, x)"),
+        new("interp_pchip", 3, 3, "interp_pchip(xs, ys, x)"),
+        // v5 Domain H: quantitative finance, risk and information theory
+        new("bs_price", 6, 7, "bs_price(S, K, T, r, sigma, isCall[, q])"),
+        new("bs_delta", 6, 7, "bs_delta(S, K, T, r, sigma, isCall[, q])"),
+        new("bs_gamma", 5, 6, "bs_gamma(S, K, T, r, sigma[, q])"),
+        new("bs_vega", 5, 6, "bs_vega(S, K, T, r, sigma[, q])"),
+        new("bs_theta", 6, 7, "bs_theta(S, K, T, r, sigma, isCall[, q])"),
+        new("bs_implied_vol", 6, 7, "bs_implied_vol(price, S, K, T, r, isCall[, q])"),
+        new("npv", 2, 2, "npv(rate, cf)"),
+        new("irr", 1, 2, "irr(cf[, guess])"),
+        new("max_drawdown", 1, 1, "max_drawdown(equity)"),
+        new("cvar_emp", 2, 2, "cvar_emp(returns, confidence)"),
+        new("shannon_entropy", 1, 1, "shannon_entropy(probs)"),
+        new("kl_divergence", 2, 2, "kl_divergence(p, q)"),
+        // v5 Domain I: frequency and spectral analysis
+        new("goertzel", 2, 2, "goertzel(series, period)"),
+        new("dft_mag", 1, 1, "dft_mag(series)"),
     };
 
     /// <summary>Input item for sequential batch evaluation in <see cref="EvaluateBatch"/>.</summary>
@@ -526,7 +618,7 @@ public static class ExpressionCalculator
                 }
 
                 int savedCursor = arena.Cursor;
-                var budget = MathUtils.DslExecutionBudget.Create(limits.MaxExecutionOps, limits.MaxNestingDepth);
+                var budget = MathUtils.DslExecutionBudget.Create(limits.MaxExecutionOps, limits.MaxNestingDepth, cancellationToken);
                 BoundVariableScope emptyBound = default;
                 DslEvalOutcome evalOutcome = CalculatorEvaluator.EvaluateValue(root!, in evalScope, limits, ref budget, in emptyBound, ref arena);
 

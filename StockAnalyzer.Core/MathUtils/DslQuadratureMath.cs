@@ -1154,6 +1154,297 @@ public static partial class DslQuadratureMath
             ? QuadDe(f, a, b, MinTol, ref budget)
             : QuadGk21(f, a, b, MinTol, ref budget);
 
+    // ---- DSL v5 Full-Order Gaussian Entries ----
+    // The kernels above keep their original order sets (Chebyshev n >= 2, Laguerre/Hermite n in {4,8,16,32,64}, Jacobi n >= 2,
+    // Lobatto n in {5,9,17,33}). The *Dsl entries below widen the DSL contract to every order of the v5 specification:
+    // they delegate to the original kernel whenever it supports the requested order and compute the remaining orders here.
+
+    /// <summary>Largest order accepted by the DSL Laguerre, Hermite, Jacobi and Lobatto entries.</summary>
+    public const int MaxDslGaussOrder = MaxJacobiOrder;
+
+    /// <summary>Smallest order of the DSL Lobatto entry (both end points of <c>[a, b]</c> are nodes).</summary>
+    public const int MinLobattoOrder = 2;
+
+    private const double JacobiSingularMomentTolerance = 1e-12;
+
+    /// <summary>Gauss-Chebyshev (kind 1 or 2) for <c>n</c> in <c>[1, 128]</c>; <c>n &gt;= 2</c> delegates to <see cref="QuadGaussChebyshev{TFunc}"/>.</summary>
+    public static MathResult<double> QuadGaussChebyshevDsl<TFunc>(
+        TFunc f,
+        int kind,
+        int n,
+        ref DslExecutionBudget budget)
+        where TFunc : struct, IScalarFunction
+    {
+        if (kind is not (1 or 2) || n < 1 || n > MaxChebyshevOrder)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (n >= 2)
+        {
+            return QuadGaussChebyshev(f, kind, n, ref budget);
+        }
+
+        // n == 1: node 0; weight pi (kind 1, integral of f / sqrt(1 - x^2)) or pi / 2 (kind 2, integral of f * sqrt(1 - x^2)).
+        double weight = kind == 1 ? Math.PI : 0.5 * Math.PI;
+        Span<double> node = [0.0];
+        Span<double> single = [weight];
+        return EvaluateNodeWeightSum(f, node, single, ref budget);
+    }
+
+    /// <summary>Gauss-Laguerre (weight <c>x^alpha e^-x</c>) for <c>n</c> in <c>[1, 64]</c>; table orders delegate to <see cref="QuadGaussLaguerre{TFunc}"/>.</summary>
+    public static MathResult<double> QuadGaussLaguerreDsl<TFunc>(
+        TFunc f,
+        double alpha,
+        int n,
+        ref DslExecutionBudget budget)
+        where TFunc : struct, IScalarFunction
+    {
+        if (!double.IsFinite(alpha))
+        {
+            return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+        }
+
+        if (alpha <= -1.0 || n < 1 || n > MaxDslGaussOrder)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (n is 4 or 8 or 16 or 32 or 64)
+        {
+            return QuadGaussLaguerre(f, alpha, n, ref budget);
+        }
+
+        Span<double> diag = stackalloc double[n];
+        Span<double> sub = stackalloc double[n - 1];
+        for (int k = 0; k < n; k++)
+        {
+            diag[k] = 2.0 * k + alpha + 1.0;
+            if (k < n - 1)
+            {
+                double kf = k + 1.0;
+                sub[k] = Math.Sqrt(kf * (kf + alpha));
+            }
+        }
+
+        double mu0 = Math.Exp(DslSpecialFunctionsMath.LogAbsGammaDouble(alpha + 1.0, out _));
+        if (!double.IsFinite(mu0))
+        {
+            return MathResult<double>.Fail(MathErrorCode.ArithmeticOverflow);
+        }
+
+        Span<double> nodes = stackalloc double[n];
+        Span<double> weights = stackalloc double[n];
+        MathErrorCode gwErr = ComputeGolubWelsch(diag, sub, mu0, nodes, weights);
+        return gwErr != MathErrorCode.None
+            ? MathResult<double>.Fail(gwErr)
+            : EvaluateNodeWeightSum(f, nodes, weights, ref budget);
+    }
+
+    /// <summary>Gauss-Hermite (weight <c>e^-x^2</c>) for <c>n</c> in <c>[1, 64]</c>; table orders delegate to <see cref="QuadGaussHermite{TFunc}"/>.</summary>
+    public static MathResult<double> QuadGaussHermiteDsl<TFunc>(
+        TFunc f,
+        int n,
+        ref DslExecutionBudget budget)
+        where TFunc : struct, IScalarFunction
+    {
+        if (n < 1 || n > MaxDslGaussOrder)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (n is 4 or 8 or 16 or 32 or 64)
+        {
+            return QuadGaussHermite(f, n, ref budget);
+        }
+
+        // Golub-Welsch for the physicists' Hermite weight: a_k = 0, b_k = sqrt(k / 2), mu_0 = sqrt(pi).
+        Span<double> diag = stackalloc double[n];
+        Span<double> sub = stackalloc double[n - 1];
+        diag.Clear();
+        for (int k = 1; k < n; k++)
+        {
+            sub[k - 1] = Math.Sqrt(0.5 * k);
+        }
+
+        Span<double> nodes = stackalloc double[n];
+        Span<double> weights = stackalloc double[n];
+        MathErrorCode gwErr = ComputeGolubWelsch(diag, sub, Math.Sqrt(Math.PI), nodes, weights);
+        return gwErr != MathErrorCode.None
+            ? MathResult<double>.Fail(gwErr)
+            : EvaluateNodeWeightSum(f, nodes, weights, ref budget);
+    }
+
+    /// <summary>Gauss-Jacobi for <c>n</c> in <c>[1, 64]</c>; <c>n &gt;= 2</c> delegates to <see cref="QuadGaussJacobi{TFunc}"/>.</summary>
+    public static MathResult<double> QuadGaussJacobiDsl<TFunc>(
+        TFunc f,
+        double alpha,
+        double beta,
+        int n,
+        ref DslExecutionBudget budget)
+        where TFunc : struct, IScalarFunction
+    {
+        if (!double.IsFinite(alpha) || !double.IsFinite(beta))
+        {
+            return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+        }
+
+        if (alpha <= -1.0 || beta <= -1.0 || n < 1 || n > MaxDslGaussOrder)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (n >= 2)
+        {
+            return QuadGaussJacobi(f, alpha, beta, n, ref budget);
+        }
+
+        // n == 1: node (beta - alpha) / (alpha + beta + 2), weight mu_0.
+        if (!TryJacobiZerothMoment(alpha, beta, out double mu0))
+        {
+            return MathResult<double>.Fail(MathErrorCode.ArithmeticOverflow);
+        }
+
+        Span<double> node = [(beta - alpha) / (alpha + beta + 2.0)];
+        Span<double> weight = [mu0];
+        return EvaluateNodeWeightSum(f, node, weight, ref budget);
+    }
+
+    /// <summary>
+    /// Gauss-Lobatto on <c>[a, b]</c> (<c>a &lt; b</c>) for <c>n</c> in <c>[2, 64]</c>. Table orders {5, 9, 17, 33} delegate to
+    /// <see cref="QuadGaussLobatto{TFunc}"/>; <c>n == 2</c> is the trapezoidal rule; other orders use the interior Gauss-Jacobi(1, 1) nodes of order
+    /// <c>n - 2</c> (weights <c>w_J / (1 - t^2)</c>) plus the end points with weight <c>2 / (n (n - 1))</c>.
+    /// </summary>
+    public static MathResult<double> QuadGaussLobattoDsl<TFunc>(
+        TFunc f,
+        double a,
+        double b,
+        int n,
+        ref DslExecutionBudget budget)
+        where TFunc : struct, IScalarFunction
+    {
+        if (!double.IsFinite(a) || !double.IsFinite(b))
+        {
+            return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+        }
+
+        if (!(a < b) || n < MinLobattoOrder || n > MaxDslGaussOrder)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (n is 5 or 9 or 17 or 33)
+        {
+            return QuadGaussLobatto(f, a, b, n, ref budget);
+        }
+
+        double mid = 0.5 * (a + b);
+        double half = 0.5 * (b - a);
+        double endWeight = 2.0 / ((double)n * (n - 1));
+        int interior = n - 2;
+
+        Span<double> nodes = stackalloc double[n];
+        Span<double> weights = stackalloc double[n];
+        nodes[0] = -1.0;
+        weights[0] = endWeight;
+        nodes[n - 1] = 1.0;
+        weights[n - 1] = endWeight;
+
+        if (interior > 0)
+        {
+            Span<double> diag = stackalloc double[interior];
+            Span<double> sub = stackalloc double[interior - 1];
+            FillJacobiRecurrence(1.0, 1.0, diag, sub);
+            if (!TryJacobiZerothMoment(1.0, 1.0, out double mu0))
+            {
+                return MathResult<double>.Fail(MathErrorCode.ArithmeticOverflow);
+            }
+
+            Span<double> jacobiNodes = stackalloc double[interior];
+            Span<double> jacobiWeights = stackalloc double[interior];
+            MathErrorCode gwErr = ComputeGolubWelsch(diag, sub, mu0, jacobiNodes, jacobiWeights);
+            if (gwErr != MathErrorCode.None)
+            {
+                return MathResult<double>.Fail(gwErr);
+            }
+
+            for (int i = 0; i < interior; i++)
+            {
+                double t = jacobiNodes[i];
+                nodes[i + 1] = t;
+                weights[i + 1] = jacobiWeights[i] / (1.0 - t * t);
+            }
+        }
+
+        double sum = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            if (!budget.TryConsume(1))
+            {
+                return MathResult<double>.Fail(MathErrorCode.BudgetExceeded);
+            }
+
+            double x = i == 0 ? a : i == n - 1 ? b : mid + half * nodes[i];
+            if (!f.TryEvaluate(x, ref budget, out double fx))
+            {
+                return MathResult<double>.Fail(DslNumericalAnalysisMath.ResolveFunctorError(in budget));
+            }
+
+            if (!double.IsFinite(fx))
+            {
+                return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+            }
+
+            sum += weights[i] * fx;
+        }
+
+        double res = half * sum;
+        return double.IsFinite(res)
+            ? MathResult<double>.Ok(res == 0.0 ? 0.0 : res)
+            : MathResult<double>.Fail(MathErrorCode.ArithmeticOverflow);
+    }
+
+    /// <summary><c>mu_0 = 2^(alpha+beta+1) Gamma(alpha+1) Gamma(beta+1) / Gamma(alpha+beta+2)</c> of the Jacobi weight function.</summary>
+    private static bool TryJacobiZerothMoment(double alpha, double beta, out double mu0)
+    {
+        double ab = alpha + beta;
+        double logMu0 = (ab + 1.0) * Math.Log(2.0) +
+                        DslSpecialFunctionsMath.LogAbsGammaDouble(alpha + 1.0, out _) +
+                        DslSpecialFunctionsMath.LogAbsGammaDouble(beta + 1.0, out _) -
+                        DslSpecialFunctionsMath.LogAbsGammaDouble(ab + 2.0, out _);
+        mu0 = Math.Exp(logMu0);
+        return double.IsFinite(mu0);
+    }
+
+    /// <summary>Fills the Jacobi three-term recurrence (<c>diag.Length</c> = order, <c>sub.Length</c> = order - 1) used by Golub-Welsch.</summary>
+    private static void FillJacobiRecurrence(double alpha, double beta, scoped Span<double> diag, scoped Span<double> sub)
+    {
+        double ab = alpha + beta;
+        diag[0] = (beta - alpha) / (ab + 2.0);
+        double b2MinusA2 = beta * beta - alpha * alpha;
+        for (int k = 1; k < diag.Length; k++)
+        {
+            double s = 2.0 * k + ab;
+            diag[k] = b2MinusA2 / (s * (s + 2.0));
+        }
+
+        for (int k = 1; k < diag.Length; k++)
+        {
+            double kf = k;
+            double s = 2.0 * kf + ab;
+            if (k == 1 && Math.Abs(ab + 1.0) < JacobiSingularMomentTolerance)
+            {
+                sub[0] = Math.Sqrt((4.0 * (1.0 + alpha) * (1.0 + beta)) / (2.0 + ab));
+            }
+            else
+            {
+                double num = 4.0 * kf * (kf + alpha) * (kf + beta) * (kf + ab);
+                double den = s * s * (s * s - 1.0);
+                sub[k - 1] = Math.Sqrt(num / den);
+            }
+        }
+    }
+
     // ---- Shared Golub-Welsch Tridiagonal QL & Summation Helpers ----
 
     private static MathResult<double> EvaluateNodeWeightSum<TFunc>(

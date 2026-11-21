@@ -8,7 +8,7 @@ namespace StockAnalyzer.Core.Calculator;
 /// numerical error diagnostics, discrete differences, bootstrap resampling, and 1D PDE solver.
 /// Reuses <see cref="CalculatorMatrixFunctions"/> narrowing helpers to avoid duplicating array marshaling.
 /// </summary>
-internal static class CalculatorDiagnosticsAndStatsFunctions
+internal static partial class CalculatorDiagnosticsAndStatsFunctions
 {
     public static bool TryEvaluateValue(
         string name,
@@ -113,8 +113,7 @@ internal static class CalculatorDiagnosticsAndStatsFunctions
                 return true;
 
             default:
-                outcome = default;
-                return false;
+                return TryEvaluateV5Value(name, position, args, ref budget, ref arena, out outcome);
         }
     }
 

@@ -19,6 +19,9 @@ namespace StockAnalyzer.McpServer.Execution;
 /// </summary>
 internal sealed class ToolExecutor
 {
+    private const string TruncatedSuffix = "...";
+    private const int MinTruncatedFieldChars = 16;
+    private const long BytesPerEstimatedToken = 4L;
     private static readonly JsonElement EmptyArguments = JsonDocument.Parse("{}").RootElement;
 
     private readonly McpLimits _limits;
@@ -118,9 +121,10 @@ internal sealed class ToolExecutor
                 return Fail(outcome, error);
             }
 
-            if (registered.Tool is InvokeToolProxyTool)
+            bool isProxiedCall = registered.Tool is InvokeToolProxyTool;
+            if (registered.Tool is InvokeToolProxyTool proxy)
             {
-                if (!TryResolveProxyTarget(arguments, out RegisteredTool? target, out JsonElement innerArgs, out ToolException? unwrapError))
+                if (!TryResolveProxyTarget(proxy, arguments, out RegisteredTool? target, out JsonElement innerArgs, out ToolException? unwrapError))
                 {
                     return Fail(outcome, unwrapError!);
                 }
@@ -135,8 +139,7 @@ internal sealed class ToolExecutor
                 }
                 catch (ToolException error)
                 {
-                    string path = error.Parameter is null ? "arguments" : "arguments." + error.Parameter;
-                    return Fail(outcome, new ToolException(error.Code, error.Message, path, error.Hint));
+                    return Fail(outcome, PrefixProxyParameter(error, fallbackToArgumentsRoot: true));
                 }
             }
 
@@ -159,7 +162,16 @@ internal sealed class ToolExecutor
                 hold = acquired;
             }
 
-            return await RunAsync(effectiveTool, effectiveArgs, callCancellation, hold, outcome).ConfigureAwait(false);
+            return await RunAsync(effectiveTool, effectiveArgs, callCancellation, hold, outcome, isProxiedCall).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (callCancellation.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception error)
+        {
+            _log.Error($"Tool '{effectiveTool.Tool.Name}' failed before execution: {error}");
+            return Fail(outcome, new ToolException(ToolErrorCodes.InternalError, ToolErrorCodes.UnexpectedErrorMessage));
         }
         finally
         {
@@ -178,6 +190,7 @@ internal sealed class ToolExecutor
             && (_registry is null || !_registry.TryGet(tool.Name, out _));
 
     private bool TryResolveProxyTarget(
+        InvokeToolProxyTool proxy,
         JsonElement arguments,
         out RegisteredTool? target,
         out JsonElement innerArguments,
@@ -194,11 +207,12 @@ internal sealed class ToolExecutor
         }
 
         if (string.Equals(targetName, InvokeToolProxyTool.ToolName, StringComparison.Ordinal)
+            || string.Equals(targetName, InvokeToolProxyTool.ActionToolName, StringComparison.Ordinal)
             || string.Equals(targetName, SearchToolsTool.ToolName, StringComparison.Ordinal))
         {
             error = new ToolException(
                 ToolErrorCodes.InvalidArgument,
-                $"Tool '{targetName}' cannot be invoked through {InvokeToolProxyTool.ToolName}.",
+                $"Tool '{targetName}' cannot be invoked through {proxy.Name}.",
                 "toolName");
             return false;
         }
@@ -213,10 +227,40 @@ internal sealed class ToolExecutor
             return false;
         }
 
+        if (proxy.IsReadOnly && !resolved.Tool.IsReadOnly)
+        {
+            error = new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"Tool '{targetName}' is not read-only and cannot be invoked through {proxy.Name}.",
+                "toolName",
+                $"Use {InvokeToolProxyTool.ActionToolName} to invoke state-changing or execution tools.");
+            return false;
+        }
+
+        if (!proxy.IsReadOnly && resolved.Tool.IsReadOnly)
+        {
+            error = new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"Tool '{targetName}' is read-only and must be invoked through {InvokeToolProxyTool.ToolName}.",
+                "toolName",
+                $"Use {InvokeToolProxyTool.ToolName} for read-only tools.");
+            return false;
+        }
+
         target = resolved;
         innerArguments = arguments.TryGetProperty("arguments", out JsonElement innerObj) ? innerObj : EmptyArguments;
         error = null;
         return true;
+    }
+
+    private static ToolException PrefixProxyParameter(ToolException error, bool fallbackToArgumentsRoot)
+    {
+        string? path = !string.IsNullOrEmpty(error.Parameter)
+            ? "arguments." + error.Parameter
+            : (fallbackToArgumentsRoot ? "arguments" : null);
+        return path == error.Parameter
+            ? error
+            : new ToolException(error.Code, error.Message, path, error.Hint);
     }
 
     /// <summary>
@@ -298,7 +342,7 @@ internal sealed class ToolExecutor
         }
     }
 
-    private async Task<string?> RunAsync(RegisteredTool registered, JsonElement arguments, CancellationTokenSource callCancellation, TurnHold hold, CallOutcome outcome)
+    private async Task<string?> RunAsync(RegisteredTool registered, JsonElement arguments, CancellationTokenSource callCancellation, TurnHold hold, CallOutcome outcome, bool isProxiedCall)
     {
         int timeoutSeconds = registered.Tool.IsHeavy ? _limits.HeavyToolTimeoutSeconds : _limits.ToolTimeoutSeconds;
         var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
@@ -336,13 +380,16 @@ internal sealed class ToolExecutor
         }
         catch (ToolException error)
         {
-            return Fail(outcome, error);
+            return Fail(outcome, isProxiedCall ? PrefixProxyParameter(error, fallbackToArgumentsRoot: false) : error);
         }
-        catch (DataUnavailableException)
+        catch (DataUnavailableException error)
         {
+            string message = string.IsNullOrWhiteSpace(error.Message)
+                ? "Stored data is temporarily unreadable."
+                : error.Message;
             return Fail(outcome, new ToolException(
                 ToolErrorCodes.DataUnavailable,
-                "The ticker list is temporarily unreadable.",
+                message,
                 hint: "Retry in a moment."));
         }
         catch (Exception error)
@@ -414,7 +461,7 @@ internal sealed class ToolExecutor
         if (output.Png is not null)
         {
             long multiplier = _responseFormat == McpResponseFormat.TextOnly ? 1L : 2L;
-            long imageTextTokens = ((multiplier * Encoding.UTF8.GetByteCount(output.StructuredJson)) + 3L) / 4L;
+            long imageTextTokens = EstimateTokens(multiplier * Encoding.UTF8.GetByteCount(output.StructuredJson));
             long totalImageTokens = imageTextTokens + EstimateImageVisionTokens(output.Png);
             if (totalImageTokens > _limits.MaxResponseTokens)
             {
@@ -431,7 +478,7 @@ internal sealed class ToolExecutor
 
         if (output.Png is null)
         {
-            long estimatedTokens = ((long)resultBytes + 3L) / 4L;
+            long estimatedTokens = EstimateTokens(resultBytes);
             if (estimatedTokens > _limits.MaxResponseTokens)
             {
                 return Fail(outcome, TokenLimitExceeded(estimatedTokens, tool));
@@ -485,22 +532,167 @@ internal sealed class ToolExecutor
         return (multiplier * Encoding.UTF8.GetByteCount(structuredJson)) + ((pngLength + 2L) / 3L * 4L);
     }
 
+    private static long EstimateTokens(long utf8Bytes)
+        => (utf8Bytes + (BytesPerEstimatedToken - 1L)) / BytesPerEstimatedToken;
+
+    private bool FitsResponseLimits(long utf8Bytes)
+        => utf8Bytes <= _limits.MaxResponseBytes && EstimateTokens(utf8Bytes) <= _limits.MaxResponseTokens;
+
     private string ErrorResult(ToolException error)
+    {
+        string code = error.Code;
+        string message = _sanitizer.Sanitize(error.Message);
+        string? param = error.Parameter is null ? null : _sanitizer.Sanitize(error.Parameter);
+        string? hint = error.Hint is null ? null : _sanitizer.Sanitize(error.Hint);
+
+        if (FitsEnvelope(code, message, param, hint, out string fastEnvelope))
+        {
+            return fastEnvelope;
+        }
+
+        if (hint is not null)
+        {
+            if (hint.Length >= MinTruncatedFieldChars
+                && TryFitByShrinkingField(hint, MinTruncatedFieldChars, h => BuildErrorEnvelope(code, message, param, h), out string fitted))
+            {
+                return fitted;
+            }
+
+            hint = null;
+            if (FitsEnvelope(code, message, param, null, out string withoutHint))
+            {
+                return withoutHint;
+            }
+        }
+
+        if (param is not null)
+        {
+            if (param.Length >= MinTruncatedFieldChars
+                && TryFitByShrinkingField(param, MinTruncatedFieldChars, p => BuildErrorEnvelope(code, message, p, null), out string fitted))
+            {
+                return fitted;
+            }
+
+            param = null;
+            if (FitsEnvelope(code, message, null, null, out string withoutParam))
+            {
+                return withoutParam;
+            }
+        }
+
+        if (TryFitByShrinkingField(message, 0, m => BuildErrorEnvelope(code, m, null, null), out string finalEnvelope))
+        {
+            return finalEnvelope;
+        }
+
+        return BuildErrorEnvelope(code, string.Empty, null, null);
+    }
+
+    private bool FitsEnvelope(string code, string message, string? param, string? hint, out string envelope)
+    {
+        envelope = BuildErrorEnvelope(code, message, param, hint);
+        return FitsResponseLimits(Encoding.UTF8.GetByteCount(envelope));
+    }
+
+    private bool TryFitByShrinkingField(
+        string text,
+        int minChars,
+        Func<string, string> buildEnvelope,
+        out string fittedEnvelope)
+    {
+        int effectiveMin = minChars;
+        if (minChars > 0)
+        {
+            // Stepping back to avoid splitting a UTF-16 surrogate pair can shorten the output by 1 char;
+            // advance until the truncated candidate still honors the minimum kept length.
+            while (effectiveMin <= text.Length && TruncateSurrogateSafe(text, effectiveMin).Length < minChars)
+            {
+                effectiveMin++;
+            }
+
+            if (effectiveMin > text.Length)
+            {
+                fittedEnvelope = string.Empty;
+                return false;
+            }
+        }
+
+        string minCandidate = TruncateSurrogateSafe(text, effectiveMin);
+        fittedEnvelope = buildEnvelope(minCandidate);
+        if (!FitsResponseLimits(Encoding.UTF8.GetByteCount(fittedEnvelope)))
+        {
+            return false;
+        }
+
+        int lo = effectiveMin;
+        int hi = text.Length;
+        while (lo < hi)
+        {
+            int mid = lo + ((hi - lo + 1) / 2);
+            string textCandidate = TruncateSurrogateSafe(text, mid);
+            string envelopeCandidate = buildEnvelope(textCandidate);
+            if (FitsResponseLimits(Encoding.UTF8.GetByteCount(envelopeCandidate)))
+            {
+                lo = mid;
+                fittedEnvelope = envelopeCandidate;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+
+        return true;
+    }
+
+    private static string TruncateSurrogateSafe(string text, int maxChars)
+    {
+        if (maxChars <= 0)
+        {
+            return string.Empty;
+        }
+
+        if (text.Length <= maxChars)
+        {
+            return text;
+        }
+
+        if (maxChars <= TruncatedSuffix.Length)
+        {
+            int rawLen = maxChars;
+            if (rawLen > 0 && char.IsHighSurrogate(text[rawLen - 1]))
+            {
+                rawLen--;
+            }
+
+            return text[..rawLen];
+        }
+
+        int keep = maxChars - TruncatedSuffix.Length;
+        if (keep > 0 && char.IsHighSurrogate(text[keep - 1]))
+        {
+            keep--;
+        }
+
+        return text[..keep] + TruncatedSuffix;
+    }
+
+    private string BuildErrorEnvelope(string code, string message, string? param, string? hint)
     {
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream))
         {
             writer.WriteStartObject();
-            writer.WriteString("code", error.Code);
-            writer.WriteString("message", _sanitizer.Sanitize(error.Message));
-            if (error.Parameter is not null)
+            writer.WriteString("code", code);
+            writer.WriteString("message", message);
+            if (param is not null)
             {
-                writer.WriteString("param", _sanitizer.Sanitize(error.Parameter));
+                writer.WriteString("param", param);
             }
 
-            if (error.Hint is not null)
+            if (hint is not null)
             {
-                writer.WriteString("hint", _sanitizer.Sanitize(error.Hint));
+                writer.WriteString("hint", hint);
             }
 
             writer.WriteEndObject();

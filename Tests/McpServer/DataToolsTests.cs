@@ -627,6 +627,7 @@ public sealed class DataToolsTests : IDisposable
         using var listResponse = await CallAsync(dispatcher, "sa_list_tickers");
         Assert.True(McpTestSupport.IsError(listResponse));
         Assert.Equal("DATA_UNAVAILABLE", McpTestSupport.Structured(listResponse).GetProperty("code").GetString());
+        Assert.Contains("ticker list", McpTestSupport.Structured(listResponse).GetProperty("message").GetString(), StringComparison.OrdinalIgnoreCase);
 
         using var screenerResponse = await CallAsync(dispatcher, "sa_run_screener", """{"conditionTree":{"left":{"price":"Close"},"comparison":"GreaterThan","right":150}}""");
         Assert.True(McpTestSupport.IsError(screenerResponse));

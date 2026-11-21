@@ -13,7 +13,7 @@ namespace StockAnalyzer.McpServer.Tools;
 /// </summary>
 internal sealed class EvaluateExpressionsTool : IMcpTool
 {
-    private const int CalculatorVersion = 4;
+    private const int CalculatorVersion = 5;
     private const string ArithmeticName = "System.Decimal";
     private const string VariablesArgument = "variables";
     private const string ArrayVariablesArgument = "arrayVariables";

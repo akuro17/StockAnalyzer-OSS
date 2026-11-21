@@ -7,7 +7,7 @@ namespace StockAnalyzer.Core.Calculator;
 
 internal readonly record struct BoundVariable(string Name, decimal Value);
 
-[InlineArray(DslExecutionBudget.DefaultMaxDepth)]
+[InlineArray(BoundVariableScope.MaxBoundVariables)]
 internal struct BoundVariableBuffer
 {
     public BoundVariable Element0;
@@ -15,6 +15,12 @@ internal struct BoundVariableBuffer
 
 internal struct BoundVariableScope
 {
+    /// <summary>
+    /// Capacity of the stack-bound dummy variable slots. Larger than <see cref="DslExecutionBudget.DefaultMaxDepth"/> because one
+    /// <c>ode_rk4</c>/<c>ode_rk45</c> right-hand side binds up to <c>1 + 8</c> variables per nesting level.
+    /// </summary>
+    public const int MaxBoundVariables = 32;
+
     public BoundVariableBuffer Items;
     public int Count;
 
@@ -36,7 +42,7 @@ internal struct BoundVariableScope
     public bool TryPush(string name, decimal value, out BoundVariableScope next)
     {
         next = this;
-        if (Count >= DslExecutionBudget.DefaultMaxDepth)
+        if (Count >= MaxBoundVariables)
         {
             return false;
         }
@@ -581,8 +587,7 @@ internal static class CalculatorEvaluator
 
         if (CalculatorHigherOrderFunctions.IsHigherOrderFunction(call.Name))
         {
-            return CalculatorArrayFunctions.ToEvalOutcome(
-                CalculatorHigherOrderFunctions.Evaluate(call, in scope, limits, ref budget, in boundScope, ref arena));
+            return CalculatorHigherOrderFunctions.Evaluate(call, in scope, limits, ref budget, in boundScope, ref arena);
         }
 
         Span<DslValue> rawArgs = argCount <= CalculatorLimits.MaxAllowedFunctionArguments
@@ -774,6 +779,7 @@ internal static class CalculatorEvaluator
         }
 
         // Argument 0 is the body, argument 1 declares the dummy variable(s) (an identifier, or a literal array of identifiers for the N-dimensional forms), the rest are ordinary arguments.
+        // ode_rk4 / ode_rk45 additionally declare the state variables as the literal array in argument 2.
         int declared = dummyNames.Count;
         if (call.Arguments[1] is IdentifierNode single)
         {
@@ -790,6 +796,22 @@ internal static class CalculatorEvaluator
             }
         }
 
+        int firstOrdinaryArgument = 2;
+        if (CalculatorHigherOrderFunctions.DeclaresStateVariables(call.Name) && call.Arguments.Count >= 3)
+        {
+            firstOrdinaryArgument = 3;
+            if (call.Arguments[2] is ArrayLiteralNode stateVariables)
+            {
+                foreach (CalcNode element in stateVariables.Elements)
+                {
+                    if (element is IdentifierNode state)
+                    {
+                        dummyNames.Add(state.Name);
+                    }
+                }
+            }
+        }
+
         bool found = TryFindUnresolvedIdentifier(call.Arguments[0], in scope, in boundScope, dummyNames, out unresolved);
         dummyNames.RemoveRange(declared, dummyNames.Count - declared);
         if (found)
@@ -797,7 +819,7 @@ internal static class CalculatorEvaluator
             return true;
         }
 
-        for (int i = 2; i < call.Arguments.Count; i++)
+        for (int i = firstOrdinaryArgument; i < call.Arguments.Count; i++)
         {
             if (TryFindUnresolvedIdentifier(call.Arguments[i], in scope, in boundScope, dummyNames, out unresolved))
             {

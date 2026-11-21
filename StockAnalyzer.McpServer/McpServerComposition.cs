@@ -121,7 +121,7 @@ internal static class McpServerComposition
     /// <param name="toolsets">Optional CLI <c>--toolset</c> profile names restricting registered read-only tools; null registers all.</param>
     /// <param name="responseFormat">Selects whether <c>tools/call</c> emits <c>structuredContent</c> (<see cref="McpResponseFormat.Dual"/>) or omits it (<see cref="McpResponseFormat.TextOnly"/>).</param>
     /// <param name="compactDefaults">When true (<c>--compact-defaults</c>), allowlisted tools default to compact/rounded outputs when callers omit formatting parameters.</param>
-    /// <param name="progressiveDiscovery">When true (<c>--progressive-discovery</c>), <c>tools/list</c> exposes only <c>sa_search_tools</c> and <c>sa_invoke_tool</c> while keeping all active tools callable on demand.</param>
+    /// <param name="progressiveDiscovery">When true (<c>--progressive-discovery</c>), <c>tools/list</c> exposes only <c>sa_search_tools</c> and <c>sa_invoke_tool</c> (plus <c>sa_invoke_action</c> when non-read-only tools are active) while keeping all active tools callable on demand.</param>
     public static McpServerRuntime Create(
         IConfiguration configuration,
         LogSink log,
@@ -315,7 +315,7 @@ internal static class McpServerComposition
                 new CalculateCrossAssetStatsTool(gateway, symbols, groupResolver, limits, resultHandles, compactDefaults),
                 new CalculateMarketBreadthTool(gateway, symbols, groupResolver, limits, resultHandles),
                 new CheckPortfolioRlPreflightTool(symbols, services.GetService<IRlPortfolioService>()),
-                new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders),
+                new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders, sanitizer: sanitizer),
                 new ListModelsTool(symbols, modelRegistry, limits),
                 new GetModelExplanationTool(gateway, symbols, modelRegistry),
                 new GetSymbolCoverageTool(gateway, limits),
@@ -385,13 +385,16 @@ internal static class McpServerComposition
                 }
 
                 var searchTool = new SearchToolsTool(() => registryOfTools!, profilesByName, responseFormat);
-                var invokeTool = new InvokeToolProxyTool();
-                var metaTools = new IMcpTool[] { invokeTool, searchTool };
+                var invokeReadOnlyTool = new InvokeToolProxyTool(readOnlyOnly: true);
+                bool hasNonReadOnly = activeTools.Any(t => !t.IsReadOnly);
+                IMcpTool[] metaTools = hasNonReadOnly
+                    ? new IMcpTool[] { invokeReadOnlyTool, new InvokeToolProxyTool(readOnlyOnly: false), searchTool }
+                    : new IMcpTool[] { invokeReadOnlyTool, searchTool };
                 registry = new McpToolRegistry(metaTools, activeTools.Concat(metaTools));
             }
 
             registryOfTools = registry;
-            const string ToolDocPrefix = $"{McpResourceRegistry.UriScheme}docs/tools/";
+            string toolDocPrefix = ToolJson.ToolDocPrefix;
             var resources = new McpResourceRegistry(
                 new[]
                 {
@@ -423,11 +426,11 @@ internal static class McpServerComposition
                 new[]
                 {
                     new McpResourceTemplate(
-                        $"{ToolDocPrefix}{{name}}",
+                        $"{toolDocPrefix}{{name}}",
                         "Tool documentation",
                         "Full Markdown reference for one active MCP tool.",
                         McpResourceRegistry.MarkdownMimeType,
-                        uri => ResolveToolDocumentationResource(uri, ToolDocPrefix, registry, limits.MaxResponseBytes)),
+                        uri => ResolveToolDocumentationResource(uri, toolDocPrefix, registry, limits.MaxResponseBytes)),
                 });
             var dispatcher = new McpMessageDispatcher(
                 log,
@@ -435,7 +438,7 @@ internal static class McpServerComposition
                 new ToolExecutor(limits, sanitizer, log, observer, responseFormat, registry, progressiveDiscovery),
                 resources,
                 identity,
-                new McpPromptRegistry(limits, registry));
+                new McpPromptRegistry(limits, registry, progressiveDiscovery));
             return new McpServerRuntime(services, limits, dispatcher, registry, prepareExecution);
         }
         catch

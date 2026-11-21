@@ -128,6 +128,211 @@ public sealed class McpServerHostTests
         Assert.True(call.RootElement.GetProperty("result").GetProperty("structuredContent").GetProperty("ok").GetBoolean());
     }
 
+    private sealed class ScriptedInputStream : Stream
+    {
+        private readonly byte[] _initialBytes;
+        private readonly Task _waitBeforeFault;
+        private readonly Func<Exception> _createFault;
+        private int _offset;
+        private bool _faulted;
+
+        public ScriptedInputStream(string initialLines, Task waitBeforeFault, Func<Exception>? createFault = null)
+        {
+            _initialBytes = new UTF8Encoding(false).GetBytes(initialLines);
+            _waitBeforeFault = waitBeforeFault;
+            _createFault = createFault ?? (() => new IOException("Simulated pipe disconnect."));
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_offset < _initialBytes.Length)
+            {
+                int n = Math.Min(buffer.Length, _initialBytes.Length - _offset);
+                _initialBytes.AsSpan(_offset, n).CopyTo(buffer.Span);
+                _offset += n;
+                return n;
+            }
+
+            if (!_faulted)
+            {
+                _faulted = true;
+                await _waitBeforeFault.WaitAsync(cancellationToken).ConfigureAwait(false);
+                throw _createFault();
+            }
+
+            return 0;
+        }
+    }
+
+    private sealed class FailingOnNthWriteStream(int failOnWriteNumber) : Stream
+    {
+        private int _writes;
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => 0;
+        public override long Position { get => 0; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _writes) >= failOnWriteNumber)
+            {
+                throw new IOException("Simulated broken output pipe.");
+            }
+
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task InProcess_AnIoExceptionOnInputCancelsInFlightWorkAndExitsCleanlyWithZero()
+    {
+        using var started = new SemaphoreSlim(0);
+        using var cancelled = new SemaphoreSlim(0);
+        var slow = new FakeTool("sa_slow_disconnect", async (_, ct) =>
+        {
+            started.Release();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled.Release();
+                throw;
+            }
+
+            return "{}";
+        });
+        string initial = McpTestSupport.InitializeMessage + "\n" + McpTestSupport.CallMessage(5, "sa_slow_disconnect") + "\n";
+        using var input = new ScriptedInputStream(initial, started.WaitAsync(TimeSpan.FromSeconds(10)));
+        var output = new MemoryStream();
+        var log = new StringWriter();
+
+        int exitCode = await McpServerHost.RunAsync(
+            input, output, McpTestSupport.CreateDispatcher(new IMcpTool[] { slow }), 1 << 20, new LogSink(log), CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        Assert.True(await cancelled.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Contains("Transport I/O ended", log.ToString());
+        Assert.Contains("exiting", log.ToString());
+    }
+
+    [Fact]
+    public async Task InProcess_AnObjectDisposedExceptionOnInputCancelsInFlightWorkAndExitsCleanlyWithZero()
+    {
+        using var started = new SemaphoreSlim(0);
+        using var cancelled = new SemaphoreSlim(0);
+        var slow = new FakeTool("sa_slow_disposed", async (_, ct) =>
+        {
+            started.Release();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled.Release();
+                throw;
+            }
+
+            return "{}";
+        });
+        string initial = McpTestSupport.InitializeMessage + "\n" + McpTestSupport.CallMessage(5, "sa_slow_disposed") + "\n";
+        using var input = new ScriptedInputStream(initial, started.WaitAsync(TimeSpan.FromSeconds(10)), () => new ObjectDisposedException("stdin"));
+        var output = new MemoryStream();
+        var log = new StringWriter();
+
+        int exitCode = await McpServerHost.RunAsync(
+            input, output, McpTestSupport.CreateDispatcher(new IMcpTool[] { slow }), 1 << 20, new LogSink(log), CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        Assert.True(await cancelled.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Contains("Transport stream closed", log.ToString());
+        Assert.Contains("exiting", log.ToString());
+    }
+
+    [Fact]
+    public async Task InProcess_AnIoExceptionOnImmediateWriteCancelsInFlightWorkAndExitsCleanlyWithZero()
+    {
+        using var started = new SemaphoreSlim(0);
+        using var cancelled = new SemaphoreSlim(0);
+        var slow = new FakeTool("sa_slow_write_fail", async (_, ct) =>
+        {
+            started.Release();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                cancelled.Release();
+                throw;
+            }
+
+            return "{}";
+        });
+        // Line 1: initialize (write 1 succeeds), Line 2: slow call starts, wait until started, Line 3: ping (write 2 throws IOException)
+        using var serverPipe = new AnonymousPipeServerStream(PipeDirection.Out);
+        using var clientPipe = new AnonymousPipeClientStream(PipeDirection.In, serverPipe.ClientSafePipeHandle);
+        using var output = new FailingOnNthWriteStream(failOnWriteNumber: 2);
+        var log = new StringWriter();
+
+        Task<int> host = McpServerHost.RunAsync(
+            clientPipe, output, McpTestSupport.CreateDispatcher(new IMcpTool[] { slow }), 1 << 20, new LogSink(log), CancellationToken.None);
+
+        async Task SendAsync(string line) => await serverPipe.WriteAsync(new UTF8Encoding(false).GetBytes(line + "\n"));
+        await SendAsync(McpTestSupport.InitializeMessage);
+        await SendAsync(McpTestSupport.CallMessage(5, "sa_slow_write_fail"));
+        Assert.True(await started.WaitAsync(TimeSpan.FromSeconds(10)));
+        await SendAsync("""{"jsonrpc":"2.0","id":6,"method":"ping"}""");
+
+        int exitCode = await host.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(0, exitCode);
+        Assert.True(await cancelled.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Contains("Transport I/O ended", log.ToString());
+    }
+
+    [Fact]
+    public async Task InProcess_NormalEofDoesNotCancelRunningCall()
+    {
+        bool wasCancelled = false;
+        var quick = new FakeTool("sa_quick_eof", async (_, ct) =>
+        {
+            await Task.Delay(150);
+            wasCancelled = ct.IsCancellationRequested;
+            return """{"ok":true}""";
+        });
+        string input = McpTestSupport.InitializeMessage + "\n" + McpTestSupport.CallMessage(4, "sa_quick_eof") + "\n";
+        var output = new MemoryStream();
+
+        int exitCode = await McpServerHost.RunAsync(
+            Bytes(input), output, McpTestSupport.CreateDispatcher(new IMcpTool[] { quick }), 1 << 20, new LogSink(new StringWriter()), CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        Assert.False(wasCancelled);
+        string[] lines = Encoding.UTF8.GetString(output.ToArray()).TrimEnd('\n').Split('\n');
+        Assert.Equal(2, lines.Length);
+    }
+
     [Fact]
     public async Task ChildProcess_HandshakeToolsListUnknownToolPingAndExitOnInputClose()
     {

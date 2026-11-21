@@ -134,6 +134,97 @@ internal readonly struct AstNdScalarFunction : INdScalarFunction
 }
 
 /// <summary>
+/// Zero-allocation <see cref="IOdeSystem"/> bridge for <c>ode_rk4</c>/<c>ode_rk45</c>: binds the independent variable and the state variables
+/// (<c>1 + Dimension</c> bound slots on top of the caller's scope) and evaluates one right-hand-side expression per state component.
+/// A failing right-hand side is recorded with <see cref="FunctorFailureBridge"/> so its original error code, position and token survive.
+/// </summary>
+internal readonly struct AstOdeSystem : IOdeSystem
+{
+    private readonly IReadOnlyList<CalcNode> _rightHandSides;
+    private readonly string _independentVariable;
+    private readonly IReadOnlyList<string> _stateVariables;
+    private readonly DslEvalScope _scope;
+    private readonly CalculatorLimits _limits;
+    private readonly BoundVariableScope _parentScope;
+
+    public AstOdeSystem(
+        IReadOnlyList<CalcNode> rightHandSides,
+        string independentVariable,
+        IReadOnlyList<string> stateVariables,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        in BoundVariableScope parentScope)
+    {
+        _rightHandSides = rightHandSides;
+        _independentVariable = independentVariable;
+        _stateVariables = stateVariables;
+        // Strip outer batch-arena array handles because AST right-hand sides evaluate against an isolated local arena.
+        _scope = new DslEvalScope(scope.ScalarNames, null);
+        _limits = limits;
+        _parentScope = parentScope;
+    }
+
+    public int Dimension => _rightHandSides.Count;
+
+    public bool TryEvaluate(double t, scoped ReadOnlySpan<double> y, scoped Span<double> dydt, ref DslExecutionBudget budget)
+    {
+        int dimension = _rightHandSides.Count;
+        if (y.Length < dimension || dydt.Length < dimension || _stateVariables.Count != dimension)
+        {
+            budget.LastError = MathErrorCode.DimensionMismatch;
+            return false;
+        }
+
+        BoundVariableScope current = _parentScope;
+        if (!TryBind(ref current, _independentVariable, t, ref budget))
+        {
+            return false;
+        }
+
+        for (int i = 0; i < dimension; i++)
+        {
+            if (!TryBind(ref current, _stateVariables[i], y[i], ref budget))
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < dimension; i++)
+        {
+            CalculatorOutcome outcome = CalculatorEvaluator.EvaluateWithScope(_rightHandSides[i], in _scope, _limits, ref budget, in current);
+            if (outcome.Error is { } err)
+            {
+                FunctorFailureBridge.Record(ref budget, err);
+                return false;
+            }
+
+            dydt[i] = (double)outcome.Value!.Value;
+        }
+
+        return true;
+    }
+
+    private static bool TryBind(ref BoundVariableScope scope, string name, double value, ref DslExecutionBudget budget)
+    {
+        decimal? narrowed = IndicatorCalculationHelper.ToDecimalOrNull(value);
+        if (narrowed is not { } valid)
+        {
+            budget.LastError = double.IsNaN(value) ? MathErrorCode.NonFiniteResult : MathErrorCode.ArithmeticOverflow;
+            return false;
+        }
+
+        if (!scope.TryPush(name, valid, out BoundVariableScope next))
+        {
+            budget.LastError = MathErrorCode.BudgetExceeded;
+            return false;
+        }
+
+        scope = next;
+        return true;
+    }
+}
+
+/// <summary>
 /// Carries the original <see cref="CalculatorError"/> of a failed higher-order function body through the numerical kernels
 /// (which only know <see cref="MathErrorCode"/>) back to the evaluator, so the wire code, position, message and token of the body error are not lost.
 /// </summary>

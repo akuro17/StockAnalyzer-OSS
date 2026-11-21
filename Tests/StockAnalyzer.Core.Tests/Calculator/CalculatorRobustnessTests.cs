@@ -3,8 +3,10 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Calculator;
+using StockAnalyzer.Core.MathUtils;
 using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Calculator;
@@ -111,5 +113,61 @@ public sealed class CalculatorRobustnessTests
         {
             Assert.Equal(sequential[i], parallel[i]);
         }
+    }
+
+    private sealed class EvalCounter
+    {
+        public int Count;
+    }
+
+    private readonly struct CancellingScalarFunction(CancellationTokenSource cts, int cancelAtCall, EvalCounter counter) : IScalarFunction
+    {
+        public bool TryEvaluate(double x, ref DslExecutionBudget budget, out double y)
+        {
+            if (++counter.Count >= cancelAtCall)
+            {
+                cts.Cancel();
+            }
+
+            y = x * x;
+            return true;
+        }
+    }
+
+    [Fact]
+    public void DslExecutionBudget_CancelsCooperativelyMidKernelWithoutExhaustingOpsBudget()
+    {
+        using var cts = new CancellationTokenSource();
+        var counter = new EvalCounter();
+        var fn = new CancellingScalarFunction(cts, cancelAtCall: 3, counter);
+        var budget = DslExecutionBudget.Create(DslExecutionBudget.DefaultMaxOps, DslExecutionBudget.DefaultMaxDepth, cts.Token);
+
+        bool threw = false;
+        try
+        {
+            DslMonteCarloMath.McIntegrate(fn, 0.0, 1.0, 100, 1, MonteCarloMode.PseudoRng, ref budget);
+        }
+        catch (OperationCanceledException)
+        {
+            threw = true;
+        }
+
+        Assert.True(threw);
+        Assert.Equal(3, counter.Count);
+        Assert.True(budget.RemainingOps > DslExecutionBudget.DefaultMaxOps - 10);
+    }
+
+    [Fact]
+    public void EvaluateBatch_WithPreCancelledToken_ThrowsOperationCanceledException()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => ExpressionCalculator.EvaluateBatch(
+            Empty,
+            null,
+            new[] { new ExpressionCalculator.CalculatorBatchItem("a", "1 + 2") },
+            CalculatorLimits.Default,
+            cts.Token));
     }
 }

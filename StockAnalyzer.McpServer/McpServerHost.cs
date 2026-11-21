@@ -23,13 +23,14 @@ internal static class McpServerHost
         var writer = new ResponseWriter(output);
         var reader = new RequestLineReader(input, maxRequestBytes);
         var running = new ConcurrentDictionary<Task, byte>();
+        using var sessionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         log.Info("Started; waiting for messages on stdin.");
 
         try
         {
-            while (!cancellationToken.IsCancellationRequested)
+            while (!sessionCancellation.IsCancellationRequested)
             {
-                RequestLine? next = await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+                RequestLine? next = await reader.ReadAsync(sessionCancellation.Token).ConfigureAwait(false);
                 if (next is not { } line)
                 {
                     break;
@@ -47,7 +48,7 @@ internal static class McpServerHost
                     continue;
                 }
 
-                DispatchOutcome outcome = dispatcher.Dispatch(line.Text, cancellationToken);
+                DispatchOutcome outcome = dispatcher.Dispatch(line.Text, sessionCancellation.Token);
                 if (outcome.Immediate is not null)
                 {
                     await writer.WriteLineAsync(outcome.Immediate).ConfigureAwait(false);
@@ -64,6 +65,16 @@ internal static class McpServerHost
         catch (OperationCanceledException)
         {
             // Shutdown requested; running calls observe the same token.
+        }
+        catch (IOException error)
+        {
+            log.Error($"Transport I/O ended: {error.Message}");
+            sessionCancellation.Cancel();
+        }
+        catch (ObjectDisposedException error)
+        {
+            log.Error($"Transport stream closed: {error.Message}");
+            sessionCancellation.Cancel();
         }
 
         await Task.WhenAll(running.Keys).ConfigureAwait(false);

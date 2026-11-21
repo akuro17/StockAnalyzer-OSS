@@ -25,7 +25,7 @@ internal readonly record struct DslEvalOutcome(DslValue Value, CalculatorError? 
 /// <c>arr_window</c>, <c>arr_zip_add</c>, <c>arr_zip_mul</c>), bit-flag inspection (<c>has_flag</c>),
 /// and array-argument lowering for existing variadic and statistical functions.
 /// </summary>
-internal static class CalculatorArrayFunctions
+internal static partial class CalculatorArrayFunctions
 {
     public static bool IsArrayOperation(string name) => name is
         "arr_len" or
@@ -73,6 +73,38 @@ internal static class CalculatorArrayFunctions
                 outcome = EvaluateHasFlag(position, args[0], args[1]);
                 return true;
 
+            case "solve_cubic":
+            case "solve_quartic":
+                outcome = EvaluatePolynomialRoots(position, name, args, ref arena);
+                return true;
+
+            case "arr_zip_sub":
+                outcome = EvaluateCheckedZip(position, name, args[0], args[1], divide: false, ref arena);
+                return true;
+
+            case "arr_zip_div":
+                outcome = EvaluateCheckedZip(position, name, args[0], args[1], divide: true, ref arena);
+                return true;
+
+            case "arr_scale":
+                outcome = EvaluateScale(position, name, args[0], args[1], ref arena);
+                return true;
+
+            case "arr_cumsum":
+            case "arr_cumprod":
+                outcome = EvaluateCumulative(position, name, args[0], product: name == "arr_cumprod", ref arena);
+                return true;
+
+            case "arr_sort":
+            case "arr_rank":
+                outcome = EvaluateSortOrRank(position, name, args, ref arena);
+                return true;
+
+            case "arr_argmax":
+            case "arr_argmin":
+                outcome = EvaluateArgExtreme(position, name, args[0], findMax: name == "arr_argmax", in arena);
+                return true;
+
             default:
                 outcome = default;
                 return false;
@@ -114,7 +146,42 @@ internal static class CalculatorArrayFunctions
         "p_adjust" or
         "boot_ci" or
         "diff_lag_series" or
-        "fd_pde_1d";
+        "fd_pde_1d" or
+        "vec_normalize" or
+        "cross3d" or
+        "mat_transpose" or
+        "mat_mul" or
+        "mat_solve" or
+        "mat_inv" or
+        "mat_lstsq" or
+        "mat_chol" or
+        "mat_qr_q" or
+        "mat_qr_r" or
+        "mat_eig_sym_vals" or
+        "mat_eig_sym_vecs" or
+        "mat_svd_s" or
+        "mat_svd_u" or
+        "mat_svd_vt" or
+        "mat_rot2d" or
+        "ode_rk4" or
+        "ode_rk45" or
+        "solve_cubic" or
+        "solve_quartic" or
+        "opt_nelder_mead" or
+        "opt_bfgs" or
+        "arr_zip_sub" or
+        "arr_zip_div" or
+        "arr_scale" or
+        "arr_cumsum" or
+        "arr_cumprod" or
+        "arr_sort" or
+        "arr_rank" or
+        "ttest_1samp" or
+        "ttest_2samp" or
+        "jb_test" or
+        "ljung_box" or
+        "ks_2samp" or
+        "dft_mag";
 
     public static DslEvalOutcome EvaluateArrayLoweredVariadic(
         string name,

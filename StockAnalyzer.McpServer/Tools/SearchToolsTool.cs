@@ -74,25 +74,29 @@ internal sealed class SearchToolsTool : IMcpTool
         .String("query", $"Space-separated keywords matched against tool name, profile, argument names, and description (max {MaxQueryTokens} words, {MaxQueryChars} chars). Omit to browse active tools.")
         .String("profile", $"Filter to one toolset or mode profile. Default {McpToolsetCatalog.AllProfile}.", allowedValues: SearchableProfiles)
         .StringArray("toolNames", $"Exact tool names to inspect (1..{MaxRequestedTools}). Turns includeSchema on unless includeSchema is false.", minItems: 1)
-        .String("matchMode", $"{MatchAll}: every query word must match. {MatchAny}: at least one word must match. Default {MatchAll}.", allowedValues: MatchModes)
-        .Boolean("includeSchema", $"Include full inputSchema (and outputSchema in dual mode) per match; caps limit at {MaxSchemaResults}. Default: true when toolNames is given, otherwise false.")
+        .String("matchMode", $"{MatchAll}: every query word must match. {MatchAny}: at least one word must match. Default {MatchAny}.", allowedValues: MatchModes)
+        .Boolean("includeSchema", $"Include full inputSchema (and outputSchema in dual mode) per match; caps limit at {MaxSchemaResults} for query/profile searches ({MaxRequestedTools} when toolNames is given). Default: true when toolNames is given, otherwise false.")
         .Boolean("includeExamples", "Include exampleArguments when available. Default false.")
         .Integer("offset", "0-based match offset. Default 0.", defaultValue: 0, minimum: 0)
-        .Integer("limit", $"Max results returned (default {DefaultSchemaResults}, max {MaxSchemaResults} when includeSchema is true; default {DefaultSummaryResults}, max {MaxSummaryResults} when false).", minimum: 1, maximum: MaxSummaryResults)
+        .Integer("limit", $"Max results returned (default and max {DefaultSchemaResults} when includeSchema is true, or {MaxRequestedTools} when toolNames is given; default {DefaultSummaryResults}, max {MaxSummaryResults} when includeSchema is false).", minimum: 1, maximum: MaxSummaryResults)
         .Build();
 
     public Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         string[] queryTokens = ParseQueryTokens(ToolArgs.String(arguments, "query"));
-        bool requireAll = !string.Equals(ToolArgs.String(arguments, "matchMode"), MatchAny, StringComparison.Ordinal);
+        bool requireAll = string.Equals(ToolArgs.String(arguments, "matchMode"), MatchAll, StringComparison.Ordinal);
         string profile = ToolArgs.String(arguments, "profile") ?? McpToolsetCatalog.AllProfile;
         IReadOnlyList<string>? rawToolNames = ToolArgs.StringArray(arguments, "toolNames");
 
         bool includeSchema = ToolArgs.Boolean(arguments, "includeSchema") ?? (rawToolNames is not null);
         bool includeExamples = ToolArgs.Boolean(arguments, "includeExamples") ?? false;
         int offset = ToolArgs.NonNegativeWithin(arguments, "offset", 0, int.MaxValue);
-        int maxLimit = includeSchema ? MaxSchemaResults : MaxSummaryResults;
-        int defaultLimit = includeSchema ? DefaultSchemaResults : DefaultSummaryResults;
+        int maxLimit = includeSchema
+            ? (rawToolNames is not null ? MaxRequestedTools : MaxSchemaResults)
+            : MaxSummaryResults;
+        int defaultLimit = includeSchema
+            ? (rawToolNames is not null ? MaxRequestedTools : DefaultSchemaResults)
+            : DefaultSummaryResults;
         int limit = ToolArgs.PositiveWithin(arguments, "limit", defaultLimit, maxLimit);
 
         McpToolRegistry registry = _registry();
@@ -239,16 +243,22 @@ internal sealed class SearchToolsTool : IMcpTool
                 continue;
             }
 
-            if (!TryScoreTool(registered, entryProfile, queryTokens, requireAll, out int score))
+            if (!TryScoreTool(registered, entryProfile, queryTokens, requireAll, out int matchedTokens, out int score))
             {
                 continue;
             }
 
-            matches.Add(new ScoredMatch(registered, entryProfile, score));
+            matches.Add(new ScoredMatch(registered, entryProfile, matchedTokens, score));
         }
 
         matches.Sort(static (left, right) =>
         {
+            int tokenOrder = right.MatchedTokens.CompareTo(left.MatchedTokens);
+            if (tokenOrder != 0)
+            {
+                return tokenOrder;
+            }
+
             int scoreOrder = right.Score.CompareTo(left.Score);
             return scoreOrder != 0
                 ? scoreOrder
@@ -258,10 +268,11 @@ internal sealed class SearchToolsTool : IMcpTool
         return matches;
     }
 
-    private static bool TryScoreTool(RegisteredTool registered, string profile, string[] tokens, bool requireAll, out int totalScore)
+    private static bool TryScoreTool(RegisteredTool registered, string profile, string[] tokens, bool requireAll, out int matchedTokens, out int totalScore)
     {
         if (tokens.Length == 0)
         {
+            matchedTokens = 0;
             totalScore = 0;
             return true;
         }
@@ -272,7 +283,7 @@ internal sealed class SearchToolsTool : IMcpTool
         IReadOnlyList<string> propertyNames = ExtractPropertyNames(registered.Schema);
 
         int sum = 0;
-        int matchedTokens = 0;
+        matchedTokens = 0;
         foreach (string token in tokens)
         {
             int tier = ScoreToken(name, profile, propertyNames, summary, description, token);
@@ -283,6 +294,7 @@ internal sealed class SearchToolsTool : IMcpTool
             }
             else if (requireAll)
             {
+                matchedTokens = 0;
                 totalScore = 0;
                 return false;
             }
@@ -420,6 +432,7 @@ internal sealed class SearchToolsTool : IMcpTool
         writer.WriteString("name", tool.Name);
         writer.WriteString("profile", profile);
         writer.WriteString("summary", McpHelpText.Summary(tool.Description));
+        writer.WriteString("docUri", ToolJson.DocUri(tool.Name));
         writer.WriteBoolean("isHeavy", tool.IsHeavy);
         writer.WriteBoolean("isExecution", tool.IsExecution);
         writer.WriteBoolean("isReadOnly", tool.IsReadOnly);
@@ -495,5 +508,5 @@ internal sealed class SearchToolsTool : IMcpTool
         return names;
     }
 
-    private readonly record struct ScoredMatch(RegisteredTool Registered, string Profile, int Score);
+    private readonly record struct ScoredMatch(RegisteredTool Registered, string Profile, int MatchedTokens, int Score);
 }

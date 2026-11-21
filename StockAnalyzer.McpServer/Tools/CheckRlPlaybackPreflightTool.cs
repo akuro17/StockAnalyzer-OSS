@@ -15,22 +15,26 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
 {
     private const string ModelIdArgument = "modelId";
     private const string SymbolArgument = "symbol";
+    private const string GenericPreflightFailureReason = "RL playback preflight check failed.";
 
     private readonly SymbolResolver _symbols;
     private readonly IRlModelGenerationRegistry _registry;
     private readonly RlDialogDataService? _dataService;
     private readonly RlLocalSourceFolders? _sourceFolders;
+    private readonly ErrorMessageSanitizer _sanitizer;
 
     public CheckRlPlaybackPreflightTool(
         SymbolResolver symbols,
         IRlModelGenerationRegistry? registry = null,
         RlDialogDataService? dataService = null,
-        RlLocalSourceFolders? sourceFolders = null)
+        RlLocalSourceFolders? sourceFolders = null,
+        ErrorMessageSanitizer? sanitizer = null)
     {
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
         _registry = registry ?? new ReadOnlyModelGenerationRegistry();
         _dataService = dataService;
         _sourceFolders = sourceFolders;
+        _sanitizer = sanitizer ?? new ErrorMessageSanitizer(Array.Empty<string?>());
     }
 
     private RlDialogDataService GetDataService()
@@ -109,7 +113,7 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
             earliestAnchor = ex.EarliestAnchor;
             latestAnchor = ex.LatestAnchor;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             canReplay = false;
             reason = ex.Message;
@@ -118,7 +122,7 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
         return BuildReplayReport(modelIdArg, symbol, generation.Symbol, generation.Target, canReplay, reason, earliestAnchor, latestAnchor, resolvedModelId);
     }
 
-    private static string BuildReplayReport(
+    private string BuildReplayReport(
         string modelId,
         string symbol,
         string? trainedSymbol,
@@ -163,7 +167,8 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
             WriteOptionalDate(writer, "latestAnchorDate", latestAnchor);
             if (reason is not null)
             {
-                writer.WriteString("reason", reason);
+                string sanitizedReason = _sanitizer.Sanitize(reason);
+                writer.WriteString("reason", string.IsNullOrWhiteSpace(sanitizedReason) ? GenericPreflightFailureReason : sanitizedReason);
             }
             else
             {

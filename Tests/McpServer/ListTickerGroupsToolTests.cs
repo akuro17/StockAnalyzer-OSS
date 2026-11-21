@@ -191,5 +191,20 @@ public sealed class ListTickerGroupsToolTests : IDisposable
         Assert.True(McpTestSupport.IsError(response));
         JsonElement error = McpTestSupport.Structured(response);
         Assert.Equal("DATA_UNAVAILABLE", error.GetProperty("code").GetString());
+        string message = error.GetProperty("message").GetString()!;
+        Assert.Contains("workspace file", message, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ticker list", message, StringComparison.OrdinalIgnoreCase);
+
+        using var groupResponse = (await McpTestSupport.CallAsync(
+            dispatcher,
+            "sa_list_tickers",
+            """{"groupId":"11111111-1111-1111-1111-111111111111"}""",
+            id: 2))!;
+        Assert.True(McpTestSupport.IsError(groupResponse));
+        JsonElement groupError = McpTestSupport.Structured(groupResponse);
+        Assert.Equal("DATA_UNAVAILABLE", groupError.GetProperty("code").GetString());
+        string groupMessage = groupError.GetProperty("message").GetString()!;
+        Assert.Contains("workspace file", groupMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ticker list", groupMessage, StringComparison.OrdinalIgnoreCase);
     }
 }

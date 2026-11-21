@@ -19,6 +19,7 @@ internal readonly record struct DispatchOutcome(string? Immediate, Task<string?>
 internal sealed class McpMessageDispatcher
 {
     private const string JsonRpcVersion = "2.0";
+    private const string InternalErrorMessage = "Internal error.";
     private const string InitializeMethod = "initialize";
     private const string PingMethod = "ping";
     private const string ToolsListMethod = "tools/list";
@@ -159,7 +160,7 @@ internal sealed class McpMessageDispatcher
         catch (Exception error)
         {
             _log.Error($"Unhandled error in '{method}': {error}");
-            return new DispatchOutcome(Error(id, JsonRpcErrorCodes.InternalError, "Internal error."));
+            return new DispatchOutcome(Error(id, JsonRpcErrorCodes.InternalError, InternalErrorMessage));
         }
     }
 
@@ -385,7 +386,7 @@ internal sealed class McpMessageDispatcher
         catch (Exception error)
         {
             _log.Error($"Unhandled error in '{ResourcesReadMethod}': {error}");
-            return Error(id, JsonRpcErrorCodes.InternalError, "Internal error.");
+            return Error(id, JsonRpcErrorCodes.InternalError, InternalErrorMessage);
         }
     }
 
@@ -514,8 +515,20 @@ internal sealed class McpMessageDispatcher
 
     private async Task<string?> RunCallAsync(JsonElement id, RegisteredTool registered, JsonElement arguments, CancellationToken cancellationToken)
     {
-        string? callResult = await _executor.ExecuteAsync(id.GetRawText(), registered, arguments, cancellationToken).ConfigureAwait(false);
-        return callResult is null ? null : ResultFromJson(id, callResult);
+        try
+        {
+            string? callResult = await _executor.ExecuteAsync(id.GetRawText(), registered, arguments, cancellationToken).ConfigureAwait(false);
+            return callResult is null ? null : ResultFromJson(id, callResult);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        catch (Exception error)
+        {
+            _log.Error($"Unhandled error in '{ToolsCallMethod}': {error}");
+            return Error(id, JsonRpcErrorCodes.InternalError, InternalErrorMessage);
+        }
     }
 
     private static string Result(JsonElement id, Action<Utf8JsonWriter> writeResult)

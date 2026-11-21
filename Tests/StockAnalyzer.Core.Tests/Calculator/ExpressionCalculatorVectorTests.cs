@@ -183,4 +183,33 @@ public sealed class ExpressionCalculatorVectorTests
             Assert.Equal(expectedToken, outcome.Error.Token);
         }
     }
+
+    [Theory]
+    [InlineData("1e-5", 1)]
+    [InlineData("1.5e-5", 3)]
+    [InlineData("1E+3", 1)]
+    [InlineData("1e5", 1)]
+    [InlineData("sin(1e-5)", 5)]
+    public void ScientificNotationLiteralsIncludeHintWhilePreservingSyntaxErrorCodeAndPosition(string expression, int expectedPosition)
+    {
+        CalculatorOutcome outcome = ExpressionCalculator.Evaluate(expression, Empty, CalculatorLimits.Default);
+
+        Assert.Null(outcome.Value);
+        Assert.NotNull(outcome.Error);
+        Assert.Equal(CalculatorErrorCode.SyntaxError, outcome.Error!.Code);
+        Assert.Equal(expectedPosition, outcome.Error.Position);
+        Assert.Contains("Scientific notation is not supported", outcome.Error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NonScientificIdentifierAfterNumberOrEulerMultiplicationKeepsStandardBehavior()
+    {
+        CalculatorOutcome spaced = ExpressionCalculator.Evaluate("1 foo", Empty, CalculatorLimits.Default);
+        Assert.Equal(CalculatorErrorCode.SyntaxError, spaced.Error!.Code);
+        Assert.DoesNotContain("Scientific notation", spaced.Error.Message, StringComparison.Ordinal);
+
+        CalculatorOutcome eulerMul = ExpressionCalculator.Evaluate("2 * e", Empty, CalculatorLimits.Default);
+        Assert.Null(eulerMul.Error);
+        Assert.True(eulerMul.Value > 5.4m);
+    }
 }

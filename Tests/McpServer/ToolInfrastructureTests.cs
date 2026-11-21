@@ -1,6 +1,10 @@
 using System.IO;
 using System.Text.Json;
+using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.McpServer;
+using StockAnalyzer.McpServer.Execution;
 using StockAnalyzer.McpServer.Limits;
+using StockAnalyzer.McpServer.Protocol;
 using StockAnalyzer.McpServer.Tools;
 
 namespace StockAnalyzer.Tests.McpServer;
@@ -431,5 +435,186 @@ public sealed class ToolInfrastructureTests
         Assert.True(McpTestSupport.IsError(response));
         Assert.Equal("LIMIT_EXCEEDED", McpTestSupport.ErrorCodeOf(response));
         Assert.True(response.RootElement.GetRawText().Length < 1000);
+    }
+
+    private sealed class RecordingObserver : IToolCallObserver
+    {
+        public readonly List<ToolCallRecord> Records = new();
+        public void OnToolCall(ToolCallRecord record) => Records.Add(record);
+    }
+
+    [Fact]
+    public async Task APreExecutionExceptionReturnsInternalErrorInsteadOfHangingAndNotifiesObserver()
+    {
+        const string badSchema = """{"type":"object","properties":{"x":{"type":"unsupported_schema_type"}},"additionalProperties":false}""";
+        var badTool = Tool("sa_bad_schema", (_, _) => Task.FromResult("{}"), badSchema);
+        var observer = new RecordingObserver();
+        var sink = new LogSink(new StringWriter());
+        var executor = new ToolExecutor(new McpLimits(), new ErrorMessageSanitizer(Array.Empty<string?>()), sink, observer);
+        var dispatcher = new McpMessageDispatcher(sink, new McpToolRegistry(new[] { badTool }), executor);
+        await dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        using var response = (await McpTestSupport.CallAsync(dispatcher, "sa_bad_schema", """{"x":1}"""))!;
+
+        Assert.True(McpTestSupport.IsError(response));
+        Assert.Equal(ToolErrorCodes.InternalError, McpTestSupport.ErrorCodeOf(response));
+        Assert.Equal(ToolErrorCodes.UnexpectedErrorMessage, McpTestSupport.Structured(response).GetProperty("message").GetString());
+        ToolCallRecord record = Assert.Single(observer.Records);
+        Assert.Equal(ToolErrorCodes.InternalError, record.Outcome);
+    }
+
+    [Theory]
+    [InlineData(McpResponseFormat.Dual)]
+    [InlineData(McpResponseFormat.TextOnly)]
+    public async Task AnOversizedErrorEnvelopeIsBoundedByMaxResponseBytesAndMaxResponseTokens(McpResponseFormat format)
+    {
+        var limits = new McpLimits { MaxResponseBytes = 65_536, MaxResponseTokens = 1_024 };
+        string bigMessage = string.Concat(Enumerable.Repeat("M😀\"\\\n", 1_500));
+        string bigParam = string.Concat(Enumerable.Repeat("p😀", 1_500));
+        string bigHint = string.Concat(Enumerable.Repeat("h😀", 1_500));
+
+        var sink = new LogSink(new StringWriter());
+        var tools = new IMcpTool[]
+        {
+            Tool("sa_huge_err", (_, _) => throw new ToolException(ToolErrorCodes.InvalidArgument, bigMessage, bigParam, bigHint)),
+            Tool("sa_strict_huge", (_, _) => Task.FromResult("{}"), ToolSchema.Object().Integer("count", "c").Build()),
+        };
+        var executor = new ToolExecutor(limits, new ErrorMessageSanitizer(Array.Empty<string?>()), sink, responseFormat: format);
+        var dispatcher = new McpMessageDispatcher(sink, new McpToolRegistry(tools), executor);
+        await dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        // 1. Huge ToolException fields
+        string rawCall = McpTestSupport.CallMessage(10, "sa_huge_err");
+        string rawResult = (await dispatcher.DispatchAsync(rawCall, CancellationToken.None))!;
+        using var doc = JsonDocument.Parse(rawResult);
+        JsonElement callResult = doc.RootElement.GetProperty("result");
+        string callResultRaw = callResult.GetRawText();
+        int envelopeBytes = System.Text.Encoding.UTF8.GetByteCount(callResultRaw);
+        Assert.True(envelopeBytes <= limits.MaxResponseBytes, $"Envelope {envelopeBytes} > {limits.MaxResponseBytes}");
+        Assert.True(((envelopeBytes + 3L) / 4L) <= limits.MaxResponseTokens, $"Tokens {((envelopeBytes + 3L) / 4L)} > {limits.MaxResponseTokens}");
+
+        Assert.True(callResult.GetProperty("isError").GetBoolean());
+        string payloadText = callResult.GetProperty("content")[0].GetProperty("text").GetString()!;
+        using var payloadDoc = JsonDocument.Parse(payloadText);
+        JsonElement errObj = payloadDoc.RootElement;
+        Assert.Equal(ToolErrorCodes.InvalidArgument, errObj.GetProperty("code").GetString());
+        string returnedMessage = errObj.GetProperty("message").GetString()!;
+        Assert.DoesNotContain('\uFFFD', returnedMessage);
+        if (errObj.TryGetProperty("param", out JsonElement p))
+        {
+            string s = p.GetString()!;
+            Assert.True(s.Length >= 16);
+            Assert.DoesNotContain('\uFFFD', s);
+        }
+
+        if (errObj.TryGetProperty("hint", out JsonElement h))
+        {
+            string s = h.GetString()!;
+            Assert.True(s.Length >= 16);
+            Assert.DoesNotContain('\uFFFD', s);
+        }
+
+        // 2. Oversized unknown argument name echoed by ToolArgumentValidator
+        string hugeKey = new('k', 10_000);
+        string rawUnknown = (await dispatcher.DispatchAsync(McpTestSupport.CallMessage(11, "sa_strict_huge", $"{{\"{hugeKey}\":1}}"), CancellationToken.None))!;
+        using var unknownDoc = JsonDocument.Parse(rawUnknown);
+        JsonElement unknownResult = unknownDoc.RootElement.GetProperty("result");
+        string unknownResultRaw = unknownResult.GetRawText();
+        int unknownBytes = System.Text.Encoding.UTF8.GetByteCount(unknownResultRaw);
+        Assert.True(unknownBytes <= limits.MaxResponseBytes);
+        Assert.True(((unknownBytes + 3L) / 4L) <= limits.MaxResponseTokens);
+        using var unknownPayload = JsonDocument.Parse(unknownResult.GetProperty("content")[0].GetProperty("text").GetString()!);
+        Assert.Equal(ToolErrorCodes.InvalidArgument, unknownPayload.RootElement.GetProperty("code").GetString());
+    }
+
+    [Fact]
+    public async Task AnErrorEnvelopeOmitsHintAndParamWhenFewerThanSixteenCharsFit()
+    {
+        // Tight token budget (1024 tokens = 4096 bytes) in Dual mode: ~1980 chars in message fills budget so param/hint cannot fit >= 16 chars and must be omitted.
+        var limits = new McpLimits { MaxResponseBytes = 65_536, MaxResponseTokens = 1_024 };
+        string nearLimitMessage = new('m', 1_980);
+        string longParam = new('p', 500);
+        string longHint = new('h', 500);
+
+        var sink = new LogSink(new StringWriter());
+        var tool = Tool("sa_tight_err", (_, _) => throw new ToolException(ToolErrorCodes.InvalidArgument, nearLimitMessage, longParam, longHint));
+        var executor = new ToolExecutor(limits, new ErrorMessageSanitizer(Array.Empty<string?>()), sink, responseFormat: McpResponseFormat.Dual);
+        var dispatcher = new McpMessageDispatcher(sink, new McpToolRegistry(new[] { tool }), executor);
+        await dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        string raw = (await dispatcher.DispatchAsync(McpTestSupport.CallMessage(12, "sa_tight_err"), CancellationToken.None))!;
+        using var doc = JsonDocument.Parse(raw);
+        string resultRaw = doc.RootElement.GetProperty("result").GetRawText();
+        int bytes = System.Text.Encoding.UTF8.GetByteCount(resultRaw);
+        Assert.True(((bytes + 3L) / 4L) <= limits.MaxResponseTokens);
+
+        JsonElement errObj = McpTestSupport.Structured(doc);
+        Assert.Equal(ToolErrorCodes.InvalidArgument, errObj.GetProperty("code").GetString());
+        Assert.False(errObj.TryGetProperty("hint", out _));
+        Assert.False(errObj.TryGetProperty("param", out _));
+    }
+
+    [Fact]
+    public async Task AnErrorEnvelopeOmitsSurrogateHintWhenBackingOffDropsLengthBelowSixteen()
+    {
+        var limits = new McpLimits { MaxResponseBytes = 65_536, MaxResponseTokens = 1_024 };
+        const string surrogateHint = "0123456789ab😀😀xyz";
+        int currentLength = 0;
+
+        var sink = new LogSink(new StringWriter());
+        var tool = Tool("sa_surrogate_err", (_, _) => throw new ToolException(
+            ToolErrorCodes.InvalidArgument,
+            new string('m', currentLength),
+            parameter: null,
+            hint: surrogateHint));
+        var executor = new ToolExecutor(limits, new ErrorMessageSanitizer(Array.Empty<string?>()), sink, responseFormat: McpResponseFormat.TextOnly);
+        var dispatcher = new McpMessageDispatcher(sink, new McpToolRegistry(new[] { tool }), executor);
+        await dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        bool sawFullOrSeventeen = false;
+        bool sawOmittedAfterTightening = false;
+        for (int len = 3_960; len <= 4_040; len += 4)
+        {
+            currentLength = len;
+            string raw = (await dispatcher.DispatchAsync(McpTestSupport.CallMessage(len, "sa_surrogate_err"), CancellationToken.None))!;
+            using var doc = JsonDocument.Parse(raw);
+            string resultRaw = doc.RootElement.GetProperty("result").GetRawText();
+            int bytes = System.Text.Encoding.UTF8.GetByteCount(resultRaw);
+            Assert.True(((bytes + 3L) / 4L) <= limits.MaxResponseTokens);
+
+            JsonElement errObj = McpTestSupport.Structured(doc);
+            if (errObj.TryGetProperty("hint", out JsonElement hintProp))
+            {
+                string actualHint = hintProp.GetString()!;
+                Assert.True(actualHint.Length >= 16, $"Truncated hint length {actualHint.Length} dropped below 16 chars: {actualHint}");
+                Assert.DoesNotContain('\uFFFD', actualHint);
+                sawFullOrSeventeen = true;
+            }
+            else if (sawFullOrSeventeen)
+            {
+                sawOmittedAfterTightening = true;
+            }
+        }
+
+        Assert.True(sawFullOrSeventeen);
+        Assert.True(sawOmittedAfterTightening);
+    }
+
+    [Fact]
+    public async Task DataUnavailableExceptionWithBlankMessageFallsBackToGenericMessage()
+    {
+        var sink = new LogSink(new StringWriter());
+        var tool = Tool("sa_blank_unavail", (_, _) => throw new DataUnavailableException("   "));
+        var executor = new ToolExecutor(new McpLimits(), new ErrorMessageSanitizer(Array.Empty<string?>()), sink);
+        var dispatcher = new McpMessageDispatcher(sink, new McpToolRegistry(new[] { tool }), executor);
+        await dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        using var response = (await McpTestSupport.CallAsync(dispatcher, "sa_blank_unavail"))!;
+
+        Assert.True(McpTestSupport.IsError(response));
+        JsonElement errObj = McpTestSupport.Structured(response);
+        Assert.Equal(ToolErrorCodes.DataUnavailable, errObj.GetProperty("code").GetString());
+        Assert.Equal("Stored data is temporarily unreadable.", errObj.GetProperty("message").GetString());
+        Assert.Equal("Retry in a moment.", errObj.GetProperty("hint").GetString());
     }
 }

@@ -172,6 +172,119 @@ public static partial class DslLinearAlgebraMath
         return MathErrorCode.None;
     }
 
+    // ---- General-Length Vector Operations (1 <= n <= DslArrayArena.MaxArrayLength) ----
+
+    /// <summary>
+    /// Dot product for DSL 1D arrays of length <c>1..512</c> (<see cref="DslArrayArena.MaxArrayLength"/>).
+    /// <c>n == 0</c> -> <see cref="MathErrorCode.DomainError"/>, unequal lengths -> <see cref="MathErrorCode.DimensionMismatch"/>.
+    /// Consumes <c>max(1, n / 16)</c> budget units. The dimension-limited <see cref="VecDot"/> (<c>n &lt;= 16</c>) is intentionally left unchanged.
+    /// </summary>
+    public static MathResult<double> VecDotGeneral(
+        scoped ReadOnlySpan<double> a,
+        scoped ReadOnlySpan<double> b,
+        ref DslExecutionBudget budget)
+    {
+        if (a.Length == 0 || b.Length == 0)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (a.Length != b.Length || a.Length > DslArrayArena.MaxArrayLength)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DimensionMismatch);
+        }
+
+        MathErrorCode errA = ValidateFinite(a);
+        if (errA != MathErrorCode.None)
+        {
+            return MathResult<double>.Fail(errA);
+        }
+
+        MathErrorCode errB = ValidateFinite(b);
+        if (errB != MathErrorCode.None)
+        {
+            return MathResult<double>.Fail(errB);
+        }
+
+        if (!budget.TryConsume(Math.Max(1, a.Length / 16)))
+        {
+            return MathResult<double>.Fail(MathErrorCode.BudgetExceeded);
+        }
+
+        double sum = 0.0;
+        for (int i = 0; i < a.Length; i++)
+        {
+            sum += a[i] * b[i];
+        }
+
+        return double.IsFinite(sum)
+            ? MathResult<double>.Ok(sum == 0.0 ? 0.0 : sum)
+            : MathResult<double>.Fail(MathErrorCode.ArithmeticOverflow);
+    }
+
+    /// <summary>Euclidean norm for DSL 1D arrays of length <c>1..512</c> (scaled to avoid intermediate overflow).</summary>
+    public static MathResult<double> VecNormGeneral(scoped ReadOnlySpan<double> v)
+    {
+        if (v.Length == 0)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (v.Length > DslArrayArena.MaxArrayLength)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DimensionMismatch);
+        }
+
+        MathErrorCode finiteErr = ValidateFinite(v);
+        if (finiteErr != MathErrorCode.None)
+        {
+            return MathResult<double>.Fail(finiteErr);
+        }
+
+        double norm = ComputeFrobeniusNorm(v, v.Length);
+        return double.IsFinite(norm)
+            ? MathResult<double>.Ok(norm)
+            : MathResult<double>.Fail(MathErrorCode.ArithmeticOverflow);
+    }
+
+    /// <summary>
+    /// Unit-length copy of a DSL 1D array of length <c>1..512</c>.
+    /// A norm <c>&lt;= </c><see cref="ZeroNormEpsilon"/> -> <see cref="MathErrorCode.DivisionByZero"/>.
+    /// </summary>
+    public static MathErrorCode VecNormalizeGeneral(scoped ReadOnlySpan<double> v, scoped Span<double> normalized)
+    {
+        if (v.Length == 0)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        if (v.Length > DslArrayArena.MaxArrayLength || normalized.Length < v.Length)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        MathResult<double> normRes = VecNormGeneral(v);
+        if (!normRes.IsOk)
+        {
+            return normRes.Error;
+        }
+
+        double norm = normRes.Value;
+        if (norm <= ZeroNormEpsilon)
+        {
+            return MathErrorCode.DivisionByZero;
+        }
+
+        double inv = 1.0 / norm;
+        for (int i = 0; i < v.Length; i++)
+        {
+            double val = v[i] * inv;
+            normalized[i] = val == 0.0 ? 0.0 : val;
+        }
+
+        return MathErrorCode.None;
+    }
+
     public static MathErrorCode Cross3D(ReadOnlySpan<double> u, ReadOnlySpan<double> v, Span<double> result)
     {
         if (u.Length != 3 || v.Length != 3 || result.Length < 3)

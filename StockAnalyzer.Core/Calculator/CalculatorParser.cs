@@ -375,10 +375,45 @@ internal sealed class CalculatorParser
     }
 
     private CalculatorError SyntaxErrorAt(CalcToken token)
-        => new(
-            CalculatorErrorCode.SyntaxError,
-            token.Position,
-            token.Kind == CalcTokenKind.EndOfInput
-                ? $"Unexpected end of expression at position {token.Position}."
-                : $"Unexpected token '{token.Text}' at position {token.Position}.");
+    {
+        if (token.Kind == CalcTokenKind.EndOfInput)
+        {
+            return new CalculatorError(
+                CalculatorErrorCode.SyntaxError,
+                token.Position,
+                $"Unexpected end of expression at position {token.Position}.");
+        }
+
+        string message = IsAdjacentScientificNotationSuffix(token)
+            ? $"Unexpected token '{token.Text}' at position {token.Position}. Scientific notation is not supported; use decimal literals or * 10^n."
+            : $"Unexpected token '{token.Text}' at position {token.Position}.";
+        return new CalculatorError(CalculatorErrorCode.SyntaxError, token.Position, message);
+    }
+
+    private bool IsAdjacentScientificNotationSuffix(CalcToken token)
+    {
+        if (_position <= 0 || token.Kind != CalcTokenKind.Identifier)
+        {
+            return false;
+        }
+
+        CalcToken prev = _tokens[_position - 1];
+        if (prev.Kind != CalcTokenKind.Number || prev.Position + prev.Text.Length != token.Position)
+        {
+            return false;
+        }
+
+        if (token.Text.Length >= 2 && (token.Text[0] is 'e' or 'E') && ExpressionCalculator.IsAsciiDigit(token.Text[1]))
+        {
+            return true;
+        }
+
+        return token.Text.Length == 1
+            && (token.Text[0] is 'e' or 'E')
+            && _position + 2 < _tokens.Count
+            && _tokens[_position + 1].Kind is CalcTokenKind.Plus or CalcTokenKind.Minus
+            && _tokens[_position + 1].Position == token.Position + 1
+            && _tokens[_position + 2].Kind == CalcTokenKind.Number
+            && _tokens[_position + 2].Position == _tokens[_position + 1].Position + 1;
+    }
 }

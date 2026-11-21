@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Numerics;
+using System.Threading;
 
 namespace StockAnalyzer.Core.MathUtils;
 
@@ -338,6 +339,8 @@ public ref struct DslExecutionBudget
     /// <summary>Detail of the last failure of a user-supplied function; valid only while <see cref="DslFunctorFailure.IsSet"/> is true and <see cref="LastError"/> is <see cref="MathErrorCode.FunctorFailure"/>.</summary>
     internal DslFunctorFailure LastFunctorFailure;
 
+    private CancellationToken _cancellationToken;
+
     public static DslExecutionBudget CreateDefault()
         => Create(DefaultMaxOps, DefaultMaxDepth);
 
@@ -349,12 +352,22 @@ public ref struct DslExecutionBudget
             LastError = MathErrorCode.None,
         };
 
+    public static DslExecutionBudget Create(int maxOps, int maxDepth, CancellationToken cancellationToken)
+        => new()
+        {
+            RemainingOps = maxOps,
+            RemainingDepth = maxDepth,
+            LastError = MathErrorCode.None,
+            _cancellationToken = cancellationToken,
+        };
+
     /// <summary>
     /// Consumes at least one operation unit; returns <c>false</c> and records
     /// <see cref="MathErrorCode.BudgetExceeded"/> when the budget drops below zero.
     /// </summary>
     public bool TryConsume(int cost = 1)
     {
+        _cancellationToken.ThrowIfCancellationRequested();
         int effectiveCost = cost < 1 ? 1 : cost;
         RemainingOps -= effectiveCost;
         if (RemainingOps < 0)

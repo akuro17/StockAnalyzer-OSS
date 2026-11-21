@@ -470,7 +470,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(4, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(5, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal("System.Decimal", root.GetProperty("arithmetic").GetString());
         Assert.Equal("IEEE-754 binary64 narrowed via ToDecimalOrNull (|x| < 7.9e27)", root.GetProperty("transcendentalArithmetic").GetString());
         Assert.Equal(7, root.GetProperty("okCount").GetInt32());
@@ -575,7 +575,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(4, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(5, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal(4, root.GetProperty("okCount").GetInt32());
         Assert.Equal(2, root.GetProperty("errorCount").GetInt32());
 
@@ -728,7 +728,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(4, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(5, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal(2, root.GetProperty("arrayVariables").GetArrayLength());
         Assert.Equal(7, root.GetProperty("okCount").GetInt32());
         Assert.Equal(2, root.GetProperty("errorCount").GetInt32());
@@ -824,9 +824,9 @@ public sealed class EvaluateExpressionsToolTests
             { "name": "pred", "expression": "ols_predict([7, 2], ols_b)" },
             { "name": "ridge", "expression": "ridge_fit(X, y, 0.01)" },
             { "name": "pca", "expression": "pca_project(X, 6, 2, 1)" },
-            { "name": "cov_s", "expression": "[4, 2, 2, 9]" },
-            { "name": "cov_flags", "expression": "mat_validate_cov(cov_s, 1)" },
-            { "name": "corr_r", "expression": "mat_cov_to_corr(cov_s)" },
+            { "name": "cov_mat", "expression": "[4, 2, 2, 9]" },
+            { "name": "cov_flags", "expression": "mat_validate_cov(cov_mat, 1)" },
+            { "name": "corr_r", "expression": "mat_cov_to_corr(cov_mat)" },
             { "name": "rcond2", "expression": "mat_rcond([2, 0, 0, 1], 2, 2, 2)" },
             { "name": "cond1", "expression": "mat_cond([2, 0, 0, 1], 2, 2, 1)" },
             { "name": "mahal", "expression": "mahalanobis([2, 3], [0, 0], [1, 0, 0, 1])" },
@@ -895,7 +895,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(4, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(5, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal(14, root.GetProperty("okCount").GetInt32());
         Assert.Equal(1, root.GetProperty("errorCount").GetInt32());
 
@@ -920,5 +920,22 @@ public sealed class EvaluateExpressionsToolTests
         Assert.Equal("UNDEFINED_NAME", results[14].GetProperty("errorCode").GetString());
         Assert.Equal("mc_integrate_nd(sum(".Length, results[14].GetProperty("errorPosition").GetInt32());
         Assert.Contains("heat", results[14].GetProperty("errorMessage").GetString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("1e-5", 1)]
+    [InlineData("1E+3", 1)]
+    [InlineData("1e5", 1)]
+    public async Task ScientificNotationReturnsSyntaxErrorWithHelpfulHint(string expression, int expectedPosition)
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        using JsonDocument resp = await CallAsync(dispatcher, $$"""{"expressions":[{"name":"sci","expression":"{{expression}}"}]}""");
+
+        Assert.False(McpTestSupport.IsError(resp));
+        JsonElement item = McpTestSupport.Structured(resp).GetProperty("results")[0];
+        Assert.Equal("Error", item.GetProperty("status").GetString());
+        Assert.Equal("SYNTAX_ERROR", item.GetProperty("errorCode").GetString());
+        Assert.Equal(expectedPosition, item.GetProperty("errorPosition").GetInt32());
+        Assert.Contains("Scientific notation is not supported", item.GetProperty("errorMessage").GetString(), StringComparison.Ordinal);
     }
 }

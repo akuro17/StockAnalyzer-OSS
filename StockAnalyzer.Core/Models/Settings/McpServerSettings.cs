@@ -41,7 +41,8 @@ public sealed class McpServerSettings
 
     /// <summary>
     /// When true, StockAnalyzer.McpServer is launched with <c>--progressive-discovery</c> so
-    /// <c>tools/list</c> exposes only <c>sa_search_tools</c> and <c>sa_invoke_tool</c>.
+    /// <c>tools/list</c> exposes only <c>sa_search_tools</c> and <c>sa_invoke_tool</c>
+    /// (plus <c>sa_invoke_action</c> when non-read-only tools are active).
     /// Default is false.
     /// </summary>
     public bool ProgressiveDiscovery { get; set; }
