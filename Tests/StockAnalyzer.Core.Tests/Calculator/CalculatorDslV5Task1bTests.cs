@@ -338,10 +338,10 @@ public sealed class CalculatorDslV5Task1bTests
         Assert.Single(solved);
         Assert.True(Math.Abs((double)solved[0] - Math.E) < 0.1);
 
-        // The shared constants are the optimizer ones (temporary sharing, see docs/ja/Future_Improvements.md).
-        Assert.Equal(1e-12, DslOptimizationMath.MinTol);
-        Assert.Equal(1e-2, DslOptimizationMath.MaxTol);
-        Assert.Equal(1e-8, DslOptimizationMath.DefaultTol);
+        // The DSL tolerance contract (also pinned in CalculatorDslToleranceContractTests).
+        Assert.Equal(1e-12, DslTolerance.MinTol);
+        Assert.Equal(1e-2, DslTolerance.MaxTol);
+        Assert.Equal(1e-8, DslTolerance.DefaultTol);
     }
 
     private static decimal[] Round(decimal[] values) => values.Select(v => Math.Round(v, 4)).ToArray();

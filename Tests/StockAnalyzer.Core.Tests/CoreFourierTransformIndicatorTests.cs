@@ -55,6 +55,24 @@ namespace StockAnalyzer.Core.Tests
         }
 
         [Fact]
+        public void Calculate_PeriodTwoAlternatingSeries_ReturnsInputAmplitude()
+        {
+            // Close alternates 100 +- 5: a period-2 cycle of amplitude 5 (bin 1 of a 2-bar window is the Nyquist bin, which is not doubled).
+            var candles = new List<CoreCandleData>();
+            for (int i = 0; i < 20; i++)
+            {
+                decimal mid = i % 2 == 0 ? 105m : 95m;
+                candles.Add(new CoreCandleData(new System.DateTime(2023, 1, 1).AddDays(i), mid, mid + 1m, mid - 1m, mid, 1000));
+            }
+
+            var indicator = new CoreFourierTransformIndicator { TargetPeriod = 2 };
+            indicator.Calculate(candles);
+
+            Assert.Null(indicator.Values[0]);
+            Assert.All(indicator.Values.Skip(1), v => Assert.InRange(v!.Value, 4.99m, 5.01m));
+        }
+
+        [Fact]
         public void Calculate_TargetPeriodBelowTwo_IsClampedToTwo()
         {
             var candles = CreateSineCandles(20, 4, 5m);

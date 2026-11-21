@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using StockAnalyzer.Core.MathUtils;
 using StockAnalyzer.Core.Models.Analysis;
 
 namespace StockAnalyzer.Core.Analysis;
@@ -51,15 +52,13 @@ public static class ScatterAnalysisEngine
         2.0423   // df = 30
     ];
 
-    public const double MachineEpsilon = 2.220446049250313e-16;
-
     /// <summary>
     /// Evaluates if a 1D range [min, max] is numerically degenerate relative to its scale.
     /// </summary>
     public static bool IsDegenerateRange(double min, double max)
     {
         double scale = Math.Max(Math.Max(Math.Abs(min), Math.Abs(max)), 1.0);
-        return (max - min) <= (64.0 * MachineEpsilon * scale);
+        return (max - min) <= (64.0 * MathConstants.MachineEpsilon * scale);
     }
 
     /// <summary>
@@ -68,7 +67,7 @@ public static class ScatterAnalysisEngine
     public static bool IsDegenerateVariance(double ss, int count, double mean)
     {
         double scale = Math.Max(mean * mean, 1.0);
-        return ss <= (64.0 * MachineEpsilon * Math.Max(count, 1) * scale);
+        return ss <= (64.0 * MathConstants.MachineEpsilon * Math.Max(count, 1) * scale);
     }
 
     /// <summary>
@@ -76,7 +75,7 @@ public static class ScatterAnalysisEngine
     /// </summary>
     public static bool IsResidualZero(double ssRes, double ssY, int count)
     {
-        return ssRes <= (64.0 * MachineEpsilon * Math.Max(count, 1) * Math.Max(ssY, 1.0));
+        return ssRes <= (64.0 * MathConstants.MachineEpsilon * Math.Max(count, 1) * Math.Max(ssY, 1.0));
     }
 
     /// <summary>
@@ -432,12 +431,12 @@ public static class ScatterAnalysisEngine
                 double oneMinusHii = 1.0 - hii;
 
                 double ti = 0.0;
-                if (oneMinusHii > MachineEpsilon)
+                if (oneMinusHii > MathConstants.MachineEpsilon)
                 {
                     double ssResI = ((validCount - 2) * sSquared) - ((ei * ei) / oneMinusHii);
                     double siSquared = ssResI / (validCount - 3);
 
-                    if (siSquared > (64.0 * MachineEpsilon * Math.Max(sSquared, 1.0)))
+                    if (siSquared > (64.0 * MathConstants.MachineEpsilon * Math.Max(sSquared, 1.0)))
                     {
                         double denom = Math.Sqrt(siSquared * oneMinusHii);
                         if (denom > 0.0)
@@ -449,7 +448,7 @@ public static class ScatterAnalysisEngine
                     {
                         // Leave-one-out residual variance is effectively zero (remaining N-1 points are collinear).
                         // If this point has a non-zero residual, it is an extreme outlier with infinite studentized residual.
-                        if (Math.Abs(ei) > (64.0 * MachineEpsilon * Math.Max(Math.Abs(yi), 1.0)))
+                        if (Math.Abs(ei) > (64.0 * MathConstants.MachineEpsilon * Math.Max(Math.Abs(yi), 1.0)))
                         {
                             ti = Math.Sign(ei) * double.PositiveInfinity;
                         }

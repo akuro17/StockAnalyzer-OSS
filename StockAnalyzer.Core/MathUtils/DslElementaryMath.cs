@@ -935,6 +935,12 @@ public static class DslElementaryMath
         }
     }
 
+    /// <summary>
+    /// Real roots of <c>a x^2 + b x + c</c> (ascending, a double root once). The quadratic is reduced to the linear equation <c>b x + c = 0</c> only when <c>a = 0</c> or
+    /// <c>|b / a| &gt; <see cref="MaxRootScale"/></c> (the second root lies beyond the root scale limit of the polynomial solvers); the decision compares ratios of the ORIGINAL
+    /// coefficients, so it does not depend on the magnitude of the coefficients (backlog D-2b: the former rule <c>|a| &lt; 1e-12 * max coefficient</c> ignored that <c>c</c> carries the
+    /// dimension of x^2 and silently dropped a root of a genuine quadratic with roots of about 1e6 and more). Behind <c>quad_root_min</c> and <c>quad_root_max</c>.
+    /// </summary>
     public static MathErrorCode SolveQuadratic(decimal a, decimal b, decimal c, Span<decimal> roots, out int rootCount)
     {
         rootCount = 0;
@@ -949,11 +955,24 @@ public static class DslElementaryMath
             return MathErrorCode.DivisionByZero;
         }
 
+        bool reducesToLinear = QuadraticReducesToLinear(a, b);
+        if (!reducesToLinear && Math.Abs(coeffs[0]) < QuadraticLeadingCoefficientFloor)
+        {
+            // The scaling that keeps the largest coefficient near 1 left too few digits of a (the coefficient ratio is huge): scale only as far as the largest coefficient needs.
+            coeffs[0] = a;
+            coeffs[1] = b;
+            coeffs[2] = c;
+            if (!TryScaleQuadraticToCeiling(coeffs))
+            {
+                return MathErrorCode.ArithmeticOverflow;
+            }
+        }
+
         a = coeffs[0];
         b = coeffs[1];
         c = coeffs[2];
         decimal threshold = DegenerateCoefficientEpsilon * maxAbs;
-        if (Math.Abs(a) < threshold)
+        if (reducesToLinear)
         {
             if (Math.Abs(b) < threshold)
             {
@@ -1025,6 +1044,55 @@ public static class DslElementaryMath
         }
     }
 
+    /// <summary>
+    /// Largest magnitude to which <see cref="SolveQuadratic"/> scales the coefficients when the standard scaling would leave fewer than <see cref="QuadraticLeadingCoefficientFloor"/> of
+    /// the leading coefficient: <c>b^2</c> and <c>4 a c</c> stay below 4e26, far inside the decimal range (7.9e28).
+    /// </summary>
+    private const decimal QuadraticScaleCeiling = 1e13m;
+
+    /// <summary>A scaled leading coefficient below this value has fewer than 8 significant digits left (28 fractional digits) and triggers the ceiling scaling.</summary>
+    private const decimal QuadraticLeadingCoefficientFloor = 1e-20m;
+
+    /// <summary>
+    /// True when a quadratic <c>a x^2 + b x + c</c> is reduced to the linear equation: <c>a = 0</c>, or <c>|a| * <see cref="MaxRootScale"/> &lt; |b|</c> (strict, so that the reduced set is a
+    /// subset of the former rule's set). Written as a product with an upper pre-cap instead of <c>1e-12 * |b|</c>, which would round to 0 for a tiny <c>b</c>.
+    /// </summary>
+    private static bool QuadraticReducesToLinear(decimal a, decimal b)
+    {
+        decimal absA = Math.Abs(a);
+        if (absA == 0m)
+        {
+            return true;
+        }
+
+        if (absA > decimal.MaxValue / MaxRootScale)
+        {
+            return false;
+        }
+
+        return absA * MaxRootScale < Math.Abs(b);
+    }
+
+    /// <summary>
+    /// Divides the three coefficients of a quadratic by one power of ten so that the largest is at most <see cref="QuadraticScaleCeiling"/> (nothing is changed when it already is).
+    /// False when the leading coefficient vanishes in the division (the coefficient ratio is beyond the 28 fractional digits of a decimal).
+    /// </summary>
+    private static bool TryScaleQuadraticToCeiling(Span<decimal> coefficients)
+    {
+        decimal largest = Math.Max(Math.Abs(coefficients[0]), Math.Max(Math.Abs(coefficients[1]), Math.Abs(coefficients[2])));
+        int shift = Math.Max(0, DecimalExponent((double)largest) - DecimalExponent((double)QuadraticScaleCeiling));
+        for (int i = 0; i < coefficients.Length; i++)
+        {
+            coefficients[i] = MultiplyByPowerOfTen(coefficients[i], -shift);
+        }
+
+        return coefficients[0] != 0m;
+    }
+
+    /// <summary>
+    /// Legacy cubic solver (FROZEN, backlog 2026-11-21): the DISTINCT real roots, ascending; a degenerate leading coefficient is reduced to <see cref="SolveQuadratic"/>. Its repeated-root decisions use
+    /// the absolute threshold 1e-15, which is not scale-free. Reached by no DSL function (only <see cref="SolveQuartic"/> and tests call it). New code MUST call <see cref="SolveCubicDsl"/>.
+    /// </summary>
     public static MathErrorCode SolveCubic(decimal a, decimal b, decimal c, decimal d, Span<decimal> roots, out int rootCount)
     {
         rootCount = 0;
@@ -1105,6 +1173,11 @@ public static class DslElementaryMath
         return MathErrorCode.None;
     }
 
+    /// <summary>
+    /// Legacy quartic solver: the DISTINCT real roots, ascending, with a degenerate leading coefficient reduced to <see cref="SolveCubic"/>. Reached by no DSL function; it is kept for its
+    /// existing callers (tests). New code MUST call <see cref="SolveQuarticDsl"/> (strict leading coefficient, roots with multiplicity, scale-free decisions, exact decimal reduction).
+    /// The +-w pairing of the two quadratic factors was corrected on 2026-11-21 (before, a quartic with q != 0 returned wrong roots).
+    /// </summary>
     public static MathErrorCode SolveQuartic(decimal a, decimal b, decimal c, decimal d, decimal e, Span<decimal> roots, out int rootCount)
     {
         rootCount = 0;
@@ -1171,58 +1244,22 @@ public static class DslElementaryMath
         }
         else
         {
-            // Unshifted Ferrari resolvent cubic for u = w^2 = 2z - p >= 0:
-            // u^3 + 2p u^2 + (p^2 - 4r) u - q^2 = 0.
-            // Solving for u directly (with asymptotic seed + Newton polishing) eliminates 2z - p cancellation.
-            double uCoeffB = 2.0 * p;
-            double uCoeffC = p * p - 4.0 * r;
-            double uCoeffD = -q * q;
-            double u = SolveResolventMaxRealRoot(uCoeffB, uCoeffC, uCoeffD);
-            if ((u <= 0.0 || (p > 0.0 && u <= 1e-6 * p)) && uCoeffC > 0.0)
-            {
-                u = (q * q) / uCoeffC;
-            }
-
-            for (int iter = 0; iter < 3 && u > 0.0; iter++)
-            {
-                double gVal = ((u + uCoeffB) * u + uCoeffC) * u + uCoeffD;
-                double gDeriv = (3.0 * u + 2.0 * uCoeffB) * u + uCoeffC;
-                if (Math.Abs(gDeriv) <= 1e-300)
-                {
-                    break;
-                }
-
-                double uNext = u - gVal / gDeriv;
-                if (!(uNext > 0.0) || !double.IsFinite(uNext))
-                {
-                    break;
-                }
-
-                double gNext = ((uNext + uCoeffB) * uNext + uCoeffC) * uNext + uCoeffD;
-                if (Math.Abs(gNext) <= Math.Abs(gVal))
-                {
-                    u = uNext;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            double w2 = u < 0.0 && u > -1e-12 ? 0.0 : u;
+            double w2 = FerrariWidthSquared(p, q, r);
             double z = 0.5 * (w2 + p);
             if (w2 >= 0.0)
             {
                 double w = Math.Sqrt(w2);
-                double halfQOverW = w > 1e-15 ? 0.5 * q / w : 0.0;
+                double halfQOverW = w > FerrariSmallWidth ? 0.5 * q / w : 0.0;
+                // (y^2 + w y + s)(y^2 - w y + t) with s = z - q/(2w), t = z + q/(2w): the factor with the discriminant w^2 - 4s has the roots (-w +- sqrt)/2,
+                // the factor with the discriminant w^2 - 4t has the roots (+w +- sqrt)/2 (the signs of w were exchanged before; see SolveQuarticDsl).
                 double d1 = w2 - 4.0 * (z - halfQOverW);
                 if (d1 >= 0.0)
                 {
                     double sd1 = Math.Sqrt(d1);
-                    raw[count++] = 0.5 * (w - sd1) - shift;
+                    raw[count++] = 0.5 * (-w - sd1) - shift;
                     if (sd1 > 0.0)
                     {
-                        raw[count++] = 0.5 * (w + sd1) - shift;
+                        raw[count++] = 0.5 * (-w + sd1) - shift;
                     }
                 }
 
@@ -1230,10 +1267,10 @@ public static class DslElementaryMath
                 if (d2 >= 0.0)
                 {
                     double sd2 = Math.Sqrt(d2);
-                    raw[count++] = 0.5 * (-w - sd2) - shift;
+                    raw[count++] = 0.5 * (w - sd2) - shift;
                     if (sd2 > 0.0)
                     {
-                        raw[count++] = 0.5 * (-w + sd2) - shift;
+                        raw[count++] = 0.5 * (w + sd2) - shift;
                     }
                 }
             }
@@ -1261,9 +1298,28 @@ public static class DslElementaryMath
     // leading coefficient and report distinct roots only. The *Dsl variants reject a degenerate leading coefficient and repeat a root
     // once per multiplicity.
 
+    /// <summary>Ferrari width (<see cref="FerrariWidthSquared"/>): when the resolvent root is not positive or negligible (<c>u &lt;= tol * p</c> for <c>p &gt; 0</c>) the asymptotic seed <c>q^2 / (p^2 - 4r)</c> replaces it.</summary>
+    private const double FerrariSeedRelativeFloor = 1e-6;
+
+    /// <summary>Ferrari width: Newton refinement of the resolvent root stops when the derivative magnitude is at most this value (a flat resolvent).</summary>
+    private const double FerrariDerivativeFloor = 1e-300;
+
+    /// <summary>Ferrari width: maximum number of accepted Newton refinement steps of the resolvent root.</summary>
+    private const int FerrariRefinementSteps = 3;
+
+    /// <summary>Ferrari width: a resolvent root <c>u</c> with <c>-tol &lt; u &lt; 0</c> is rounding noise of a zero root and is snapped to 0.</summary>
+    private const double FerrariNegligibleNegativeWidthSquared = 1e-12;
+
+    /// <summary>Ferrari factorisation: a width <c>w</c> at or below this value gives <c>q / (2w) = 0</c> (the biquadratic limit).</summary>
+    private const double FerrariSmallWidth = 1e-15;
+
     private const double RepeatedRootDiscriminantTolerance = 1e-15;
-    private const double BiquadraticAsymmetryTolerance = 1e-14;
-    private const double RepeatedResolventRootTolerance = 1e-15;
+
+    /// <summary>Biquadratic decision of <see cref="SolveQuarticDsl"/> (T4b): <c>|q| &lt; tol * sigma^3</c> with <c>sigma = max(sqrt|p|, cbrt|q|, |r|^(1/4))</c> of the depressed quartic.</summary>
+    private const double BiquadraticAsymmetryRelativeTolerance = 1e-14;
+
+    /// <summary>Repeated biquadratic root decision of <see cref="SolveQuarticDsl"/> (T4b): <c>|u2 - u1| &lt;= tol * max(|u1|, |u2|, sigma^2)</c>.</summary>
+    private const double RepeatedResolventRootRelativeTolerance = 1e-12;
 
     /// <summary>
     /// Relative tolerance of <see cref="SolveQuarticDsl"/> for a quadratic factor whose discriminant <c>D</c> is slightly negative only because of rounding:
@@ -1277,13 +1333,53 @@ public static class DslElementaryMath
     private const double QuarticFactorDiscriminantRelativeTolerance = 1e-8;
 
     /// <summary>
+    /// Per-root scale limit of the <see cref="SolveCubicDsl"/>/<see cref="SolveQuarticDsl"/> entry check (D-2, owner decision 2026-11-21):
+    /// a coefficient <c>a_(n-k)</c> carries the dimension of <c>x^k</c>, so <c>|a_(n-k) / a| &gt;= MaxRootScale^k</c> means that some root can be as large as
+    /// about <c>MaxRootScale</c> (Fujiwara bound) and the polynomial is rejected. Polynomials whose roots may reach about 1e12 (for example market capitalisations
+    /// in the base currency) must be scaled by the caller.
+    /// </summary>
+    private const decimal MaxRootScale = 1e12m;
+
+    /// <summary>
+    /// True when <c>|coefficients[k]| &gt;= maxRootScale^k * |coefficients[0]|</c> for some <c>k &gt;= 1</c> (<c>coefficients[0]</c> is the leading coefficient).
+    /// Evaluated in exact decimal arithmetic by repeated multiplication: multiplying by a power of ten only shifts the digits, so it never rounds
+    /// (repeated division would round at the 28th fractional digit), and the running threshold is checked against <c>decimal.MaxValue / maxRootScale</c> first:
+    /// once the next threshold would exceed <c>decimal.MaxValue</c> no coefficient can reach it, so no <see cref="OverflowException"/> is possible.
+    /// Note for <see cref="MaxRootScale"/> = 1e12: <c>k = 4</c> (<c>1e48</c>) cannot be reached with <see cref="decimal"/> coefficients and <c>|a| &gt; 1e-12</c>
+    /// (<c>|e / a| &lt; 7.93e40</c>); the test is kept so that the rule is the same for every degree and can be exercised with a smaller <paramref name="maxRootScale"/>.
+    /// </summary>
+    internal static bool ExceedsRootScaleLimit(ReadOnlySpan<decimal> coefficients, decimal maxRootScale = MaxRootScale)
+    {
+        decimal maxScalableThreshold = decimal.MaxValue / maxRootScale;
+        decimal threshold = Math.Abs(coefficients[0]);
+        for (int k = 1; k < coefficients.Length; k++)
+        {
+            if (threshold > maxScalableThreshold)
+            {
+                return false;
+            }
+
+            threshold *= maxRootScale;
+            if (Math.Abs(coefficients[k]) >= threshold)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Real roots of <c>a x^3 + b x^2 + c x + d = 0</c>, ascending, one entry per multiplicity (1..3 entries).
-    /// <c>|a| &lt;= 1e-12</c> (raw or relative to the largest coefficient) -> <see cref="MathErrorCode.DomainError"/>; unlike the legacy
-    /// <see cref="SolveCubic"/> this variant never degrades to a lower degree.
+    /// <c>|a| &lt;= 1e-12</c> or <c>|b/a| &gt;= 1e12</c>, <c>|c/a| &gt;= 1e24</c>, <c>|d/a| &gt;= 1e36</c> (<see cref="MaxRootScale"/>, see <see cref="ExceedsRootScaleLimit"/>)
+    /// -> <see cref="MathErrorCode.DomainError"/>; unlike the legacy <see cref="SolveCubic"/> this variant never degrades to a lower degree.
     /// </summary>
     /// <remarks>
-    /// With <c>y = x + shift</c> (<c>y^3 + p y + q = 0</c>): <c>|p| &lt; 1e-15</c> and <c>|q| &lt; 1e-15</c> give the triple root <c>[-shift, -shift, -shift]</c>
-    /// (roots closer together than about 3e-8 are therefore not resolved). Otherwise <c>y = scale * z</c> with <c>scale = max(sqrt|p|, cbrt|q|)</c> and the
+    /// Reduction (T4c): the depressed coefficients <c>p</c>, <c>q</c> of <c>y^3 + p y + q = 0</c> (<c>x = y - shift</c>) are formed in exact decimal arithmetic after an exact translation and
+    /// power-of-ten scaling of the roots (see <see cref="TryReduceCubic"/>), so roots clustered far from the origin are not lost to the cancellation of the double reduction; a coefficient
+    /// below the noise of the 28-digit decimals (<see cref="DecimalReductionNoiseFloor"/>) is zero, which makes exactly repeated roots exact. When a decimal operation overflows
+    /// (huge roots, or a leading coefficient tiny against the others) the double reduction is used and <c>|p| &lt; 1e-15</c>, <c>|q| &lt; 1e-15</c> then give the triple root
+    /// (roots closer together than about 3e-8 are not resolved on that path). Otherwise <c>y = scale * z</c> with <c>scale = max(sqrt|p|, cbrt|q|)</c> and the
     /// discriminant <c>disc = qn^2 / 4 + pn^3 / 27</c> of the scaled cubic (<c>pn = p / scale^2</c>, <c>qn = q / scale^3</c>) is compared with <c>1e-15</c>, so the
     /// repeated-root decision does not depend on the absolute spacing of the roots (D-1). <c>|disc| &lt;= 1e-15</c> is mutually exclusive:
     /// <c>|pn| &lt; 1e-15</c> gives the single real root <c>[-cbrt(q) - shift]</c>; otherwise one simple and one double root.
@@ -1296,34 +1392,35 @@ public static class DslElementaryMath
             return MathErrorCode.DimensionMismatch;
         }
 
-        if (Math.Abs(a) <= DegenerateCoefficientEpsilon)
+        if (Math.Abs(a) <= DegenerateCoefficientEpsilon || ExceedsRootScaleLimit([a, b, c, d]))
         {
             return MathErrorCode.DomainError;
         }
 
-        Span<decimal> coeffs = [a, b, c, d];
-        if (!TryScalePolynomialCoefficients(coeffs, out decimal maxAbs) ||
-            Math.Abs(coeffs[0]) <= DegenerateCoefficientEpsilon * maxAbs)
+        // Depressed cubic y^3 + p y + q = 0 with x = y - shift, formed in exact decimal arithmetic (see TryReduceCubic) and scaled to unit size; where the
+        // decimals cannot hold it, the double reduction below is used instead.
+        bool decimalReduction = TryReduceCubic(a, b, c, d, out double p, out double q, out decimal shiftDecimal, out double inverseScale);
+        double shiftDouble = 0.0;
+        if (!decimalReduction)
         {
-            return MathErrorCode.DomainError;
+            double da = (double)a;
+            double A = (double)b / da;
+            double B = (double)c / da;
+            double C = (double)d / da;
+            shiftDouble = A / 3.0;
+            p = B - A * A / 3.0;
+            q = (2.0 * A * A * A / 27.0) - (A * B / 3.0) + C;
+            inverseScale = 1.0;
         }
-
-        double da = (double)coeffs[0];
-        double A = (double)coeffs[1] / da;
-        double B = (double)coeffs[2] / da;
-        double C = (double)coeffs[3] / da;
-        double shift = A / 3.0;
-        double p = B - A * A / 3.0;
-        double q = (2.0 * A * A * A / 27.0) - (A * B / 3.0) + C;
 
         Span<double> raw = stackalloc double[3];
         int count;
         if (Math.Abs(p) < RepeatedRootDiscriminantTolerance && Math.Abs(q) < RepeatedRootDiscriminantTolerance)
         {
-            // Triple root (p and q are both rounding noise around zero).
-            raw[0] = -shift;
-            raw[1] = -shift;
-            raw[2] = -shift;
+            // Triple root (p and q are both zero or rounding noise around zero): y = 0.
+            raw[0] = 0.0;
+            raw[1] = 0.0;
+            raw[2] = 0.0;
             count = 3;
         }
         else
@@ -1338,7 +1435,7 @@ public static class DslElementaryMath
             if (disc > RepeatedRootDiscriminantTolerance)
             {
                 double s = Math.Sqrt(disc);
-                raw[0] = (scale * (Math.Cbrt(-0.5 * qn + s) + Math.Cbrt(-0.5 * qn - s))) - shift;
+                raw[0] = scale * (Math.Cbrt(-0.5 * qn + s) + Math.Cbrt(-0.5 * qn - s));
                 count = 1;
             }
             else if (Math.Abs(disc) <= RepeatedRootDiscriminantTolerance)
@@ -1346,14 +1443,14 @@ public static class DslElementaryMath
                 if (Math.Abs(pn) < RepeatedRootDiscriminantTolerance)
                 {
                     // p negligible against q: y^3 + q = 0 has one real root.
-                    raw[0] = (-scale * Math.Cbrt(qn)) - shift;
+                    raw[0] = -scale * Math.Cbrt(qn);
                     count = 1;
                 }
                 else
                 {
                     // One simple root and one double root.
-                    double simple = (scale * 3.0 * qn / pn) - shift;
-                    double repeated = (scale * -1.5 * qn / pn) - shift;
+                    double simple = scale * 3.0 * qn / pn;
+                    double repeated = scale * -1.5 * qn / pn;
                     raw[0] = simple;
                     raw[1] = repeated;
                     raw[2] = repeated;
@@ -1365,23 +1462,21 @@ public static class DslElementaryMath
                 double r = 2.0 * Math.Sqrt(-pn / 3.0);
                 double cosArg = Math.Clamp((1.5 * qn / pn) * Math.Sqrt(-3.0 / pn), -1.0, 1.0);
                 double phi = Math.Acos(cosArg) / 3.0;
-                raw[0] = (scale * r * Math.Cos(phi)) - shift;
-                raw[1] = (scale * r * Math.Cos(phi - MathConstants.TwoPi / 3.0)) - shift;
-                raw[2] = (scale * r * Math.Cos(phi - 2.0 * MathConstants.TwoPi / 3.0)) - shift;
+                raw[0] = scale * r * Math.Cos(phi);
+                raw[1] = scale * r * Math.Cos(phi - MathConstants.TwoPi / 3.0);
+                raw[2] = scale * r * Math.Cos(phi - 2.0 * MathConstants.TwoPi / 3.0);
                 count = 3;
             }
         }
 
         for (int i = 0; i < count; i++)
         {
-            raw[i] = PolishCubicRoot(raw[i], A, B, C);
-            MathResult<decimal> narrowed = NarrowDouble(raw[i]);
-            if (!narrowed.IsOk)
+            double y = PolishCubicRoot(raw[i], 0.0, p, q);
+            MathErrorCode narrowError = TryComposeRoot(y * inverseScale, decimalReduction, shiftDecimal, shiftDouble, out roots[i]);
+            if (narrowError != MathErrorCode.None)
             {
-                return narrowed.Error;
+                return narrowError;
             }
-
-            roots[i] = narrowed.Value;
         }
 
         SortSpan(roots.Slice(0, count));
@@ -1391,17 +1486,21 @@ public static class DslElementaryMath
 
     /// <summary>
     /// Real roots of <c>a x^4 + b x^3 + c x^2 + d x + e = 0</c>, ascending, with a root of a zero-discriminant quadratic factor repeated
-    /// twice (0..4 entries). <c>|a| &lt;= 1e-12</c> (raw or relative to the largest coefficient) -> <see cref="MathErrorCode.DomainError"/>;
-    /// this variant never degrades to a lower degree.
+    /// twice (0..4 entries). <c>|a| &lt;= 1e-12</c> or <c>|a_(4-k)/a| &gt;= 1e12^k</c> for <c>k = 1..4</c> (<see cref="MaxRootScale"/>, see <see cref="ExceedsRootScaleLimit"/>)
+    /// -> <see cref="MathErrorCode.DomainError"/>; this variant never degrades to a lower degree.
     /// </summary>
     /// <remarks>
     /// Multiplicity rule: the quartic is split into two real quadratic factors (Ferrari); a factor whose discriminant is zero contributes its root twice, and no
     /// numerical clustering of nearby roots is performed. The legacy <see cref="SolveQuartic"/> reports distinct real roots only, and its Ferrari path (<c>q != 0</c>)
     /// pairs the factors with the wrong <c>+-w</c> roots (backlog: <c>docs/ja/Future_Improvements.md</c>); do not call it from new code.
+    /// Scale-free decisions (T4b): with <c>sigma = max(sqrt|p|, cbrt|q|, |r|^(1/4))</c> of the depressed quartic, <c>sigma == 0</c> is the fourfold root, the biquadratic branch needs
+    /// <c>|q| &lt; 1e-14 * sigma^3</c> and a repeated biquadratic root <c>|u2 - u1| &lt;= 1e-12 * max(|u1|, |u2|, sigma^2)</c>, so the decisions do not depend on the absolute spacing of the roots.
     /// Rounding tolerance: a factor discriminant <c>D</c> with <c>-eps * max(P^2, 4|C|) &lt;= D &lt; 0</c> is treated as 0 (<see cref="QuarticFactorDiscriminantRelativeTolerance"/>,
     /// <c>eps = 1e-8</c>); a complex pair with a smaller imaginary part is therefore reported as a repeated real root.
-    /// Known limit: a root of multiplicity 4 that is not exactly representable (for example <c>(x - 0.3)^4</c>) is resolved to about 1e-4 only and may be returned as 0 or 2 roots,
-    /// because the factor coefficients are then pure rounding noise and the relative basis cannot recover them.
+    /// Reduction (T4c): <c>p</c>, <c>q</c>, <c>r</c> are formed in exact decimal arithmetic after an exact translation and scaling (<see cref="TryReduceQuartic"/>), so a root of multiplicity 4
+    /// whose value is an exact decimal (for example <c>(x - 0.3)^4</c>) is returned four times, and clustered roots far from the origin are found (translation 0..1000 with spacing 1e-3..1e-5,
+    /// measured). Known limits: (1) when a decimal operation overflows the double reduction is used, whose limits are those of double arithmetic (roots of multiplicity 4 that are not exactly
+    /// representable in binary are then resolved to about 1e-4 only); (2) the 28-digit input cannot resolve roots whose spacing is below about 1e-8 of their size.
     /// </remarks>
     public static MathErrorCode SolveQuarticDsl(decimal a, decimal b, decimal c, decimal d, decimal e, Span<decimal> roots, out int rootCount)
     {
@@ -1411,34 +1510,46 @@ public static class DslElementaryMath
             return MathErrorCode.DimensionMismatch;
         }
 
-        if (Math.Abs(a) <= DegenerateCoefficientEpsilon)
+        if (Math.Abs(a) <= DegenerateCoefficientEpsilon || ExceedsRootScaleLimit([a, b, c, d, e]))
         {
             return MathErrorCode.DomainError;
         }
 
-        Span<decimal> coeffs = [a, b, c, d, e];
-        if (!TryScalePolynomialCoefficients(coeffs, out decimal maxAbs) ||
-            Math.Abs(coeffs[0]) <= DegenerateCoefficientEpsilon * maxAbs)
+        // Depressed quartic y^4 + p y^2 + q y + r = 0 with x = y - shift, formed in exact decimal arithmetic (see TryReduceQuartic) and scaled to unit size;
+        // where the decimals cannot hold it, the double reduction below is used instead.
+        bool decimalReduction = TryReduceQuartic(a, b, c, d, e, out double p, out double q, out double r, out decimal shiftDecimal, out double inverseScale);
+        double shiftDouble = 0.0;
+        if (!decimalReduction)
         {
-            return MathErrorCode.DomainError;
+            double da = (double)a;
+            double B = (double)b / da;
+            double C = (double)c / da;
+            double D = (double)d / da;
+            double E = (double)e / da;
+            shiftDouble = B * 0.25;
+            double b2 = B * B;
+            p = C - 0.375 * b2;
+            q = 0.125 * b2 * B - 0.5 * B * C + D;
+            r = (-3.0 / 256.0) * b2 * b2 + 0.0625 * b2 * C - 0.25 * B * D + E;
+            inverseScale = 1.0;
         }
-
-        double da = (double)coeffs[0];
-        double B = (double)coeffs[1] / da;
-        double C = (double)coeffs[2] / da;
-        double D = (double)coeffs[3] / da;
-        double E = (double)coeffs[4] / da;
-
-        double shift = B * 0.25;
-        double b2 = B * B;
-        double p = C - 0.375 * b2;
-        double q = 0.125 * b2 * B - 0.5 * B * C + D;
-        double r = (-3.0 / 256.0) * b2 * b2 + 0.0625 * b2 * C - 0.25 * B * D + E;
 
         Span<double> raw = stackalloc double[4];
         int count = 0;
 
-        if (Math.Abs(q) < BiquadraticAsymmetryTolerance)
+        // Scale of the depressed quartic y^4 + p y^2 + q y + r: every decision below is relative to sigma (T4b), so it does not depend on the
+        // absolute spacing of the roots. Thresholds are multiplied out instead of divided by sigma (sigma == 0 is handled first).
+        double sigma = Math.Max(Math.Max(Math.Sqrt(Math.Abs(p)), Math.Cbrt(Math.Abs(q))), Math.Sqrt(Math.Sqrt(Math.Abs(r))));
+
+        if (sigma == 0.0)
+        {
+            // p = q = r = 0 exactly: the fourfold root y = 0.
+            for (int i = 0; i < 4; i++)
+            {
+                raw[count++] = 0.0;
+            }
+        }
+        else if (Math.Abs(q) < BiquadraticAsymmetryRelativeTolerance * sigma * sigma * sigma)
         {
             // Biquadratic y^4 + p y^2 + r = 0 with y = x + shift; u = y^2 solves u^2 + p u + r = 0.
             double disc = SnapNegligibleDiscriminant(p * p - 4.0 * r, p * p, r);
@@ -1447,78 +1558,40 @@ public static class DslElementaryMath
                 double sd = Math.Sqrt(disc);
                 double u1 = 0.5 * (-p - sd);
                 double u2 = 0.5 * (-p + sd);
-                bool repeatedU = Math.Abs(u2 - u1) <= RepeatedResolventRootTolerance;
+                bool repeatedU = Math.Abs(u2 - u1) <= RepeatedResolventRootRelativeTolerance * Math.Max(Math.Max(Math.Abs(u1), Math.Abs(u2)), sigma * sigma);
                 int multiplicity = repeatedU ? 2 : 1;
-                count = AppendBiquadraticRoots(raw, count, u1, shift, multiplicity);
+                count = AppendBiquadraticRoots(raw, count, u1, 0.0, multiplicity);
                 if (!repeatedU)
                 {
-                    count = AppendBiquadraticRoots(raw, count, u2, shift, 1);
+                    count = AppendBiquadraticRoots(raw, count, u2, 0.0, 1);
                 }
             }
         }
         else
         {
-            // Ferrari resolvent in u = w^2 = 2z - p (see SolveQuartic): u^3 + 2p u^2 + (p^2 - 4r) u - q^2 = 0.
-            double uCoeffB = 2.0 * p;
-            double uCoeffC = p * p - 4.0 * r;
-            double uCoeffD = -q * q;
-            double u = SolveResolventMaxRealRoot(uCoeffB, uCoeffC, uCoeffD);
-            if ((u <= 0.0 || (p > 0.0 && u <= 1e-6 * p)) && uCoeffC > 0.0)
-            {
-                u = (q * q) / uCoeffC;
-            }
-
-            for (int iter = 0; iter < 3 && u > 0.0; iter++)
-            {
-                double gVal = ((u + uCoeffB) * u + uCoeffC) * u + uCoeffD;
-                double gDeriv = (3.0 * u + 2.0 * uCoeffB) * u + uCoeffC;
-                if (Math.Abs(gDeriv) <= 1e-300)
-                {
-                    break;
-                }
-
-                double uNext = u - gVal / gDeriv;
-                if (!(uNext > 0.0) || !double.IsFinite(uNext))
-                {
-                    break;
-                }
-
-                double gNext = ((uNext + uCoeffB) * uNext + uCoeffC) * uNext + uCoeffD;
-                if (Math.Abs(gNext) <= Math.Abs(gVal))
-                {
-                    u = uNext;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            double w2 = u < 0.0 && u > -1e-12 ? 0.0 : u;
+            double w2 = FerrariWidthSquared(p, q, r);
             double z = 0.5 * (w2 + p);
             if (w2 >= 0.0)
             {
                 double w = Math.Sqrt(w2);
-                double halfQOverW = w > 1e-15 ? 0.5 * q / w : 0.0;
+                double halfQOverW = w > FerrariSmallWidth ? 0.5 * q / w : 0.0;
                 // (y^2 + w y + s)(y^2 - w y + t) with s = z - q/(2w), t = z + q/(2w):
                 // factor A (discriminant w^2 - 4s) has the roots (-w +- sqrt)/2, factor B (discriminant w^2 - 4t) has the roots (+w +- sqrt)/2.
                 double sA = z - halfQOverW;
                 double tB = z + halfQOverW;
-                count = AppendQuadraticFactorRoots(raw, count, w, SnapNegligibleDiscriminant(w2 - 4.0 * sA, w2, sA), shift, sign: -1.0);
-                count = AppendQuadraticFactorRoots(raw, count, w, SnapNegligibleDiscriminant(w2 - 4.0 * tB, w2, tB), shift, sign: 1.0);
+                count = AppendQuadraticFactorRoots(raw, count, w, SnapNegligibleDiscriminant(w2 - 4.0 * sA, w2, sA), 0.0, sign: -1.0);
+                count = AppendQuadraticFactorRoots(raw, count, w, SnapNegligibleDiscriminant(w2 - 4.0 * tB, w2, tB), 0.0, sign: 1.0);
             }
         }
 
         for (int i = 0; i < count; i++)
         {
-            raw[i] = PolishQuarticRoot(raw[i], B, C, D, E);
-            MathResult<decimal> narrowed = NarrowDouble(raw[i]);
-            if (!narrowed.IsOk)
+            double y = PolishQuarticRoot(raw[i], 0.0, p, q, r);
+            MathErrorCode narrowError = TryComposeRoot(y * inverseScale, decimalReduction, shiftDecimal, shiftDouble, out roots[i]);
+            if (narrowError != MathErrorCode.None)
             {
-                return narrowed.Error;
+                return narrowError;
             }
-
-            roots[i] = narrowed.Value;
         }
 
         SortSpan(roots.Slice(0, count));
@@ -1643,6 +1716,263 @@ public static class DslElementaryMath
         return true;
     }
 
+    // ---- Exact decimal reduction of the cubic / quartic solvers (T4c) ----
+    // The roots are found as x = y - shift where y solves the depressed polynomial. In double arithmetic the depressed coefficients are differences of numbers of the size
+    // of the translation (m^3, m^4), so roots clustered far from the origin are lost to cancellation (spacing 1e-5 at m = 1000 needs about 24 digits, a double has 16).
+    // The coefficients of the inputs are decimals, so the translation is done exactly: the polynomial is shifted by a decimal with 4 significant digits (an exact Taylor shift,
+    // up to three passes so that the remaining offset is far below the spacing of the roots), then the depressed coefficients are formed after an exact power-of-ten scaling
+    // (a decimal has 28 fractional digits, not 28 significant ones) and finally rescaled to unit size for the double stage. Where a decimal operation overflows,
+    // the callers fall back to the double reduction.
+
+    /// <summary>Number of exact Taylor-shift passes that move the centre of the roots to the origin.</summary>
+    private const int TranslationPasses = 3;
+
+    /// <summary>Significant digits of one translation step: few enough that the products of the Taylor shift stay exact in a decimal.</summary>
+    private const int TranslationCenterDigits = 4;
+
+    /// <summary>
+    /// A depressed coefficient below this fraction of the largest scale (<c>scale^k</c>, in decimals scaled to unit size) is rounding noise of the 28-digit decimal arithmetic
+    /// (about 1e-28 per term, a few terms of up to 1e4 each) and is set to zero, which makes exactly repeated roots exact. The expected noise is below 1e-26, hence 1e-25.
+    /// </summary>
+    private const double DecimalReductionNoiseFloor = 1e-25;
+
+    private const int MaxDecimalPowerOfTen = 28;
+
+    private static readonly decimal[] DecimalPowersOfTen = BuildDecimalPowersOfTen();
+
+    private static decimal[] BuildDecimalPowersOfTen()
+    {
+        var table = new decimal[MaxDecimalPowerOfTen + 1];
+        table[0] = 1m;
+        for (int i = 1; i < table.Length; i++)
+        {
+            table[i] = table[i - 1] * 10m;
+        }
+
+        return table;
+    }
+
+    /// <summary><c>value * 10^k</c> (<paramref name="k"/> may be negative; exact while the digits fit).</summary>
+    private static decimal MultiplyByPowerOfTen(decimal value, int k)
+    {
+        while (k != 0 && value != 0m)
+        {
+            int n = Math.Min(Math.Abs(k), MaxDecimalPowerOfTen);
+            value = k > 0 ? value * DecimalPowersOfTen[n] : value / DecimalPowersOfTen[n];
+            k += k > 0 ? -n : n;
+        }
+
+        return value;
+    }
+
+    private static int DecimalExponent(double magnitude) => (int)Math.Floor(Math.Log10(magnitude));
+
+    /// <summary>Rounds to <see cref="TranslationCenterDigits"/> significant digits; zero when the value is below the resolution of a decimal.</summary>
+    private static decimal RoundToTranslationDigits(decimal value)
+    {
+        if (value == 0m)
+        {
+            return 0m;
+        }
+
+        int fractionDigits = TranslationCenterDigits - 1 - DecimalExponent((double)Math.Abs(value));
+        if (fractionDigits > MaxDecimalPowerOfTen)
+        {
+            return 0m;
+        }
+
+        decimal scaled = MultiplyByPowerOfTen(value, fractionDigits);
+        return MultiplyByPowerOfTen(Math.Round(scaled, 0, MidpointRounding.AwayFromZero), -fractionDigits);
+    }
+
+    /// <summary>Exact Taylor shift: the coefficients (highest degree first) of <c>P(m + t)</c> replace those of <c>P(x)</c>.</summary>
+    private static void TaylorShift(Span<decimal> coefficients, decimal m)
+    {
+        int n = coefficients.Length - 1;
+        for (int i = 0; i < n; i++)
+        {
+            for (int j = 1; j <= n - i; j++)
+            {
+                coefficients[j] += m * coefficients[j - 1];
+            }
+        }
+    }
+
+    /// <summary>
+    /// Brings the roots to unit size and their centre <c>-c1 / (n c0)</c> to the origin: an exact power-of-ten scaling <c>u = x * 10^scaleK</c> (a decimal has 28 fractional digits,
+    /// so tiny numbers must be scaled up first) and up to <see cref="TranslationPasses"/> exact Taylor shifts, each followed by a new scaling because the shifted roots are smaller.
+    /// <paramref name="coefficients"/> end up in the scaled variable; <c>x = total + u * 10^-scaleK</c>.
+    /// </summary>
+    private static void RecentreRoots(Span<decimal> coefficients, out decimal total, out int scaleK)
+    {
+        int n = coefficients.Length - 1;
+        total = 0m;
+        scaleK = RescaleToUnitSize(coefficients);
+        for (int pass = 0; pass < TranslationPasses; pass++)
+        {
+            decimal m = RoundToTranslationDigits(-coefficients[1] / (n * coefficients[0]));
+            if (m == 0m)
+            {
+                break;
+            }
+
+            TaylorShift(coefficients, m);
+            total += MultiplyByPowerOfTen(m, -scaleK);
+            scaleK += RescaleToUnitSize(coefficients);
+        }
+    }
+
+    /// <summary>Multiplies the coefficient of <c>u^(n-j)</c> by <c>10^(k j)</c> so that the largest <c>|c_j / c_0|^(1/j)</c> is between 1 and 10; returns <c>k</c> (0 when all ratios are zero).</summary>
+    private static int RescaleToUnitSize(Span<decimal> coefficients)
+    {
+        double basis = 0.0;
+        for (int j = 1; j < coefficients.Length; j++)
+        {
+            basis = Math.Max(basis, Math.Pow(Math.Abs((double)(coefficients[j] / coefficients[0])), 1.0 / j));
+        }
+
+        if (!(basis > 0.0) || double.IsInfinity(basis))
+        {
+            return 0;
+        }
+
+        int k = -DecimalExponent(basis);
+        if (k == 0)
+        {
+            return 0;
+        }
+
+        for (int j = 1; j < coefficients.Length; j++)
+        {
+            coefficients[j] = ScaleDegree(coefficients[j], k, j);
+        }
+
+        return k;
+    }
+
+    /// <summary>Multiplies by <c>10^k</c> <paramref name="degree"/> times, one factor at a time, so that no intermediate exceeds the range of a decimal.</summary>
+    private static decimal ScaleDegree(decimal value, int k, int degree)
+    {
+        for (int i = 0; i < degree; i++)
+        {
+            value = MultiplyByPowerOfTen(value, k);
+        }
+
+        return value;
+    }
+
+    private static decimal SnapToZero(decimal value, double largestScale, int degree)
+        => (double)Math.Abs(value) <= DecimalReductionNoiseFloor * Math.Pow(largestScale, degree) ? 0m : value;
+
+    /// <summary>
+    /// Exact decimal reduction of <c>a x^3 + b x^2 + c x + d</c>: <c>y^3 + p y + q</c> in the unit scale <c>v = y / inverseScale</c> and <c>x = y - shift</c>.
+    /// False when a decimal operation overflows (the caller uses the double reduction).
+    /// </summary>
+    private static bool TryReduceCubic(decimal a, decimal b, decimal c, decimal d, out double p, out double q, out decimal shift, out double inverseScale)
+    {
+        p = 0.0;
+        q = 0.0;
+        shift = 0m;
+        inverseScale = 1.0;
+        try
+        {
+            Span<decimal> co = [a, b, c, d];
+            RecentreRoots(co, out decimal total, out int scaleK);
+            decimal A = co[1] / co[0];
+            decimal B = co[2] / co[0];
+            decimal C = co[3] / co[0];
+            shift = MultiplyByPowerOfTen(A / 3m, -scaleK) - total;
+
+            double scale = Math.Max(Math.Max(Math.Abs((double)A), Math.Sqrt(Math.Abs((double)B))), Math.Cbrt(Math.Abs((double)C)));
+            decimal pScaled = SnapToZero(B - (A * A / 3m), scale, 2);
+            decimal qScaled = SnapToZero((2m * A * A * A / 27m) - (A * B / 3m) + C, scale, 3);
+            double sigma = Math.Max(Math.Sqrt(Math.Abs((double)pScaled)), Math.Cbrt(Math.Abs((double)qScaled)));
+            if (sigma == 0.0)
+            {
+                return true;
+            }
+
+            int k2 = -DecimalExponent(sigma);
+            p = (double)ScaleDegree(pScaled, k2, 2);
+            q = (double)ScaleDegree(qScaled, k2, 3);
+            inverseScale = Math.Pow(10.0, -(scaleK + k2));
+            return true;
+        }
+        catch (OverflowException)
+        {
+            p = 0.0;
+            q = 0.0;
+            shift = 0m;
+            inverseScale = 1.0;
+            return false;
+        }
+    }
+
+    /// <summary>Exact decimal reduction of <c>a x^4 + b x^3 + c x^2 + d x + e</c>, see <see cref="TryReduceCubic"/>.</summary>
+    private static bool TryReduceQuartic(decimal a, decimal b, decimal c, decimal d, decimal e, out double p, out double q, out double r, out decimal shift, out double inverseScale)
+    {
+        p = 0.0;
+        q = 0.0;
+        r = 0.0;
+        shift = 0m;
+        inverseScale = 1.0;
+        try
+        {
+            Span<decimal> co = [a, b, c, d, e];
+            RecentreRoots(co, out decimal total, out int scaleK);
+            decimal B = co[1] / co[0];
+            decimal C = co[2] / co[0];
+            decimal D = co[3] / co[0];
+            decimal E = co[4] / co[0];
+            shift = MultiplyByPowerOfTen(B / 4m, -scaleK) - total;
+
+            double scale = Math.Max(
+                Math.Max(Math.Abs((double)B), Math.Sqrt(Math.Abs((double)C))),
+                Math.Max(Math.Cbrt(Math.Abs((double)D)), Math.Sqrt(Math.Sqrt(Math.Abs((double)E)))));
+            decimal b2 = B * B;
+            decimal pScaled = SnapToZero(C - (0.375m * b2), scale, 2);
+            decimal qScaled = SnapToZero((0.125m * b2 * B) - (0.5m * B * C) + D, scale, 3);
+            decimal rScaled = SnapToZero((-0.01171875m * b2 * b2) + (0.0625m * b2 * C) - (0.25m * B * D) + E, scale, 4);
+            double sigma = Math.Max(
+                Math.Max(Math.Sqrt(Math.Abs((double)pScaled)), Math.Cbrt(Math.Abs((double)qScaled))),
+                Math.Sqrt(Math.Sqrt(Math.Abs((double)rScaled))));
+            if (sigma == 0.0)
+            {
+                return true;
+            }
+
+            int k2 = -DecimalExponent(sigma);
+            p = (double)ScaleDegree(pScaled, k2, 2);
+            q = (double)ScaleDegree(qScaled, k2, 3);
+            r = (double)ScaleDegree(rScaled, k2, 4);
+            inverseScale = Math.Pow(10.0, -(scaleK + k2));
+            return true;
+        }
+        catch (OverflowException)
+        {
+            p = 0.0;
+            q = 0.0;
+            r = 0.0;
+            shift = 0m;
+            inverseScale = 1.0;
+            return false;
+        }
+    }
+
+    /// <summary>The root <c>x = y - shift</c> as a decimal: exact decimal subtraction after the reduction, a double subtraction in the fallback.</summary>
+    private static MathErrorCode TryComposeRoot(double y, bool decimalReduction, decimal shiftDecimal, double shiftDouble, out decimal root)
+    {
+        root = 0m;
+        MathResult<decimal> narrowed = NarrowDouble(decimalReduction ? y : y - shiftDouble);
+        if (!narrowed.IsOk)
+        {
+            return narrowed.Error;
+        }
+
+        root = decimalReduction ? NormalizeZero(narrowed.Value - shiftDecimal) : narrowed.Value;
+        return MathErrorCode.None;
+    }
+
     private static double PolishCubicRoot(double x, double a, double b, double c)
     {
         for (int iter = 0; iter < 2; iter++)
@@ -1703,6 +2033,51 @@ public static class DslElementaryMath
         }
 
         return x;
+    }
+
+    /// <summary>
+    /// Ferrari width of a depressed quartic <c>y^4 + p y^2 + q y + r</c> (<c>q != 0</c>): the largest real root <c>u = w^2 = 2z - p</c> of the unshifted resolvent cubic
+    /// <c>u^3 + 2p u^2 + (p^2 - 4r) u - q^2 = 0</c>. Solving for u directly (with an asymptotic seed and Newton refinement) eliminates the <c>2z - p</c> cancellation.
+    /// Shared by <see cref="SolveQuartic"/> and <see cref="SolveQuarticDsl"/>; a negligible negative root is snapped to 0.
+    /// </summary>
+    private static double FerrariWidthSquared(double p, double q, double r)
+    {
+        double uCoeffB = 2.0 * p;
+        double uCoeffC = p * p - 4.0 * r;
+        double uCoeffD = -q * q;
+        double u = SolveResolventMaxRealRoot(uCoeffB, uCoeffC, uCoeffD);
+        if ((u <= 0.0 || (p > 0.0 && u <= FerrariSeedRelativeFloor * p)) && uCoeffC > 0.0)
+        {
+            u = (q * q) / uCoeffC;
+        }
+
+        for (int iter = 0; iter < FerrariRefinementSteps && u > 0.0; iter++)
+        {
+            double gVal = ((u + uCoeffB) * u + uCoeffC) * u + uCoeffD;
+            double gDeriv = (3.0 * u + 2.0 * uCoeffB) * u + uCoeffC;
+            if (Math.Abs(gDeriv) <= FerrariDerivativeFloor)
+            {
+                break;
+            }
+
+            double uNext = u - gVal / gDeriv;
+            if (!(uNext > 0.0) || !double.IsFinite(uNext))
+            {
+                break;
+            }
+
+            double gNext = ((uNext + uCoeffB) * uNext + uCoeffC) * uNext + uCoeffD;
+            if (Math.Abs(gNext) <= Math.Abs(gVal))
+            {
+                u = uNext;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return u < 0.0 && u > -FerrariNegligibleNegativeWidthSquared ? 0.0 : u;
     }
 
     private static double SolveResolventMaxRealRoot(double A, double B, double C)

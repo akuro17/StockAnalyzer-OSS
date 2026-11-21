@@ -7,15 +7,11 @@ namespace StockAnalyzer.Core.MathUtils;
 /// one- and two-sample t-tests, Jarque-Bera, Ljung-Box, two-sample Kolmogorov-Smirnov). Inputs are DSL 1D arrays (<c>&lt;= 512</c> elements) already
 /// converted to <see cref="double"/>; working buffers are stack-allocated. Existing kernels (<see cref="NormalityAndTailMath"/>, <see cref="SerialDependenceMath"/>,
 /// <see cref="DslSpecialFunctionsMath"/>) are reused unchanged.
+/// A "flat" series (one whose deviation is undefined) is decided by one shared rule for every function: <see cref="FlatWindowRule.Series"/> of <see cref="WindowMoments"/>
+/// (population deviation below <c>max(1e-10, 1e-12 * |mean|)</c>) -> <see cref="MathErrorCode.DivisionByZero"/>.
 /// </summary>
 public static class DslBivariateAndTestMath
 {
-    /// <summary>A variance not above this value is treated as zero (<see cref="MathErrorCode.DivisionByZero"/>).</summary>
-    public const double VarianceFloor = 1e-12;
-
-    /// <summary>Welch's standard-error variance <c>s_x^2/n_x + s_y^2/n_y</c> not above this value is treated as zero.</summary>
-    public const double WelchVarianceFloor = 1e-24;
-
     /// <summary>Number of terms of the asymptotic Kolmogorov series.</summary>
     public const int KsSeriesTerms = 100;
 
@@ -51,8 +47,7 @@ public static class DslBivariateAndTestMath
     }
 
     /// <summary>
-    /// Pearson correlation clamped to <c>[-1, 1]</c>. <c>n &lt; 2</c> is a domain error; a population variance <c>S / n</c> of either series not above
-    /// <see cref="VarianceFloor"/> is a division by zero (this also covers the sample variance, which is never smaller).
+    /// Pearson correlation clamped to <c>[-1, 1]</c>. <c>n &lt; 2</c> is a domain error; either series being flat (shared rule, see the class remarks) is a division by zero.
     /// </summary>
     public static MathResult<double> CorrPearson(scoped ReadOnlySpan<double> x, scoped ReadOnlySpan<double> y)
     {
@@ -67,26 +62,19 @@ public static class DslBivariateAndTestMath
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
 
-        double meanX = Mean(x);
-        double meanY = Mean(y);
-        double sxx = 0.0;
-        double syy = 0.0;
+        MathErrorCode flat = TryComputeSeriesMoments(x, y, out WindowMoments momentsX, out WindowMoments momentsY);
+        if (flat != MathErrorCode.None)
+        {
+            return MathResult<double>.Fail(flat);
+        }
+
         double sxy = 0.0;
         for (int i = 0; i < n; i++)
         {
-            double dx = x[i] - meanX;
-            double dy = y[i] - meanY;
-            sxx += dx * dx;
-            syy += dy * dy;
-            sxy += dx * dy;
+            sxy += (x[i] - momentsX.Mean) * (y[i] - momentsY.Mean);
         }
 
-        if (sxx / n <= VarianceFloor || syy / n <= VarianceFloor)
-        {
-            return MathResult<double>.Fail(MathErrorCode.DivisionByZero);
-        }
-
-        return Finite(Math.Clamp(sxy / Math.Sqrt(sxx * syy), -1.0, 1.0));
+        return Finite(Math.Clamp(sxy / Math.Sqrt(momentsX.M2 * momentsY.M2), -1.0, 1.0));
     }
 
     /// <summary>Spearman correlation: Pearson correlation of the 1-based ascending average ranks.</summary>
@@ -113,7 +101,7 @@ public static class DslBivariateAndTestMath
 
     /// <summary>
     /// Kendall's tau-b <c>(n_c - n_d) / sqrt((n_0 - n_1)(n_0 - n_2))</c>. Counting all pairs <c>i &lt; j</c> with equal values yields <c>sum t (t - 1) / 2</c> directly,
-    /// so no tie grouping pass is needed. Consumes <c>max(1, n (n - 1) / 32)</c> budget units; <c>n_0 == n_1</c> or <c>n_0 == n_2</c> is a division by zero.
+    /// so no tie grouping pass is needed. Consumes <c>max(1, n (n - 1) / DslExecutionBudget.CheapOperationsPerUnit)</c> budget units; <c>n_0 == n_1</c> or <c>n_0 == n_2</c> is a division by zero.
     /// </summary>
     public static MathResult<double> CorrKendall(scoped ReadOnlySpan<double> x, scoped ReadOnlySpan<double> y, ref DslExecutionBudget budget)
     {
@@ -129,7 +117,7 @@ public static class DslBivariateAndTestMath
         }
 
         long pairs = (long)n * (n - 1) / 2;
-        if (!budget.TryConsume((int)Math.Max(1L, (long)n * (n - 1) / 32)))
+        if (!budget.TryConsume((int)Math.Max(1L, (long)n * (n - 1) / DslExecutionBudget.CheapOperationsPerUnit)))
         {
             return MathResult<double>.Fail(MathErrorCode.BudgetExceeded);
         }
@@ -196,21 +184,14 @@ public static class DslBivariateAndTestMath
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
 
-        double meanX = Mean(x);
-        double meanY = Mean(y);
-        double sxx = 0.0;
-        double syy = 0.0;
-        for (int i = 0; i < n; i++)
+        MathErrorCode flat = TryComputeSeriesMoments(x, y, out WindowMoments momentsX, out WindowMoments momentsY);
+        if (flat != MathErrorCode.None)
         {
-            sxx += (x[i] - meanX) * (x[i] - meanX);
-            syy += (y[i] - meanY) * (y[i] - meanY);
+            return MathResult<double>.Fail(flat);
         }
 
-        if (sxx / n <= VarianceFloor || syy / n <= VarianceFloor)
-        {
-            return MathResult<double>.Fail(MathErrorCode.DivisionByZero);
-        }
-
+        double meanX = momentsX.Mean;
+        double meanY = momentsY.Mean;
         int shift = Math.Abs(lag);
         double cross = 0.0;
         for (int t = 0; t < n - shift; t++)
@@ -220,7 +201,7 @@ public static class DslBivariateAndTestMath
                 : (x[t + shift] - meanX) * (y[t] - meanY);
         }
 
-        return Finite(Math.Clamp(cross / Math.Sqrt(sxx * syy), -1.0, 1.0));
+        return Finite(Math.Clamp(cross / Math.Sqrt(momentsX.M2 * momentsY.M2), -1.0, 1.0));
     }
 
     // ---- Student t-tests ----
@@ -239,21 +220,18 @@ public static class DslBivariateAndTestMath
             return MathErrorCode.DomainError;
         }
 
-        double mean = Mean(x);
-        double sum = 0.0;
-        for (int i = 0; i < n; i++)
+        if (!WindowMoments.TryCompute(x, FlatWindowRule.Series, out WindowMoments moments))
         {
-            sum += (x[i] - mean) * (x[i] - mean);
+            return MathErrorCode.NonFiniteResult;
         }
 
-        double s = Math.Sqrt(sum / (n - 1));
-        if (s <= VarianceFloor)
+        if (moments.IsFlat)
         {
             return MathErrorCode.DivisionByZero;
         }
 
         double df = n - 1;
-        double t = (mean - mu0) / (s / Math.Sqrt(n));
+        double t = (moments.Mean - mu0) / (moments.SampleStandardDeviation / Math.Sqrt(n));
         return StoreTTest(t, df, result);
     }
 
@@ -272,29 +250,23 @@ public static class DslBivariateAndTestMath
             return MathErrorCode.DomainError;
         }
 
-        double meanX = Mean(x);
-        double meanY = Mean(y);
-        double sx = 0.0;
-        double sy = 0.0;
-        for (int i = 0; i < nx; i++)
+        if (!WindowMoments.TryCompute(x, FlatWindowRule.Series, out WindowMoments momentsX) ||
+            !WindowMoments.TryCompute(y, FlatWindowRule.Series, out WindowMoments momentsY))
         {
-            sx += (x[i] - meanX) * (x[i] - meanX);
+            return MathErrorCode.NonFiniteResult;
         }
 
-        for (int i = 0; i < ny; i++)
-        {
-            sy += (y[i] - meanY) * (y[i] - meanY);
-        }
-
-        double vx = sx / (nx - 1) / nx;
-        double vy = sy / (ny - 1) / ny;
-        double sum = vx + vy;
-        if (sum <= WelchVarianceFloor)
+        // Only two flat samples are a division by zero. A flat side contributes exactly 0.0 (never its rounding noise): the standard error is then the
+        // other side's, and the Welch-Satterthwaite df collapses to that side's n - 1.
+        if (momentsX.IsFlat && momentsY.IsFlat)
         {
             return MathErrorCode.DivisionByZero;
         }
 
-        double t = (meanX - meanY) / Math.Sqrt(sum);
+        double vx = momentsX.IsFlat ? 0.0 : momentsX.M2 / (nx - 1) / nx;
+        double vy = momentsY.IsFlat ? 0.0 : momentsY.M2 / (ny - 1) / ny;
+        double sum = vx + vy;
+        double t = (momentsX.Mean - momentsY.Mean) / Math.Sqrt(sum);
         double df = sum * sum / ((vx * vx / (nx - 1)) + (vy * vy / (ny - 1)));
         return StoreTTest(t, df, result);
     }
@@ -335,7 +307,7 @@ public static class DslBivariateAndTestMath
             return MathErrorCode.NonFiniteResult;
         }
 
-        if (moments.IsFlat || moments.PopulationVariance <= VarianceFloor)
+        if (moments.IsFlat)
         {
             return MathErrorCode.DivisionByZero;
         }
@@ -346,8 +318,9 @@ public static class DslBivariateAndTestMath
     }
 
     /// <summary>
-    /// Ljung-Box test. <c>n &lt; 2</c>, <c>lags &lt; 1</c> or <c>lags &gt;= n</c> is a domain error and a population variance not above
-    /// <see cref="VarianceFloor"/> a division by zero; the statistic comes from <see cref="SerialDependenceMath.TryLjungBox"/>.
+    /// Ljung-Box test. <c>n &lt; 2</c>, <c>lags &lt; 1</c> or <c>lags &gt;= n</c> is a domain error; a flat series (shared rule) is a division by zero. The delegated kernel
+    /// <see cref="SerialDependenceMath.TryLjungBox"/> (unchanged) additionally rejects a population variance not above <see cref="ReturnStatistics.VarianceEpsilon"/>; that
+    /// effective floor is checked here, by reference to the constant, so it is a division by zero too and not an unexplained non-finite result.
     /// </summary>
     public static MathErrorCode LjungBox(scoped ReadOnlySpan<double> x, int lags, out double statistic, out double pValue)
     {
@@ -359,14 +332,12 @@ public static class DslBivariateAndTestMath
             return MathErrorCode.DomainError;
         }
 
-        double mean = Mean(x);
-        double gamma0 = 0.0;
-        for (int i = 0; i < n; i++)
+        if (!WindowMoments.TryCompute(x, FlatWindowRule.Series, out WindowMoments moments))
         {
-            gamma0 += (x[i] - mean) * (x[i] - mean);
+            return MathErrorCode.NonFiniteResult;
         }
 
-        if (gamma0 / n <= VarianceFloor)
+        if (moments.IsFlat || !(moments.PopulationVariance > ReturnStatistics.VarianceEpsilon))
         {
             return MathErrorCode.DivisionByZero;
         }
@@ -448,6 +419,22 @@ public static class DslBivariateAndTestMath
 
     // ---- Shared helpers ----
 
+    /// <summary>
+    /// The moments of two equally long series under the shared flat rule: <see cref="MathErrorCode.NonFiniteResult"/> when either cannot be computed,
+    /// <see cref="MathErrorCode.DivisionByZero"/> when either one is flat (a two-series statistic divides by both deviations), otherwise <see cref="MathErrorCode.None"/>.
+    /// </summary>
+    private static MathErrorCode TryComputeSeriesMoments(scoped ReadOnlySpan<double> x, scoped ReadOnlySpan<double> y, out WindowMoments momentsX, out WindowMoments momentsY)
+    {
+        momentsY = default;
+        if (!WindowMoments.TryCompute(x, FlatWindowRule.Series, out momentsX) ||
+            !WindowMoments.TryCompute(y, FlatWindowRule.Series, out momentsY))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        return momentsX.IsFlat || momentsY.IsFlat ? MathErrorCode.DivisionByZero : MathErrorCode.None;
+    }
+
     /// <summary>1-based ascending average ranks (ties share the mean of the ranks they span). <paramref name="indexScratch"/> needs <c>values.Length</c> entries.</summary>
     internal static void ComputeAverageRanks(scoped ReadOnlySpan<double> values, scoped Span<double> ranks, scoped Span<int> indexScratch)
     {
@@ -457,19 +444,10 @@ public static class DslBivariateAndTestMath
             indexScratch[i] = i;
         }
 
-        for (int i = 1; i < n; i++)
-        {
-            int key = indexScratch[i];
-            double keyValue = values[key];
-            int j = i - 1;
-            while (j >= 0 && values[indexScratch[j]] > keyValue)
-            {
-                indexScratch[j + 1] = indexScratch[j];
-                j--;
-            }
-
-            indexScratch[j + 1] = key;
-        }
+        // O(n log n), allocation free. The ranks buffer holds the keys while sorting (it is overwritten below); the order of equal values is irrelevant
+        // because a group of ties receives one shared (mean) rank.
+        values.CopyTo(ranks);
+        ranks.Slice(0, n).Sort(indexScratch.Slice(0, n));
 
         int start = 0;
         while (start < n)

@@ -273,6 +273,24 @@ public struct DeterministicRng
 }
 
 /// <summary>
+/// The tolerance contract of every DSL function that takes a <c>tol</c> argument (root finding, quadrature, <c>ode_rk45</c> and the minimizers):
+/// <c>tol</c> must lie in <c>[MinTol, MaxTol]</c> (inclusive), otherwise <see cref="MathErrorCode.DomainError"/>. <see cref="DefaultTol"/> is the value used by
+/// <c>ode_rk45</c> and the minimizers when the argument is omitted (the root finders and quadrature rules use the separate default <c>1e-10</c>, <c>CalculatorHigherOrderFunctions.DefaultTolerance</c>, which is a different default of the same argument by specification).
+/// A tolerance is a target, not a guarantee (see <c>docs/MCP/tools/sa_evaluate_expressions.md</c>).
+/// </summary>
+public static class DslTolerance
+{
+    /// <summary>Smallest accepted tolerance.</summary>
+    public const double MinTol = 1e-12;
+
+    /// <summary>Largest accepted tolerance.</summary>
+    public const double MaxTol = 1e-2;
+
+    /// <summary>Tolerance of <c>ode_rk45</c> and of the minimizers when the caller omits it.</summary>
+    public const double DefaultTol = 1e-8;
+}
+
+/// <summary>
 /// Shared strict conversion helpers for <see cref="decimal"/>-encoded integer seeds and indices.
 /// </summary>
 public static class DslMathValidation
@@ -331,6 +349,12 @@ public ref struct DslExecutionBudget
 {
     public const int DefaultMaxOps = 10_000;
     public const int DefaultMaxDepth = 16;
+
+    /// <summary>
+    /// Cost model of the pairwise and spectral kernels: one budget unit covers this many inner-loop operations (a tight loop of cheap multiply-adds), so a kernel that
+    /// performs <c>m</c> of them consumes <c>max(1, m / CheapOperationsPerUnit)</c> units. Single definition shared by <c>corr_kendall</c> and the Goertzel spectrum.
+    /// </summary>
+    internal const int CheapOperationsPerUnit = 32;
 
     public int RemainingOps;
     public int RemainingDepth;

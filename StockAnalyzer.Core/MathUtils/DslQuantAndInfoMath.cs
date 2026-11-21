@@ -42,7 +42,6 @@ public static class DslQuantAndInfoMath
     private const double IrrLooseFunctionTolerance = 1e-8;
     private const double IrrStepTolerance = 1e-12;
     private const double IrrDerivativeFloor = 1e-15;
-    private const int SpectrumBudgetDivisor = 32;
     private const double InvSqrtTwoPi = 0.3989422804014327;
 
     // ---- Black-Scholes-Merton ----
@@ -196,6 +195,7 @@ public static class DslQuantAndInfoMath
     /// Internal rate of return: the root <c>r &gt; -1</c> of <see cref="Npv"/>. Newton-Raphson from <paramref name="guess"/> (<see cref="IrrMaxNewtonIterations"/> iterations, one budget unit each);
     /// when it leaves <c>(-0.9999, 100)</c>, meets a vanishing derivative or does not converge, the lowest sign-change interval of a log-spaced scan of <c>[-0.9999, 100]</c>
     /// (<see cref="IrrScanIntervals"/> intervals) is refined with Brent's method. <c>n &lt; 2</c>, cash flows of one sign only, or <c>guess &lt;= -1</c> is a domain error.
+    /// The search runs on the cash flows divided by <c>max |CF_t|</c> (values in [-1, 1]), so the convergence tolerances are relative to the amount scale and the result does not depend on it.
     /// </summary>
     public static MathResult<double> Irr(scoped ReadOnlySpan<double> cashFlows, double guess, ref DslExecutionBudget budget)
     {
@@ -217,6 +217,21 @@ public static class DslQuantAndInfoMath
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
 
+        // The IRR is the root of a homogeneous equation: dividing every cash flow by M = max |CF_t| (> 0, both signs are present) leaves it unchanged
+        // and turns every tolerance below into a relative one, so the amount scale (1e-15 .. 1e15) cannot decide the convergence.
+        double maxAbs = 0.0;
+        for (int i = 0; i < cashFlows.Length; i++)
+        {
+            maxAbs = Math.Max(maxAbs, Math.Abs(cashFlows[i]));
+        }
+
+        Span<double> normalized = stackalloc double[cashFlows.Length];
+        for (int i = 0; i < cashFlows.Length; i++)
+        {
+            normalized[i] = cashFlows[i] / maxAbs;
+        }
+
+        cashFlows = normalized;
         double rate = guess;
         for (int iter = 0; iter < IrrMaxNewtonIterations; iter++)
         {
@@ -470,7 +485,7 @@ public static class DslQuantAndInfoMath
 
     /// <summary>
     /// One-sided amplitude spectrum <c>A_k = (c_k / n) |DFT(x - mean)_k|</c>, <c>k = 0..floor(n / 2)</c>, <c>c_k = 1</c> for <c>k = 0</c> and for <c>k = n / 2</c> of an even <c>n</c>, otherwise 2.
-    /// Consumes <c>max(1, n (floor(n / 2) + 1) / 32)</c> budget units; <c>n &lt; 2</c> is a domain error. <paramref name="amplitudes"/> needs <c>floor(n / 2) + 1</c> entries.
+    /// Consumes <c>max(1, n (floor(n / 2) + 1) / DslExecutionBudget.CheapOperationsPerUnit)</c> budget units; <c>n &lt; 2</c> is a domain error. <paramref name="amplitudes"/> needs <c>floor(n / 2) + 1</c> entries.
     /// </summary>
     public static MathErrorCode DftMagnitude(scoped ReadOnlySpan<double> series, scoped Span<double> amplitudes, ref DslExecutionBudget budget)
     {
@@ -486,7 +501,7 @@ public static class DslQuantAndInfoMath
             return MathErrorCode.DimensionMismatch;
         }
 
-        if (!budget.TryConsume((int)Math.Max(1L, (long)n * bins / SpectrumBudgetDivisor)))
+        if (!budget.TryConsume((int)Math.Max(1L, (long)n * bins / DslExecutionBudget.CheapOperationsPerUnit)))
         {
             return MathErrorCode.BudgetExceeded;
         }

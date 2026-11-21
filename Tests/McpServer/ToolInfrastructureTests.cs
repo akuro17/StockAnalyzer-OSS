@@ -554,6 +554,10 @@ public sealed class ToolInfrastructureTests
         Assert.False(errObj.TryGetProperty("param", out _));
     }
 
+    private const long BytesPerEstimatedToken = 4L;
+    private const int SweepHalfWidthChars = 40;
+    private const int SweepStepChars = 4;
+
     [Fact]
     public async Task AnErrorEnvelopeOmitsSurrogateHintWhenBackingOffDropsLengthBelowSixteen()
     {
@@ -573,7 +577,14 @@ public sealed class ToolInfrastructureTests
 
         bool sawFullOrSeventeen = false;
         bool sawOmittedAfterTightening = false;
-        for (int len = 3_960; len <= 4_040; len += 4)
+        // The hint is backed off where the message plus the fixed overhead of the call result (code, hint, JSON-RPC wrapper) reaches the token budget: measure that
+        // overhead with an empty message instead of hard-coding the boundary, and sweep around it.
+        currentLength = 0;
+        using JsonDocument baseline = JsonDocument.Parse((await dispatcher.DispatchAsync(McpTestSupport.CallMessage(0, "sa_surrogate_err"), CancellationToken.None))!);
+        int overheadBytes = System.Text.Encoding.UTF8.GetByteCount(baseline.RootElement.GetProperty("result").GetRawText());
+        int boundary = (int)(limits.MaxResponseTokens * BytesPerEstimatedToken) - overheadBytes;
+
+        for (int len = boundary - SweepHalfWidthChars; len <= boundary + SweepHalfWidthChars; len += SweepStepChars)
         {
             currentLength = len;
             string raw = (await dispatcher.DispatchAsync(McpTestSupport.CallMessage(len, "sa_surrogate_err"), CancellationToken.None))!;
@@ -582,7 +593,10 @@ public sealed class ToolInfrastructureTests
             int bytes = System.Text.Encoding.UTF8.GetByteCount(resultRaw);
             Assert.True(((bytes + 3L) / 4L) <= limits.MaxResponseTokens);
 
-            JsonElement errObj = McpTestSupport.Structured(doc);
+            // TextOnly mode emits no structuredContent: the error envelope is the JSON text of content[0] (the executor built above uses McpResponseFormat.TextOnly on purpose:
+            // the sweep sits at the token limit of ONE copy of the envelope, Dual mode would carry it twice).
+            using JsonDocument envelope = JsonDocument.Parse(McpTestSupport.Result(doc).GetProperty("content")[0].GetProperty("text").GetString()!);
+            JsonElement errObj = envelope.RootElement;
             if (errObj.TryGetProperty("hint", out JsonElement hintProp))
             {
                 string actualHint = hintProp.GetString()!;

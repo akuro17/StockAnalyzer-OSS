@@ -18,19 +18,6 @@ public static class DslOptimizationMath
     /// <summary>Iteration cap of the N-dimensional minimizers.</summary>
     public const int MaxNdIterations = 500;
 
-    // TEMPORARY SHARING (decided 2026-11-21): the DSL tolerance contract [1e-12, 1e-2] / default 1e-8 is defined here and is also used by ode_rk45
-    // (CalculatorHigherOrderFunctions.EvaluateOde). Optimization and ODE solving are separate domains; the planned follow-up (SAで改善, docs/ja/Future_Improvements.md)
-    // moves these values to a shared contract or per-domain constants. A unit test pins the ode_rk45 range so a one-sided change is noticed.
-
-    /// <summary>Smallest accepted tolerance (also the lower bound of <c>ode_rk45</c>'s tolerance, see the note above).</summary>
-    public const double MinTol = 1e-12;
-
-    /// <summary>Largest accepted tolerance (also the upper bound of <c>ode_rk45</c>'s tolerance, see the note above).</summary>
-    public const double MaxTol = 1e-2;
-
-    /// <summary>Tolerance used by the DSL when the caller omits it (also the <c>ode_rk45</c> default, see the note above).</summary>
-    public const double DefaultTol = 1e-8;
-
     /// <summary><c>(3 - sqrt(5)) / 2</c>: the golden-section fraction of Brent's first probe.</summary>
     private const double GoldenSectionC = 0.38196601125010515;
 
@@ -55,6 +42,13 @@ public static class DslOptimizationMath
     private const double BfgsCurvatureTolerance = 1e-12;
     private const double BfgsStagnationStep = 1e-15;
     private const double BfgsStagnationGradientFactor = 10.0;
+
+    /// <summary>
+    /// Safety multiplier of the function-value noise of <see cref="OptBfgs{TFunc}"/>: two function values each carry a rounding error of about
+    /// <c>MathConstants.MachineEpsilon * |f|</c> (a central difference loses up to <c>MathConstants.MachineEpsilon * |f| / (2 h)</c>), and the objective itself (a decimal-to-double conversion,
+    /// a few operations) adds a few more roundings, hence 2^3 (owner decision Q-6, 2026-11-21).
+    /// </summary>
+    private const double GradientNoiseSafetyFactor = 8.0;
 
     // ---- 1D: Brent ----
 
@@ -252,7 +246,8 @@ public static class DslOptimizationMath
     /// <summary>
     /// Minimizes the objective with the Nelder-Mead simplex method (reflection 1, expansion 2, contraction 0.5, shrink 0.5).
     /// <paramref name="f"/>.Dimension must be <c>1..8</c> and equal to <paramref name="x0"/>.Length; the minimizer is written to <paramref name="xOut"/>.
-    /// Stops when both the standard deviation of the vertex values and the largest vertex distance (L-infinity) from the best vertex are <c>&lt;= tol</c>.
+    /// Stops when both the standard deviation of the vertex values is <c>&lt;= tol * max(1, |f_best|)</c> and the largest vertex distance (L-infinity) from the best vertex
+    /// is <c>&lt;= tol * max(1, ||x_best||inf)</c>: <c>tol</c> is a relative target (an absolute one would be below the spacing of doubles for coordinates beyond about 1e7).
     /// </summary>
     public static MathErrorCode OptNelderMead<TFunc>(
         TFunc f,
@@ -448,16 +443,25 @@ public static class DslOptimizationMath
             variance += delta * delta;
         }
 
-        if (Math.Sqrt(variance / vertexCount) > tol)
+        // Both tests are relative to the size of what they measure, so that tol keeps its meaning where an absolute tol is below the spacing of doubles
+        // (ulp(1e7) = 1.9e-9, ulp(1e9) = 1.2e-7): "std(f) <= tol * max(1, |f_best|)" and "max_i ||v_i - v_best||inf <= tol * max(1, ||v_best||inf)".
+        if (Math.Sqrt(variance / vertexCount) > tol * Math.Max(1.0, Math.Abs(values[0])))
         {
             return false;
         }
 
+        double bestNorm = 0.0;
+        for (int j = 0; j < dim; j++)
+        {
+            bestNorm = Math.Max(bestNorm, Math.Abs(simplex[j]));
+        }
+
+        double distanceLimit = tol * Math.Max(1.0, bestNorm);
         for (int i = 1; i < vertexCount; i++)
         {
             for (int j = 0; j < dim; j++)
             {
-                if (Math.Abs(simplex[i * dim + j] - simplex[j]) > tol)
+                if (Math.Abs(simplex[i * dim + j] - simplex[j]) > distanceLimit)
                 {
                     return false;
                 }
@@ -471,7 +475,9 @@ public static class DslOptimizationMath
 
     /// <summary>
     /// Minimizes the objective with BFGS (inverse-Hessian update, central-difference gradient, Armijo backtracking line search).
-    /// Same dimension contract as <see cref="OptNelderMead{TFunc}"/>. Stops when <c>||grad||_inf &lt;= tol</c>.
+    /// Same dimension contract as <see cref="OptNelderMead{TFunc}"/>. Stops when <c>||grad||_inf &lt;= tol</c>, or when the gradient is below the noise floor of the function values
+    /// (<c>|g_j| &lt;= max(tol, 8 * eps * max(1, |f|) / (2 h_j))</c>, <see cref="IsGradientWithinNoiseFloor"/>) and either the line search fails at the identity Hessian or an accepted step
+    /// lowers <c>f</c> by no more than that noise.
     /// A failed line search resets the inverse Hessian to the identity and retries on the next iteration (at most once per iteration);
     /// when it fails while the inverse Hessian already is the identity, <see cref="MathErrorCode.ConvergenceFailure"/> is returned immediately.
     /// A search direction that is not a descent direction (<c>grad . p &gt;= 0</c>) also resets the inverse Hessian to the identity.
@@ -564,6 +570,13 @@ public static class DslOptimizationMath
             {
                 if (hIsIdentity)
                 {
+                    // Rescue 1: no descent is possible even along the steepest descent; if the gradient at x is only noise, x is the answer.
+                    if (IsGradientWithinNoiseFloor(x, grad, fx, dim, tol))
+                    {
+                        x.Slice(0, dim).CopyTo(xOut);
+                        return MathErrorCode.None;
+                    }
+
                     return MathErrorCode.ConvergenceFailure;
                 }
 
@@ -578,12 +591,21 @@ public static class DslOptimizationMath
             }
 
             xNew.Slice(0, dim).CopyTo(x);
+            double fPrevious = fx;
             fx = fNew;
 
             err = Gradient(f, x, gradNew, probe, dim, ref budget);
             if (err != MathErrorCode.None)
             {
                 return err;
+            }
+
+            // Rescue 2 (stagnation): the accepted step did not lower f beyond its rounding noise and the gradient AT THE NEW POINT is within its noise floor.
+            // Both conditions are needed: a slope whose gradient is merely small but whose steps still lower f resolvably is not converged.
+            if (fNew >= fPrevious - FunctionNoiseFloor(fPrevious, fNew) && IsGradientWithinNoiseFloor(x, gradNew, fx, dim, tol))
+            {
+                x.Slice(0, dim).CopyTo(xOut);
+                return MathErrorCode.None;
             }
 
             if (InfinityNorm(step, dim) <= BfgsStagnationStep * Math.Max(1.0, InfinityNorm(x, dim)) &&
@@ -617,6 +639,32 @@ public static class DslOptimizationMath
         return MathErrorCode.ConvergenceFailure;
     }
 
+    /// <summary>Central-difference step of one coordinate (<see cref="BfgsGradientStep"/> relative to <c>max(|x|, 1)</c>).</summary>
+    private static double GradientStep(double coordinate) => BfgsGradientStep * Math.Max(Math.Abs(coordinate), 1.0);
+
+    /// <summary>Rounding noise of a function value, <c>GradientNoiseSafetyFactor * MathConstants.MachineEpsilon * max(1, |f_a|, |f_b|)</c>.</summary>
+    private static double FunctionNoiseFloor(double fA, double fB)
+        => GradientNoiseSafetyFactor * MathConstants.MachineEpsilon * Math.Max(1.0, Math.Max(Math.Abs(fA), Math.Abs(fB)));
+
+    /// <summary>
+    /// True when every component satisfies <c>|g_j| &lt;= max(tol, noise(f) / (2 h_j))</c>, i.e. the central-difference gradient at <paramref name="x"/> cannot be distinguished
+    /// from the rounding noise of the function values. Shared by both rescue paths of <see cref="OptBfgs{TFunc}"/> so that the noise model has one definition.
+    /// </summary>
+    private static bool IsGradientWithinNoiseFloor(ReadOnlySpan<double> x, ReadOnlySpan<double> gradient, double f, int dim, double tol)
+    {
+        double noise = FunctionNoiseFloor(f, f);
+        for (int j = 0; j < dim; j++)
+        {
+            double gradientTolerance = Math.Max(tol, noise / (2.0 * GradientStep(x[j])));
+            if (!(Math.Abs(gradient[j]) <= gradientTolerance))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static MathErrorCode Gradient<TFunc>(
         TFunc f,
         scoped Span<double> x,
@@ -629,7 +677,7 @@ public static class DslOptimizationMath
         x.Slice(0, dim).CopyTo(probe);
         for (int j = 0; j < dim; j++)
         {
-            double hj = BfgsGradientStep * Math.Max(Math.Abs(x[j]), 1.0);
+            double hj = GradientStep(x[j]);
             probe[j] = x[j] + hj;
             MathErrorCode err = EvaluateNd(f, probe.Slice(0, dim), ref budget, out double fPlus);
             if (err != MathErrorCode.None)
@@ -721,7 +769,7 @@ public static class DslOptimizationMath
             return MathErrorCode.NonFiniteResult;
         }
 
-        return a >= b || tol < MinTol || tol > MaxTol
+        return a >= b || tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol
             ? MathErrorCode.DomainError
             : MathErrorCode.None;
     }
@@ -746,7 +794,7 @@ public static class DslOptimizationMath
             }
         }
 
-        return tol < MinTol || tol > MaxTol ? MathErrorCode.DomainError : MathErrorCode.None;
+        return tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol ? MathErrorCode.DomainError : MathErrorCode.None;
     }
 
     private static MathErrorCode Evaluate<TFunc>(TFunc f, double x, ref DslExecutionBudget budget, out double y)

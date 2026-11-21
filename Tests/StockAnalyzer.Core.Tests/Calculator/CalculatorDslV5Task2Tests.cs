@@ -380,6 +380,46 @@ public sealed class CalculatorDslV5Task2Tests
         Fails("irr(5)", CalculatorErrorCode.DomainError);
     }
 
+    /// <summary>The IRR is the root of a homogeneous equation, so multiplying every cash flow by a positive factor must not change it.</summary>
+    [Theory]
+    [InlineData("-0.0000000000000100", "0.0000000000000110")]
+    [InlineData("-100", "110")]
+    [InlineData("-100000000000", "110000000000")]
+    [InlineData("-100000000000000000", "110000000000000000")]
+    public void IrrIsInvariantToTheScaleOfTheCashFlows(string outflow, string inflow)
+    {
+        Close(0.1, Scalar($"irr([{outflow}, {inflow}])"), 1e-8);
+        Close(0.5, Scalar($"irr([{outflow}, {ScaleBy(inflow, 150m / 110m)}])"), 1e-8);
+    }
+
+    private static string ScaleBy(string value, decimal factor)
+        => (decimal.Parse(value, CultureInfo.InvariantCulture) * factor).ToString("0.############################", CultureInfo.InvariantCulture);
+
+    [Fact]
+    public void IrrDoesNotReturnTheStartRateForTinyCashFlows()
+    {
+        // |f(0.1)| = 3.6e-14 is below the old absolute tolerance, so the start rate used to be returned as the root.
+        Close(0.5, Scalar("irr([-0.0000000000001, 0.00000000000015])"), 1e-9);
+        Close(1.0, Scalar("irr([-0.000000000000001, 0.000000000000002])"), 1e-9);
+    }
+
+    [Fact]
+    public void IrrConvergesByNewtonAtEveryScale()
+    {
+        // The Newton phase charges one budget unit per iteration, the bracketed fallback at least 64: a small count proves the fallback was not needed.
+        foreach (double scale in new[] { 1e-12, 1.0, 1e6, 1e12 })
+        {
+            double[] cashFlows = [-1.0 * scale, 0.6 * scale, 0.6 * scale];
+            var budget = DslExecutionBudget.CreateDefault();
+            MathResult<double> irr = DslQuantAndInfoMath.Irr(cashFlows, DslQuantAndInfoMath.IrrDefaultGuess, ref budget);
+
+            Assert.True(irr.IsOk, $"scale {scale}");
+            Assert.InRange(DslExecutionBudget.DefaultMaxOps - budget.RemainingOps, 1, 20);
+            double u = (-0.6 + Math.Sqrt(0.36 + 2.4)) / 1.2;
+            Assert.Equal((1.0 / u) - 1.0, irr.Value, 8);
+        }
+    }
+
     [Fact]
     public void MaxDrawdownIsExactDecimalAndNonNegative()
     {
@@ -449,6 +489,10 @@ public sealed class CalculatorDslV5Task2Tests
             GoertzelMath.CalculateRollingAmplitude(series.AsSpan(series.Length - period, period), period, expected);
             Close(expected[period - 1], Scalar($"goertzel({Vector(series)}, {period})"), 1e-12);
         }
+
+        // Period 2: bin 1 is the Nyquist bin, so an alternating series returns its amplitude (not twice).
+        Close(1.0, Scalar("goertzel([1, -1, 1, -1], 2)"), 1e-12);
+        Close(2.0, Scalar("goertzel([5, 3, 5, 1], 2)"), 1e-12);
 
         Fails("goertzel([1, 2, 3], 1)", CalculatorErrorCode.DomainError);
         Fails("goertzel([1, 2, 3], 4)", CalculatorErrorCode.DomainError);

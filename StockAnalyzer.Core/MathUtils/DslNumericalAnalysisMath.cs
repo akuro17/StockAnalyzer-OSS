@@ -27,8 +27,6 @@ public static class DslNumericalAnalysisMath
 
     private const double MinStepH = 1e-9;
     private const double MaxStepH = 1e-2;
-    private const double MinTol = 1e-12;
-    private const double MaxTol = 1e-2;
     private const double DerivativeZeroEpsilon = 1e-12;
     private const double StateDivergenceLimit = 1e15;
     private const double LentzTiny = 1e-30;
@@ -114,7 +112,7 @@ public static class DslNumericalAnalysisMath
             return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
         }
 
-        if (a == b || tol < MinTol || tol > MaxTol)
+        if (a == b || tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
         {
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
@@ -158,7 +156,7 @@ public static class DslNumericalAnalysisMath
         double fc = fb;
         double d = b - a;
         double e = d;
-        const double eps = 2.2204460492503131e-16;
+        const double eps = MathConstants.MachineEpsilon;
 
         for (int iter = 0; iter < MaxRootIterations; iter++)
         {
@@ -271,7 +269,7 @@ public static class DslNumericalAnalysisMath
             return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
         }
 
-        if (tol < MinTol || tol > MaxTol)
+        if (tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
         {
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
@@ -384,7 +382,7 @@ public static class DslNumericalAnalysisMath
             return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
         }
 
-        if (x0 == x1 || tol < MinTol || tol > MaxTol)
+        if (x0 == x1 || tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
         {
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
@@ -471,7 +469,7 @@ public static class DslNumericalAnalysisMath
             return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
         }
 
-        if (tol < MinTol || tol > MaxTol)
+        if (tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
         {
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
@@ -661,7 +659,7 @@ public static class DslNumericalAnalysisMath
             return MathErrorCode.NonFiniteResult;
         }
 
-        if (t0 == t1 || tol < MinTol || tol > MaxTol)
+        if (t0 == t1 || tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
         {
             return MathErrorCode.DomainError;
         }

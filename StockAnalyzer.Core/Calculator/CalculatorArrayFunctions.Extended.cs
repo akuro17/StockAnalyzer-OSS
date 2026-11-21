@@ -201,18 +201,13 @@ internal static partial class CalculatorArrayFunctions
             indices[i] = i;
         }
 
-        for (int i = 1; i < length; i++)
+        // O(n log n), allocation free: the result buffer holds the keys while sorting (it is overwritten with the ranks below). Descending order reverses the
+        // ascending order; the order inside a group of equal values is irrelevant because the group shares one rank.
+        source.CopyTo(result);
+        result.Sort(indices);
+        if (descending)
         {
-            int key = indices[i];
-            decimal keyValue = source[key];
-            int j = i - 1;
-            while (j >= 0 && (descending ? source[indices[j]] < keyValue : source[indices[j]] > keyValue))
-            {
-                indices[j + 1] = indices[j];
-                j--;
-            }
-
-            indices[j + 1] = key;
+            indices.Reverse();
         }
 
         int start = 0;

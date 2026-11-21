@@ -29,6 +29,12 @@ public static class MathConstants
     public const double DegToRad = Math.PI / 180.0;
 
     /// <summary>
+    /// Machine epsilon of <see cref="double"/> (2^-52): the gap between 1.0 and the next larger double, the relative resolution of one value.
+    /// NOT <see cref="double.Epsilon"/> (the smallest subnormal, 4.9e-324). The single definition of the repository.
+    /// </summary>
+    public const double MachineEpsilon = 2.220446049250313e-16;
+
+    /// <summary>
     /// Degrees per radian. Multiply a value in radians by this to obtain degrees.
     /// Equals <c>180.0 / Math.PI</c>.
     /// </summary>

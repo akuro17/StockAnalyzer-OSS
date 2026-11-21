@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using StockAnalyzer.Core.MathUtils;
 using Xunit;
 
@@ -87,6 +88,73 @@ namespace StockAnalyzer.Core.Tests.MathUtils
             AssertClose(10.829418064377002, amplitude[100]);
             AssertClose(10.601915161914548, amplitude[199]);
             Assert.True(double.IsNaN(amplitude[14]));
+        }
+
+        private static readonly double[] GoertzelSeries = [1.5, -2.0, 0.5, 4.0, -1.0, 2.5, 0.0, 3.25, -0.75, 1.0, 2.0, -3.5];
+
+        /// <summary>Period 2: bin 1 is the Nyquist bin, which a one-sided spectrum does not double (an alternating +-a series has amplitude a, not 2a).</summary>
+        [Fact]
+        public void Goertzel_PeriodTwo_IsTheNyquistAmplitude()
+        {
+            var alternating = new double[4];
+            GoertzelMath.CalculateRollingAmplitude([1.0, -1.0, 1.0, -1.0], 2, alternating);
+            Assert.True(double.IsNaN(alternating[0]));
+            Assert.Equal(1.0, alternating[1], 12);
+            Assert.Equal(1.0, alternating[3], 12);
+
+            var scaled = new double[2];
+            GoertzelMath.CalculateRollingAmplitude([2.0, -2.0], 2, scaled);
+            Assert.Equal(2.0, scaled[1], 12);
+
+            // A window [x0, x1] with its mean removed is +-(x0 - x1) / 2.
+            var amplitude = new double[GoertzelSeries.Length];
+            GoertzelMath.CalculateRollingAmplitude(GoertzelSeries, 2, amplitude);
+            for (int t = 1; t < GoertzelSeries.Length; t++)
+            {
+                Assert.Equal(Math.Abs(GoertzelSeries[t] - GoertzelSeries[t - 1]) / 2.0, amplitude[t], 12);
+            }
+        }
+
+        /// <summary>The amplitude is the one-sided DFT amplitude c * |X1| / P of the mean-removed window (c = 2, and 1 for the Nyquist bin of period 2).</summary>
+        [Theory]
+        [InlineData(2)]
+        [InlineData(3)]
+        [InlineData(4)]
+        [InlineData(5)]
+        [InlineData(6)]
+        [InlineData(7)]
+        public void Goertzel_MatchesTheOneSidedDftAmplitude(int period)
+        {
+            var amplitude = new double[GoertzelSeries.Length];
+            GoertzelMath.CalculateRollingAmplitude(GoertzelSeries, period, amplitude);
+
+            double singleSided = period == 2 ? 1.0 : 2.0;
+            for (int t = period - 1; t < GoertzelSeries.Length; t++)
+            {
+                double[] window = GoertzelSeries[(t - period + 1)..(t + 1)];
+                double mean = window.Average();
+                double[] centered = window.Select(v => v - mean).ToArray();
+                (double[] real, double[] imag) = StockAnalyzer.Core.Tests.Analysis.DiscreteFourierTransformReference.Forward(centered);
+                double expected = singleSided * Math.Sqrt((real[1] * real[1]) + (imag[1] * imag[1])) / period;
+
+                Assert.Equal(expected, amplitude[t], 10);
+            }
+        }
+
+        /// <summary>Periods above 2 are untouched: these values were captured from the kernel before the period-2 fix and must stay bit-identical.</summary>
+        [Fact]
+        public void Goertzel_PeriodsAboveTwo_AreBitIdenticalToTheirPreviousValues()
+        {
+            double[] period3 = [2.081665999466132, 3.4801021696368504, 2.962731472438529, 2.962731472438529, 2.081665999466132, 1.964971020425266, 2.4551533104427055, 2.315407331574967, 1.6072751268321595, 3.3829638550307397];
+            double[] period4 = [3.0413812651491097, 3.092329219213245, 1.0606601717798212, 0.9013878188659974, 0.6250000000000001, 0.5303300858899106, 1.1858541225631423, 1.7765838004439867, 2.6368778887161235];
+            double[] period5 = [1.7186150976731611, 1.4601359756715317, 0.7293812908556515, 1.483857963241476, 1.3225962773793145, 0.6423430534672818, 0.5716368401246185, 0.8344300500868563];
+
+            foreach ((int period, double[] expected) in new[] { (3, period3), (4, period4), (5, period5) })
+            {
+                var amplitude = new double[GoertzelSeries.Length];
+                GoertzelMath.CalculateRollingAmplitude(GoertzelSeries, period, amplitude);
+                Assert.Equal(expected, amplitude[(period - 1)..]);
+            }
         }
 
         [Fact]

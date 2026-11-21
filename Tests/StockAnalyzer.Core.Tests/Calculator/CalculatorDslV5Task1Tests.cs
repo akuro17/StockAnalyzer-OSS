@@ -410,7 +410,8 @@ public sealed class CalculatorDslV5Task1Tests
     {
         Fails("solve_cubic(0, 1, 2, 3)", CalculatorErrorCode.DomainError);
         Fails("solve_cubic(0.000000000001, 1, 2, 3)", CalculatorErrorCode.DomainError);
-        Fails("solve_cubic(0.0000000001, 1, 1000, 3)", CalculatorErrorCode.DomainError);
+        // D-2: the relative-to-largest-coefficient check was replaced by |a_(n-k)/a| >= (1e12)^k; |b/a| = 1e13 here.
+        Fails("solve_cubic(0.0000000001, 1000, 2, 3)", CalculatorErrorCode.DomainError);
         Fails("solve_quartic(0, 1, 2, 3, 4)", CalculatorErrorCode.DomainError);
         Fails("solve_quartic(0.000000000001, 1, 2, 3, 4)", CalculatorErrorCode.DomainError);
         Fails("solve_cubic([1], 1, 2, 3)", CalculatorErrorCode.DomainError);

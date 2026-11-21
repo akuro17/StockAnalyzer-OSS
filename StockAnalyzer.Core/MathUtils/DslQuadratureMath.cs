@@ -30,8 +30,6 @@ public static partial class DslQuadratureMath
     public const int MaxGk21Subdivisions = 32;
     public const int MaxRombergOrder = 10;
 
-    private const double MinTol = 1e-12;
-    private const double MaxTol = 1e-2;
     private const double DeMaxT = 3.5;
 
     // ---- 1 & 2: Composite Trapezoidal & Simpson Rules ----
@@ -186,7 +184,7 @@ public static partial class DslQuadratureMath
             return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
         }
 
-        if (tol < MinTol || tol > MaxTol)
+        if (tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
         {
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
@@ -870,7 +868,7 @@ public static partial class DslQuadratureMath
             return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
         }
 
-        if (tol < MinTol || tol > MaxTol)
+        if (tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
         {
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
@@ -1059,7 +1057,7 @@ public static partial class DslQuadratureMath
             return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
         }
 
-        if (tol < MinTol || tol > MaxTol)
+        if (tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
         {
             return MathResult<double>.Fail(MathErrorCode.DomainError);
         }
@@ -1151,8 +1149,8 @@ public static partial class DslQuadratureMath
         ref DslExecutionBudget budget)
         where TFunc : struct, IScalarFunction
         => preferDoubleExponential || double.IsInfinity(a) || double.IsInfinity(b)
-            ? QuadDe(f, a, b, MinTol, ref budget)
-            : QuadGk21(f, a, b, MinTol, ref budget);
+            ? QuadDe(f, a, b, DslTolerance.MinTol, ref budget)
+            : QuadGk21(f, a, b, DslTolerance.MinTol, ref budget);
 
     // ---- DSL v5 Full-Order Gaussian Entries ----
     // The kernels above keep their original order sets (Chebyshev n >= 2, Laguerre/Hermite n in {4,8,16,32,64}, Jacobi n >= 2,

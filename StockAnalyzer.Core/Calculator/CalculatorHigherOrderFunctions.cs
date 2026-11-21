@@ -337,14 +337,14 @@ internal static class CalculatorHigherOrderFunctions
 
             case "opt_brent":
             {
-                double tol = scalarCount >= 3 ? (double)scalars[2] : DslOptimizationMath.DefaultTol;
+                double tol = scalarCount >= 3 ? (double)scalars[2] : DslTolerance.DefaultTol;
                 rawResult = DslOptimizationMath.OptBrent(fn, (double)scalars[0], (double)scalars[1], tol, ref budget);
                 break;
             }
 
             case "opt_golden":
             {
-                double tol = scalarCount >= 3 ? (double)scalars[2] : DslOptimizationMath.DefaultTol;
+                double tol = scalarCount >= 3 ? (double)scalars[2] : DslTolerance.DefaultTol;
                 rawResult = DslOptimizationMath.OptGolden(fn, (double)scalars[0], (double)scalars[1], tol, ref budget);
                 break;
             }
@@ -454,9 +454,9 @@ internal static class CalculatorHigherOrderFunctions
             return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, call.NamePosition, call.Name);
         }
 
-        // TEMPORARY SHARING: ode_rk45 reuses the optimizer tolerance contract (DslOptimizationMath.MinTol/MaxTol/DefaultTol); separation is planned (docs/ja/Future_Improvements.md).
+        // ode_rk45 uses the DSL tolerance contract (DslTolerance): range [MinTol, MaxTol], default DefaultTol.
         int nSteps = 0;
-        double tol = DslOptimizationMath.DefaultTol;
+        double tol = DslTolerance.DefaultTol;
         if (args.Count >= 7)
         {
             if (!TryEvaluateScalarArg(args[6], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal lastArg, out CalculatorOutcome lastError))
@@ -474,7 +474,7 @@ internal static class CalculatorHigherOrderFunctions
             else
             {
                 tol = (double)lastArg;
-                if (tol < DslOptimizationMath.MinTol || tol > DslOptimizationMath.MaxTol)
+                if (tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
                 {
                     return CalculatorMatrixFunctions.FailMath(MathErrorCode.DomainError, call.NamePosition, call.Name);
                 }
@@ -563,7 +563,7 @@ internal static class CalculatorHigherOrderFunctions
             return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, call.NamePosition, call.Name);
         }
 
-        double tol = DslOptimizationMath.DefaultTol;
+        double tol = DslTolerance.DefaultTol;
         if (args.Count >= 4)
         {
             if (!TryEvaluateScalarArg(args[3], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal tolDecimal, out CalculatorOutcome tolError))
