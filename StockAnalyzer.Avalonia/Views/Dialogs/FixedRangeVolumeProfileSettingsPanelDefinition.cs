@@ -38,6 +38,7 @@ public sealed class FixedRangeVolumeProfileSettingsPanelDefinition : IDrawingSet
     {
         if (drawing is not FixedRangeVolumeProfileObject frvp) return;
         var valueAreaColorPicker = dialogWindow.FindControl<ColorPicker>("ValueAreaColorPicker");
+        var pocColorPicker = dialogWindow.FindControl<ColorPicker>("PocColorPicker");
         var profileColorPicker = dialogWindow.FindControl<ColorPicker>("ProfileColorPicker");
         var opacitySpin = dialogWindow.FindControl<NumericUpDown>("OpacitySpin");
         var fillColorPicker = dialogWindow.FindControl<ColorPicker>("VpFillColorPicker");
@@ -47,6 +48,7 @@ public sealed class FixedRangeVolumeProfileSettingsPanelDefinition : IDrawingSet
         var rangeBarsSpin = dialogWindow.FindControl<NumericUpDown>("VpRangeBarsSpin");
 
         if (valueAreaColorPicker != null) valueAreaColorPicker.Color = frvp.ValueAreaColor;
+        if (pocColorPicker != null) pocColorPicker.Color = frvp.EffectivePocColor;
         if (profileColorPicker != null) profileColorPicker.Color = frvp.ProfileColor;
         if (opacitySpin != null) opacitySpin.Value = (decimal)(frvp.Opacity * 100);
         if (fillColorPicker != null) fillColorPicker.Color = frvp.FillColor;
@@ -72,6 +74,7 @@ public sealed class FixedRangeVolumeProfileSettingsPanelDefinition : IDrawingSet
     {
         if (drawing is not FixedRangeVolumeProfileObject frvp) return;
         var valueAreaColorPicker = dialogWindow.FindControl<ColorPicker>("ValueAreaColorPicker");
+        var pocColorPicker = dialogWindow.FindControl<ColorPicker>("PocColorPicker");
         var profileColorPicker = dialogWindow.FindControl<ColorPicker>("ProfileColorPicker");
         var opacitySpin = dialogWindow.FindControl<NumericUpDown>("OpacitySpin");
         var fillColorPicker = dialogWindow.FindControl<ColorPicker>("VpFillColorPicker");
@@ -81,6 +84,7 @@ public sealed class FixedRangeVolumeProfileSettingsPanelDefinition : IDrawingSet
         var rangeBarsSpin = dialogWindow.FindControl<NumericUpDown>("VpRangeBarsSpin");
 
         if (valueAreaColorPicker != null) frvp.ValueAreaColor = valueAreaColorPicker.Color;
+        if (pocColorPicker != null) frvp.PocColor = pocColorPicker.Color;
         if (profileColorPicker != null) frvp.ProfileColor = profileColorPicker.Color;
         if (opacitySpin?.Value != null) frvp.Opacity = (double)opacitySpin.Value / 100.0;
         if (fillColorPicker != null) frvp.FillColor = fillColorPicker.Color;

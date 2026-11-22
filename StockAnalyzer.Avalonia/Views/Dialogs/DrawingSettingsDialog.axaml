@@ -1034,6 +1034,11 @@
                     </Grid>
 
                     <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                        <TextBlock Text="TPOC Color" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                        <ColorPicker x:Name="TapPocColorPicker"  Width="50" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                         <TextBlock Text="Base Profile Color" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <ColorPicker x:Name="TapProfileColorPicker"  Width="50" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
@@ -1942,6 +1947,11 @@
 <Grid ColumnDefinitions="*, Auto" MinHeight="32">
                         <TextBlock Text="Value Area Color" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
                         <ColorPicker x:Name="ValueAreaColorPicker"  Width="50" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                        <TextBlock Text="POC Color" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                        <ColorPicker x:Name="PocColorPicker"  Width="50" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
 
                     <Grid ColumnDefinitions="*, Auto" MinHeight="32">

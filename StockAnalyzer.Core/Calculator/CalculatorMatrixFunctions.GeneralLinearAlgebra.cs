@@ -13,8 +13,8 @@ internal static partial class CalculatorMatrixFunctions
     /// <summary>Entries with a magnitude at or below this value are ignored when picking the sign-defining entry of an eigen/singular vector.</summary>
     private const double SignCanonicalizationThreshold = 1e-12;
 
-    /// <summary>Largest accepted rotation angle magnitude (radians) of <c>mat_rot2d</c>.</summary>
-    private const decimal MaxRotationAngleRadians = 1_000_000_000m;
+    /// <summary>Largest square matrix dimension (<c>n * n &lt;= DslArrayArena.MaxArrayLength</c>) representable in a 1D DSL array (<c>floor(sqrt(512)) = 22</c>).</summary>
+    internal const int MaxSquareArrayMatrixDim = 22;
 
     private static bool TryEvaluateGeneralLinearAlgebra(
         string name,
@@ -79,6 +79,45 @@ internal static partial class CalculatorMatrixFunctions
 
             case "mat_rot2d":
                 outcome = EvaluateRotation2D(name, position, args, ref arena);
+                return true;
+
+            case "mat_lu_l":
+            case "mat_lu_u":
+            case "mat_lu_p":
+                outcome = EvaluateLuDecomposition(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "mat_eig_re":
+            case "mat_eig_im":
+                outcome = EvaluateGeneralEigenvalues(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "mat_pinv":
+                outcome = EvaluatePseudoinverse(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "mat_rank":
+                outcome = EvaluateMatrixRank(name, position, args, ref budget, in arena);
+                return true;
+
+            case "mat_trace":
+                outcome = EvaluateMatrixTrace(name, position, args, in arena);
+                return true;
+
+            case "mat_norm":
+                outcome = EvaluateMatrixNorm(name, position, args, ref budget, in arena);
+                return true;
+
+            case "mat_expm":
+                outcome = EvaluateMatrixExp(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "mat_kron":
+                outcome = EvaluateKroneckerProduct(name, position, args, ref arena);
+                return true;
+
+            case "opt_qp":
+                outcome = EvaluateOptQp(name, position, args, ref budget, ref arena);
                 return true;
 
             default:
@@ -262,7 +301,7 @@ internal static partial class CalculatorMatrixFunctions
             return FailArguments(position, name, "(angleRad) a scalar");
         }
 
-        if (Math.Abs(args[0].Scalar) > MaxRotationAngleRadians)
+        if (Math.Abs(args[0].Scalar) > DslElementaryMath.RadianTrigRangeLimit)
         {
             return FailMath(MathErrorCode.DomainError, position, name);
         }
@@ -533,5 +572,452 @@ internal static partial class CalculatorMatrixFunctions
                 break;
             }
         }
+    }
+
+    // ---- DSL v6 Domain 4: Extended Linear Algebra & Matrix Functions ----
+
+    private static DslEvalOutcome EvaluateLuDecomposition(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !TryReadDimension(args[1], out int n))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> source = arena.GetSlice(args[0].Array);
+        if (source.Length != n * n)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        Span<double> a = stackalloc double[source.Length];
+        Span<double> l = stackalloc double[source.Length];
+        Span<double> u = stackalloc double[source.Length];
+        Span<int> perm = stackalloc int[n];
+        CopyToDouble(source, a);
+
+        MathErrorCode err = DslLinearAlgebraMath.MatLu(a, n, l, u, perm, out _, ref budget);
+        if (err != MathErrorCode.None)
+        {
+            return FailMath(err, position, name);
+        }
+
+        if (name == "mat_lu_p")
+        {
+            if (!arena.TryAllocate(n, out DslArrayHandle pHandle, out Span<decimal> pOut))
+            {
+                return FailMath(MathErrorCode.BudgetExceeded, position, name);
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                pOut[i] = perm[i];
+            }
+
+            return DslEvalOutcome.OkArray(pHandle);
+        }
+
+        return NarrowArrayResult(name == "mat_lu_l" ? l : u, position, name, ref arena);
+    }
+
+    private static DslEvalOutcome EvaluateGeneralEigenvalues(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !TryReadDimension(args[1], out int n))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> source = arena.GetSlice(args[0].Array);
+        if (source.Length != n * n)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        Span<double> a = stackalloc double[source.Length];
+        Span<double> re = stackalloc double[n];
+        Span<double> im = stackalloc double[n];
+        CopyToDouble(source, a);
+
+        MathErrorCode err = DslLinearAlgebraMath.MatEigenGeneral(a, n, re, im, ref budget);
+        if (err != MathErrorCode.None)
+        {
+            return FailMath(err, position, name);
+        }
+
+        DslLinearAlgebraMath.SortComplexPairsCanonical(re, im, n);
+        return NarrowArrayResult(name == "mat_eig_re" ? re : im, position, name, ref arena);
+    }
+
+    private static DslEvalOutcome EvaluatePseudoinverse(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !TryReadDimension(args[1], out int rows) || !TryReadDimension(args[2], out int cols))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        if (args.Length >= 4 && (args[3].IsArray || args[3].Scalar < 0m))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> source = arena.GetSlice(args[0].Array);
+        if (source.Length != rows * cols)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        int k = Math.Min(rows, cols);
+        Span<double> a = stackalloc double[source.Length];
+        Span<double> u = stackalloc double[rows * k];
+        Span<double> s = stackalloc double[k];
+        Span<double> vt = stackalloc double[k * cols];
+        CopyToDouble(source, a);
+
+        MathErrorCode err = DslLinearAlgebraMath.MatSvd(a, rows, cols, u, s, vt, ref budget);
+        if (err != MathErrorCode.None)
+        {
+            return FailMath(err, position, name);
+        }
+
+        double rcond = args.Length >= 4
+            ? (double)args[3].Scalar
+            : Math.Max(rows, cols) * MathConstants.MachineEpsilon;
+        double cutoff = rcond * s[0];
+
+        Span<double> pinv = stackalloc double[cols * rows];
+        pinv.Clear();
+        for (int j = 0; j < cols; j++)
+        {
+            for (int i = 0; i < rows; i++)
+            {
+                double sum = 0.0;
+                for (int r = 0; r < k; r++)
+                {
+                    if (s[r] > cutoff)
+                    {
+                        sum += vt[r * cols + j] * (1.0 / s[r]) * u[i * k + r];
+                    }
+                }
+
+                pinv[j * rows + i] = sum;
+            }
+        }
+
+        return NarrowArrayResult(pinv, position, name, ref arena);
+    }
+
+    private static DslEvalOutcome EvaluateMatrixRank(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        in DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !TryReadDimension(args[1], out int rows) || !TryReadDimension(args[2], out int cols))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        if (args.Length >= 4 && (args[3].IsArray || args[3].Scalar < 0m))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> source = arena.GetSlice(args[0].Array);
+        if (source.Length != rows * cols)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        int k = Math.Min(rows, cols);
+        Span<double> a = stackalloc double[source.Length];
+        Span<double> u = stackalloc double[rows * k];
+        Span<double> s = stackalloc double[k];
+        Span<double> vt = stackalloc double[k * cols];
+        CopyToDouble(source, a);
+
+        MathErrorCode err = DslLinearAlgebraMath.MatSvd(a, rows, cols, u, s, vt, ref budget);
+        if (err != MathErrorCode.None)
+        {
+            return FailMath(err, position, name);
+        }
+
+        double cutoff = args.Length >= 4
+            ? (double)args[3].Scalar
+            : Math.Max(rows, cols) * MathConstants.MachineEpsilon * s[0];
+        int rank = 0;
+        for (int r = 0; r < k; r++)
+        {
+            if (s[r] > cutoff)
+            {
+                rank++;
+            }
+        }
+
+        return DslEvalOutcome.Ok(rank);
+    }
+
+    private static DslEvalOutcome EvaluateMatrixTrace(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        in DslArrayArena arena)
+    {
+        if (!args[0].IsArray || args[1].IsArray || !DslMathValidation.TryReadInt32InRange(args[1].Scalar, 1, MaxSquareArrayMatrixDim, out int n))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> source = arena.GetSlice(args[0].Array);
+        if (source.Length != n * n)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        try
+        {
+            decimal sum = 0m;
+            for (int i = 0; i < n; i++)
+            {
+                sum = checked(sum + source[i * n + i]);
+            }
+
+            return DslEvalOutcome.Ok(sum);
+        }
+        catch (OverflowException)
+        {
+            return FailMath(MathErrorCode.ArithmeticOverflow, position, name);
+        }
+    }
+
+    private static DslEvalOutcome EvaluateMatrixNorm(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        in DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !TryReadDimension(args[1], out int rows) || !TryReadDimension(args[2], out int cols))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        int kind = 0;
+        if (args.Length >= 4 && (args[3].IsArray || !DslMathValidation.TryReadInt32InRange(args[3].Scalar, 0, 3, out kind)))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> source = arena.GetSlice(args[0].Array);
+        if (source.Length != rows * cols)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        Span<double> a = stackalloc double[source.Length];
+        CopyToDouble(source, a);
+        MathErrorCode finiteErr = DslLinearAlgebraMath.ValidateFinite(a);
+        if (finiteErr != MathErrorCode.None)
+        {
+            return FailMath(finiteErr, position, name);
+        }
+
+        double norm;
+        switch (kind)
+        {
+            case 0:
+                norm = DslLinearAlgebraMath.ComputeFrobeniusNorm(a, source.Length);
+                break;
+
+            case 1:
+                norm = DslLinearAlgebraMath.ComputeInfinityNorm(a, rows, cols);
+                break;
+
+            case 2:
+                norm = 0.0;
+                for (int j = 0; j < cols; j++)
+                {
+                    double colSum = 0.0;
+                    for (int i = 0; i < rows; i++)
+                    {
+                        colSum += Math.Abs(a[i * cols + j]);
+                    }
+
+                    if (colSum > norm)
+                    {
+                        norm = colSum;
+                    }
+                }
+
+                break;
+
+            default:
+            {
+                int k = Math.Min(rows, cols);
+                Span<double> u = stackalloc double[rows * k];
+                Span<double> s = stackalloc double[k];
+                Span<double> vt = stackalloc double[k * cols];
+                MathErrorCode svdErr = DslLinearAlgebraMath.MatSvd(a, rows, cols, u, s, vt, ref budget);
+                if (svdErr != MathErrorCode.None)
+                {
+                    return FailMath(svdErr, position, name);
+                }
+
+                norm = s[0];
+                break;
+            }
+        }
+
+        return NarrowScalarResult(
+            double.IsFinite(norm) ? MathResult<double>.Ok(norm) : MathResult<double>.Fail(MathErrorCode.ArithmeticOverflow),
+            position,
+            name);
+    }
+
+    private static DslEvalOutcome EvaluateMatrixExp(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !TryReadDimension(args[1], out int n))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> source = arena.GetSlice(args[0].Array);
+        if (source.Length != n * n)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        Span<double> a = stackalloc double[source.Length];
+        Span<double> res = stackalloc double[source.Length];
+        CopyToDouble(source, a);
+
+        MathErrorCode err = DslLinearAlgebraMath.MatExpm(a, n, res, ref budget);
+        return err != MathErrorCode.None
+            ? FailMath(err, position, name)
+            : NarrowArrayResult(res, position, name, ref arena);
+    }
+
+    private static DslEvalOutcome EvaluateKroneckerProduct(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[3].IsArray ||
+            args[1].IsArray || args[2].IsArray || args[4].IsArray || args[5].IsArray ||
+            !DslMathValidation.TryReadInt32InRange(args[1].Scalar, 1, DslArrayArena.MaxArrayLength, out int rA) ||
+            !DslMathValidation.TryReadInt32InRange(args[2].Scalar, 1, DslArrayArena.MaxArrayLength, out int cA) ||
+            !DslMathValidation.TryReadInt32InRange(args[4].Scalar, 1, DslArrayArena.MaxArrayLength, out int rB) ||
+            !DslMathValidation.TryReadInt32InRange(args[5].Scalar, 1, DslArrayArena.MaxArrayLength, out int cB))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> a = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> b = arena.GetSlice(args[3].Array);
+        if (a.Length != rA * cA || b.Length != rB * cB)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        long outRows = (long)rA * rB;
+        long outCols = (long)cA * cB;
+        if (outRows * outCols > DslArrayArena.MaxArrayLength)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        int total = (int)(outRows * outCols);
+        if (!arena.TryAllocate(total, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return FailMath(MathErrorCode.BudgetExceeded, position, name);
+        }
+
+        a = arena.GetSlice(args[0].Array);
+        b = arena.GetSlice(args[3].Array);
+        int outWidth = (int)outCols;
+        try
+        {
+            for (int i = 0; i < rA; i++)
+            {
+                for (int j = 0; j < cA; j++)
+                {
+                    decimal aij = a[i * cA + j];
+                    for (int p = 0; p < rB; p++)
+                    {
+                        int outRowOffset = (i * rB + p) * outWidth + (j * cB);
+                        for (int q = 0; q < cB; q++)
+                        {
+                            decimal prod = checked(aij * b[p * cB + q]);
+                            result[outRowOffset + q] = prod == 0m ? 0m : prod;
+                        }
+                    }
+                }
+            }
+        }
+        catch (OverflowException)
+        {
+            return FailMath(MathErrorCode.ArithmeticOverflow, position, name);
+        }
+
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateOptQp(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray || !TryReadDimension(args[2], out int n) ||
+            !args[3].IsArray || !args[4].IsArray || (args.Length >= 6 && args[5].IsArray))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> hDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> cDec = arena.GetSlice(args[1].Array);
+        ReadOnlySpan<decimal> lbDec = arena.GetSlice(args[3].Array);
+        ReadOnlySpan<decimal> ubDec = arena.GetSlice(args[4].Array);
+        if (hDec.Length != n * n || cDec.Length != n || lbDec.Length != n || ubDec.Length != n)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        double tol = args.Length >= 6 ? (double)args[5].Scalar : DslTolerance.DefaultTol;
+        Span<double> h = stackalloc double[n * n];
+        Span<double> c = stackalloc double[n];
+        Span<double> lb = stackalloc double[n];
+        Span<double> ub = stackalloc double[n];
+        Span<double> xOut = stackalloc double[n];
+        CopyToDouble(hDec, h);
+        CopyToDouble(cDec, c);
+        CopyToDouble(lbDec, lb);
+        CopyToDouble(ubDec, ub);
+
+        MathErrorCode err = DslOptimizationMath.OptQp(h, c, n, lb, ub, tol, xOut, ref budget);
+        return err != MathErrorCode.None
+            ? FailMath(err, position, name)
+            : NarrowArrayResult(xOut, position, name, ref arena);
     }
 }

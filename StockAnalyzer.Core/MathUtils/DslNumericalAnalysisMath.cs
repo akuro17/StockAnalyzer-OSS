@@ -24,6 +24,7 @@ public static class DslNumericalAnalysisMath
     public const int MaxContinuedFractionDepth = 256;
     public const int MaxOdeDimension = 8;
     public const int MaxOdeSteps = 2_000;
+    public const int MaxBdf2Steps = 500;
 
     private const double MinStepH = 1e-9;
     private const double MaxStepH = 1e-2;
@@ -807,5 +808,574 @@ public static class DslNumericalAnalysisMath
         }
 
         return MathErrorCode.None;
+    }
+
+    // ---- DSL v6: Nonlinear System Solver (fsolve) & Stiff BDF-2 ODE Solver ----
+
+    /// <summary>
+    /// Solves the nonlinear system <c>F(x) = 0</c> (<c>1 &lt;= dim &lt;= 8</c>) via damped Newton-Raphson with central
+    /// finite-difference Jacobian solved by <see cref="DslLinearAlgebraMath.MatSolve"/> and Armijo merit backtracking.
+    /// </summary>
+    public static MathErrorCode Fsolve<TFunc>(
+        TFunc f,
+        scoped ReadOnlySpan<double> x0,
+        double tol,
+        scoped Span<double> xOut,
+        ref DslExecutionBudget budget)
+        where TFunc : struct, INdVectorFunction
+    {
+        const int maxIterations = 100;
+        const int maxLineSearch = 20;
+        int dim = f.Dimension;
+        if (dim < 1 || dim > MaxOdeDimension || x0.Length < dim || xOut.Length < dim)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        if (!double.IsFinite(tol) || tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        MathErrorCode finiteErr = ValidateFinite(x0.Slice(0, dim));
+        if (finiteErr != MathErrorCode.None)
+        {
+            return finiteErr;
+        }
+
+        Span<double> x = stackalloc double[dim];
+        Span<double> fx = stackalloc double[dim];
+        Span<double> rhs = stackalloc double[dim];
+        Span<double> dx = stackalloc double[dim];
+        Span<double> jac = stackalloc double[dim * dim];
+        Span<double> probe = stackalloc double[dim];
+        Span<double> fPlus = stackalloc double[dim];
+        Span<double> fMinus = stackalloc double[dim];
+        Span<double> xTrial = stackalloc double[dim];
+        Span<double> fTrial = stackalloc double[dim];
+
+        x0.Slice(0, dim).CopyTo(x);
+
+        if (!budget.TryConsume(1) || !f.TryEvaluate(x, fx, ref budget))
+        {
+            return ResolveFunctorError(in budget);
+        }
+
+        if (ValidateFinite(fx) != MathErrorCode.None)
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        for (int iter = 0; iter < maxIterations; iter++)
+        {
+            double maxRes = 0.0;
+            double sumSq = 0.0;
+            for (int i = 0; i < dim; i++)
+            {
+                double fi = fx[i];
+                double absFi = Math.Abs(fi);
+                if (absFi > maxRes)
+                {
+                    maxRes = absFi;
+                }
+
+                sumSq += fi * fi;
+            }
+
+            if (maxRes <= tol)
+            {
+                for (int i = 0; i < dim; i++)
+                {
+                    xOut[i] = x[i] == 0.0 ? 0.0 : x[i];
+                }
+
+                return MathErrorCode.None;
+            }
+
+            x.CopyTo(probe);
+            for (int j = 0; j < dim; j++)
+            {
+                double hj = 1e-6 * Math.Max(1.0, Math.Abs(x[j]));
+                probe[j] = x[j] + hj;
+                if (!budget.TryConsume(1) || !f.TryEvaluate(probe, fPlus, ref budget))
+                {
+                    return ResolveFunctorError(in budget);
+                }
+
+                probe[j] = x[j] - hj;
+                if (!budget.TryConsume(1) || !f.TryEvaluate(probe, fMinus, ref budget))
+                {
+                    return ResolveFunctorError(in budget);
+                }
+
+                probe[j] = x[j];
+                double inv2h = 0.5 / hj;
+                for (int i = 0; i < dim; i++)
+                {
+                    double jVal = (fPlus[i] - fMinus[i]) * inv2h;
+                    if (!double.IsFinite(jVal))
+                    {
+                        return MathErrorCode.NonFiniteResult;
+                    }
+
+                    jac[i * dim + j] = jVal;
+                }
+            }
+
+            for (int i = 0; i < dim; i++)
+            {
+                rhs[i] = -fx[i];
+            }
+
+            MathErrorCode solveErr = DslLinearAlgebraMath.MatSolve(jac, dim, rhs, dx, ref budget);
+            if (solveErr != MathErrorCode.None)
+            {
+                return solveErr;
+            }
+
+            double merit0 = 0.5 * sumSq;
+            double alpha = 1.0;
+            bool accepted = false;
+            for (int ls = 0; ls < maxLineSearch; ls++)
+            {
+                for (int i = 0; i < dim; i++)
+                {
+                    xTrial[i] = x[i] + alpha * dx[i];
+                }
+
+                if (!budget.TryConsume(1) || !f.TryEvaluate(xTrial, fTrial, ref budget))
+                {
+                    return ResolveFunctorError(in budget);
+                }
+
+                if (ValidateFinite(fTrial) == MathErrorCode.None)
+                {
+                    double trialMax = 0.0;
+                    double trialSumSq = 0.0;
+                    for (int i = 0; i < dim; i++)
+                    {
+                        double fi = fTrial[i];
+                        trialMax = Math.Max(trialMax, Math.Abs(fi));
+                        trialSumSq += fi * fi;
+                    }
+
+                    double meritTrial = 0.5 * trialSumSq;
+                    if (trialMax <= tol || meritTrial <= (1.0 - 1e-4 * alpha) * merit0)
+                    {
+                        xTrial.CopyTo(x);
+                        fTrial.CopyTo(fx);
+                        accepted = true;
+                        break;
+                    }
+                }
+
+                alpha *= 0.5;
+            }
+
+            if (!accepted)
+            {
+                return MathErrorCode.ConvergenceFailure;
+            }
+        }
+
+        return MathErrorCode.ConvergenceFailure;
+    }
+
+    /// <summary>
+    /// Integrates an ODE system (<c>1 &lt;= Dimension &lt;= 8</c>) from <paramref name="t0"/> to <paramref name="t1"/>
+    /// with an L-stable BDF-1 (implicit Euler) starter step and BDF-2 (<c>1 &lt;= nSteps &lt;= 500</c>), supporting forward (<c>t1 &gt; t0</c>)
+    /// and backward (<c>t1 &lt; t0</c>) integration with damped modified Newton-Raphson nonlinear solves (reusing frozen Jacobians with one-shot refresh).
+    /// </summary>
+    public static MathErrorCode OdeBdf2<TSys>(
+        TSys system,
+        double t0,
+        double t1,
+        scoped ReadOnlySpan<double> y0,
+        int nSteps,
+        double tol,
+        scoped Span<double> yOut,
+        ref DslExecutionBudget budget)
+        where TSys : struct, IOdeSystem
+    {
+        const int maxNewtonIters = 20;
+        int dim = system.Dimension;
+        if (dim < 1 || dim > MaxOdeDimension || y0.Length < dim || yOut.Length < dim)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        if (!double.IsFinite(t0) || !double.IsFinite(t1) || ValidateFinite(y0.Slice(0, dim)) != MathErrorCode.None)
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        if (t0 == t1 || nSteps < 1 || nSteps > MaxBdf2Steps || !double.IsFinite(tol) || tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        double h = (t1 - t0) / nSteps;
+        Span<double> yPrev2 = stackalloc double[dim];
+        Span<double> yPrev1 = stackalloc double[dim];
+        Span<double> y = stackalloc double[dim];
+        Span<double> target = stackalloc double[dim];
+        Span<double> fy = stackalloc double[dim];
+        Span<double> g = stackalloc double[dim];
+        Span<double> jac = stackalloc double[dim * dim];
+        Span<double> jacLu = stackalloc double[dim * dim];
+        Span<int> jacPerm = stackalloc int[dim];
+        Span<double> rhs = stackalloc double[dim];
+        Span<double> dy = stackalloc double[dim];
+        Span<double> probe = stackalloc double[dim];
+        Span<double> fProbe = stackalloc double[dim];
+        Span<double> yTrial = stackalloc double[dim];
+        Span<double> gTrial = stackalloc double[dim];
+
+        y0.Slice(0, dim).CopyTo(yPrev1);
+
+        // Step 1: L-stable BDF-1 (implicit Euler) starter: y_1 - y_0 - h * f(t_1', y_1) = 0
+        double tStep1 = nSteps == 1 ? t1 : t0 + h;
+        yPrev1.CopyTo(y);
+        yPrev1.CopyTo(target);
+        bool hasFactorizedJacobian = false;
+        MathErrorCode step1Err = SolveImplicitOdeStep(
+            system,
+            tStep1,
+            h,
+            dim,
+            maxNewtonIters,
+            tol,
+            target,
+            y,
+            fy,
+            g,
+            jac,
+            jacLu,
+            jacPerm,
+            rhs,
+            dy,
+            probe,
+            fProbe,
+            yTrial,
+            gTrial,
+            ref hasFactorizedJacobian,
+            ref budget);
+        if (step1Err != MathErrorCode.None)
+        {
+            return step1Err;
+        }
+
+        if (nSteps == 1)
+        {
+            y.CopyTo(yOut);
+            return MathErrorCode.None;
+        }
+
+        yPrev1.CopyTo(yPrev2);
+        y.CopyTo(yPrev1);
+
+        // Step 1 used dtCoeff = h while BDF-2 uses dtCoeff = (2/3)*h, so invalidate the starter LU matrix.
+        hasFactorizedJacobian = false;
+        double bdfScale = (2.0 / 3.0) * h;
+        for (int step = 1; step < nSteps; step++)
+        {
+            double tNext = step + 1 == nSteps ? t1 : t0 + (step + 1) * h;
+            yPrev1.CopyTo(y);
+            for (int i = 0; i < dim; i++)
+            {
+                target[i] = ((4.0 / 3.0) * yPrev1[i]) - ((1.0 / 3.0) * yPrev2[i]);
+            }
+
+            MathErrorCode stepErr = SolveImplicitOdeStep(
+                system,
+                tNext,
+                bdfScale,
+                dim,
+                maxNewtonIters,
+                tol,
+                target,
+                y,
+                fy,
+                g,
+                jac,
+                jacLu,
+                jacPerm,
+                rhs,
+                dy,
+                probe,
+                fProbe,
+                yTrial,
+                gTrial,
+                ref hasFactorizedJacobian,
+                ref budget);
+            if (stepErr != MathErrorCode.None)
+            {
+                return stepErr;
+            }
+
+            yPrev1.CopyTo(yPrev2);
+            y.CopyTo(yPrev1);
+        }
+
+        yPrev1.CopyTo(yOut);
+        return MathErrorCode.None;
+    }
+
+    private static MathErrorCode SolveImplicitOdeStep<TSys>(
+        TSys system,
+        double tNext,
+        double dtCoeff,
+        int dim,
+        int maxNewtonIters,
+        double tol,
+        scoped ReadOnlySpan<double> target,
+        scoped Span<double> y,
+        scoped Span<double> fy,
+        scoped Span<double> g,
+        scoped Span<double> jac,
+        scoped Span<double> jacLu,
+        scoped Span<int> jacPerm,
+        scoped Span<double> rhs,
+        scoped Span<double> dy,
+        scoped Span<double> probe,
+        scoped Span<double> fProbe,
+        scoped Span<double> yTrial,
+        scoped Span<double> gTrial,
+        ref bool hasFactorizedJacobian,
+        ref DslExecutionBudget budget)
+        where TSys : struct, IOdeSystem
+    {
+        ReadOnlySpan<double> dampingFactors = stackalloc double[] { 1.0, 0.5, 0.25, 0.125 };
+
+        if (!budget.TryConsume(1) || !system.TryEvaluate(tNext, y, fy, ref budget))
+        {
+            return ResolveFunctorError(in budget);
+        }
+
+        if (ValidateFinite(fy) != MathErrorCode.None)
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        double gNorm = 0.0;
+        double yInf = 0.0;
+        for (int i = 0; i < dim; i++)
+        {
+            g[i] = y[i] - target[i] - (dtCoeff * fy[i]);
+            gNorm = Math.Max(gNorm, Math.Abs(g[i]));
+            yInf = Math.Max(yInf, Math.Abs(y[i]));
+        }
+
+        if (gNorm == 0.0)
+        {
+            return MathErrorCode.None;
+        }
+
+        double dyPrevInf = double.PositiveInfinity;
+        bool usingFrozen = hasFactorizedJacobian;
+
+        for (int nIter = 0; nIter < maxNewtonIters; nIter++)
+        {
+            bool refreshedThisIter = false;
+            if (!hasFactorizedJacobian)
+            {
+                MathErrorCode buildErr = BuildAndFactorOdeJacobian(
+                    system,
+                    tNext,
+                    dtCoeff,
+                    dim,
+                    y,
+                    fy,
+                    jac,
+                    jacLu,
+                    jacPerm,
+                    probe,
+                    fProbe,
+                    ref budget);
+                if (buildErr != MathErrorCode.None)
+                {
+                    return buildErr;
+                }
+
+                hasFactorizedJacobian = true;
+                usingFrozen = false;
+                refreshedThisIter = true;
+            }
+
+            for (int attempt = 0; attempt < 2; attempt++)
+            {
+                for (int i = 0; i < dim; i++)
+                {
+                    rhs[i] = -g[i];
+                }
+
+                MathErrorCode solveErr = DslLinearAlgebraMath.SolveLuFactored(jacLu, dim, jacPerm, rhs, dy);
+                if (solveErr != MathErrorCode.None)
+                {
+                    if (usingFrozen && !refreshedThisIter)
+                    {
+                        MathErrorCode refreshErr = BuildAndFactorOdeJacobian(
+                            system, tNext, dtCoeff, dim, y, fy, jac, jacLu, jacPerm, probe, fProbe, ref budget);
+                        if (refreshErr != MathErrorCode.None)
+                        {
+                            return refreshErr;
+                        }
+
+                        hasFactorizedJacobian = true;
+                        usingFrozen = false;
+                        refreshedThisIter = true;
+                        continue;
+                    }
+
+                    return solveErr;
+                }
+
+                double dyInf = 0.0;
+                for (int i = 0; i < dim; i++)
+                {
+                    dyInf = Math.Max(dyInf, Math.Abs(dy[i]));
+                }
+
+                bool accepted = false;
+                double acceptedAlpha = 1.0;
+                double trialGNorm = double.PositiveInfinity;
+                double trialYInf = yInf;
+
+                for (int dIdx = 0; dIdx < dampingFactors.Length; dIdx++)
+                {
+                    double alpha = dampingFactors[dIdx];
+                    trialYInf = 0.0;
+                    bool stateOk = true;
+                    for (int i = 0; i < dim; i++)
+                    {
+                        double yi = y[i] + (alpha * dy[i]);
+                        if (!double.IsFinite(yi) || Math.Abs(yi) > StateDivergenceLimit)
+                        {
+                            stateOk = false;
+                            break;
+                        }
+
+                        yTrial[i] = yi;
+                        trialYInf = Math.Max(trialYInf, Math.Abs(yi));
+                    }
+
+                    if (!stateOk)
+                    {
+                        continue;
+                    }
+
+                    if (!budget.TryConsume(1) || !system.TryEvaluate(tNext, yTrial, fProbe, ref budget))
+                    {
+                        return ResolveFunctorError(in budget);
+                    }
+
+                    if (ValidateFinite(fProbe) != MathErrorCode.None)
+                    {
+                        continue;
+                    }
+
+                    trialGNorm = 0.0;
+                    for (int i = 0; i < dim; i++)
+                    {
+                        double gi = yTrial[i] - target[i] - (dtCoeff * fProbe[i]);
+                        gTrial[i] = gi;
+                        trialGNorm = Math.Max(trialGNorm, Math.Abs(gi));
+                    }
+
+                    double stepScale = alpha * dyInf;
+                    if (trialGNorm < gNorm || (stepScale <= tol * Math.Max(1.0, trialYInf) && trialGNorm <= gNorm + 1e-12 * Math.Max(1.0, gNorm)))
+                    {
+                        accepted = true;
+                        acceptedAlpha = alpha;
+                        break;
+                    }
+                }
+
+                if (accepted)
+                {
+                    yTrial.CopyTo(y);
+                    fProbe.CopyTo(fy);
+                    gTrial.CopyTo(g);
+                    gNorm = trialGNorm;
+                    yInf = trialYInf;
+
+                    double stepInf = acceptedAlpha * dyInf;
+                    if (stepInf <= tol * Math.Max(1.0, yInf))
+                    {
+                        return MathErrorCode.None;
+                    }
+
+                    if (usingFrozen && stepInf >= 0.5 * dyPrevInf)
+                    {
+                        hasFactorizedJacobian = false;
+                        usingFrozen = false;
+                    }
+
+                    dyPrevInf = stepInf;
+                    break;
+                }
+
+                if (usingFrozen && !refreshedThisIter)
+                {
+                    MathErrorCode refreshErr = BuildAndFactorOdeJacobian(
+                        system, tNext, dtCoeff, dim, y, fy, jac, jacLu, jacPerm, probe, fProbe, ref budget);
+                    if (refreshErr != MathErrorCode.None)
+                    {
+                        return refreshErr;
+                    }
+
+                    hasFactorizedJacobian = true;
+                    usingFrozen = false;
+                    refreshedThisIter = true;
+                    continue;
+                }
+
+                return MathErrorCode.ConvergenceFailure;
+            }
+        }
+
+        return MathErrorCode.ConvergenceFailure;
+    }
+
+    private static MathErrorCode BuildAndFactorOdeJacobian<TSys>(
+        TSys system,
+        double tNext,
+        double dtCoeff,
+        int dim,
+        scoped ReadOnlySpan<double> y,
+        scoped ReadOnlySpan<double> fy,
+        scoped Span<double> jac,
+        scoped Span<double> jacLu,
+        scoped Span<int> jacPerm,
+        scoped Span<double> probe,
+        scoped Span<double> fProbe,
+        ref DslExecutionBudget budget)
+        where TSys : struct, IOdeSystem
+    {
+        y.CopyTo(probe);
+        for (int j = 0; j < dim; j++)
+        {
+            double dj = 1e-7 * Math.Max(1.0, Math.Abs(y[j]));
+            probe[j] = y[j] + dj;
+            if (!budget.TryConsume(1) || !system.TryEvaluate(tNext, probe, fProbe, ref budget))
+            {
+                return ResolveFunctorError(in budget);
+            }
+
+            probe[j] = y[j];
+            double invDj = 1.0 / dj;
+            for (int i = 0; i < dim; i++)
+            {
+                double dfdy = (fProbe[i] - fy[i]) * invDj;
+                if (!double.IsFinite(dfdy))
+                {
+                    return MathErrorCode.NonFiniteResult;
+                }
+
+                jac[i * dim + j] = (i == j ? 1.0 : 0.0) - (dtCoeff * dfdy);
+            }
+        }
+
+        return DslLinearAlgebraMath.FactorLu(jac, dim, jacLu, jacPerm, out _, ref budget);
     }
 }

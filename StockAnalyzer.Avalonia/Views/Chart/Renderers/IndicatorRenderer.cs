@@ -733,6 +733,7 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
         _blockChartOverlayRenderer.Dispose();
         _mssRenderer.Dispose();
         _ichimokuRenderer.Dispose();
+        _vpRenderer.Dispose();
         _subHistPaint.Dispose();
         _subLinePaint.Dispose();
         _subPath.Dispose();

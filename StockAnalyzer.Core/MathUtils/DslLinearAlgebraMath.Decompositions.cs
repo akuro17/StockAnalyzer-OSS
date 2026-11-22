@@ -748,12 +748,89 @@ public static partial class DslLinearAlgebraMath
         Span<double> h = stackalloc double[nn];
         a.Slice(0, nn).CopyTo(h);
 
+        if (n >= 2)
+        {
+            BalanceRadix2(h, n);
+        }
+
         if (n >= 3)
         {
             ReduceToUpperHessenberg(h, n);
         }
 
         return FrancisDoubleShiftQr(h, n, realEigenvalues, imagEigenvalues, ref budget);
+    }
+
+    private static void BalanceRadix2(Span<double> a, int n)
+    {
+        const double radix = 2.0;
+        const double radixSq = radix * radix;
+        const double factor = 0.95;
+        const double maxMagnitudeGuard = 1e150;
+
+        for (int sweep = 0; sweep < 10; sweep++)
+        {
+            bool converged = true;
+            for (int i = 0; i < n; i++)
+            {
+                double c = 0.0;
+                double r = 0.0;
+                for (int j = 0; j < n; j++)
+                {
+                    if (j != i)
+                    {
+                        c += Math.Abs(a[j * n + i]);
+                        r += Math.Abs(a[i * n + j]);
+                    }
+                }
+
+                if (c == 0.0 || r == 0.0 || !double.IsFinite(c) || !double.IsFinite(r))
+                {
+                    continue;
+                }
+
+                double g = r / radix;
+                double f = 1.0;
+                double s = c + r;
+                while (c < g && c < maxMagnitudeGuard && f < maxMagnitudeGuard)
+                {
+                    f *= radix;
+                    c *= radixSq;
+                }
+
+                g = r * radix;
+                while (c > g && f > 1.0 / maxMagnitudeGuard)
+                {
+                    f /= radix;
+                    c /= radixSq;
+                }
+
+                if ((c + r) / f < factor * s)
+                {
+                    double invF = 1.0 / f;
+                    if (!double.IsFinite(f) || !double.IsFinite(invF) || f == 0.0)
+                    {
+                        continue;
+                    }
+
+                    converged = false;
+                    for (int j = 0; j < n; j++)
+                    {
+                        a[i * n + j] *= invF;
+                    }
+
+                    for (int j = 0; j < n; j++)
+                    {
+                        a[j * n + i] *= f;
+                    }
+                }
+            }
+
+            if (converged)
+            {
+                break;
+            }
+        }
     }
 
     private static void ReduceToUpperHessenberg(Span<double> h, int n)
@@ -1125,5 +1202,349 @@ public static partial class DslLinearAlgebraMath
         double hv = h;
         g = gv - s * (hv + gv * tau);
         h = hv + s * (gv - hv * tau);
+    }
+
+    // ---- DSL v6 Additions: Canonical Eigenvalue Sorting & Matrix Exponential ----
+
+    /// <summary>
+    /// Sorts complex eigenvalue/root pairs <c>(real[k], imag[k])</c> deterministically in ascending order of
+    /// <c>real[k]</c> (treating differences within <c>1e-12 * max(1, |re_i|, |re_j|)</c> as tied) and then ascending <c>imag[k]</c>.
+    /// </summary>
+    public static void SortComplexPairsCanonical(Span<double> real, Span<double> imag, int count)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            if (real[i] == 0.0) real[i] = 0.0;
+            if (imag[i] == 0.0) imag[i] = 0.0;
+        }
+
+        // Stage 1: strict total-order lexicographic sort (guaranteeing transitivity / permutation invariance).
+        for (int i = 0; i < count - 1; i++)
+        {
+            int best = i;
+            for (int j = i + 1; j < count; j++)
+            {
+                if (real[j] < real[best] || (real[j] == real[best] && imag[j] < imag[best]))
+                {
+                    best = j;
+                }
+            }
+
+            if (best != i)
+            {
+                (real[i], real[best]) = (real[best], real[i]);
+                (imag[i], imag[best]) = (imag[best], imag[i]);
+            }
+        }
+
+        // Stage 2: cluster contiguous near-equal real parts anchored at cluster head and sort strictly by imag within each cluster.
+        int start = 0;
+        while (start < count)
+        {
+            double head = real[start];
+            int end = start;
+            while (end + 1 < count)
+            {
+                double next = real[end + 1];
+                double scale = Math.Max(1.0, Math.Max(Math.Abs(head), Math.Abs(next)));
+                if (Math.Abs(next - head) <= 1e-12 * scale)
+                {
+                    end++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            for (int i = start; i < end; i++)
+            {
+                int best = i;
+                for (int j = i + 1; j <= end; j++)
+                {
+                    if (imag[j] < imag[best] || (imag[j] == imag[best] && real[j] < real[best]))
+                    {
+                        best = j;
+                    }
+                }
+
+                if (best != i)
+                {
+                    (real[i], real[best]) = (real[best], real[i]);
+                    (imag[i], imag[best]) = (imag[best], imag[i]);
+                }
+            }
+
+            start = end + 1;
+        }
+    }
+
+    /// <summary>
+    /// Computes the matrix exponential <c>exp(A)</c> for an <c>n x n</c> matrix (<c>1 &lt;= n &lt;= 16</c>)
+    /// via Higham (2005) scaling and squaring with a Padé [13/13] approximant (<c>s &lt;= 30</c>).
+    /// </summary>
+    public static MathErrorCode MatExpm(
+        scoped ReadOnlySpan<double> a,
+        int n,
+        scoped Span<double> result,
+        ref DslExecutionBudget budget)
+    {
+        const double theta13 = 5.371920351148152;
+        const int maxScalingPower = 30;
+        const double b0 = 64764752532480000.0;
+        const double b1 = 32382376266240000.0;
+        const double b2 = 7771770303897600.0;
+        const double b3 = 1187353796428800.0;
+        const double b4 = 129060195264000.0;
+        const double b5 = 10559470521600.0;
+        const double b6 = 670442572800.0;
+        const double b7 = 33522128640.0;
+        const double b8 = 1323241920.0;
+        const double b9 = 40840800.0;
+        const double b10 = 960960.0;
+        const double b11 = 16380.0;
+        const double b12 = 182.0;
+        const double b13 = 1.0;
+
+        int nn = n * n;
+        if (!IsValidDim(n) || a.Length < nn || result.Length < nn)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        MathErrorCode finiteErr = ValidateFinite(a.Slice(0, nn));
+        if (finiteErr != MathErrorCode.None)
+        {
+            return finiteErr;
+        }
+
+        double traceSum = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            traceSum += a[i * n + i];
+        }
+
+        double mu = traceSum / n;
+        if (!double.IsFinite(mu))
+        {
+            return MathErrorCode.ArithmeticOverflow;
+        }
+
+        Span<double> aShift = stackalloc double[nn];
+        a.Slice(0, nn).CopyTo(aShift);
+        for (int i = 0; i < n; i++)
+        {
+            aShift[i * n + i] -= mu;
+        }
+
+        double norm1 = 0.0;
+        for (int j = 0; j < n; j++)
+        {
+            double colSum = 0.0;
+            for (int i = 0; i < n; i++)
+            {
+                colSum += Math.Abs(aShift[i * n + j]);
+            }
+
+            if (colSum > norm1)
+            {
+                norm1 = colSum;
+            }
+        }
+
+        if (!double.IsFinite(norm1))
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        int s = norm1 > theta13 ? Math.Max(0, (int)Math.Ceiling(Math.Log2(norm1 / theta13))) : 0;
+        if (s > maxScalingPower)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        int mulCost = Math.Max(1, (n * n * n) / DslExecutionBudget.CheapOperationsPerUnit);
+        if (!budget.TryConsume((6 + s) * mulCost))
+        {
+            return MathErrorCode.BudgetExceeded;
+        }
+
+        double scale = Math.Pow(2.0, -s);
+        Span<double> b = stackalloc double[nn];
+        for (int i = 0; i < nn; i++)
+        {
+            b[i] = aShift[i] * scale;
+        }
+
+        Span<double> b2Mat = stackalloc double[nn];
+        Span<double> b4Mat = stackalloc double[nn];
+        Span<double> b6Mat = stackalloc double[nn];
+        MultiplySquareNoBudget(b, b, b2Mat, n);
+        MultiplySquareNoBudget(b2Mat, b2Mat, b4Mat, n);
+        MultiplySquareNoBudget(b4Mat, b2Mat, b6Mat, n);
+
+        Span<double> w1 = stackalloc double[nn];
+        Span<double> w2 = stackalloc double[nn];
+        Span<double> uMat = stackalloc double[nn];
+        Span<double> vMat = stackalloc double[nn];
+
+        // w1 = b13 * B6 + b11 * B4 + b9 * B2
+        for (int i = 0; i < nn; i++)
+        {
+            w1[i] = (b13 * b6Mat[i]) + (b11 * b4Mat[i]) + (b9 * b2Mat[i]);
+        }
+
+        MultiplySquareNoBudget(b6Mat, w1, w2, n);
+        for (int i = 0; i < nn; i++)
+        {
+            w2[i] += (b7 * b6Mat[i]) + (b5 * b4Mat[i]) + (b3 * b2Mat[i]);
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            w2[i * n + i] += b1;
+        }
+
+        MultiplySquareNoBudget(b, w2, uMat, n);
+
+        // V = B6 * (b12 * B6 + b10 * B4 + b8 * B2) + b6 * B6 + b4 * B4 + b2 * B2 + b0 * I
+        for (int i = 0; i < nn; i++)
+        {
+            w1[i] = (b12 * b6Mat[i]) + (b10 * b4Mat[i]) + (b8 * b2Mat[i]);
+        }
+
+        MultiplySquareNoBudget(b6Mat, w1, vMat, n);
+        for (int i = 0; i < nn; i++)
+        {
+            vMat[i] += (b6 * b6Mat[i]) + (b4 * b4Mat[i]) + (b2 * b2Mat[i]);
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            vMat[i * n + i] += b0;
+        }
+
+        Span<double> lhs = stackalloc double[nn];
+        Span<double> rhs = stackalloc double[nn];
+        for (int i = 0; i < nn; i++)
+        {
+            lhs[i] = vMat[i] - uMat[i];
+            rhs[i] = vMat[i] + uMat[i];
+        }
+
+        Span<double> lu = stackalloc double[nn];
+        Span<int> perm = stackalloc int[n];
+        MathErrorCode luErr = FactorLu(lhs, n, lu, perm, out _, ref budget);
+        if (luErr != MathErrorCode.None)
+        {
+            return luErr;
+        }
+
+        Span<double> rCur = stackalloc double[nn];
+        Span<double> colRhs = stackalloc double[n];
+        Span<double> colSol = stackalloc double[n];
+        for (int j = 0; j < n; j++)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                colRhs[i] = rhs[i * n + j];
+            }
+
+            MathErrorCode solveErr = SolveLuFactored(lu, n, perm, colRhs, colSol);
+            if (solveErr != MathErrorCode.None)
+            {
+                return solveErr;
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                rCur[i * n + j] = colSol[i];
+            }
+        }
+
+        Span<double> rNext = stackalloc double[nn];
+        for (int sq = 0; sq < s; sq++)
+        {
+            MultiplySquareNoBudget(rCur, rCur, rNext, n);
+            rNext.CopyTo(rCur);
+        }
+
+        double maxAbsR = 0.0;
+        for (int i = 0; i < nn; i++)
+        {
+            if (!double.IsFinite(rCur[i]))
+            {
+                return MathErrorCode.ArithmeticOverflow;
+            }
+
+            maxAbsR = Math.Max(maxAbsR, Math.Abs(rCur[i]));
+        }
+
+        if (maxAbsR == 0.0)
+        {
+            result.Slice(0, nn).Clear();
+            return MathErrorCode.None;
+        }
+
+        double logMax = Math.Log(maxAbsR) + mu;
+        if (logMax < -745.0)
+        {
+            result.Slice(0, nn).Clear();
+            return MathErrorCode.None;
+        }
+
+        if (mu >= -709.0 && mu <= 709.0)
+        {
+            double expMu = Math.Exp(mu);
+            for (int i = 0; i < nn; i++)
+            {
+                double val = rCur[i] * expMu;
+                if (!double.IsFinite(val))
+                {
+                    return MathErrorCode.ArithmeticOverflow;
+                }
+
+                result[i] = val == 0.0 ? 0.0 : val;
+            }
+
+            return MathErrorCode.None;
+        }
+
+        double halfExp = Math.Exp(0.5 * mu);
+        if (!double.IsFinite(halfExp))
+        {
+            return MathErrorCode.ArithmeticOverflow;
+        }
+
+        for (int i = 0; i < nn; i++)
+        {
+            double val = (rCur[i] * halfExp) * halfExp;
+            if (!double.IsFinite(val))
+            {
+                return MathErrorCode.ArithmeticOverflow;
+            }
+
+            result[i] = val == 0.0 ? 0.0 : val;
+        }
+
+        return MathErrorCode.None;
+    }
+
+    private static void MultiplySquareNoBudget(ReadOnlySpan<double> a, ReadOnlySpan<double> b, Span<double> c, int n)
+    {
+        for (int i = 0; i < n; i++)
+        {
+            int rowA = i * n;
+            for (int j = 0; j < n; j++)
+            {
+                double sum = 0.0;
+                for (int k = 0; k < n; k++)
+                {
+                    sum += a[rowA + k] * b[k * n + j];
+                }
+
+                c[rowA + j] = sum;
+            }
+        }
     }
 }

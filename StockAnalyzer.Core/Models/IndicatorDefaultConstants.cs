@@ -119,6 +119,8 @@ public static class IndicatorDefaultConstants
     public const double VolumeProfileOpacity = 0.3;
     public static readonly IndicatorColor VolumeProfileColor = new(255, 128, 128, 128); // Gray
     public static readonly IndicatorColor VolumeProfileValueAreaColor = new(255, 255, 235, 59); // #FFEB3B (Yellow)
+    /// <summary>Default colour of the Point of Control bin (Volume Profile, Time at Price; indicators and drawing tools). The single definition of #FF0000 for these features.</summary>
+    public static readonly IndicatorColor VolumeProfilePocColor = new(255, 255, 0, 0); // #FF0000 (Red)
 
     // === MESA ===
     public static readonly IndicatorColor MesaBaseColor = new(255, 41, 98, 255); // Blue #2962FF

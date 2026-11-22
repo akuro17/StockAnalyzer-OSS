@@ -1974,6 +1974,104 @@ public class DrawingSettingsDialogTests
         }
     }
 
+    // The shared test registry above has no Time at Price entry (production registers it in ServiceCollectionExtensions); this adds it for the TPOC colour tests.
+    private static IDrawingSettingsPanelRegistry CreateRegistryWithTimeAtPrice()
+    {
+        var registry = (DrawingSettingsPanelRegistry)CreateRegistry();
+        registry.Register(new TimeAtPriceSettingsPanelDefinition());
+        return registry;
+    }
+
+    [AvaloniaFact]
+    public void VolumeProfileSettingsPanel_PocColorPicker_ShowsTheDefaultRed_AndCommitsTheChosenColor()
+    {
+        var frvp = new FixedRangeVolumeProfileObject(new ChartPoint(new DateTime(2025, 1, 1), 100m), new ChartPoint(new DateTime(2025, 1, 10), 200m));
+        var dialog = new DrawingSettingsDialog(frvp, CreateRegistry());
+        try
+        {
+            dialog.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            var pocPicker = dialog.FindControl<ColorPicker>("PocColorPicker");
+            var vaPicker = dialog.FindControl<ColorPicker>("ValueAreaColorPicker");
+            var okButton = dialog.FindControl<Button>("OkButton");
+            Assert.NotNull(pocPicker);
+            Assert.NotNull(vaPicker);
+            Assert.NotNull(okButton);
+
+            // The picker starts at the single red default; the Value Area picker is its own control.
+            Assert.Equal(Color.FromArgb(255, 255, 0, 0), pocPicker!.Color);
+            Assert.Equal(Color.Parse("#FFEB3B"), vaPicker!.Color);
+
+            pocPicker.Color = Colors.Lime;
+            okButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(Colors.Lime, frvp.PocColor);
+            Assert.Equal(Color.Parse("#FFEB3B"), frvp.ValueAreaColor); // the other colours are not touched
+        }
+        finally
+        {
+            dialog.Close();
+            frvp.Dispose();
+        }
+    }
+
+    [AvaloniaFact]
+    public void TimeAtPriceSettingsPanel_TpocColorPicker_ShowsTheStoredColor_AndCommitsTheChosenColor()
+    {
+        var tap = new TimeAtPriceObject(new ChartPoint(new DateTime(2025, 1, 1), 100m), new ChartPoint(new DateTime(2025, 1, 10), 200m))
+        {
+            PocColor = Colors.Orange
+        };
+        var dialog = new DrawingSettingsDialog(tap, CreateRegistryWithTimeAtPrice());
+        try
+        {
+            dialog.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            var pocPicker = dialog.FindControl<ColorPicker>("TapPocColorPicker");
+            var okButton = dialog.FindControl<Button>("OkButton");
+            Assert.NotNull(pocPicker);
+            Assert.NotNull(okButton);
+            Assert.Equal(Colors.Orange, pocPicker!.Color);
+
+            pocPicker.Color = Colors.Magenta;
+            okButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(Colors.Magenta, tap.PocColor);
+            Assert.Equal(Colors.Magenta, tap.EffectivePocColor);
+        }
+        finally
+        {
+            dialog.Close();
+            tap.Dispose();
+        }
+    }
+
+    [AvaloniaFact]
+    public void TimeAtPriceSettingsPanel_NullPocColor_ShowsTheRedDefaultInThePicker()
+    {
+        var tap = new TimeAtPriceObject(new ChartPoint(new DateTime(2025, 1, 1), 100m), new ChartPoint(new DateTime(2025, 1, 10), 200m)) { PocColor = null };
+        var dialog = new DrawingSettingsDialog(tap, CreateRegistryWithTimeAtPrice());
+        try
+        {
+            dialog.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(Color.FromArgb(255, 255, 0, 0), dialog.FindControl<ColorPicker>("TapPocColorPicker")!.Color);
+        }
+        finally
+        {
+            dialog.Close();
+            tap.Dispose();
+        }
+    }
+
     [AvaloniaFact]
     public void VolumeProfileSettingsPanel_WithCoordinator_CommitSucceeds()
     {

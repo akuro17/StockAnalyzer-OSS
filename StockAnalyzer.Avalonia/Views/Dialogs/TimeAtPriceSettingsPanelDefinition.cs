@@ -55,6 +55,7 @@ public sealed class TimeAtPriceSettingsPanelDefinition : IDrawingSettingsPanelDe
 
         var priceSourceCombo = dialogWindow.FindControl<ComboBox>("TapPriceSourceCombo");
         var valueAreaColorPicker = dialogWindow.FindControl<ColorPicker>("TapValueAreaColorPicker");
+        var pocColorPicker = dialogWindow.FindControl<ColorPicker>("TapPocColorPicker");
         var profileColorPicker = dialogWindow.FindControl<ColorPicker>("TapProfileColorPicker");
         var opacitySpin = dialogWindow.FindControl<NumericUpDown>("TapOpacitySpin");
         var fillColorPicker = dialogWindow.FindControl<ColorPicker>("TapFillColorPicker");
@@ -78,6 +79,7 @@ public sealed class TimeAtPriceSettingsPanelDefinition : IDrawingSettingsPanelDe
         }
 
         if (valueAreaColorPicker != null) valueAreaColorPicker.Color = tap.ValueAreaColor;
+        if (pocColorPicker != null) pocColorPicker.Color = tap.EffectivePocColor;
         if (profileColorPicker != null) profileColorPicker.Color = tap.ProfileColor;
         if (opacitySpin != null) opacitySpin.Value = (decimal)(tap.Opacity * 100);
         if (fillColorPicker != null) fillColorPicker.Color = tap.FillColor;
@@ -106,6 +108,7 @@ public sealed class TimeAtPriceSettingsPanelDefinition : IDrawingSettingsPanelDe
 
         var priceSourceCombo = dialogWindow.FindControl<ComboBox>("TapPriceSourceCombo");
         var valueAreaColorPicker = dialogWindow.FindControl<ColorPicker>("TapValueAreaColorPicker");
+        var pocColorPicker = dialogWindow.FindControl<ColorPicker>("TapPocColorPicker");
         var profileColorPicker = dialogWindow.FindControl<ColorPicker>("TapProfileColorPicker");
         var opacitySpin = dialogWindow.FindControl<NumericUpDown>("TapOpacitySpin");
         var fillColorPicker = dialogWindow.FindControl<ColorPicker>("TapFillColorPicker");
@@ -120,6 +123,7 @@ public sealed class TimeAtPriceSettingsPanelDefinition : IDrawingSettingsPanelDe
         }
 
         if (valueAreaColorPicker != null) tap.ValueAreaColor = valueAreaColorPicker.Color;
+        if (pocColorPicker != null) tap.PocColor = pocColorPicker.Color;
         if (profileColorPicker != null) tap.ProfileColor = profileColorPicker.Color;
         if (opacitySpin?.Value != null) tap.Opacity = (double)opacitySpin.Value / 100.0;
         if (fillColorPicker != null) tap.FillColor = fillColorPicker.Color;

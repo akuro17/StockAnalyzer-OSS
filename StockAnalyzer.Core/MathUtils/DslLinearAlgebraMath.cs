@@ -1027,7 +1027,7 @@ public static partial class DslLinearAlgebraMath
 
     // ---- Internal LU Helpers ----
 
-    private static MathErrorCode FactorLu(
+    internal static MathErrorCode FactorLu(
         scoped ReadOnlySpan<double> a,
         int n,
         scoped Span<double> lu,
@@ -1096,7 +1096,7 @@ public static partial class DslLinearAlgebraMath
         return MathErrorCode.None;
     }
 
-    private static MathErrorCode SolveLuFactored(
+    internal static MathErrorCode SolveLuFactored(
         ReadOnlySpan<double> lu,
         int n,
         ReadOnlySpan<int> perm,

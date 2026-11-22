@@ -92,9 +92,12 @@ public sealed class CalculatorBodyErrorCodeTests
     }
 
     [Fact]
-    public void ArrayVariableInvisibleInsideABodyIsUndefinedName()
+    public void ArrayVariableIsVisibleReadOnlyInsideHigherOrderBody()
     {
-        AssertError("mc_integrate_nd(sum(heat) * x, [x], [0], [1], 64, 1)", CalculatorErrorCode.UndefinedName, 20, "heat", Heat);
+        ExpressionCalculator.CalculatorBatchResult result = Run("mc_integrate_nd(sum(heat) * x, [x], [0], [1], 64, 1)", Heat);
+
+        Assert.True(result.IsOk);
+        Assert.InRange(result.ScalarValue, 1.0m, 2.0m);
     }
 
     [Theory]
@@ -177,6 +180,14 @@ public sealed class CalculatorBodyErrorCodeTests
         "opt_golden(zzz * x, x, 0, 1)",
         "opt_nelder_mead(zzz * x, [x], [1])",
         "opt_bfgs(zzz * x, [x], [1])",
+        "sigma(zzz * i, i, 1, 2)",
+        "prod_over(zzz * i, i, 1, 2)",
+        "arr_map(zzz * x, x, [1])",
+        "arr_filter(zzz * x, x, [1])",
+        "arr_reduce(zzz + acc + item, acc, item, [1], 0)",
+        "opt_lbfgsb(zzz * x, [x], [0.5], [0], [1])",
+        "fsolve([zzz * x], [x], [1])",
+        "ode_bdf2([zzz * y], t, [y], 0, 1, [1], 4)",
     };
 
     public static IEnumerable<object[]> HigherOrderCalls => HigherOrderCallsWithUndefinedBody.Select(call => new object[] { call });

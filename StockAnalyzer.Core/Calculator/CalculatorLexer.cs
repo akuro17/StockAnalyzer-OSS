@@ -14,6 +14,17 @@ internal enum CalcTokenKind
     Slash,
     Percent,
     Caret,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    EqualEqual,
+    BangEqual,
+    AmpAmp,
+    PipePipe,
+    Bang,
+    Question,
+    Colon,
     OpenParen,
     CloseParen,
     OpenBracket,
@@ -82,33 +93,10 @@ internal static class CalculatorLexer
             }
             else
             {
-                CalcTokenKind? opKind = ch switch
+                if (!TryReadOperatorToken(expression, ref index, start, out token, out error))
                 {
-                    '+' => CalcTokenKind.Plus,
-                    '-' => CalcTokenKind.Minus,
-                    '*' => CalcTokenKind.Star,
-                    '/' => CalcTokenKind.Slash,
-                    '%' => CalcTokenKind.Percent,
-                    '^' => CalcTokenKind.Caret,
-                    '(' => CalcTokenKind.OpenParen,
-                    ')' => CalcTokenKind.CloseParen,
-                    '[' => CalcTokenKind.OpenBracket,
-                    ']' => CalcTokenKind.CloseBracket,
-                    ',' => CalcTokenKind.Comma,
-                    _ => null,
-                };
-
-                if (opKind is null)
-                {
-                    error = new CalculatorError(
-                        CalculatorErrorCode.UnexpectedCharacter,
-                        start,
-                        $"Unexpected character '{FormatCharForMessage(ch)}' at position {start}.");
                     return false;
                 }
-
-                index++;
-                token = new CalcToken(opKind.Value, start, ch.ToString(), 0m);
             }
 
             if (tokens.Count == limits.MaxTokens)
@@ -122,6 +110,75 @@ internal static class CalculatorLexer
 
             tokens.Add(token);
         }
+    }
+
+    private static bool TryReadOperatorToken(
+        string expression,
+        ref int index,
+        int start,
+        out CalcToken token,
+        out CalculatorError? error)
+    {
+        char ch = expression[index];
+        char next = index + 1 < expression.Length ? expression[index + 1] : '\0';
+        CalcTokenKind? kind = null;
+        int advance = 1;
+
+        switch (ch)
+        {
+            case '+': kind = CalcTokenKind.Plus; break;
+            case '-': kind = CalcTokenKind.Minus; break;
+            case '*': kind = CalcTokenKind.Star; break;
+            case '/': kind = CalcTokenKind.Slash; break;
+            case '%': kind = CalcTokenKind.Percent; break;
+            case '^': kind = CalcTokenKind.Caret; break;
+            case '(': kind = CalcTokenKind.OpenParen; break;
+            case ')': kind = CalcTokenKind.CloseParen; break;
+            case '[': kind = CalcTokenKind.OpenBracket; break;
+            case ']': kind = CalcTokenKind.CloseBracket; break;
+            case ',': kind = CalcTokenKind.Comma; break;
+            case '?': kind = CalcTokenKind.Question; break;
+            case ':': kind = CalcTokenKind.Colon; break;
+            case '<':
+                kind = next == '=' ? CalcTokenKind.LessEqual : CalcTokenKind.Less;
+                advance = next == '=' ? 2 : 1;
+                break;
+            case '>':
+                kind = next == '=' ? CalcTokenKind.GreaterEqual : CalcTokenKind.Greater;
+                advance = next == '=' ? 2 : 1;
+                break;
+            case '=' when next == '=':
+                kind = CalcTokenKind.EqualEqual;
+                advance = 2;
+                break;
+            case '!':
+                kind = next == '=' ? CalcTokenKind.BangEqual : CalcTokenKind.Bang;
+                advance = next == '=' ? 2 : 1;
+                break;
+            case '&' when next == '&':
+                kind = CalcTokenKind.AmpAmp;
+                advance = 2;
+                break;
+            case '|' when next == '|':
+                kind = CalcTokenKind.PipePipe;
+                advance = 2;
+                break;
+        }
+
+        if (kind is null)
+        {
+            token = default;
+            error = new CalculatorError(
+                CalculatorErrorCode.UnexpectedCharacter,
+                start,
+                $"Unexpected character '{FormatCharForMessage(ch)}' at position {start}.");
+            return false;
+        }
+
+        index += advance;
+        token = new CalcToken(kind.Value, start, expression.Substring(start, advance), 0m);
+        error = null;
+        return true;
     }
 
     private static bool TryReadNumber(
@@ -175,6 +232,7 @@ internal static class CalculatorLexer
         }
 
         int intSigLen = intEnd - firstNonZeroInt;
+        bool hasNonZeroMantissa = intSigLen > 0;
         if (intSigLen == 0)
         {
             int firstNonZeroFrac = fracStart;
@@ -183,6 +241,7 @@ internal static class CalculatorLexer
                 firstNonZeroFrac++;
             }
 
+            hasNonZeroMantissa = firstNonZeroFrac < fracEnd;
             ReadOnlySpan<char> unscaledFrac = expression.AsSpan(firstNonZeroFrac, fracEnd - firstNonZeroFrac);
             if (unscaledFrac.Length > MaxDecimalSignificantDigits ||
                 (unscaledFrac.Length > 0 && !decimal.TryParse(unscaledFrac, NumberStyles.None, CultureInfo.InvariantCulture, out _)))
@@ -223,14 +282,43 @@ internal static class CalculatorLexer
             }
         }
 
+        bool hasExponent = false;
+        if (index < length && (expression[index] is 'e' or 'E'))
+        {
+            int expLook = index + 1;
+            if (expLook < length && (expression[expLook] is '+' or '-'))
+            {
+                expLook++;
+            }
+
+            if (expLook < length && ExpressionCalculator.IsAsciiDigit(expression[expLook]))
+            {
+                hasExponent = true;
+                index = expLook + 1;
+                while (index < length && ExpressionCalculator.IsAsciiDigit(expression[index]))
+                {
+                    index++;
+                }
+            }
+        }
+
         ReadOnlySpan<char> literal = expression.AsSpan(start, index - start);
-        if (!decimal.TryParse(literal, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out value))
+        NumberStyles styles = hasExponent
+            ? NumberStyles.AllowDecimalPoint | NumberStyles.AllowExponent
+            : NumberStyles.AllowDecimalPoint;
+        if (!decimal.TryParse(literal, styles, CultureInfo.InvariantCulture, out value) ||
+            (hasNonZeroMantissa && value == 0m))
         {
             error = new CalculatorError(
                 CalculatorErrorCode.NumberOutOfRange,
                 start,
                 $"Number at position {start} is out of System.Decimal range.");
             return false;
+        }
+
+        if (value == 0m)
+        {
+            value = 0m;
         }
 
         return true;

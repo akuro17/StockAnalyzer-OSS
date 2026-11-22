@@ -78,6 +78,18 @@ namespace StockAnalyzer.Core.Models.Parameters
 
         public IndicatorColor EffectiveValueAreaColor => _valueAreaColor ?? IndicatorDefaultConstants.VolumeProfileValueAreaColor;
 
+        private IndicatorColor? _pocColor = IndicatorDefaultConstants.VolumeProfilePocColor;
+        [DisplayName("TPOC Color")]
+        [Description("Color of the Time Point of Control bin (the price band with the longest residence time). Defaults to red (#FF0000) if unset.")]
+        public IndicatorColor? PocColor
+        {
+            get => _pocColor;
+            set => SetProperty(ref _pocColor, value);
+        }
+
+        /// <summary>Resolves an unset (null) <see cref="PocColor"/> to the red default (see <see cref="EffectiveValueAreaColor"/>).</summary>
+        public IndicatorColor EffectivePocColor => _pocColor ?? IndicatorDefaultConstants.VolumeProfilePocColor;
+
         public override string GetDisplayName(string type) => $"{type} ({Period}, {RowCount}, {PriceType})";
 
         public override void Validate()

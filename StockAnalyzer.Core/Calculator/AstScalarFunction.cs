@@ -13,20 +13,20 @@ internal readonly struct AstScalarFunction : IScalarFunction
 {
     private readonly CalcNode _body;
     private readonly string _variableName;
-    private readonly IReadOnlyDictionary<string, decimal> _names;
+    private readonly DslEvalScope _scope;
     private readonly CalculatorLimits _limits;
     private readonly BoundVariableScope _parentScope;
 
     public AstScalarFunction(
         CalcNode body,
         string variableName,
-        IReadOnlyDictionary<string, decimal> names,
+        in DslEvalScope scope,
         CalculatorLimits limits,
         in BoundVariableScope parentScope)
     {
         _body = body;
         _variableName = variableName;
-        _names = names;
+        _scope = scope;
         _limits = limits;
         _parentScope = parentScope;
     }
@@ -48,7 +48,7 @@ internal readonly struct AstScalarFunction : IScalarFunction
             return false;
         }
 
-        CalculatorOutcome outcome = CalculatorEvaluator.Evaluate(_body, _names, _limits, ref budget, in nextScope);
+        CalculatorOutcome outcome = CalculatorEvaluator.EvaluateWithScope(_body, in _scope, _limits, ref budget, in nextScope);
         if (outcome.Error is { } err)
         {
             FunctorFailureBridge.Record(ref budget, err);
@@ -82,8 +82,7 @@ internal readonly struct AstNdScalarFunction : INdScalarFunction
     {
         _body = body;
         _variableNames = variableNames;
-        // Strip outer batch-arena array handles because AST integrands evaluate against an isolated local arena.
-        _scope = new DslEvalScope(scope.ScalarNames, null);
+        _scope = scope;
         _limits = limits;
         _parentScope = parentScope;
     }
@@ -158,8 +157,7 @@ internal readonly struct AstOdeSystem : IOdeSystem
         _rightHandSides = rightHandSides;
         _independentVariable = independentVariable;
         _stateVariables = stateVariables;
-        // Strip outer batch-arena array handles because AST right-hand sides evaluate against an isolated local arena.
-        _scope = new DslEvalScope(scope.ScalarNames, null);
+        _scope = scope;
         _limits = limits;
         _parentScope = parentScope;
     }
@@ -220,6 +218,77 @@ internal readonly struct AstOdeSystem : IOdeSystem
         }
 
         scope = next;
+        return true;
+    }
+}
+
+/// <summary>
+/// Zero-allocation <see cref="INdVectorFunction"/> bridge for <c>fsolve(exprs, vars, x0[, tol])</c>.
+/// </summary>
+internal readonly struct AstVectorFunction : INdVectorFunction
+{
+    private readonly IReadOnlyList<CalcNode> _expressions;
+    private readonly IReadOnlyList<string> _variableNames;
+    private readonly DslEvalScope _scope;
+    private readonly CalculatorLimits _limits;
+    private readonly BoundVariableScope _parentScope;
+
+    public AstVectorFunction(
+        IReadOnlyList<CalcNode> expressions,
+        IReadOnlyList<string> variableNames,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        in BoundVariableScope parentScope)
+    {
+        _expressions = expressions;
+        _variableNames = variableNames;
+        _scope = scope;
+        _limits = limits;
+        _parentScope = parentScope;
+    }
+
+    public int Dimension => _expressions.Count;
+
+    public bool TryEvaluate(scoped ReadOnlySpan<double> x, scoped Span<double> fx, ref DslExecutionBudget budget)
+    {
+        int dim = _expressions.Count;
+        if (x.Length < dim || fx.Length < dim || _variableNames.Count != dim)
+        {
+            budget.LastError = MathErrorCode.DimensionMismatch;
+            return false;
+        }
+
+        BoundVariableScope current = _parentScope;
+        for (int i = 0; i < dim; i++)
+        {
+            decimal? narrowed = IndicatorCalculationHelper.ToDecimalOrNull(x[i]);
+            if (narrowed is not { } valid)
+            {
+                budget.LastError = double.IsNaN(x[i]) ? MathErrorCode.NonFiniteResult : MathErrorCode.ArithmeticOverflow;
+                return false;
+            }
+
+            if (!current.TryPush(_variableNames[i], valid, out BoundVariableScope next))
+            {
+                budget.LastError = MathErrorCode.BudgetExceeded;
+                return false;
+            }
+
+            current = next;
+        }
+
+        for (int i = 0; i < dim; i++)
+        {
+            CalculatorOutcome outcome = CalculatorEvaluator.EvaluateWithScope(_expressions[i], in _scope, _limits, ref budget, in current);
+            if (outcome.Error is { } err)
+            {
+                FunctorFailureBridge.Record(ref budget, err);
+                return false;
+            }
+
+            fx[i] = (double)outcome.Value!.Value;
+        }
+
         return true;
     }
 }

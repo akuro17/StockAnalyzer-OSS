@@ -484,6 +484,17 @@ internal static class CalculatorDistributionFunctions
                 outcome = CalculatorElementaryFunctions.FromMathResult(DslProbabilityDistributionsMath.TukeyQIcdf(args[0], args[1], args[2], ref budget), position, name);
                 return true;
 
+            // 27. Generalized Extreme Value (GEV)
+            case "gev_pdf":
+                outcome = CalculatorElementaryFunctions.FromMathResult(DslProbabilityDistributionsMath.GevPdf(args[0], args[1], args[2], args[3]), position, name);
+                return true;
+            case "gev_cdf":
+                outcome = CalculatorElementaryFunctions.FromMathResult(DslProbabilityDistributionsMath.GevCdf(args[0], args[1], args[2], args[3]), position, name);
+                return true;
+            case "gev_icdf":
+                outcome = CalculatorElementaryFunctions.FromMathResult(DslProbabilityDistributionsMath.GevIcdf(args[0], args[1], args[2], args[3]), position, name);
+                return true;
+
             default:
                 outcome = default;
                 return false;

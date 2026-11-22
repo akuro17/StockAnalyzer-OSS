@@ -113,7 +113,8 @@ internal static partial class CalculatorDiagnosticsAndStatsFunctions
                 return true;
 
             default:
-                return TryEvaluateV5Value(name, position, args, ref budget, ref arena, out outcome);
+                return TryEvaluateV5Value(name, position, args, ref budget, ref arena, out outcome) ||
+                       TryEvaluateV6Value(name, position, args, ref budget, ref arena, out outcome);
         }
     }
 

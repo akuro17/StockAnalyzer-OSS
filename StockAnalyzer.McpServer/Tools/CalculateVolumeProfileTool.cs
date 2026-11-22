@@ -30,9 +30,20 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
     private const string ValueAreaPercentArgument = "valueAreaPercent";
     private const string IncludeBinsArgument = "includeBins";
     private const string CompactRowsArgument = "compactRows";
+    private const string IncludeRankingArgument = "includeRanking";
+    private const string RankingLimitArgument = "rankingLimit";
     private const string BinColumnsKey = "binColumns";
     private const string BinRowsKey = "binRows";
+    private const string RankingColumnsKey = "rankingColumns";
+    private const string RankingRowsKey = "rankingRows";
     private static readonly string[] BinColumns = { "priceLow", "priceHigh", "volume" };
+    private static readonly string[] RankingColumns = { "rank", "priceLow", "priceHigh", "price", "volume", "share", "cumulativeShare" };
+
+    /// <summary>
+    /// Decimal places of the written <c>share</c> and <c>cumulativeShare</c> (away from zero at the midpoint). An output format, not a tunable: the ranking itself is never rounded
+    /// (<see cref="VolumeProfileRanking"/>), and neither <c>decimalPlaces</c> nor the compact defaults change this number of places.
+    /// </summary>
+    internal const int RankingShareDecimalPlaces = 6;
 
     private const string VolumeBasis = "Volume";
     private const string TimeAtPriceBasis = "TimeAtPrice";
@@ -56,7 +67,7 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
     public string Name => "sa_calculate_volume_profile";
 
     public string Description =>
-        $"Calculates Volume Profile or Time-at-Price bin distribution (POC, VAH, VAL) over stored bars; supports {SeriesOutputOptions.DecimalPlacesArgument}, {IncludeBinsArgument}, and {CompactRowsArgument} ({BinColumnsKey}/{BinRowsKey}). Read-only. " +
+        $"Calculates Volume Profile or Time-at-Price bin distribution (POC, VAH, VAL) over stored bars; supports {SeriesOutputOptions.DecimalPlacesArgument}, {IncludeBinsArgument}, {IncludeRankingArgument}, and {CompactRowsArgument} ({BinColumnsKey}/{BinRowsKey}). Read-only. " +
         ToolJson.DocLink(Name);
 
     public bool IsHeavy => false;
@@ -81,6 +92,8 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         .Boolean(CompactRowsArgument, _compactDefaults
             ? $"true returns 'bins' as [] and writes '{BinColumnsKey}' plus '{BinRowsKey}' ([priceLow, priceHigh, volume] rows; cannot be combined with {IncludeBinsArgument} false). Default true (when {IncludeBinsArgument} is true)."
             : $"true returns 'bins' as [] and writes '{BinColumnsKey}' plus '{BinRowsKey}' ([priceLow, priceHigh, volume] rows; cannot be combined with {IncludeBinsArgument} false). Default false.")
+        .Boolean(IncludeRankingArgument, "true adds 'ranking': the bins ordered by volume, highest first (rank 1 is the POC). Default false.")
+        .Integer(RankingLimitArgument, $"Keep the first N ranked bins (1..{_limits.MaxVolumeProfileBins}). Needs {IncludeRankingArgument} true. Default all.", minimum: 1, maximum: _limits.MaxVolumeProfileBins)
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
@@ -133,6 +146,24 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         {
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"{RangeBarsArgument} must be >= 1.", RangeBarsArgument);
         }
+
+        // Ranking arguments. The order is fixed: (1) rankingLimit without includeRanking true is refused first, whatever its value, so a caller who lowers an
+        // over-large limit is not refused a second time for the missing includeRanking; (2) only then the range, exactly as binCount (below 1 INVALID_ARGUMENT, above the
+        // maximum LIMIT_EXCEEDED). A limit inside the range that exceeds the number of ranked bins is not an error: all ranked bins are returned.
+        bool includeRanking = ToolArgs.Boolean(arguments, IncludeRankingArgument) ?? false;
+        bool rankingLimitGiven = arguments.TryGetProperty(RankingLimitArgument, out _);
+        if (rankingLimitGiven && !includeRanking)
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{RankingLimitArgument}' limits the ranking and needs '{IncludeRankingArgument}' true.",
+                RankingLimitArgument,
+                $"Set {IncludeRankingArgument} to true, or omit {RankingLimitArgument}.");
+        }
+
+        int? rankingLimit = rankingLimitGiven
+            ? ToolArgs.PositiveWithin(arguments, RankingLimitArgument, _limits.MaxVolumeProfileBins, _limits.MaxVolumeProfileBins)
+            : null;
 
         List<CandleData> loaded;
         if (endDate is not null)
@@ -259,6 +290,9 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
             }
         }
 
+        // Ranked bins of the same profile (after the basis switch and the single-bin case above); empty when every bin weighs 0.
+        IReadOnlyList<VolumeBinRank> ranking = includeRanking ? VolumeProfileRanking.Rank(bins, rankingLimit) : Array.Empty<VolumeBinRank>();
+
         return ToolJson.Build(writer =>
         {
             writer.WriteStartObject();
@@ -306,6 +340,47 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
                         writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(b.LowerBound, decimalPlaces));
                         writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(b.UpperBound, decimalPlaces));
                         writer.WriteNumberValue(b.TotalVolume);
+                        writer.WriteEndArray();
+                    }
+                    writer.WriteEndArray();
+                }
+            }
+
+            if (includeRanking)
+            {
+                writer.WriteNumber("rankingCount", ranking.Count);
+                writer.WriteStartArray("ranking");
+                if (!compactRows)
+                {
+                    foreach (VolumeBinRank row in ranking)
+                    {
+                        writer.WriteStartObject();
+                        writer.WriteNumber("rank", row.Rank);
+                        writer.WriteNumber("priceLow", SeriesOutputOptions.RoundIfRequested(row.LowerBound, decimalPlaces));
+                        writer.WriteNumber("priceHigh", SeriesOutputOptions.RoundIfRequested(row.UpperBound, decimalPlaces));
+                        writer.WriteNumber("price", SeriesOutputOptions.RoundIfRequested(row.Price, decimalPlaces));
+                        writer.WriteNumber("volume", row.Volume);
+                        writer.WriteNumber("share", SeriesOutputOptions.Round(row.Share, RankingShareDecimalPlaces));
+                        writer.WriteNumber("cumulativeShare", SeriesOutputOptions.Round(row.CumulativeShare, RankingShareDecimalPlaces));
+                        writer.WriteEndObject();
+                    }
+                }
+                writer.WriteEndArray();
+
+                if (compactRows)
+                {
+                    ToolJson.WriteStringArray(writer, RankingColumnsKey, RankingColumns);
+                    writer.WriteStartArray(RankingRowsKey);
+                    foreach (VolumeBinRank row in ranking)
+                    {
+                        writer.WriteStartArray();
+                        writer.WriteNumberValue(row.Rank);
+                        writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(row.LowerBound, decimalPlaces));
+                        writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(row.UpperBound, decimalPlaces));
+                        writer.WriteNumberValue(SeriesOutputOptions.RoundIfRequested(row.Price, decimalPlaces));
+                        writer.WriteNumberValue(row.Volume);
+                        writer.WriteNumberValue(SeriesOutputOptions.Round(row.Share, RankingShareDecimalPlaces));
+                        writer.WriteNumberValue(SeriesOutputOptions.Round(row.CumulativeShare, RankingShareDecimalPlaces));
                         writer.WriteEndArray();
                     }
                     writer.WriteEndArray();

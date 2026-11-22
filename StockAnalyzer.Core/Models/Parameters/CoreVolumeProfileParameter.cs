@@ -72,6 +72,21 @@ namespace StockAnalyzer.Core.Models.Parameters
         /// </summary>
         public IndicatorColor EffectiveValueAreaColor => _valueAreaColor ?? IndicatorDefaultConstants.VolumeProfileValueAreaColor;
 
+        private IndicatorColor? _pocColor = IndicatorDefaultConstants.VolumeProfilePocColor;
+        [DisplayName("POC Color")]
+        [Description("Color of the Point of Control bin (the price band with the highest volume). Defaults to red (#FF0000) if unset.")]
+        public IndicatorColor? PocColor
+        {
+            get => _pocColor;
+            set => SetProperty(ref _pocColor, value);
+        }
+
+        /// <summary>
+        /// Resolves an unset (null) <see cref="PocColor"/> -- including one restored explicitly as null from a saved settings file -- to the red
+        /// default, the same way <see cref="EffectiveValueAreaColor"/> does for the Value Area.
+        /// </summary>
+        public IndicatorColor EffectivePocColor => _pocColor ?? IndicatorDefaultConstants.VolumeProfilePocColor;
+
         // For compatibility if needed, map NumberOfBuckets to RowCount
         public int NumberOfBuckets => RowCount;
 

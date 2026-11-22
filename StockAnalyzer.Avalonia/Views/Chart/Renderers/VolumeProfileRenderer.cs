@@ -14,10 +14,11 @@ using StockAnalyzer.Avalonia.Drawing;
 
 namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
 {
-    public class VolumeProfileRenderer
+    public class VolumeProfileRenderer : IDisposable
     {
         private readonly SKPaint _barPaint;
         private readonly SKPaint _valueAreaPaint;
+        private readonly SKPaint _pocBinPaint;
         private readonly SKPaint _pocPaint;
         private readonly SKPaint _borderPaint;
 
@@ -30,6 +31,13 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
             };
 
             _valueAreaPaint = new SKPaint
+            {
+                Style = SKPaintStyle.Fill,
+                IsAntialias = true
+            };
+
+            // Fills the Point of Control bin of the viewport path (RenderViewport); the colour is refreshed on every call.
+            _pocBinPaint = new SKPaint
             {
                 Style = SKPaintStyle.Fill,
                 IsAntialias = true
@@ -50,7 +58,19 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
             };
         }
 
+        /// <summary>Releases the native paints. Idempotent (SKPaint.Dispose may be called twice).</summary>
+        public void Dispose()
+        {
+            _barPaint.Dispose();
+            _valueAreaPaint.Dispose();
+            _pocBinPaint.Dispose();
+            _pocPaint.Dispose();
+            _borderPaint.Dispose();
+            GC.SuppressFinalize(this);
+        }
+
         internal SKPaint BarPaint => _barPaint;
+        internal SKPaint PocBinPaint => _pocBinPaint;
         internal SKPaint PocPaint => _pocPaint;
         internal SKPaint BorderPaint => _borderPaint;
 
@@ -162,6 +182,11 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
             var vaColor = param?.EffectiveValueAreaColor ?? tapParam?.EffectiveValueAreaColor ?? StockAnalyzer.Core.Models.IndicatorDefaultConstants.VolumeProfileValueAreaColor;
             _valueAreaPaint.Color = new SKColor(vaColor.R, vaColor.G, vaColor.B, alpha);
 
+            // The Point of Control bin takes the POC colour (precedence: POC > Value Area > base colour). The POC bin always lies inside the Value Area,
+            // so without this precedence the POC colour would never be visible. null/unset resolves to the red default (EffectivePocColor).
+            var pocColor = param?.EffectivePocColor ?? tapParam?.EffectivePocColor ?? StockAnalyzer.Core.Models.IndicatorDefaultConstants.VolumeProfilePocColor;
+            _pocBinPaint.Color = new SKColor(pocColor.R, pocColor.G, pocColor.B, alpha);
+
             var side = param?.Side ?? tapParam?.Side ?? DisplaySide.Left;
             bool renderLeft = side == DisplaySide.Left || side == DisplaySide.Both;
             bool renderRight = side == DisplaySide.Right || side == DisplaySide.Both;
@@ -182,6 +207,9 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
                 decimal? vah = segment.VAH;
                 decimal? val = segment.VAL;
 
+                // -1 when no bin is to be painted as the POC (every bin weighs 0 is skipped above; kept for the single rule of PointOfControlSelector).
+                int pocIndex = PointOfControlSelector.FindDrawableIndex(segment.Bins);
+
                 for (int b = 0; b < segment.Bins.Count; b++)
                 {
                     var bin = segment.Bins[b];
@@ -190,7 +218,7 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers
                     float barLength = (bin.TotalVolume / (float)maxVol) * profileWidth;
 
                     bool isVa = vah.HasValue && val.HasValue && bin.LowerBound >= val.Value && bin.UpperBound <= vah.Value;
-                    var paint = isVa ? _valueAreaPaint : _barPaint;
+                    var paint = ProfileBinPaintSelector.Select(b == pocIndex, isVa, _pocBinPaint, _valueAreaPaint, _barPaint);
 
                     if (renderLeft)
                     {

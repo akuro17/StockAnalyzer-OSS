@@ -105,6 +105,48 @@ internal static partial class CalculatorArrayFunctions
                 outcome = EvaluateArgExtreme(position, name, args[0], findMax: name == "arr_argmax", in arena);
                 return true;
 
+            case "linspace":
+                outcome = EvaluateLinspace(position, name, args, ref arena);
+                return true;
+
+            case "arange":
+                outcome = EvaluateArange(position, name, args, ref arena);
+                return true;
+
+            case "arr_zeros":
+            case "arr_ones":
+            case "arr_fill":
+                outcome = EvaluateArrayFill(position, name, args, ref arena);
+                return true;
+
+            case "mat_eye":
+                outcome = EvaluateMatEye(position, name, args[0], ref arena);
+                return true;
+
+            case "mat_diag":
+                outcome = EvaluateMatDiag(position, name, args[0], ref arena);
+                return true;
+
+            case "arr_concat":
+                outcome = EvaluateArrayConcat(position, name, args[0], args[1], ref arena);
+                return true;
+
+            case "arr_reverse":
+                outcome = EvaluateArrayReverse(position, name, args[0], ref arena);
+                return true;
+
+            case "arr_unique":
+                outcome = EvaluateArrayUnique(position, name, args[0], ref arena);
+                return true;
+
+            case "arr_clip":
+                outcome = EvaluateArrayClip(position, name, args, ref arena);
+                return true;
+
+            case "arr_add_scalar":
+                outcome = EvaluateArrayAddScalar(position, name, args[0], args[1], ref arena);
+                return true;
+
             default:
                 outcome = default;
                 return false;
@@ -181,7 +223,54 @@ internal static partial class CalculatorArrayFunctions
         "jb_test" or
         "ljung_box" or
         "ks_2samp" or
-        "dft_mag";
+        "dft_mag" or
+        "arr_map" or
+        "arr_filter" or
+        "linspace" or
+        "arange" or
+        "arr_zeros" or
+        "arr_ones" or
+        "arr_fill" or
+        "mat_eye" or
+        "mat_diag" or
+        "arr_concat" or
+        "arr_reverse" or
+        "arr_unique" or
+        "arr_clip" or
+        "arr_add_scalar" or
+        "fft_re" or
+        "fft_im" or
+        "fft_phase" or
+        "ifft_re" or
+        "ifft_im" or
+        "convolve" or
+        "window_hann" or
+        "window_hamming" or
+        "ema_series" or
+        "mat_lu_l" or
+        "mat_lu_u" or
+        "mat_lu_p" or
+        "mat_eig_re" or
+        "mat_eig_im" or
+        "mat_pinv" or
+        "mat_expm" or
+        "mat_kron" or
+        "opt_qp" or
+        "opt_lbfgsb" or
+        "fsolve" or
+        "poly_roots_re" or
+        "poly_roots_im" or
+        "ode_bdf2" or
+        "rand_unif" or
+        "rand_norm" or
+        "rand_int" or
+        "arr_shuffle" or
+        "anova_1way" or
+        "chi2_gof" or
+        "mann_whitney_u" or
+        "ols_stats" or
+        "adf_test" or
+        "garch11_fit";
 
     public static DslEvalOutcome EvaluateArrayLoweredVariadic(
         string name,

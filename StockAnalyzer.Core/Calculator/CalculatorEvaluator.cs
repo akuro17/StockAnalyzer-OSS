@@ -58,7 +58,8 @@ internal struct BoundVariableScope
 /// </summary>
 internal readonly record struct DslEvalScope(
     IReadOnlyDictionary<string, decimal> ScalarNames,
-    IReadOnlyDictionary<string, DslArrayHandle>? ArrayNames);
+    IReadOnlyDictionary<string, DslArrayHandle>? ArrayNames,
+    DslArrayArenaSnapshot ArenaSnapshot = default);
 
 /// <summary>
 /// Pure checked-<see cref="decimal"/> evaluator for parsed <see cref="CalcNode"/> ASTs,
@@ -107,7 +108,7 @@ internal static class CalculatorEvaluator
         ref DslExecutionBudget budget,
         in BoundVariableScope boundScope)
     {
-        var arena = new DslArrayArena();
+        var arena = DslArrayArena.CreateScopedView(evalScope.ArenaSnapshot);
         try
         {
             DslEvalOutcome outcome = EvaluateValue(node, in evalScope, limits, ref budget, in boundScope, ref arena);
@@ -191,7 +192,58 @@ internal static class CalculatorEvaluator
                     }
 
                     decimal operandVal = operandOutcome.Value.Scalar;
-                    return DslEvalOutcome.Ok(unary.Operator == UnaryOperator.Minus ? -operandVal : operandVal);
+                    decimal unaryResult = unary.Operator switch
+                    {
+                        UnaryOperator.Minus => -operandVal,
+                        UnaryOperator.LogicalNot => operandVal == 0m ? 1m : 0m,
+                        _ => operandVal,
+                    };
+                    return DslEvalOutcome.Ok(unaryResult);
+                }
+                finally
+                {
+                    budget.ExitDepth();
+                }
+
+            case LogicalBinaryNode logical:
+                if (!budget.TryEnterDepth())
+                {
+                    return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, logical.Position, "Execution depth budget exceeded.");
+                }
+
+                try
+                {
+                    return EvaluateLogicalBinary(logical, in scope, limits, ref budget, in boundScope, ref arena);
+                }
+                finally
+                {
+                    budget.ExitDepth();
+                }
+
+            case TernaryNode ternary:
+                if (!budget.TryEnterDepth())
+                {
+                    return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, ternary.QuestionPosition, "Execution depth budget exceeded.");
+                }
+
+                try
+                {
+                    return EvaluateTernary(ternary, in scope, limits, ref budget, in boundScope, ref arena);
+                }
+                finally
+                {
+                    budget.ExitDepth();
+                }
+
+            case SubscriptNode subscript:
+                if (!budget.TryEnterDepth())
+                {
+                    return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, subscript.OpenBracketPosition, "Execution depth budget exceeded.");
+                }
+
+                try
+                {
+                    return EvaluateSubscript(subscript, in scope, limits, ref budget, in boundScope, ref arena);
                 }
                 finally
                 {
@@ -360,6 +412,9 @@ internal static class CalculatorEvaluator
         PowerNode p => p.CaretPosition,
         CallNode c => c.NamePosition,
         BinaryChainNode b => b.Rest.Count > 0 ? b.Rest[0].Position : GetNodePosition(b.First),
+        LogicalBinaryNode l => l.Position,
+        TernaryNode t => t.QuestionPosition,
+        SubscriptNode s => s.OpenBracketPosition,
         _ => 0,
     };
 
@@ -425,6 +480,12 @@ internal static class CalculatorEvaluator
                     BinaryOperator.Multiply => checked(acc * right),
                     BinaryOperator.Divide => checked(acc / right),
                     BinaryOperator.Modulo => checked(acc % right),
+                    BinaryOperator.Less => acc < right ? 1m : 0m,
+                    BinaryOperator.LessEqual => acc <= right ? 1m : 0m,
+                    BinaryOperator.Greater => acc > right ? 1m : 0m,
+                    BinaryOperator.GreaterEqual => acc >= right ? 1m : 0m,
+                    BinaryOperator.Equal => acc == right ? 1m : 0m,
+                    BinaryOperator.NotEqual => acc != right ? 1m : 0m,
                     _ => throw new InvalidOperationException($"Unsupported binary operator '{term.Operator}'."),
                 };
             }
@@ -573,7 +634,7 @@ internal static class CalculatorEvaluator
         {
             // The count check runs before the arguments are evaluated. When an argument names something that does not exist, that is the
             // real mistake (and the only reason the argument could not be proven to be an array), so it is reported first.
-            if (TryFindUnresolvedIdentifier(call.Arguments, in scope, in boundScope, new List<string>(), out IdentifierNode? unresolved))
+            if (TryFindUnresolvedIdentifierInCall(call, in scope, in boundScope, new List<string>(), out IdentifierNode? unresolved))
             {
                 return DslEvalOutcome.Fail(CalculatorErrorCode.UndefinedName, unresolved.Position, $"Undefined name '{unresolved.Name}'.", unresolved.Name);
             }
@@ -588,6 +649,11 @@ internal static class CalculatorEvaluator
         if (CalculatorHigherOrderFunctions.IsHigherOrderFunction(call.Name))
         {
             return CalculatorHigherOrderFunctions.Evaluate(call, in scope, limits, ref budget, in boundScope, ref arena);
+        }
+
+        if (call.Name is "if_gt" or "if_ge" or "if_eq")
+        {
+            return EvaluateLazyConditional(call, in scope, limits, ref budget, in boundScope, ref arena);
         }
 
         Span<DslValue> rawArgs = argCount <= CalculatorLimits.MaxAllowedFunctionArguments
@@ -676,9 +742,185 @@ internal static class CalculatorEvaluator
     {
         ArrayLiteralNode => true,
         IdentifierNode id => scope.ArrayNames is not null && scope.ArrayNames.ContainsKey(id.Name),
-        CallNode fn => CalculatorArrayFunctions.ReturnsArray(fn.Name),
+        CallNode fn => CalculatorArrayFunctions.ReturnsArray(fn.Name) ||
+            (fn.Name is "if_gt" or "if_ge" or "if_eq" &&
+             fn.Arguments.Count >= 4 &&
+             (CanNodeProduceArray(fn.Arguments[2], in scope) || CanNodeProduceArray(fn.Arguments[3], in scope))),
+        TernaryNode ternary => CanNodeProduceArray(ternary.WhenTrue, in scope) || CanNodeProduceArray(ternary.WhenFalse, in scope),
         _ => false,
     };
+
+    private static DslEvalOutcome EvaluateLogicalBinary(
+        LogicalBinaryNode logical,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        DslEvalOutcome leftOutcome = EvaluateValue(logical.Left, in scope, limits, ref budget, in boundScope, ref arena);
+        if (leftOutcome.Error is not null)
+        {
+            return leftOutcome;
+        }
+
+        if (leftOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, logical.Position, "Logical operators cannot be applied to an array.");
+        }
+
+        bool leftTrue = leftOutcome.Value.Scalar != 0m;
+        if (logical.Operator == LogicalOperator.And && !leftTrue)
+        {
+            return DslEvalOutcome.Ok(0m);
+        }
+
+        if (logical.Operator == LogicalOperator.Or && leftTrue)
+        {
+            return DslEvalOutcome.Ok(1m);
+        }
+
+        DslEvalOutcome rightOutcome = EvaluateValue(logical.Right, in scope, limits, ref budget, in boundScope, ref arena);
+        if (rightOutcome.Error is not null)
+        {
+            return rightOutcome;
+        }
+
+        if (rightOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, logical.Position, "Logical operators cannot be applied to an array.");
+        }
+
+        return DslEvalOutcome.Ok(rightOutcome.Value.Scalar != 0m ? 1m : 0m);
+    }
+
+    private static DslEvalOutcome EvaluateTernary(
+        TernaryNode ternary,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        DslEvalOutcome condOutcome = EvaluateValue(ternary.Condition, in scope, limits, ref budget, in boundScope, ref arena);
+        if (condOutcome.Error is not null)
+        {
+            return condOutcome;
+        }
+
+        if (condOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, ternary.QuestionPosition, "Ternary condition cannot be an array.");
+        }
+
+        CalcNode selectedBranch = condOutcome.Value.Scalar != 0m ? ternary.WhenTrue : ternary.WhenFalse;
+        return EvaluateValue(selectedBranch, in scope, limits, ref budget, in boundScope, ref arena);
+    }
+
+    private static DslEvalOutcome EvaluateSubscript(
+        SubscriptNode subscript,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        DslEvalOutcome targetOutcome = EvaluateValue(subscript.Target, in scope, limits, ref budget, in boundScope, ref arena);
+        if (targetOutcome.Error is not null)
+        {
+            return targetOutcome;
+        }
+
+        if (!targetOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, subscript.OpenBracketPosition, "Subscript operator requires a 1D array target.");
+        }
+
+        DslEvalOutcome indexOutcome = EvaluateValue(subscript.Index, in scope, limits, ref budget, in boundScope, ref arena);
+        if (indexOutcome.Error is not null)
+        {
+            return indexOutcome;
+        }
+
+        if (indexOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, subscript.OpenBracketPosition, "Subscript index must be a scalar integer.");
+        }
+
+        ReadOnlySpan<decimal> slice = arena.GetSlice(targetOutcome.Value.Array);
+        if (slice.Length == 0 || !DslMathValidation.TryReadInt32InRange(indexOutcome.Value.Scalar, 0, slice.Length - 1, out int idx))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, subscript.OpenBracketPosition, "Array subscript index out of bounds.");
+        }
+
+        return DslEvalOutcome.Ok(slice[idx]);
+    }
+
+    private static DslEvalOutcome EvaluateLazyConditional(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        DslEvalOutcome aOutcome = EvaluateValue(call.Arguments[0], in scope, limits, ref budget, in boundScope, ref arena);
+        if (aOutcome.Error is not null)
+        {
+            return aOutcome;
+        }
+
+        DslEvalOutcome bOutcome = EvaluateValue(call.Arguments[1], in scope, limits, ref budget, in boundScope, ref arena);
+        if (bOutcome.Error is not null)
+        {
+            return bOutcome;
+        }
+
+        if (aOutcome.Value.IsArray || bOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, call.NamePosition, $"Function '{call.Name}' requires scalar comparison operands.", call.Name);
+        }
+
+        decimal a = aOutcome.Value.Scalar;
+        decimal b = bOutcome.Value.Scalar;
+        bool takeTrue;
+        if (call.Name == "if_gt")
+        {
+            takeTrue = a > b;
+        }
+        else if (call.Name == "if_ge")
+        {
+            takeTrue = a >= b;
+        }
+        else if (call.Arguments.Count >= 5)
+        {
+            DslEvalOutcome epsOutcome = EvaluateValue(call.Arguments[4], in scope, limits, ref budget, in boundScope, ref arena);
+            if (epsOutcome.Error is not null)
+            {
+                return epsOutcome;
+            }
+
+            if (epsOutcome.Value.IsArray || epsOutcome.Value.Scalar < 0m)
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, call.NamePosition, "if_eq requires a non-negative scalar tolerance.", call.Name);
+            }
+
+            try
+            {
+                takeTrue = Math.Abs(checked(a - b)) <= epsOutcome.Value.Scalar;
+            }
+            catch (OverflowException)
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.ArithmeticOverflow, call.NamePosition, $"Arithmetic overflow in '{call.Name}' at position {call.NamePosition}.");
+            }
+        }
+        else
+        {
+            takeTrue = a == b;
+        }
+
+        return EvaluateValue(call.Arguments[takeTrue ? 2 : 3], in scope, limits, ref budget, in boundScope, ref arena);
+    }
 
     /// <summary>
     /// True when <paramref name="name"/> would be found by <see cref="EvaluateIdentifier"/> (steps 2 and 3: bound variables, caller scalars, caller arrays, built-in constants).
@@ -758,6 +1000,19 @@ internal static class CalculatorEvaluator
             case ArrayLiteralNode array:
                 return TryFindUnresolvedIdentifier(array.Elements, in scope, in boundScope, dummyNames, out unresolved);
 
+            case LogicalBinaryNode logical:
+                return TryFindUnresolvedIdentifier(logical.Left, in scope, in boundScope, dummyNames, out unresolved)
+                    || TryFindUnresolvedIdentifier(logical.Right, in scope, in boundScope, dummyNames, out unresolved);
+
+            case TernaryNode ternary:
+                return TryFindUnresolvedIdentifier(ternary.Condition, in scope, in boundScope, dummyNames, out unresolved)
+                    || TryFindUnresolvedIdentifier(ternary.WhenTrue, in scope, in boundScope, dummyNames, out unresolved)
+                    || TryFindUnresolvedIdentifier(ternary.WhenFalse, in scope, in boundScope, dummyNames, out unresolved);
+
+            case SubscriptNode subscript:
+                return TryFindUnresolvedIdentifier(subscript.Target, in scope, in boundScope, dummyNames, out unresolved)
+                    || TryFindUnresolvedIdentifier(subscript.Index, in scope, in boundScope, dummyNames, out unresolved);
+
             case CallNode call:
                 return TryFindUnresolvedIdentifierInCall(call, in scope, in boundScope, dummyNames, out unresolved);
         }
@@ -797,7 +1052,15 @@ internal static class CalculatorEvaluator
         }
 
         int firstOrdinaryArgument = 2;
-        if (CalculatorHigherOrderFunctions.DeclaresStateVariables(call.Name) && call.Arguments.Count >= 3)
+        if (call.Name == "arr_reduce" && call.Arguments.Count >= 3)
+        {
+            firstOrdinaryArgument = 3;
+            if (call.Arguments[2] is IdentifierNode itemId)
+            {
+                dummyNames.Add(itemId.Name);
+            }
+        }
+        else if (CalculatorHigherOrderFunctions.DeclaresStateVariables(call.Name) && call.Arguments.Count >= 3)
         {
             firstOrdinaryArgument = 3;
             if (call.Arguments[2] is ArrayLiteralNode stateVariables)

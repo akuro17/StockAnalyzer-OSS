@@ -13,6 +13,9 @@ public static class ExpressionCalculator
     /// <summary>Maximum decimal digits accepted by <c>round(x, digits)</c>.</summary>
     public const int MaxRoundDigits = 10;
 
+    /// <summary>Maximum absolute decimal digits accepted by <c>round_even(x, digits)</c>.</summary>
+    public const int MaxRoundEvenDigits = 15;
+
     /// <summary>Maximum declared identifier length enforced by the expression API.</summary>
     public const int MaxIdentifierLength = 64;
 
@@ -478,6 +481,110 @@ public static class ExpressionCalculator
         // v5 Domain I: frequency and spectral analysis
         new("goertzel", 2, 2, "goertzel(series, period)"),
         new("dft_mag", 1, 1, "dft_mag(series)"),
+        // v6 Domain 1: bounded series combinators & higher-order array combinators
+        new("sigma", 4, 4, "sigma(expr, var, start, end)"),
+        new("prod_over", 4, 4, "prod_over(expr, var, start, end)"),
+        new("arr_map", 3, 3, "arr_map(expr, var, arr)"),
+        new("arr_filter", 3, 3, "arr_filter(predExpr, var, arr)"),
+        new("arr_reduce", 5, 5, "arr_reduce(expr, accVar, itemVar, arr, init)"),
+        // v6 Domain 2: number theory, bitwise, banker's rounding & complex elementary functions
+        new("gcd", 2, 2, "gcd(a, b)"),
+        new("lcm", 2, 2, "lcm(a, b)"),
+        new("is_prime", 1, 1, "is_prime(n)"),
+        new("next_prime", 1, 1, "next_prime(n)"),
+        new("mod_pow", 3, 3, "mod_pow(base, exp, m)"),
+        new("mod_inv", 2, 2, "mod_inv(a, m)"),
+        new("floor_div", 2, 2, "floor_div(a, b)"),
+        new("bit_and", 2, 2, "bit_and(a, b)"),
+        new("bit_or", 2, 2, "bit_or(a, b)"),
+        new("bit_xor", 2, 2, "bit_xor(a, b)"),
+        new("bit_not", 1, 1, "bit_not(a)"),
+        new("bit_shl", 2, 2, "bit_shl(a, n)"),
+        new("bit_shr", 2, 2, "bit_shr(a, n)"),
+        new("popcount", 1, 1, "popcount(a)"),
+        new("round_even", 2, 2, "round_even(x, digits)"),
+        new("c_conj_re", 2, 2, "c_conj_re(a, b)"),
+        new("c_conj_im", 2, 2, "c_conj_im(a, b)"),
+        new("c_sin_re", 2, 2, "c_sin_re(a, b)"),
+        new("c_sin_im", 2, 2, "c_sin_im(a, b)"),
+        new("c_cos_re", 2, 2, "c_cos_re(a, b)"),
+        new("c_cos_im", 2, 2, "c_cos_im(a, b)"),
+        new("c_tan_re", 2, 2, "c_tan_re(a, b)"),
+        new("c_tan_im", 2, 2, "c_tan_im(a, b)"),
+        new("c_sinh_re", 2, 2, "c_sinh_re(a, b)"),
+        new("c_sinh_im", 2, 2, "c_sinh_im(a, b)"),
+        new("c_cosh_re", 2, 2, "c_cosh_re(a, b)"),
+        new("c_cosh_im", 2, 2, "c_cosh_im(a, b)"),
+        new("c_tanh_re", 2, 2, "c_tanh_re(a, b)"),
+        new("c_tanh_im", 2, 2, "c_tanh_im(a, b)"),
+        // v6 Domain 3: array generators, utilities & signal processing
+        new("linspace", 3, 3, "linspace(start, stop, n)"),
+        new("arange", 2, 3, "arange(start, stop[, step])"),
+        new("arr_zeros", 1, 1, "arr_zeros(n)"),
+        new("arr_ones", 1, 1, "arr_ones(n)"),
+        new("arr_fill", 2, 2, "arr_fill(n, val)"),
+        new("mat_eye", 1, 1, "mat_eye(n)"),
+        new("mat_diag", 1, 1, "mat_diag(v)"),
+        new("arr_concat", 2, 2, "arr_concat(a, b)"),
+        new("arr_reverse", 1, 1, "arr_reverse(a)"),
+        new("arr_unique", 1, 1, "arr_unique(a)"),
+        new("arr_clip", 3, 3, "arr_clip(a, lo, hi)"),
+        new("arr_add_scalar", 2, 2, "arr_add_scalar(a, c)"),
+        new("fft_re", 1, 1, "fft_re(x)"),
+        new("fft_im", 1, 1, "fft_im(x)"),
+        new("fft_phase", 1, 1, "fft_phase(x)"),
+        new("ifft_re", 2, 2, "ifft_re(re, im)"),
+        new("ifft_im", 2, 2, "ifft_im(re, im)"),
+        new("convolve", 2, 3, "convolve(a, b[, mode])"),
+        new("window_hann", 1, 1, "window_hann(n)"),
+        new("window_hamming", 1, 1, "window_hamming(n)"),
+        new("ema_series", 2, 2, "ema_series(x, alpha)"),
+        // v6 Domain 4: extended linear algebra & matrix functions
+        new("mat_lu_l", 2, 2, "mat_lu_l(A, n)"),
+        new("mat_lu_u", 2, 2, "mat_lu_u(A, n)"),
+        new("mat_lu_p", 2, 2, "mat_lu_p(A, n)"),
+        new("mat_eig_re", 2, 2, "mat_eig_re(A, n)"),
+        new("mat_eig_im", 2, 2, "mat_eig_im(A, n)"),
+        new("mat_pinv", 3, 4, "mat_pinv(A, rows, cols[, rcond])"),
+        new("mat_rank", 3, 4, "mat_rank(A, rows, cols[, tol])"),
+        new("mat_trace", 2, 2, "mat_trace(A, n)"),
+        new("mat_norm", 3, 4, "mat_norm(A, rows, cols[, kind])"),
+        new("mat_expm", 2, 2, "mat_expm(A, n)"),
+        new("mat_kron", 6, 6, "mat_kron(A, rA, cA, B, rB, cB)"),
+        // v6 Domain 5: constrained optimization, nonlinear systems, polynomials, stiff ODE & 2D interpolation
+        new("opt_qp", 5, 6, "opt_qp(H, c, n, lb, ub[, tol])"),
+        new("opt_lbfgsb", 5, 6, "opt_lbfgsb(expr, vars, x0, lb, ub[, tol])"),
+        new("fsolve", 3, 4, "fsolve(exprs, vars, x0[, tol])"),
+        new("polyval", 2, 2, "polyval(coeffs, x)"),
+        new("poly_roots_re", 1, 1, "poly_roots_re(coeffs)"),
+        new("poly_roots_im", 1, 1, "poly_roots_im(coeffs)"),
+        new("ode_bdf2", 7, 8, "ode_bdf2(rhsExprs, tVar, yVars, t0, t1, y0, nSteps[, tol])"),
+        new("interp2d_bilinear", 5, 5, "interp2d_bilinear(xs, ys, Z, x, y)"),
+
+        // DSL v6 Domain 6: Deterministic PRNG, statistical tests, GEV distribution & econometric time-series kernels
+        new("rand_unif", 2, 4, "rand_unif(n, seed[, lo, hi])"),
+        new("rand_norm", 2, 4, "rand_norm(n, seed[, mu, sigma])"),
+        new("rand_int", 4, 4, "rand_int(n, lo, hi, seed)"),
+        new("arr_shuffle", 2, 2, "arr_shuffle(a, seed)"),
+        new("anova_1way", 2, 2, "anova_1way(values, groupIds)"),
+        new("chi2_gof", 2, 2, "chi2_gof(observed, expected)"),
+        new("mann_whitney_u", 2, 2, "mann_whitney_u(x, y)"),
+        new("ols_stats", 2, 2, "ols_stats(X, y)"),
+        new("gev_pdf", 4, 4, "gev_pdf(x, mu, sigma, xi)"),
+        new("gev_cdf", 4, 4, "gev_cdf(x, mu, sigma, xi)"),
+        new("gev_icdf", 4, 4, "gev_icdf(p, mu, sigma, xi)"),
+        new("adf_test", 1, 2, "adf_test(series[, lagOrder])"),
+        new("kpss_stat", 1, 1, "kpss_stat(series)"),
+        new("hurst_rs", 1, 1, "hurst_rs(series)"),
+        new("hurst_dfa", 1, 1, "hurst_dfa(series)"),
+        new("garch11_fit", 1, 1, "garch11_fit(returns)"),
+
+        // DSL v6 Domain 7: Financial dates, day counts & irregular cash flows
+        new("date_serial", 3, 3, "date_serial(yyyy, mm, dd)"),
+        new("days_between", 2, 2, "days_between(d1, d2)"),
+        new("yearfrac", 3, 3, "yearfrac(d1, d2, basis)"),
+        new("xnpv", 3, 3, "xnpv(rate, cf, dates)"),
+        new("xirr", 2, 3, "xirr(cf, dates[, guess])"),
     };
 
     /// <summary>Input item for sequential batch evaluation in <see cref="EvaluateBatch"/>.</summary>

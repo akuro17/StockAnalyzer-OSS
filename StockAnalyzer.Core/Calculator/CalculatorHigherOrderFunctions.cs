@@ -44,10 +44,18 @@ internal static class CalculatorHigherOrderFunctions
         "opt_brent" or
         "opt_golden" or
         "opt_nelder_mead" or
-        "opt_bfgs";
+        "opt_bfgs" or
+        "sigma" or
+        "prod_over" or
+        "arr_map" or
+        "arr_filter" or
+        "arr_reduce" or
+        "opt_lbfgsb" or
+        "fsolve" or
+        "ode_bdf2";
 
     /// <summary>True for the higher-order functions whose argument 2 is a literal array declaring the state variables (<c>yVars</c>).</summary>
-    public static bool DeclaresStateVariables(string name) => name is "ode_rk4" or "ode_rk45";
+    public static bool DeclaresStateVariables(string name) => name is "ode_rk4" or "ode_rk45" or "ode_bdf2";
 
     /// <summary>
     /// Evaluates a higher-order call. Scalar-valued functions return a scalar; <c>ode_rk4</c>, <c>ode_rk45</c>,
@@ -73,6 +81,26 @@ internal static class CalculatorHigherOrderFunctions
             case "opt_nelder_mead":
             case "opt_bfgs":
                 return EvaluateMultivariateOptimization(call, in scope, limits, ref budget, in boundScope, ref arena);
+
+            case "sigma":
+            case "prod_over":
+                return EvaluateBoundedSeriesCombinator(call, in scope, limits, ref budget, in boundScope, ref arena, isProduct: call.Name == "prod_over");
+
+            case "arr_map":
+            case "arr_filter":
+                return EvaluateArrayMapOrFilter(call, in scope, limits, ref budget, in boundScope, ref arena, isFilter: call.Name == "arr_filter");
+
+            case "arr_reduce":
+                return EvaluateArrayReduce(call, in scope, limits, ref budget, in boundScope, ref arena);
+
+            case "opt_lbfgsb":
+                return EvaluateLbfgsb(call, in scope, limits, ref budget, in boundScope, ref arena);
+
+            case "fsolve":
+                return EvaluateFsolve(call, in scope, limits, ref budget, in boundScope, ref arena);
+
+            case "ode_bdf2":
+                return EvaluateOdeBdf2(call, in scope, limits, ref budget, in boundScope, ref arena);
 
             default:
                 return CalculatorArrayFunctions.ToEvalOutcome(
@@ -122,7 +150,8 @@ internal static class CalculatorHigherOrderFunctions
             }
         }
 
-        var fn = new AstScalarFunction(rawArgs[0], dummyVar.Name, scope.ScalarNames, limits, in boundScope);
+        DslEvalScope functorScope = scope with { ArenaSnapshot = arena.CreateSnapshot() };
+        var fn = new AstScalarFunction(rawArgs[0], dummyVar.Name, in functorScope, limits, in boundScope);
 
         MathResult<double> rawResult;
         switch (call.Name)
@@ -496,7 +525,11 @@ internal static class CalculatorHigherOrderFunctions
                 return CalculatorMatrixFunctions.FailMath(MathErrorCode.BudgetExceeded, call.NamePosition, call.Name);
             }
 
-            arena.GetSlice(y0Handle).CopyTo(copy);
+            ReadOnlySpan<decimal> srcY0 = arena.GetSlice(y0Handle);
+            for (int i = 0; i < dim; i++)
+            {
+                copy[i] = srcY0[i] == 0m ? 0m : srcY0[i];
+            }
             return DslEvalOutcome.OkArray(copyHandle);
         }
 
@@ -504,7 +537,8 @@ internal static class CalculatorHigherOrderFunctions
         Span<double> yOut = stackalloc double[DslNumericalAnalysisMath.MaxOdeDimension];
         CalculatorMatrixFunctions.CopyToDouble(arena.GetSlice(y0Handle), y0.Slice(0, dim));
 
-        var system = new AstOdeSystem(rhsLiteral.Elements, tVar.Name, stateNames, in scope, limits, in boundScope);
+        DslEvalScope functorScope = scope with { ArenaSnapshot = arena.CreateSnapshot() };
+        var system = new AstOdeSystem(rhsLiteral.Elements, tVar.Name, stateNames, in functorScope, limits, in boundScope);
         MathErrorCode err = isRk4
             ? DslNumericalAnalysisMath.OdeRk4(system, (double)t0, (double)t1, y0.Slice(0, dim), nSteps, yOut.Slice(0, dim), ref budget)
             : DslNumericalAnalysisMath.OdeRk45(system, (double)t0, (double)t1, y0.Slice(0, dim), tol, yOut.Slice(0, dim), ref budget);
@@ -578,7 +612,8 @@ internal static class CalculatorHigherOrderFunctions
         Span<double> xOut = stackalloc double[DslOptimizationMath.MaxOptDimensions];
         CalculatorMatrixFunctions.CopyToDouble(arena.GetSlice(x0Outcome.Value.Array), x0.Slice(0, dim));
 
-        var objective = new AstNdScalarFunction(args[0], varNames, in scope, limits, in boundScope);
+        DslEvalScope functorScope = scope with { ArenaSnapshot = arena.CreateSnapshot() };
+        var objective = new AstNdScalarFunction(args[0], varNames, in functorScope, limits, in boundScope);
         MathErrorCode err = call.Name == "opt_bfgs"
             ? DslOptimizationMath.OptBfgs(objective, x0.Slice(0, dim), tol, xOut.Slice(0, dim), ref budget)
             : DslOptimizationMath.OptNelderMead(objective, x0.Slice(0, dim), tol, xOut.Slice(0, dim), ref budget);
@@ -731,7 +766,8 @@ internal static class CalculatorHigherOrderFunctions
         CalculatorMatrixFunctions.CopyToDouble(loDec, lower);
         CalculatorMatrixFunctions.CopyToDouble(hiDec, upper);
 
-        var fnNd = new AstNdScalarFunction(rawArgs[0], varNames, in scope, limits, in boundScope);
+        DslEvalScope functorScope = scope with { ArenaSnapshot = arena.CreateSnapshot() };
+        var fnNd = new AstNdScalarFunction(rawArgs[0], varNames, in functorScope, limits, in boundScope);
         MathResult<McIntegrateResult> mcRes = DslMonteCarloMath.McIntegrateNd(
             fnNd,
             lower,
@@ -798,5 +834,589 @@ internal static class CalculatorHigherOrderFunctions
 
         integer = 0;
         return false;
+    }
+
+    private const int MaxSeriesBoundMagnitude = 1_000_000;
+
+    private static bool TryReadDummyIdentifier(
+        CalcNode node,
+        string callerName,
+        out string identifier,
+        out DslEvalOutcome errorOutcome)
+    {
+        if (node is not IdentifierNode id || id.Name is "nan" or "inf")
+        {
+            identifier = string.Empty;
+            errorOutcome = DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(node),
+                $"'{callerName}' requires a valid finite dummy variable identifier.",
+                callerName);
+            return false;
+        }
+
+        identifier = id.Name;
+        errorOutcome = default;
+        return true;
+    }
+
+    private static DslEvalOutcome EvaluateBoundedSeriesCombinator(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena,
+        bool isProduct)
+    {
+        if (!TryReadDummyIdentifier(call.Arguments[1], call.Name, out string varName, out DslEvalOutcome idErr))
+        {
+            return idErr;
+        }
+
+        if (!TryEvaluateScalarArg(call.Arguments[2], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal startDec, out CalculatorOutcome startErr))
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(startErr);
+        }
+
+        if (!TryEvaluateScalarArg(call.Arguments[3], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal endDec, out CalculatorOutcome endErr))
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(endErr);
+        }
+
+        if (!DslMathValidation.TryReadInt32InRange(startDec, -MaxSeriesBoundMagnitude, MaxSeriesBoundMagnitude, out int start) ||
+            !DslMathValidation.TryReadInt32InRange(endDec, -MaxSeriesBoundMagnitude, MaxSeriesBoundMagnitude, out int end))
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                call.NamePosition,
+                $"'{call.Name}' bounds must be integers within [{-MaxSeriesBoundMagnitude}, {MaxSeriesBoundMagnitude}].",
+                call.Name);
+        }
+
+        if (start > end)
+        {
+            return DslEvalOutcome.Ok(isProduct ? 1m : 0m);
+        }
+
+        if ((long)end - start + 1L > DslArrayArena.MaxArrayLength)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                call.NamePosition,
+                $"'{call.Name}' iteration count exceeds {DslArrayArena.MaxArrayLength}.",
+                call.Name);
+        }
+
+        decimal acc = isProduct ? 1m : 0m;
+        for (int idx = start; idx <= end; idx++)
+        {
+            if (!budget.TryConsume(1))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Execution budget exceeded.", call.Name);
+            }
+
+            if (!boundScope.TryPush(varName, idx, out BoundVariableScope iterScope))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Bound variable depth exceeded.", call.Name);
+            }
+
+            int stepCursor = arena.Cursor;
+            DslEvalOutcome stepOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[0], in scope, limits, ref budget, in iterScope, ref arena);
+            arena.RestoreCursor(stepCursor);
+            if (stepOutcome.Error is not null)
+            {
+                return stepOutcome;
+            }
+
+            if (stepOutcome.Value.IsArray)
+            {
+                return DslEvalOutcome.Fail(
+                    CalculatorErrorCode.DomainError,
+                    CalculatorEvaluator.GetNodePosition(call.Arguments[0]),
+                    $"'{call.Name}' body must evaluate to a scalar.",
+                    call.Name);
+            }
+
+            try
+            {
+                acc = isProduct
+                    ? checked(acc * stepOutcome.Value.Scalar)
+                    : checked(acc + stepOutcome.Value.Scalar);
+            }
+            catch (OverflowException)
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.ArithmeticOverflow, call.NamePosition, $"Arithmetic overflow in '{call.Name}'.", call.Name);
+            }
+        }
+
+        return DslEvalOutcome.Ok(acc);
+    }
+
+    private static DslEvalOutcome EvaluateArrayMapOrFilter(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena,
+        bool isFilter)
+    {
+        if (!TryReadDummyIdentifier(call.Arguments[1], call.Name, out string varName, out DslEvalOutcome idErr))
+        {
+            return idErr;
+        }
+
+        DslEvalOutcome arrOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[2], in scope, limits, ref budget, in boundScope, ref arena);
+        if (arrOutcome.Error is not null)
+        {
+            return arrOutcome;
+        }
+
+        if (!arrOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(call.Arguments[2]),
+                $"'{call.Name}' requires a 1D array as its third argument.",
+                call.Name);
+        }
+
+        int count = arrOutcome.Value.Array.Length;
+        if (count == 0)
+        {
+            if (!arena.TryAllocate(0, out DslArrayHandle emptyHandle, out _))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Array arena budget exceeded.", call.Name);
+            }
+
+            return DslEvalOutcome.OkArray(emptyHandle);
+        }
+
+        Span<decimal> sourceCopy = stackalloc decimal[count];
+        arena.GetSlice(arrOutcome.Value.Array).CopyTo(sourceCopy);
+
+        Span<decimal> results = stackalloc decimal[count];
+        int outCount = 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            if (!budget.TryConsume(1))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Execution budget exceeded.", call.Name);
+            }
+
+            if (!boundScope.TryPush(varName, sourceCopy[i], out BoundVariableScope iterScope))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Bound variable depth exceeded.", call.Name);
+            }
+
+            int stepCursor = arena.Cursor;
+            DslEvalOutcome stepOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[0], in scope, limits, ref budget, in iterScope, ref arena);
+            arena.RestoreCursor(stepCursor);
+            if (stepOutcome.Error is not null)
+            {
+                return stepOutcome;
+            }
+
+            if (stepOutcome.Value.IsArray)
+            {
+                return DslEvalOutcome.Fail(
+                    CalculatorErrorCode.DomainError,
+                    CalculatorEvaluator.GetNodePosition(call.Arguments[0]),
+                    $"'{call.Name}' body must evaluate to a scalar.",
+                    call.Name);
+            }
+
+            if (isFilter)
+            {
+                if (stepOutcome.Value.Scalar != 0m)
+                {
+                    results[outCount++] = sourceCopy[i];
+                }
+            }
+            else
+            {
+                results[outCount++] = stepOutcome.Value.Scalar;
+            }
+        }
+
+        if (!arena.TryAllocate(outCount, out DslArrayHandle outHandle, out Span<decimal> outSlice))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Array arena budget exceeded.", call.Name);
+        }
+
+        results.Slice(0, outCount).CopyTo(outSlice);
+        return DslEvalOutcome.OkArray(outHandle);
+    }
+
+    private static DslEvalOutcome EvaluateArrayReduce(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        if (!TryReadDummyIdentifier(call.Arguments[1], call.Name, out string accVar, out DslEvalOutcome accErr))
+        {
+            return accErr;
+        }
+
+        if (!TryReadDummyIdentifier(call.Arguments[2], call.Name, out string itemVar, out DslEvalOutcome itemErr))
+        {
+            return itemErr;
+        }
+
+        if (string.Equals(accVar, itemVar, StringComparison.Ordinal))
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(call.Arguments[2]),
+                $"Duplicate dummy variable '{itemVar}' in '{call.Name}'.",
+                itemVar);
+        }
+
+        DslEvalOutcome arrOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[3], in scope, limits, ref budget, in boundScope, ref arena);
+        if (arrOutcome.Error is not null)
+        {
+            return arrOutcome;
+        }
+
+        if (!arrOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(call.Arguments[3]),
+                $"'{call.Name}' requires a 1D array as its fourth argument.",
+                call.Name);
+        }
+
+        if (!TryEvaluateScalarArg(call.Arguments[4], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal acc, out CalculatorOutcome initErr))
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(initErr);
+        }
+
+        int count = arrOutcome.Value.Array.Length;
+        if (count == 0)
+        {
+            return DslEvalOutcome.Ok(acc);
+        }
+
+        Span<decimal> sourceCopy = stackalloc decimal[count];
+        arena.GetSlice(arrOutcome.Value.Array).CopyTo(sourceCopy);
+
+        for (int i = 0; i < count; i++)
+        {
+            if (!budget.TryConsume(1))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Execution budget exceeded.", call.Name);
+            }
+
+            if (!boundScope.TryPush(accVar, acc, out BoundVariableScope iterScope1) ||
+                !iterScope1.TryPush(itemVar, sourceCopy[i], out BoundVariableScope iterScope2))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Bound variable depth exceeded.", call.Name);
+            }
+
+            int stepCursor = arena.Cursor;
+            DslEvalOutcome stepOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[0], in scope, limits, ref budget, in iterScope2, ref arena);
+            arena.RestoreCursor(stepCursor);
+            if (stepOutcome.Error is not null)
+            {
+                return stepOutcome;
+            }
+
+            if (stepOutcome.Value.IsArray)
+            {
+                return DslEvalOutcome.Fail(
+                    CalculatorErrorCode.DomainError,
+                    CalculatorEvaluator.GetNodePosition(call.Arguments[0]),
+                    $"'{call.Name}' body must evaluate to a scalar.",
+                    call.Name);
+            }
+
+            acc = stepOutcome.Value.Scalar;
+        }
+
+        return DslEvalOutcome.Ok(acc);
+    }
+
+    private static DslEvalOutcome EvaluateLbfgsb(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        IReadOnlyList<CalcNode> args = call.Arguments;
+        if (args[1] is not ArrayLiteralNode varsLiteral ||
+            varsLiteral.Elements.Count < 1 ||
+            varsLiteral.Elements.Count > DslOptimizationMath.MaxOptDimensions)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(args[1]),
+                $"'{call.Name}' requires a literal array of 1..{DslOptimizationMath.MaxOptDimensions} dummy variable identifiers.",
+                call.Name);
+        }
+
+        int dim = varsLiteral.Elements.Count;
+        if (!TryReadIdentifierList(call, varsLiteral, null, out string[] varNames, out DslEvalOutcome nameFailure))
+        {
+            return nameFailure;
+        }
+
+        DslEvalOutcome x0Out = CalculatorEvaluator.EvaluateValue(args[2], in scope, limits, ref budget, in boundScope, ref arena);
+        if (x0Out.Error is not null) return x0Out;
+        DslEvalOutcome lbOut = CalculatorEvaluator.EvaluateValue(args[3], in scope, limits, ref budget, in boundScope, ref arena);
+        if (lbOut.Error is not null) return lbOut;
+        DslEvalOutcome ubOut = CalculatorEvaluator.EvaluateValue(args[4], in scope, limits, ref budget, in boundScope, ref arena);
+        if (ubOut.Error is not null) return ubOut;
+
+        if (!x0Out.Value.IsArray || !lbOut.Value.IsArray || !ubOut.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, call.NamePosition, $"'{call.Name}' requires 1D arrays for x0, lb, ub.", call.Name);
+        }
+
+        if (x0Out.Value.Array.Length != dim || lbOut.Value.Array.Length != dim || ubOut.Value.Array.Length != dim)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, call.NamePosition, call.Name);
+        }
+
+        double tol = DslTolerance.DefaultTol;
+        if (args.Count >= 6)
+        {
+            if (!TryEvaluateScalarArg(args[5], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal tolDec, out CalculatorOutcome tolErr))
+            {
+                return CalculatorArrayFunctions.ToEvalOutcome(tolErr);
+            }
+
+            tol = (double)tolDec;
+        }
+
+        Span<double> x0 = stackalloc double[dim];
+        Span<double> lb = stackalloc double[dim];
+        Span<double> ub = stackalloc double[dim];
+        Span<double> xRes = stackalloc double[dim];
+        CalculatorMatrixFunctions.CopyToDouble(arena.GetSlice(x0Out.Value.Array), x0);
+        CalculatorMatrixFunctions.CopyToDouble(arena.GetSlice(lbOut.Value.Array), lb);
+        CalculatorMatrixFunctions.CopyToDouble(arena.GetSlice(ubOut.Value.Array), ub);
+
+        DslEvalScope functorScope = scope with { ArenaSnapshot = arena.CreateSnapshot() };
+        var objective = new AstNdScalarFunction(args[0], varNames, in functorScope, limits, in boundScope);
+        MathErrorCode err = DslOptimizationMath.OptLbfgsb(objective, x0, lb, ub, tol, xRes, ref budget);
+        if (err != MathErrorCode.None)
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(FunctorFailureBridge.ToOutcome(err, ref budget, call.NamePosition, call.Name));
+        }
+
+        return CalculatorMatrixFunctions.NarrowArrayResult(xRes, call.NamePosition, call.Name, ref arena);
+    }
+
+    private static DslEvalOutcome EvaluateFsolve(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        IReadOnlyList<CalcNode> args = call.Arguments;
+        if (args[0] is not ArrayLiteralNode exprsLiteral ||
+            exprsLiteral.Elements.Count < 1 ||
+            exprsLiteral.Elements.Count > DslNumericalAnalysisMath.MaxOdeDimension)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(args[0]),
+                $"'{call.Name}' requires a literal array of 1..{DslNumericalAnalysisMath.MaxOdeDimension} expressions.",
+                call.Name);
+        }
+
+        int dim = exprsLiteral.Elements.Count;
+        if (args[1] is not ArrayLiteralNode varsLiteral)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(args[1]),
+                $"'{call.Name}' requires a literal array of dummy variable identifiers.",
+                call.Name);
+        }
+
+        if (varsLiteral.Elements.Count != dim)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, call.NamePosition, call.Name);
+        }
+
+        if (!TryReadIdentifierList(call, varsLiteral, null, out string[] varNames, out DslEvalOutcome nameFailure))
+        {
+            return nameFailure;
+        }
+
+        DslEvalOutcome x0Out = CalculatorEvaluator.EvaluateValue(args[2], in scope, limits, ref budget, in boundScope, ref arena);
+        if (x0Out.Error is not null) return x0Out;
+        if (!x0Out.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, CalculatorEvaluator.GetNodePosition(args[2]), $"'{call.Name}' requires a 1D start vector x0.", call.Name);
+        }
+
+        if (x0Out.Value.Array.Length != dim)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, call.NamePosition, call.Name);
+        }
+
+        double tol = DslTolerance.DefaultTol;
+        if (args.Count >= 4)
+        {
+            if (!TryEvaluateScalarArg(args[3], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal tolDec, out CalculatorOutcome tolErr))
+            {
+                return CalculatorArrayFunctions.ToEvalOutcome(tolErr);
+            }
+
+            tol = (double)tolDec;
+        }
+
+        Span<double> x0 = stackalloc double[dim];
+        Span<double> xRes = stackalloc double[dim];
+        CalculatorMatrixFunctions.CopyToDouble(arena.GetSlice(x0Out.Value.Array), x0);
+
+        DslEvalScope functorScope = scope with { ArenaSnapshot = arena.CreateSnapshot() };
+        var system = new AstVectorFunction(exprsLiteral.Elements, varNames, in functorScope, limits, in boundScope);
+        MathErrorCode err = DslNumericalAnalysisMath.Fsolve(system, x0, tol, xRes, ref budget);
+        if (err != MathErrorCode.None)
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(FunctorFailureBridge.ToOutcome(err, ref budget, call.NamePosition, call.Name));
+        }
+
+        return CalculatorMatrixFunctions.NarrowArrayResult(xRes, call.NamePosition, call.Name, ref arena);
+    }
+
+    private static DslEvalOutcome EvaluateOdeBdf2(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        IReadOnlyList<CalcNode> args = call.Arguments;
+        if (args[0] is not ArrayLiteralNode rhsLiteral ||
+            rhsLiteral.Elements.Count < 1 ||
+            rhsLiteral.Elements.Count > DslNumericalAnalysisMath.MaxOdeDimension)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(args[0]),
+                $"'{call.Name}' requires a literal array of 1..{DslNumericalAnalysisMath.MaxOdeDimension} right-hand-side expressions.",
+                call.Name);
+        }
+
+        int dim = rhsLiteral.Elements.Count;
+        if (args[1] is not IdentifierNode tVar || tVar.Name is "nan" or "inf")
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(args[1]),
+                $"'{call.Name}' requires a valid finite identifier as its independent variable.",
+                call.Name);
+        }
+
+        if (args[2] is not ArrayLiteralNode stateLiteral)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(args[2]),
+                $"'{call.Name}' requires a literal array of state variable identifiers.",
+                call.Name);
+        }
+
+        if (stateLiteral.Elements.Count != dim)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, call.NamePosition, call.Name);
+        }
+
+        if (!TryReadIdentifierList(call, stateLiteral, tVar.Name, out string[] stateNames, out DslEvalOutcome nameFailure))
+        {
+            return nameFailure;
+        }
+
+        if (!TryEvaluateScalarArg(args[3], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal t0, out CalculatorOutcome t0Err))
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(t0Err);
+        }
+
+        if (!TryEvaluateScalarArg(args[4], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal t1, out CalculatorOutcome t1Err))
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(t1Err);
+        }
+
+        DslEvalOutcome y0Outcome = CalculatorEvaluator.EvaluateValue(args[5], in scope, limits, ref budget, in boundScope, ref arena);
+        if (y0Outcome.Error is not null) return y0Outcome;
+        if (!y0Outcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, CalculatorEvaluator.GetNodePosition(args[5]), $"'{call.Name}' requires a 1D initial state array.", call.Name);
+        }
+
+        DslArrayHandle y0Handle = y0Outcome.Value.Array;
+        if (y0Handle.Length != dim)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, call.NamePosition, call.Name);
+        }
+
+        if (!TryEvaluateScalarArg(args[6], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal nStepsDec, out CalculatorOutcome stepsErr))
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(stepsErr);
+        }
+
+        if (!DslMathValidation.TryReadInt32InRange(nStepsDec, 1, DslNumericalAnalysisMath.MaxBdf2Steps, out int nSteps))
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DomainError, call.NamePosition, call.Name);
+        }
+
+        double tol = DslTolerance.DefaultTol;
+        if (args.Count >= 8)
+        {
+            if (!TryEvaluateScalarArg(args[7], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal tolDec, out CalculatorOutcome tolErr))
+            {
+                return CalculatorArrayFunctions.ToEvalOutcome(tolErr);
+            }
+
+            tol = (double)tolDec;
+            if (tol < DslTolerance.MinTol || tol > DslTolerance.MaxTol)
+            {
+                return CalculatorMatrixFunctions.FailMath(MathErrorCode.DomainError, call.NamePosition, call.Name);
+            }
+        }
+
+        if (t0 == t1)
+        {
+            if (!arena.TryAllocate(dim, out DslArrayHandle copyHandle, out Span<decimal> copy))
+            {
+                return CalculatorMatrixFunctions.FailMath(MathErrorCode.BudgetExceeded, call.NamePosition, call.Name);
+            }
+
+            ReadOnlySpan<decimal> srcY0 = arena.GetSlice(y0Handle);
+            for (int i = 0; i < dim; i++)
+            {
+                copy[i] = srcY0[i] == 0m ? 0m : srcY0[i];
+            }
+            return DslEvalOutcome.OkArray(copyHandle);
+        }
+
+        Span<double> y0 = stackalloc double[dim];
+        Span<double> yOut = stackalloc double[dim];
+        CalculatorMatrixFunctions.CopyToDouble(arena.GetSlice(y0Handle), y0);
+
+        DslEvalScope functorScope = scope with { ArenaSnapshot = arena.CreateSnapshot() };
+        var system = new AstOdeSystem(rhsLiteral.Elements, tVar.Name, stateNames, in functorScope, limits, in boundScope);
+        MathErrorCode err = DslNumericalAnalysisMath.OdeBdf2(system, (double)t0, (double)t1, y0, nSteps, tol, yOut, ref budget);
+        if (err != MathErrorCode.None)
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(FunctorFailureBridge.ToOutcome(err, ref budget, call.NamePosition, call.Name));
+        }
+
+        return CalculatorMatrixFunctions.NarrowArrayResult(yOut, call.NamePosition, call.Name, ref arena);
     }
 }

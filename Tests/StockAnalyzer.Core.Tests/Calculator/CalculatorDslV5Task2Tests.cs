@@ -562,8 +562,9 @@ public sealed class CalculatorDslV5Task2Tests
     {
         string[] arrayFunctions = ["ttest_1samp", "ttest_2samp", "jb_test", "ljung_box", "ks_2samp", "dft_mag"];
         Assert.All(arrayFunctions, name => Assert.True(CalculatorArrayFunctions.ReturnsArray(name), name));
-        Assert.Equal(437, ExpressionCalculator.Functions.Count);
-        Assert.Equal(437, ExpressionCalculator.Functions.Select(f => f.Name).Distinct(StringComparer.Ordinal).Count());
+        // Registry preserves v5 (437) plus v6 additions (95) = 532 distinct functions.
+        Assert.Equal(532, ExpressionCalculator.Functions.Count);
+        Assert.Equal(532, ExpressionCalculator.Functions.Select(f => f.Name).Distinct(StringComparer.Ordinal).Count());
     }
 
     [Fact]

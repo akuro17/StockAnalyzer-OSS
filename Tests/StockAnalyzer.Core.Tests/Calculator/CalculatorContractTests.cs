@@ -461,7 +461,9 @@ public sealed class CalculatorContractTests
             ("dft_mag", 1, 1, "dft_mag(series)", false),
         };
 
-        Assert.Equal(expected.Length, ExpressionCalculator.Functions.Count);
+        // V1-V5 prefix of 437 entries remains frozen in order; DSL v6 appended 95 entries (total 532).
+        Assert.Equal(437, expected.Length);
+        Assert.Equal(532, ExpressionCalculator.Functions.Count);
         for (int i = 0; i < expected.Length; i++)
         {
             CalculatorFunctionInfo actual = ExpressionCalculator.Functions[i];

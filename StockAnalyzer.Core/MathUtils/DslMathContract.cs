@@ -63,6 +63,13 @@ public enum MatrixValidationFlags : ushort
 public readonly record struct DslArrayHandle(int Offset, int Length);
 
 /// <summary>
+/// Read-only view snapshot of a parent <see cref="DslArrayArena"/> backing buffer and base cursor,
+/// allowing nested higher-order functors to read outer array slices and allocate transient arrays
+/// above <see cref="BaseCursor"/> without extra pool rentals or mutating outer bindings.
+/// </summary>
+internal readonly record struct DslArrayArenaSnapshot(decimal[]? SharedBuffer, int BaseCursor);
+
+/// <summary>
 /// Zero-allocation bump-allocated arena backed by a lazily rented <see cref="ArrayPool{T}"/> buffer
 /// for 1D <see cref="decimal"/> arrays evaluated inside a single DSL expression or batch session.
 /// </summary>
@@ -71,12 +78,38 @@ public ref struct DslArrayArena
     public const int MaxArrayLength = 512;
     public const int MaxArenaElements = 4_096;
 
-    private decimal[]? _rented;
+    private decimal[]? _sharedBuffer;
     private Span<decimal> _buffer;
     private int _cursor;
+    private int _baseCursor;
+    private bool _isScopedView;
 
     /// <summary>Current bump allocation offset in elements.</summary>
     public readonly int Cursor => _cursor;
+
+    /// <summary>Creates a snapshot of the active backing buffer and cursor for scoped higher-order evaluation.</summary>
+    internal readonly DslArrayArenaSnapshot CreateSnapshot() => new(_sharedBuffer, _cursor);
+
+    /// <summary>
+    /// Creates a scoped view sharing the parent's rented backing array starting at <see cref="DslArrayArenaSnapshot.BaseCursor"/>,
+    /// or a fresh owning arena when <see cref="DslArrayArenaSnapshot.SharedBuffer"/> is <c>null</c>.
+    /// </summary>
+    internal static DslArrayArena CreateScopedView(DslArrayArenaSnapshot snapshot)
+    {
+        if (snapshot.SharedBuffer is null)
+        {
+            return default;
+        }
+
+        return new DslArrayArena
+        {
+            _sharedBuffer = snapshot.SharedBuffer,
+            _buffer = snapshot.SharedBuffer.AsSpan(0, MaxArenaElements),
+            _cursor = snapshot.BaseCursor,
+            _baseCursor = snapshot.BaseCursor,
+            _isScopedView = true,
+        };
+    }
 
     /// <summary>
     /// Allocates <paramref name="length"/> elements in the arena. Returns <c>false</c> when
@@ -137,7 +170,7 @@ public ref struct DslArrayArena
     /// <summary>Restores the bump cursor to an earlier checkpoint to discard transient allocations on error.</summary>
     public void RestoreCursor(int cursor)
     {
-        if ((uint)cursor <= (uint)_cursor)
+        if (cursor >= _baseCursor && (uint)cursor <= (uint)_cursor)
         {
             _cursor = cursor;
         }
@@ -175,20 +208,35 @@ public ref struct DslArrayArena
 
     private void EnsureInitialized()
     {
-        if (_rented is null)
+        if (_sharedBuffer is null && !_isScopedView)
         {
-            _rented = ArrayPool<decimal>.Shared.Rent(MaxArenaElements);
-            _buffer = _rented.AsSpan(0, MaxArenaElements);
+            _sharedBuffer = ArrayPool<decimal>.Shared.Rent(MaxArenaElements);
+            _buffer = _sharedBuffer.AsSpan(0, MaxArenaElements);
         }
     }
 
-    /// <summary>Returns any rented backing array to <see cref="ArrayPool{T}.Shared"/>, clearing sensitive values.</summary>
+    /// <summary>Returns any owned backing array to <see cref="ArrayPool{T}.Shared"/>, clearing sensitive values.</summary>
     public void Dispose()
     {
-        decimal[]? toReturn = _rented;
-        _rented = null;
+        if (_isScopedView)
+        {
+            if (_cursor > _baseCursor)
+            {
+                _buffer.Slice(_baseCursor, _cursor - _baseCursor).Clear();
+            }
+
+            _sharedBuffer = null;
+            _buffer = default;
+            _cursor = _baseCursor;
+            _isScopedView = false;
+            return;
+        }
+
+        decimal[]? toReturn = _sharedBuffer;
+        _sharedBuffer = null;
         _buffer = default;
         _cursor = 0;
+        _baseCursor = 0;
         if (toReturn is not null)
         {
             ArrayPool<decimal>.Shared.Return(toReturn, clearArray: true);
@@ -455,4 +503,14 @@ public interface INdScalarFunction
     int Dimension { get; }
 
     bool TryEvaluate(scoped ReadOnlySpan<double> x, ref DslExecutionBudget budget, out double y);
+}
+
+/// <summary>
+/// Zero-allocation multidimensional vector functor interface for nonlinear systems <c>F(x) = 0</c> of dimension 1..8.
+/// </summary>
+public interface INdVectorFunction
+{
+    int Dimension { get; }
+
+    bool TryEvaluate(scoped ReadOnlySpan<double> x, scoped Span<double> fx, ref DslExecutionBudget budget);
 }

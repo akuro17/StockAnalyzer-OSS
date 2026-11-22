@@ -1016,4 +1016,67 @@ public static partial class DslProbabilityDistributionsMath
         double e = (double)erfcInv.Value;
         return DslElementaryMath.NarrowDouble((double)mu + (double)c / (2.0 * e * e));
     }
+
+    // ---- 27. Generalized Extreme Value (GEV) ----
+
+    private const double GevShapeThreshold = 1e-8;
+
+    public static MathResult<decimal> GevPdf(decimal x, decimal mu, decimal sigma, decimal xi)
+    {
+        if (sigma <= 0m) return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        double dsigma = (double)sigma;
+        double z = ((double)x - (double)mu) / dsigma;
+        double dxi = (double)xi;
+        if (Math.Abs(dxi) < GevShapeThreshold)
+        {
+            if (z < -709.0 || z > 709.0) return MathResult<decimal>.Ok(0m);
+            double t = Math.Exp(-z);
+            if (t > 750.0) return MathResult<decimal>.Ok(0m);
+            return DslElementaryMath.NarrowDouble(t * Math.Exp(-t) / dsigma);
+        }
+
+        double xiZ = dxi * z;
+        double arg = 1.0 + xiZ;
+        if (arg <= 0.0) return MathResult<decimal>.Ok(0m);
+        double logArg = Math.Abs(xiZ) < 0.5 ? DslElementaryMath.Log1pDouble(xiZ) : Math.Log(arg);
+        double logT = -logArg / dxi;
+        double tv = logT > 709.0 ? double.PositiveInfinity : Math.Exp(logT);
+        if (tv > 750.0 || double.IsPositiveInfinity(tv)) return MathResult<decimal>.Ok(0m);
+        double pdf = Math.Exp(((dxi + 1.0) * logT) - tv) / dsigma;
+        return DslElementaryMath.NarrowDouble(pdf);
+    }
+
+    public static MathResult<decimal> GevCdf(decimal x, decimal mu, decimal sigma, decimal xi)
+    {
+        if (sigma <= 0m) return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        double z = ((double)x - (double)mu) / (double)sigma;
+        double dxi = (double)xi;
+        if (Math.Abs(dxi) < GevShapeThreshold)
+        {
+            if (z < -709.0) return MathResult<decimal>.Ok(0m);
+            double t = Math.Exp(-z);
+            return DslElementaryMath.NarrowDouble(Math.Exp(-t));
+        }
+
+        double xiZ = dxi * z;
+        double arg = 1.0 + xiZ;
+        if (arg <= 0.0) return MathResult<decimal>.Ok(dxi > 0.0 ? 0m : 1m);
+        double logArg = Math.Abs(xiZ) < 0.5 ? DslElementaryMath.Log1pDouble(xiZ) : Math.Log(arg);
+        double logT = -logArg / dxi;
+        double tv = logT > 709.0 ? double.PositiveInfinity : Math.Exp(logT);
+        return DslElementaryMath.NarrowDouble(double.IsPositiveInfinity(tv) ? 0.0 : Math.Exp(-tv));
+    }
+
+    public static MathResult<decimal> GevIcdf(decimal p, decimal mu, decimal sigma, decimal xi)
+    {
+        if (sigma <= 0m || p <= 0m || p >= 1m) return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        double dmu = (double)mu;
+        double dsigma = (double)sigma;
+        double dxi = (double)xi;
+        double yp = -Math.Log((double)p);
+        double res = Math.Abs(dxi) < GevShapeThreshold
+            ? dmu - (dsigma * Math.Log(yp))
+            : dmu + ((dsigma / dxi) * DslElementaryMath.Expm1Double(-dxi * Math.Log(yp)));
+        return DslElementaryMath.NarrowDouble(res);
+    }
 }

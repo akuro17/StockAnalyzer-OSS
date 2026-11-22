@@ -256,4 +256,343 @@ internal static partial class CalculatorArrayFunctions
 
         return DslEvalOutcome.Ok(best);
     }
+
+    // ---- DSL v6 Domain 3a: Pure Checked-Decimal Array/Matrix Generators & Utilities ----
+
+    private static DslEvalOutcome EvaluateLinspace(int position, string name, scoped ReadOnlySpan<DslValue> args, ref DslArrayArena arena)
+    {
+        if (args[0].IsArray || args[1].IsArray || args[2].IsArray ||
+            !DslMathValidation.TryReadInt32InRange(args[2].Scalar, 0, DslArrayArena.MaxArrayLength, out int n))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' expects (start, stop, n) with integer n in [0, {DslArrayArena.MaxArrayLength}].", name);
+        }
+
+        if (!arena.TryAllocate(n, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        if (n == 0)
+        {
+            return DslEvalOutcome.OkArray(handle);
+        }
+
+        decimal start = args[0].Scalar;
+        decimal stop = args[1].Scalar;
+        result[0] = start == 0m ? 0m : start;
+        if (n == 1)
+        {
+            return DslEvalOutcome.OkArray(handle);
+        }
+
+        try
+        {
+            decimal diff = checked(stop - start);
+            int denom = n - 1;
+            bool usePreDividedStep = Math.Abs(diff) > 1e25m;
+            decimal step = usePreDividedStep ? diff / denom : 0m;
+            for (int k = 1; k < n - 1; k++)
+            {
+                decimal val = usePreDividedStep
+                    ? checked(start + step * k)
+                    : checked(start + (diff * k) / denom);
+                result[k] = val == 0m ? 0m : val;
+            }
+
+            result[n - 1] = stop == 0m ? 0m : stop;
+        }
+        catch (OverflowException)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.ArithmeticOverflow, position, $"Arithmetic overflow in '{name}'.", name);
+        }
+
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateArange(int position, string name, scoped ReadOnlySpan<DslValue> args, ref DslArrayArena arena)
+    {
+        if (args[0].IsArray || args[1].IsArray || (args.Length >= 3 && args[2].IsArray))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' expects scalar arguments (start, stop[, step]).", name);
+        }
+
+        decimal start = args[0].Scalar;
+        decimal stop = args[1].Scalar;
+        decimal step = args.Length >= 3 ? args[2].Scalar : 1m;
+        if (step == 0m)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' step must not be zero.", name);
+        }
+
+        if ((step > 0m && start >= stop) || (step < 0m && start <= stop))
+        {
+            if (!arena.TryAllocate(0, out DslArrayHandle emptyHandle, out _))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+            }
+
+            return DslEvalOutcome.OkArray(emptyHandle);
+        }
+
+        Span<decimal> buffer = stackalloc decimal[DslArrayArena.MaxArrayLength];
+        int count = 0;
+        try
+        {
+            decimal current = start;
+            while (step > 0m ? current < stop : current > stop)
+            {
+                if (count >= DslArrayArena.MaxArrayLength)
+                {
+                    return DslEvalOutcome.Fail(
+                        CalculatorErrorCode.DomainError,
+                        position,
+                        $"'{name}' output length exceeds {DslArrayArena.MaxArrayLength}.",
+                        name);
+                }
+
+                buffer[count++] = current == 0m ? 0m : current;
+                current = checked(start + count * step);
+            }
+        }
+        catch (OverflowException)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.ArithmeticOverflow, position, $"Arithmetic overflow in '{name}'.", name);
+        }
+
+        if (!arena.TryAllocate(count, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        buffer.Slice(0, count).CopyTo(result);
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateArrayFill(int position, string name, scoped ReadOnlySpan<DslValue> args, ref DslArrayArena arena)
+    {
+        if (args[0].IsArray || (args.Length >= 2 && args[1].IsArray) ||
+            !DslMathValidation.TryReadInt32InRange(args[0].Scalar, 0, DslArrayArena.MaxArrayLength, out int n))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' expects integer length n in [0, {DslArrayArena.MaxArrayLength}].", name);
+        }
+
+        if (!arena.TryAllocate(n, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        decimal fillVal = name switch
+        {
+            "arr_zeros" => 0m,
+            "arr_ones" => 1m,
+            _ => args[1].Scalar == 0m ? 0m : args[1].Scalar,
+        };
+        result.Fill(fillVal);
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateMatEye(int position, string name, DslValue dimArg, ref DslArrayArena arena)
+    {
+        int maxSquareDim = CalculatorMatrixFunctions.MaxSquareArrayMatrixDim;
+        if (dimArg.IsArray || !DslMathValidation.TryReadInt32InRange(dimArg.Scalar, 1, maxSquareDim, out int n))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' requires integer dimension n in [1, {maxSquareDim}].", name);
+        }
+
+        if (!arena.TryAllocate(n * n, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        result.Clear();
+        for (int i = 0; i < n; i++)
+        {
+            result[i * n + i] = 1m;
+        }
+
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateMatDiag(int position, string name, DslValue vecArg, ref DslArrayArena arena)
+    {
+        int maxSquareDim = CalculatorMatrixFunctions.MaxSquareArrayMatrixDim;
+        if (!vecArg.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' requires a 1D vector argument.", name);
+        }
+
+        int n = vecArg.Array.Length;
+        if (n == 0)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' does not accept an empty vector.", name);
+        }
+
+        if (n > maxSquareDim)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DimensionMismatch, position, $"'{name}' vector length {n} exceeds {maxSquareDim}.", name);
+        }
+
+        if (!arena.TryAllocate(n * n, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        ReadOnlySpan<decimal> src = arena.GetSlice(vecArg.Array);
+        result.Clear();
+        for (int i = 0; i < n; i++)
+        {
+            result[i * n + i] = src[i] == 0m ? 0m : src[i];
+        }
+
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateArrayConcat(int position, string name, DslValue leftArg, DslValue rightArg, ref DslArrayArena arena)
+    {
+        if (!leftArg.IsArray || !rightArg.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' requires two 1D arrays.", name);
+        }
+
+        int totalLen = leftArg.Array.Length + rightArg.Array.Length;
+        if (totalLen > DslArrayArena.MaxArrayLength)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DimensionMismatch,
+                position,
+                $"Concatenated array length {totalLen} exceeds {DslArrayArena.MaxArrayLength}.",
+                name);
+        }
+
+        if (!arena.TryAllocate(totalLen, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        ReadOnlySpan<decimal> a = arena.GetSlice(leftArg.Array);
+        ReadOnlySpan<decimal> b = arena.GetSlice(rightArg.Array);
+        a.CopyTo(result);
+        b.CopyTo(result.Slice(a.Length));
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateArrayReverse(int position, string name, DslValue arrayArg, ref DslArrayArena arena)
+    {
+        if (!arrayArg.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' requires a 1D array.", name);
+        }
+
+        int len = arrayArg.Array.Length;
+        if (!arena.TryAllocate(len, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        arena.GetSlice(arrayArg.Array).CopyTo(result);
+        result.Reverse();
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateArrayUnique(int position, string name, DslValue arrayArg, ref DslArrayArena arena)
+    {
+        if (!arrayArg.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' requires a 1D array.", name);
+        }
+
+        int len = arrayArg.Array.Length;
+        if (len == 0)
+        {
+            if (!arena.TryAllocate(0, out DslArrayHandle emptyHandle, out _))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+            }
+
+            return DslEvalOutcome.OkArray(emptyHandle);
+        }
+
+        Span<decimal> sorted = stackalloc decimal[len];
+        arena.GetSlice(arrayArg.Array).CopyTo(sorted);
+        sorted.Sort();
+
+        int uniqueCount = 0;
+        for (int i = 0; i < len; i++)
+        {
+            decimal v = sorted[i] == 0m ? 0m : sorted[i];
+            if (uniqueCount == 0 || v != sorted[uniqueCount - 1])
+            {
+                sorted[uniqueCount++] = v;
+            }
+        }
+
+        if (!arena.TryAllocate(uniqueCount, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        sorted.Slice(0, uniqueCount).CopyTo(result);
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateArrayClip(int position, string name, scoped ReadOnlySpan<DslValue> args, ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || args[1].IsArray || args[2].IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' expects (array, lo, hi).", name);
+        }
+
+        decimal lo = args[1].Scalar;
+        decimal hi = args[2].Scalar;
+        if (lo > hi)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' requires lo <= hi.", name);
+        }
+
+        int len = args[0].Array.Length;
+        if (!arena.TryAllocate(len, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        ReadOnlySpan<decimal> src = arena.GetSlice(args[0].Array);
+        for (int i = 0; i < len; i++)
+        {
+            decimal clamped = Math.Min(Math.Max(src[i], lo), hi);
+            result[i] = clamped == 0m ? 0m : clamped;
+        }
+
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateArrayAddScalar(int position, string name, DslValue arrayArg, DslValue scalarArg, ref DslArrayArena arena)
+    {
+        if (!arrayArg.IsArray || scalarArg.IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' expects (array, scalar).", name);
+        }
+
+        int len = arrayArg.Array.Length;
+        if (!arena.TryAllocate(len, out DslArrayHandle handle, out Span<decimal> result))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, $"Array arena budget exceeded in '{name}'.", name);
+        }
+
+        ReadOnlySpan<decimal> src = arena.GetSlice(arrayArg.Array);
+        decimal c = scalarArg.Scalar;
+        try
+        {
+            for (int i = 0; i < len; i++)
+            {
+                decimal val = checked(src[i] + c);
+                result[i] = val == 0m ? 0m : val;
+            }
+        }
+        catch (OverflowException)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.ArithmeticOverflow, position, $"Arithmetic overflow in '{name}'.", name);
+        }
+
+        return DslEvalOutcome.OkArray(handle);
+    }
 }

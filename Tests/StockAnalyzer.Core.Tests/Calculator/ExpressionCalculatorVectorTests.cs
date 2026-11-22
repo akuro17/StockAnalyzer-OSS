@@ -59,7 +59,7 @@ public sealed class ExpressionCalculatorVectorTests
         Err("29", "foo(1)", CalculatorErrorCode.UnknownFunction, 0, "foo");
         Err("30", "ABS(1)", CalculatorErrorCode.UnknownFunction, 0, "ABS");
         Err("31", "1 2", CalculatorErrorCode.SyntaxError, 2);
-        Err("32", "1e5", CalculatorErrorCode.SyntaxError, 1);
+        Ok("32", "1e5", 100000m);
         Err("33a", "", CalculatorErrorCode.SyntaxError, 0);
         Err("33b", "   ", CalculatorErrorCode.SyntaxError, 3);
         Err("34", "1 +", CalculatorErrorCode.SyntaxError, 3);
@@ -185,20 +185,16 @@ public sealed class ExpressionCalculatorVectorTests
     }
 
     [Theory]
-    [InlineData("1e-5", 1)]
-    [InlineData("1.5e-5", 3)]
-    [InlineData("1E+3", 1)]
-    [InlineData("1e5", 1)]
-    [InlineData("sin(1e-5)", 5)]
-    public void ScientificNotationLiteralsIncludeHintWhilePreservingSyntaxErrorCodeAndPosition(string expression, int expectedPosition)
+    [InlineData("1e-5", "0.00001")]
+    [InlineData("1.5e-5", "0.000015")]
+    [InlineData("1E+3", "1000")]
+    [InlineData("1e5", "100000")]
+    public void ScientificNotationLiteralsEvaluateToExactDecimals(string expression, string expectedText)
     {
         CalculatorOutcome outcome = ExpressionCalculator.Evaluate(expression, Empty, CalculatorLimits.Default);
 
-        Assert.Null(outcome.Value);
-        Assert.NotNull(outcome.Error);
-        Assert.Equal(CalculatorErrorCode.SyntaxError, outcome.Error!.Code);
-        Assert.Equal(expectedPosition, outcome.Error.Position);
-        Assert.Contains("Scientific notation is not supported", outcome.Error.Message, StringComparison.Ordinal);
+        Assert.Null(outcome.Error);
+        Assert.Equal(decimal.Parse(expectedText, System.Globalization.CultureInfo.InvariantCulture), outcome.Value);
     }
 
     [Fact]

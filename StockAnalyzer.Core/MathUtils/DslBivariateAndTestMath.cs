@@ -1,4 +1,5 @@
 using System;
+using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Core.MathUtils;
 
@@ -483,4 +484,438 @@ public static class DslBivariateAndTestMath
         => double.IsFinite(value)
             ? MathResult<double>.Ok(value == 0.0 ? 0.0 : value)
             : MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+
+    // ---- DSL v6 Domain 6b: ANOVA, Chi-Square GOF, Mann-Whitney U, OLS Diagnostics ----
+
+    /// <summary>Maximum number of distinct groups supported by stack-only <see cref="Anova1Way"/>.</summary>
+    public const int AnovaMaxGroups = 64;
+
+    /// <summary>Minimum allowed value of an integer group ID in <see cref="Anova1Way"/>.</summary>
+    public const int AnovaMinGroupId = -1_000_000;
+
+    /// <summary>Maximum allowed value of an integer group ID in <see cref="Anova1Way"/>.</summary>
+    public const int AnovaMaxGroupId = 1_000_000;
+
+    private const double PerfectFitResidualRatio = 1e-24;
+    private const double DegenerateVarianceEpsilon = 1e-12;
+
+    /// <summary>
+    /// One-way ANOVA writing <c>[F, pValue, dfBetween, dfWithin]</c> into <paramref name="result"/> (length 4)
+    /// using stack-only group tables (<see cref="AnovaMaxGroups"/> max groups, zero heap allocation).
+    /// Enforces both overall <see cref="FlatWindowRule.Series"/> flatness and within-group residual flatness.
+    /// </summary>
+    public static MathErrorCode Anova1Way(
+        scoped ReadOnlySpan<double> values,
+        scoped ReadOnlySpan<int> groupIds,
+        scoped Span<double> result)
+    {
+        if (result.Length < 4 || values.Length != groupIds.Length)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        int n = values.Length;
+        if (n < 3)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        if (!WindowMoments.TryCompute(values, FlatWindowRule.Series, out WindowMoments allMoments))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        if (allMoments.IsFlat)
+        {
+            return MathErrorCode.DivisionByZero;
+        }
+
+        Span<int> uniqueIds = stackalloc int[AnovaMaxGroups];
+        Span<int> groupCounts = stackalloc int[AnovaMaxGroups];
+        Span<double> groupSums = stackalloc double[AnovaMaxGroups];
+        Span<int> groupOf = stackalloc int[n];
+        int k = 0;
+
+        for (int i = 0; i < n; i++)
+        {
+            int id = groupIds[i];
+            int idx = -1;
+            for (int g = 0; g < k; g++)
+            {
+                if (uniqueIds[g] == id)
+                {
+                    idx = g;
+                    break;
+                }
+            }
+
+            if (idx < 0)
+            {
+                if (k >= AnovaMaxGroups)
+                {
+                    return MathErrorCode.DomainError;
+                }
+
+                idx = k++;
+                uniqueIds[idx] = id;
+                groupCounts[idx] = 0;
+                groupSums[idx] = 0.0;
+            }
+
+            groupOf[i] = idx;
+            groupCounts[idx]++;
+            groupSums[idx] += values[i];
+        }
+
+        if (k < 2 || n <= k)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        Span<double> groupMeans = stackalloc double[k];
+        double ssBetween = 0.0;
+        for (int g = 0; g < k; g++)
+        {
+            double mean = groupSums[g] / groupCounts[g];
+            groupMeans[g] = mean;
+            double diff = mean - allMoments.Mean;
+            ssBetween += groupCounts[g] * diff * diff;
+        }
+
+        double ssWithin = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            double resid = values[i] - groupMeans[groupOf[i]];
+            ssWithin += resid * resid;
+        }
+
+        double residualRms = Math.Sqrt(ssWithin / n);
+        double residualFloor = Math.Max(
+            ComparisonSeriesDefaults.FlatWindowDeviationEpsilon,
+            WindowMoments.SeriesRelativeFlatEpsilon * Math.Abs(allMoments.Mean));
+        if (ssWithin <= 0.0 || !(residualRms >= residualFloor))
+        {
+            return MathErrorCode.DivisionByZero;
+        }
+
+        double df1 = k - 1;
+        double df2 = n - k;
+        double fStat = (ssBetween / df1) / (ssWithin / df2);
+        double betaArg = df2 / (df2 + (df1 * fStat));
+        double pVal = DslSpecialFunctionsMath.IncBetaDouble(betaArg, 0.5 * df2, 0.5 * df1);
+        if (!double.IsFinite(fStat) || !double.IsFinite(pVal))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        result[0] = fStat == 0.0 ? 0.0 : fStat;
+        result[1] = Math.Clamp(pVal, 0.0, 1.0);
+        result[2] = df1;
+        result[3] = df2;
+        return MathErrorCode.None;
+    }
+
+    /// <summary>
+    /// Pearson chi-square goodness-of-fit test writing <c>[chi2, pValue, df]</c> into <paramref name="result"/> (length 3).
+    /// </summary>
+    public static MathErrorCode Chi2Gof(
+        scoped ReadOnlySpan<double> observed,
+        scoped ReadOnlySpan<double> expected,
+        scoped Span<double> result)
+    {
+        if (result.Length < 3 || observed.Length != expected.Length)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        int k = observed.Length;
+        if (k < 2)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        double chi2 = 0.0;
+        for (int i = 0; i < k; i++)
+        {
+            double o = observed[i];
+            double e = expected[i];
+            if (!double.IsFinite(o) || !double.IsFinite(e) || o < 0.0 || e <= 0.0)
+            {
+                return MathErrorCode.DomainError;
+            }
+
+            double diff = o - e;
+            chi2 += (diff * diff) / e;
+        }
+
+        double df = k - 1;
+        double pVal = DslSpecialFunctionsMath.RegularizedGammaQDouble(0.5 * df, 0.5 * chi2);
+        if (!double.IsFinite(chi2) || !double.IsFinite(pVal))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        result[0] = chi2 == 0.0 ? 0.0 : chi2;
+        result[1] = Math.Clamp(pVal, 0.0, 1.0);
+        result[2] = df;
+        return MathErrorCode.None;
+    }
+
+    /// <summary>
+    /// Two-sided Mann-Whitney U test with tie correction and continuity correction, writing <c>[U_min, pValue]</c>
+    /// into <paramref name="result"/> (length 2).
+    /// </summary>
+    public static MathErrorCode MannWhitneyU(
+        scoped ReadOnlySpan<double> x,
+        scoped ReadOnlySpan<double> y,
+        scoped Span<double> result)
+    {
+        if (result.Length < 2)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        int n1 = x.Length;
+        int n2 = y.Length;
+        int n = n1 + n2;
+        if (n1 < 2 || n2 < 2 || n > 512)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        Span<double> combined = stackalloc double[n];
+        for (int i = 0; i < n1; i++)
+        {
+            if (!double.IsFinite(x[i]))
+            {
+                return MathErrorCode.NonFiniteResult;
+            }
+
+            combined[i] = x[i];
+        }
+
+        for (int j = 0; j < n2; j++)
+        {
+            if (!double.IsFinite(y[j]))
+            {
+                return MathErrorCode.NonFiniteResult;
+            }
+
+            combined[n1 + j] = y[j];
+        }
+
+        Span<double> ranks = stackalloc double[n];
+        Span<int> indexScratch = stackalloc int[n];
+        ComputeAverageRanks(combined, ranks, indexScratch);
+
+        double rankSum1 = 0.0;
+        for (int i = 0; i < n1; i++)
+        {
+            rankSum1 += ranks[i];
+        }
+
+        double u1 = rankSum1 - (0.5 * n1 * (n1 + 1));
+        double u2 = ((double)n1 * n2) - u1;
+        double uMin = Math.Min(u1, u2);
+        if (uMin < 0.0 && uMin > -1e-12)
+        {
+            uMin = 0.0;
+        }
+
+        double tieSum = 0.0;
+        bool hasTie = false;
+        int idx = 0;
+        while (idx < n)
+        {
+            int end = idx;
+            double v = combined[indexScratch[idx]];
+            while (end + 1 < n && combined[indexScratch[end + 1]] == v)
+            {
+                end++;
+            }
+
+            int run = end - idx + 1;
+            if (run == n)
+            {
+                return MathErrorCode.DivisionByZero;
+            }
+
+            if (run > 1)
+            {
+                hasTie = true;
+                tieSum += ((double)run * run * run) - run;
+            }
+
+            idx = end + 1;
+        }
+
+        double pVal;
+        if (!hasTie && n <= 20)
+        {
+            int uMinInt = (int)Math.Round(uMin);
+            pVal = ComputeMannWhitneyExactPValue(n1, n2, uMinInt);
+        }
+        else
+        {
+            double sigmaU2 = ((double)n1 * n2 / 12.0) * ((n + 1.0) - (tieSum / ((double)n * (n - 1))));
+            if (!double.IsFinite(sigmaU2) || sigmaU2 <= DegenerateVarianceEpsilon)
+            {
+                return MathErrorCode.DivisionByZero;
+            }
+
+            double muU = 0.5 * n1 * n2;
+            double z = Math.Max(0.0, Math.Abs(uMin - muU) - 0.5) / Math.Sqrt(sigmaU2);
+            pVal = Math.Clamp(SpecialFunctionsMath.Erfc(z / Math.Sqrt(2.0)), 0.0, 1.0);
+        }
+
+        if (!double.IsFinite(uMin) || !double.IsFinite(pVal))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        result[0] = uMin == 0.0 ? 0.0 : uMin;
+        result[1] = pVal;
+        return MathErrorCode.None;
+    }
+
+    private static double ComputeMannWhitneyExactPValue(int n1, int n2, int uMin)
+    {
+        int totalPairs = n1 * n2;
+        int uTarget = Math.Min(Math.Max(0, uMin), totalPairs - Math.Max(0, uMin));
+        int width = uTarget + 1;
+        int n = n1 + n2;
+
+        // Exact integer DP over combinations of size c <= n1 chosen from {0..n-1} slots with inversion sum u <= uTarget.
+        Span<long> dp = stackalloc long[(n1 + 1) * width];
+        dp.Clear();
+        dp[0] = 1L;
+
+        for (int pos = 0; pos < n; pos++)
+        {
+            int maxC = Math.Min(pos, n1 - 1);
+            for (int c = maxC; c >= 0; c--)
+            {
+                int addedU = pos - c;
+                if (addedU > uTarget)
+                {
+                    continue;
+                }
+
+                int srcRow = c * width;
+                int dstRow = (c + 1) * width;
+                for (int u = 0; u <= uTarget - addedU; u++)
+                {
+                    dp[dstRow + u + addedU] += dp[srcRow + u];
+                }
+            }
+        }
+
+        long tailCount = 0L;
+        int finalRow = n1 * width;
+        for (int u = 0; u <= uTarget; u++)
+        {
+            tailCount += dp[finalRow + u];
+        }
+
+        long totalCombinations = BinomialInt64(n, n1);
+        return Math.Min(1.0, (2.0 * tailCount) / totalCombinations);
+    }
+
+    private static long BinomialInt64(int n, int k)
+    {
+        int r = Math.Min(k, n - k);
+        long result = 1L;
+        for (int i = 1; i <= r; i++)
+        {
+            result = (result * (n - r + i)) / i;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Computes OLS regression diagnostics <c>[r2, adjR2, fStat, fPval, rmse]</c> wrapping <see cref="DslRegressionMath.OlsFit"/>
+    /// (intercept + <paramref name="p"/> features). Requires <paramref name="n"/> &gt;= <paramref name="p"/> + 2,
+    /// non-flat target <paramref name="y"/>, non-collinear design matrix, and non-zero residual sum of squares.
+    /// </summary>
+    public static MathErrorCode OlsStats(
+        scoped ReadOnlySpan<double> xMatrix,
+        int n,
+        int p,
+        scoped ReadOnlySpan<double> y,
+        scoped Span<double> result,
+        ref DslExecutionBudget budget)
+    {
+        if (result.Length < 5 || n < 1 || p < 1 || p > DslRegressionMath.MaxFeatures || y.Length != n || xMatrix.Length != n * p)
+        {
+            return MathErrorCode.DimensionMismatch;
+        }
+
+        if (n < p + 2)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        if (!WindowMoments.TryCompute(y, FlatWindowRule.Series, out WindowMoments yMoments))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        if (yMoments.IsFlat)
+        {
+            return MathErrorCode.DivisionByZero;
+        }
+
+        Span<double> beta = stackalloc double[p + 1];
+        MathErrorCode fitErr = DslRegressionMath.OlsFit(xMatrix, n, p, y, beta, ref budget);
+        if (fitErr != MathErrorCode.None)
+        {
+            return fitErr;
+        }
+
+        double ssRes = 0.0;
+        for (int i = 0; i < n; i++)
+        {
+            double yHat = beta[0];
+            int rowBase = i * p;
+            for (int j = 0; j < p; j++)
+            {
+                yHat += beta[j + 1] * xMatrix[rowBase + j];
+            }
+
+            double resid = y[i] - yHat;
+            ssRes += resid * resid;
+        }
+
+        double ssTot = yMoments.M2;
+        if (!double.IsFinite(ssRes) || !double.IsFinite(ssTot))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        if (ssRes <= PerfectFitResidualRatio * ssTot)
+        {
+            return MathErrorCode.DivisionByZero;
+        }
+
+        double r2 = 1.0 - (ssRes / ssTot);
+        double ssReg = Math.Max(0.0, ssTot - ssRes);
+        double df1 = p;
+        double df2 = n - p - 1;
+        double adjR2 = 1.0 - ((ssRes / df2) / (ssTot / (n - 1)));
+        double fStat = (ssReg / df1) / (ssRes / df2);
+        double fPval = DslSpecialFunctionsMath.IncBetaDouble(df2 / (df2 + (df1 * fStat)), 0.5 * df2, 0.5 * df1);
+        double rmse = Math.Sqrt(ssRes / n);
+        if (!double.IsFinite(r2) || !double.IsFinite(adjR2) || !double.IsFinite(fStat) || !double.IsFinite(fPval) || !double.IsFinite(rmse))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        result[0] = r2 == 0.0 ? 0.0 : r2;
+        result[1] = adjR2 == 0.0 ? 0.0 : adjR2;
+        result[2] = fStat == 0.0 ? 0.0 : fStat;
+        result[3] = Math.Clamp(fPval, 0.0, 1.0);
+        result[4] = rmse == 0.0 ? 0.0 : rmse;
+        return MathErrorCode.None;
+    }
 }

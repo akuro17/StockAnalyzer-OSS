@@ -246,4 +246,112 @@ public static class DslInterpolationMath
         => double.IsFinite(value)
             ? MathResult<double>.Ok(value == 0.0 ? 0.0 : value)
             : MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+
+    // ---- DSL v6: 2D Bilinear Interpolation ----
+
+    /// <summary>
+    /// Bilinear interpolation on a strictly increasing rectilinear grid (<c>xs.Length &gt;= 2</c>, <c>ys.Length &gt;= 2</c>)
+    /// with row-major values <c>Z[j * xs.Length + i] = f(xs[i], ys[j])</c>. Extrapolation outside <c>[xs[0], xs[^1]] x [ys[0], ys[^1]]</c>
+    /// returns <see cref="MathErrorCode.DomainError"/>.
+    /// </summary>
+    public static MathResult<double> Interp2DBilinear(
+        scoped ReadOnlySpan<double> xs,
+        scoped ReadOnlySpan<double> ys,
+        scoped ReadOnlySpan<double> z,
+        double x,
+        double y)
+    {
+        int m = xs.Length;
+        int n = ys.Length;
+        if (m < 2 || n < 2)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (z.Length != m * n)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DimensionMismatch);
+        }
+
+        if (!double.IsFinite(x) || !double.IsFinite(y))
+        {
+            return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+        }
+
+        if (!TryValidateStrictlyIncreasing(xs) || !TryValidateStrictlyIncreasing(ys))
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        for (int k = 0; k < z.Length; k++)
+        {
+            if (!double.IsFinite(z[k]))
+            {
+                return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+            }
+        }
+
+        if (x < xs[0] || x > xs[m - 1] || y < ys[0] || y > ys[n - 1])
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        int i = LocateInterval(xs, x);
+        int j = LocateInterval(ys, y);
+
+        double u = (x - xs[i]) / (xs[i + 1] - xs[i]);
+        double v = (y - ys[j]) / (ys[j + 1] - ys[j]);
+
+        double z00 = z[j * m + i];
+        double z01 = z[j * m + (i + 1)];
+        double z10 = z[(j + 1) * m + i];
+        double z11 = z[(j + 1) * m + (i + 1)];
+
+        double val = ((1.0 - u) * (1.0 - v) * z00)
+            + (u * (1.0 - v) * z01)
+            + ((1.0 - u) * v * z10)
+            + (u * v * z11);
+        return Finite(val);
+    }
+
+    private static bool TryValidateStrictlyIncreasing(ReadOnlySpan<double> grid)
+    {
+        for (int i = 0; i < grid.Length; i++)
+        {
+            if (!double.IsFinite(grid[i]))
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < grid.Length - 1; i++)
+        {
+            if (!(grid[i + 1] - grid[i] > MinStep))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static int LocateInterval(ReadOnlySpan<double> grid, double q)
+    {
+        int lo = 0;
+        int hi = grid.Length - 2;
+        while (lo < hi)
+        {
+            int mid = (lo + hi + 1) / 2;
+            if (grid[mid] <= q)
+            {
+                lo = mid;
+            }
+            else
+            {
+                hi = mid - 1;
+            }
+        }
+
+        return lo;
+    }
 }

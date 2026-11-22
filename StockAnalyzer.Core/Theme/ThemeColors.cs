@@ -147,7 +147,7 @@ public record ThemeColors
 
     // Volume Profile
     public IndicatorColor VolumeProfileFill { get; init; } = IndicatorColor.FromArgb(50, 0, 0, 255);
-    public IndicatorColor VolumeProfilePOC { get; init; } = new IndicatorColor(255, 255, 0, 0); // Red
+    public IndicatorColor VolumeProfilePOC { get; init; } = IndicatorDefaultConstants.VolumeProfilePocColor; // Red (single definition)
     public IndicatorColor VolumeProfileBorder { get; init; } = IndicatorColor.FromArgb(100, 100, 100, 100);
 
     // Volume

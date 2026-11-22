@@ -26,7 +26,7 @@ internal sealed class CalculatorParser
         out CalculatorError? error)
     {
         var parser = new CalculatorParser(tokens, limits);
-        if (!parser.TryParseAdditive(out root, out error))
+        if (!parser.TryParseTernary(out root, out error))
         {
             return false;
         }
@@ -67,6 +67,163 @@ internal sealed class CalculatorParser
 
         _depth++;
         error = null;
+        return true;
+    }
+
+    private bool TryParseTernary(out CalcNode? node, out CalculatorError? error)
+    {
+        if (!TryParseLogicalOr(out CalcNode? condition, out error))
+        {
+            node = null;
+            return false;
+        }
+
+        if (Current.Kind != CalcTokenKind.Question)
+        {
+            node = condition;
+            return true;
+        }
+
+        CalcToken questionToken = Advance();
+        if (!TryEnterDepth(questionToken.Position, out error))
+        {
+            node = null;
+            return false;
+        }
+
+        try
+        {
+            if (!TryParseTernary(out CalcNode? whenTrue, out error))
+            {
+                node = null;
+                return false;
+            }
+
+            if (Current.Kind != CalcTokenKind.Colon)
+            {
+                error = SyntaxErrorAt(Current);
+                node = null;
+                return false;
+            }
+
+            CalcToken colonToken = Advance();
+            if (!TryParseTernary(out CalcNode? whenFalse, out error))
+            {
+                node = null;
+                return false;
+            }
+
+            node = new TernaryNode(condition!, questionToken.Position, whenTrue!, colonToken.Position, whenFalse!);
+            return true;
+        }
+        finally
+        {
+            _depth--;
+        }
+    }
+
+    private bool TryParseLogicalOr(out CalcNode? node, out CalculatorError? error)
+    {
+        if (!TryParseLogicalAnd(out node, out error))
+        {
+            return false;
+        }
+
+        while (Current.Kind == CalcTokenKind.PipePipe)
+        {
+            CalcToken opToken = Advance();
+            if (!TryParseLogicalAnd(out CalcNode? right, out error))
+            {
+                node = null;
+                return false;
+            }
+
+            node = new LogicalBinaryNode(LogicalOperator.Or, opToken.Position, node!, right!);
+        }
+
+        return true;
+    }
+
+    private bool TryParseLogicalAnd(out CalcNode? node, out CalculatorError? error)
+    {
+        if (!TryParseEquality(out node, out error))
+        {
+            return false;
+        }
+
+        while (Current.Kind == CalcTokenKind.AmpAmp)
+        {
+            CalcToken opToken = Advance();
+            if (!TryParseEquality(out CalcNode? right, out error))
+            {
+                node = null;
+                return false;
+            }
+
+            node = new LogicalBinaryNode(LogicalOperator.And, opToken.Position, node!, right!);
+        }
+
+        return true;
+    }
+
+    private bool TryParseEquality(out CalcNode? node, out CalculatorError? error)
+    {
+        if (!TryParseRelational(out CalcNode? first, out error))
+        {
+            node = null;
+            return false;
+        }
+
+        List<BinaryChainTerm>? rest = null;
+        while (Current.Kind is CalcTokenKind.EqualEqual or CalcTokenKind.BangEqual)
+        {
+            CalcToken opToken = Advance();
+            BinaryOperator op = opToken.Kind == CalcTokenKind.EqualEqual ? BinaryOperator.Equal : BinaryOperator.NotEqual;
+            if (!TryParseRelational(out CalcNode? right, out error))
+            {
+                node = null;
+                return false;
+            }
+
+            rest ??= new List<BinaryChainTerm>();
+            rest.Add(new BinaryChainTerm(op, opToken.Position, right!));
+        }
+
+        node = rest is null ? first : new BinaryChainNode(first!, rest);
+        return true;
+    }
+
+    private bool TryParseRelational(out CalcNode? node, out CalculatorError? error)
+    {
+        if (!TryParseAdditive(out CalcNode? first, out error))
+        {
+            node = null;
+            return false;
+        }
+
+        List<BinaryChainTerm>? rest = null;
+        while (Current.Kind is CalcTokenKind.Less or CalcTokenKind.LessEqual or CalcTokenKind.Greater or CalcTokenKind.GreaterEqual)
+        {
+            CalcToken opToken = Advance();
+            BinaryOperator op = opToken.Kind switch
+            {
+                CalcTokenKind.Less => BinaryOperator.Less,
+                CalcTokenKind.LessEqual => BinaryOperator.LessEqual,
+                CalcTokenKind.Greater => BinaryOperator.Greater,
+                _ => BinaryOperator.GreaterEqual,
+            };
+
+            if (!TryParseAdditive(out CalcNode? right, out error))
+            {
+                node = null;
+                return false;
+            }
+
+            rest ??= new List<BinaryChainTerm>();
+            rest.Add(new BinaryChainTerm(op, opToken.Position, right!));
+        }
+
+        node = rest is null ? first : new BinaryChainNode(first!, rest);
         return true;
     }
 
@@ -132,7 +289,7 @@ internal sealed class CalculatorParser
 
     private bool TryParseUnary(out CalcNode? node, out CalculatorError? error)
     {
-        if (Current.Kind is CalcTokenKind.Plus or CalcTokenKind.Minus)
+        if (Current.Kind is CalcTokenKind.Plus or CalcTokenKind.Minus or CalcTokenKind.Bang)
         {
             CalcToken opToken = Advance();
             if (!TryEnterDepth(opToken.Position, out error))
@@ -149,7 +306,12 @@ internal sealed class CalculatorParser
                     return false;
                 }
 
-                UnaryOperator op = opToken.Kind == CalcTokenKind.Plus ? UnaryOperator.Plus : UnaryOperator.Minus;
+                UnaryOperator op = opToken.Kind switch
+                {
+                    CalcTokenKind.Plus => UnaryOperator.Plus,
+                    CalcTokenKind.Minus => UnaryOperator.Minus,
+                    _ => UnaryOperator.LogicalNot,
+                };
                 node = new UnaryNode(op, opToken.Position, operand!);
                 return true;
             }
@@ -164,7 +326,7 @@ internal sealed class CalculatorParser
 
     private bool TryParsePower(out CalcNode? node, out CalculatorError? error)
     {
-        if (!TryParsePrimary(out CalcNode? baseNode, out error))
+        if (!TryParsePostfix(out CalcNode? baseNode, out error))
         {
             node = null;
             return false;
@@ -200,6 +362,49 @@ internal sealed class CalculatorParser
         return true;
     }
 
+    private bool TryParsePostfix(out CalcNode? node, out CalculatorError? error)
+    {
+        if (!TryParsePrimary(out node, out error))
+        {
+            return false;
+        }
+
+        while (Current.Kind == CalcTokenKind.OpenBracket)
+        {
+            CalcToken openBracket = Advance();
+            if (!TryEnterDepth(openBracket.Position, out error))
+            {
+                node = null;
+                return false;
+            }
+
+            try
+            {
+                if (!TryParseTernary(out CalcNode? indexNode, out error))
+                {
+                    node = null;
+                    return false;
+                }
+
+                if (Current.Kind != CalcTokenKind.CloseBracket)
+                {
+                    error = SyntaxErrorAt(Current);
+                    node = null;
+                    return false;
+                }
+
+                Advance(); // consume ']'
+                node = new SubscriptNode(node!, openBracket.Position, indexNode!);
+            }
+            finally
+            {
+                _depth--;
+            }
+        }
+
+        return true;
+    }
+
     private bool TryParsePrimary(out CalcNode? node, out CalculatorError? error)
     {
         CalcToken token = Current;
@@ -232,7 +437,7 @@ internal sealed class CalculatorParser
 
                 try
                 {
-                    if (!TryParseAdditive(out CalcNode? inner, out error))
+                    if (!TryParseTernary(out CalcNode? inner, out error))
                     {
                         node = null;
                         return false;
@@ -290,7 +495,7 @@ internal sealed class CalculatorParser
                         return false;
                     }
 
-                    if (!TryParseAdditive(out CalcNode? element, out error))
+                    if (!TryParseTernary(out CalcNode? element, out error))
                     {
                         node = null;
                         return false;
@@ -340,7 +545,7 @@ internal sealed class CalculatorParser
             {
                 while (true)
                 {
-                    if (!TryParseAdditive(out CalcNode? arg, out error))
+                    if (!TryParseTernary(out CalcNode? arg, out error))
                     {
                         node = null;
                         return false;
@@ -384,36 +589,9 @@ internal sealed class CalculatorParser
                 $"Unexpected end of expression at position {token.Position}.");
         }
 
-        string message = IsAdjacentScientificNotationSuffix(token)
-            ? $"Unexpected token '{token.Text}' at position {token.Position}. Scientific notation is not supported; use decimal literals or * 10^n."
-            : $"Unexpected token '{token.Text}' at position {token.Position}.";
-        return new CalculatorError(CalculatorErrorCode.SyntaxError, token.Position, message);
-    }
-
-    private bool IsAdjacentScientificNotationSuffix(CalcToken token)
-    {
-        if (_position <= 0 || token.Kind != CalcTokenKind.Identifier)
-        {
-            return false;
-        }
-
-        CalcToken prev = _tokens[_position - 1];
-        if (prev.Kind != CalcTokenKind.Number || prev.Position + prev.Text.Length != token.Position)
-        {
-            return false;
-        }
-
-        if (token.Text.Length >= 2 && (token.Text[0] is 'e' or 'E') && ExpressionCalculator.IsAsciiDigit(token.Text[1]))
-        {
-            return true;
-        }
-
-        return token.Text.Length == 1
-            && (token.Text[0] is 'e' or 'E')
-            && _position + 2 < _tokens.Count
-            && _tokens[_position + 1].Kind is CalcTokenKind.Plus or CalcTokenKind.Minus
-            && _tokens[_position + 1].Position == token.Position + 1
-            && _tokens[_position + 2].Kind == CalcTokenKind.Number
-            && _tokens[_position + 2].Position == _tokens[_position + 1].Position + 1;
+        return new CalculatorError(
+            CalculatorErrorCode.SyntaxError,
+            token.Position,
+            $"Unexpected token '{token.Text}' at position {token.Position}.");
     }
 }

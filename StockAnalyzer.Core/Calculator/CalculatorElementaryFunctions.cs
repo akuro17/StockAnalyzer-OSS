@@ -267,6 +267,104 @@ internal static class CalculatorElementaryFunctions
                         name);
                 return true;
 
+            case "gcd":
+                outcome = FromMathResult(DslElementaryMath.Gcd(args[0], args[1]), position, name);
+                return true;
+
+            case "lcm":
+                outcome = FromMathResult(DslElementaryMath.Lcm(args[0], args[1]), position, name);
+                return true;
+
+            case "is_prime":
+                outcome = FromMathResult(DslElementaryMath.IsPrime(args[0]), position, name);
+                return true;
+
+            case "next_prime":
+                outcome = FromMathResult(DslElementaryMath.NextPrime(args[0]), position, name);
+                return true;
+
+            case "mod_pow":
+                outcome = FromMathResult(DslElementaryMath.ModPow(args[0], args[1], args[2]), position, name);
+                return true;
+
+            case "mod_inv":
+                outcome = FromMathResult(DslElementaryMath.ModInv(args[0], args[1]), position, name);
+                return true;
+
+            case "floor_div":
+                outcome = FromMathResult(DslElementaryMath.FloorDiv(args[0], args[1]), position, name);
+                return true;
+
+            case "bit_and":
+                outcome = FromMathResult(DslElementaryMath.BitAnd(args[0], args[1]), position, name);
+                return true;
+
+            case "bit_or":
+                outcome = FromMathResult(DslElementaryMath.BitOr(args[0], args[1]), position, name);
+                return true;
+
+            case "bit_xor":
+                outcome = FromMathResult(DslElementaryMath.BitXor(args[0], args[1]), position, name);
+                return true;
+
+            case "bit_not":
+                outcome = FromMathResult(DslElementaryMath.BitNot(args[0]), position, name);
+                return true;
+
+            case "bit_shl":
+                outcome = FromMathResult(DslElementaryMath.BitShift(args[0], args[1], shiftLeft: true), position, name);
+                return true;
+
+            case "bit_shr":
+                outcome = FromMathResult(DslElementaryMath.BitShift(args[0], args[1], shiftLeft: false), position, name);
+                return true;
+
+            case "popcount":
+                outcome = FromMathResult(DslElementaryMath.PopCount(args[0]), position, name);
+                return true;
+
+            case "round_even":
+                outcome = FromMathResult(DslElementaryMath.RoundEven(args[0], args[1]), position, name);
+                return true;
+
+            case "c_conj_re":
+                outcome = CalculatorEvaluator.Ok(args[0]);
+                return true;
+
+            case "c_conj_im":
+                outcome = CalculatorEvaluator.Ok(-args[1]);
+                return true;
+
+            case "c_sin_re":
+            case "c_sin_im":
+                outcome = FromMathResult(DslElementaryMath.ComplexSin(args[0], args[1], takeReal: name == "c_sin_re"), position, name);
+                return true;
+
+            case "c_cos_re":
+            case "c_cos_im":
+                outcome = FromMathResult(DslElementaryMath.ComplexCos(args[0], args[1], takeReal: name == "c_cos_re"), position, name);
+                return true;
+
+            case "c_tan_re":
+            case "c_tan_im":
+                outcome = FromMathResult(DslElementaryMath.ComplexTan(args[0], args[1], takeReal: name == "c_tan_re"), position, name);
+                return true;
+
+            case "c_sinh_re":
+            case "c_sinh_im":
+                outcome = FromMathResult(DslElementaryMath.ComplexSinh(args[0], args[1], takeReal: name == "c_sinh_re"), position, name);
+                return true;
+
+            case "c_cosh_re":
+            case "c_cosh_im":
+                outcome = FromMathResult(DslElementaryMath.ComplexCosh(args[0], args[1], takeReal: name == "c_cosh_re"), position, name);
+                return true;
+
+            case "c_tanh_re":
+            case "c_tanh_im":
+                outcome = FromMathResult(DslElementaryMath.ComplexTanh(args[0], args[1], takeReal: name == "c_tanh_re"), position, name);
+                return true;
+
             case "if_gt":
                 outcome = CalculatorEvaluator.Ok(args[0] > args[1] ? args[2] : args[3]);
                 return true;

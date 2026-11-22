@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using Avalonia;
@@ -25,6 +26,16 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
     public Color Color { get; set; } = DrawingThemeContext.DefaultColor;
     public Color ValueAreaColor { get; set; } = Color.Parse("#FFEB3B");
     public Color ProfileColor { get; set; } = Color.Parse("#90A4AE");
+    /// <summary>Colour of the Time Point of Control (TPOC) bin. Default: the single red definition IndicatorDefaultConstants.VolumeProfilePocColor.</summary>
+    /// <remarks>
+    /// Nullable on purpose: the drawing codec restores an explicit JSON null of a value-type property as default(Color) (transparent black), which would paint the POC bin black.
+    /// As a nullable, null stays null and <see cref="EffectivePocColor"/> resolves it (like a missing key, which keeps the initializer) to the red default.
+    /// </remarks>
+    [DisplayName("TPOC Color")]
+    public Color? PocColor { get; set; } = IndicatorDefaultConstants.VolumeProfilePocColor.ToAvaloniaColor();
+
+    /// <summary><see cref="PocColor"/>, or the red default when it is unset (null).</summary>
+    public Color EffectivePocColor => PocColor ?? IndicatorDefaultConstants.VolumeProfilePocColor.ToAvaloniaColor();
     public double Thickness { get; set; } = DrawingThemeContext.DefaultStrokeThickness;
     public Color FillColor { get; set; } = DrawingThemeContext.DefaultColor;
     public int FillOpacity { get; set; } = 10;
@@ -76,12 +87,14 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
     public SKColor SkiaColor => new SKColor(Color.R, Color.G, Color.B, (byte)(255 * Opacity));
     public SKColor SkiaProfileColor => new SKColor(ProfileColor.R, ProfileColor.G, ProfileColor.B, (byte)(255 * Opacity));
     public SKColor SkiaValueColor => new SKColor(ValueAreaColor.R, ValueAreaColor.G, ValueAreaColor.B, (byte)(255 * Opacity));
+    public SKColor SkiaPocColor => new SKColor(EffectivePocColor.R, EffectivePocColor.G, EffectivePocColor.B, (byte)(255 * Opacity));
     public SKColor SkiaFillColor => new SKColor(FillColor.R, FillColor.G, FillColor.B, (byte)Math.Clamp((int)(255 * (FillOpacity / 100.0)), 0, 255));
 
     // Reused across Render() calls (ZeroAllocation Render Loop)
     private readonly SKPaint _previewPaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = true };
     private readonly SKPaint _profilePaint = new SKPaint { Style = SKPaintStyle.Fill };
     private readonly SKPaint _valueAreaPaint = new SKPaint { Style = SKPaintStyle.Fill };
+    private readonly SKPaint _pocBinPaint = new SKPaint { Style = SKPaintStyle.Fill };
     private readonly SKPaint _backgroundPaint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
     private readonly SKPaint _linePaint = new SKPaint { Style = SKPaintStyle.Stroke, IsAntialias = false };
 
@@ -90,6 +103,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
         _previewPaint.Dispose();
         _profilePaint.Dispose();
         _valueAreaPaint.Dispose();
+        _pocBinPaint.Dispose();
         _backgroundPaint.Dispose();
         _linePaint.Dispose();
         GC.SuppressFinalize(this);
@@ -136,7 +150,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
         _rangeBars = range.Count;
 
         // Calculate Profile (50 rows) for primary anchor range using selected PriceType
-        ProfileData = TimeAtPriceAnalysis.CalculateProfile(range, 50, PriceType);
+        ProfileData = TimeAtPriceAnalysis.CalculateProfile(range, VolumeProfileSegmentBuilder.DrawingRowCount, PriceType);
 
         // Calculate Value Area
         var va = TimeAtPriceAnalysis.CalculateValueArea(ProfileData);
@@ -147,157 +161,20 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
         int baseBars = _rangeBars > 0 ? _rangeBars : 1;
         int startBarIdx = FindNearestBarIndex(start, candleList);
 
-        if (RepeatMode == VolumeProfileRepeatMode.RangeBar && startBarIdx >= 0 && startBarIdx < candleList.Count)
+        if (RepeatMode != VolumeProfileRepeatMode.Default && startBarIdx >= 0 && startBarIdx < candleList.Count)
         {
-            int currentIdx = startBarIdx;
-            int totalCandles = candleList.Count;
-
-            while (currentIdx < totalCandles)
-            {
-                int count = Math.Min(baseBars, totalCandles - currentIdx);
-                if (count <= 0) break;
-
-                var slice = new List<CoreCandleData>(count);
-                for (int i = 0; i < count; i++)
-                {
-                    slice.Add(candleList[currentIdx + i]);
-                }
-
-                var profile = TimeAtPriceAnalysis.CalculateProfile(slice, 50, PriceType);
-                var segVa = TimeAtPriceAnalysis.CalculateValueArea(profile);
-                var pocBin = VolumeAnalysis.FindPointOfControl(profile);
-
-                var segment = new VolumeProfileSegment
-                {
-                    StartIndex = currentIdx,
-                    Count = count,
-                    StartTime = slice[0].Timestamp,
-                    EndTime = slice[^1].Timestamp,
-                    IsPartial = count < baseBars,
-                    Bins = profile,
-                    POC = pocBin?.Price,
-                    VAH = segVa.VAH,
-                    VAL = segVa.VAL
-                };
-                Segments.Add(segment);
-
-                if (currentIdx == startBarIdx)
-                {
-                    ProfileData = profile;
-                    VAH = segVa.VAH;
-                    VAL = segVa.VAL;
-                }
-
-                currentIdx += baseBars;
-            }
-        }
-        else if (RepeatMode == VolumeProfileRepeatMode.Weekly && startBarIdx >= 0 && startBarIdx < candleList.Count)
-        {
-            int currentIdx = startBarIdx;
-            int totalCandles = candleList.Count;
-
-            while (currentIdx < totalCandles)
-            {
-                var firstCandle = candleList[currentIdx];
-                int weekKey = TimeFrameAggregator.GetPeriodKey(firstCandle.Timestamp, TimeFrame.W1);
-
-                int endIdx = currentIdx;
-                while (endIdx < totalCandles)
-                {
-                    var c = candleList[endIdx];
-                    int k = TimeFrameAggregator.GetPeriodKey(c.Timestamp, TimeFrame.W1);
-                    if (k != weekKey) break;
-                    endIdx++;
-                }
-
-                int count = endIdx - currentIdx;
-                var slice = new List<CoreCandleData>(count);
-                for (int i = 0; i < count; i++)
-                {
-                    slice.Add(candleList[currentIdx + i]);
-                }
-
-                var profile = TimeAtPriceAnalysis.CalculateProfile(slice, 50, PriceType);
-                var segVa = TimeAtPriceAnalysis.CalculateValueArea(profile);
-                var pocBin = VolumeAnalysis.FindPointOfControl(profile);
-
-                var segment = new VolumeProfileSegment
-                {
-                    StartIndex = currentIdx,
-                    Count = count,
-                    StartTime = slice[0].Timestamp,
-                    EndTime = slice[^1].Timestamp,
-                    IsPartial = (currentIdx == startBarIdx && slice[0].Timestamp.DayOfWeek != DayOfWeek.Monday) || endIdx == totalCandles,
-                    Bins = profile,
-                    POC = pocBin?.Price,
-                    VAH = segVa.VAH,
-                    VAL = segVa.VAL
-                };
-                Segments.Add(segment);
-
-                if (currentIdx == startBarIdx)
-                {
-                    ProfileData = profile;
-                    VAH = segVa.VAH;
-                    VAL = segVa.VAL;
-                }
-
-                currentIdx = endIdx;
-            }
-        }
-        else if (RepeatMode == VolumeProfileRepeatMode.Monthly && startBarIdx >= 0 && startBarIdx < candleList.Count)
-        {
-            int currentIdx = startBarIdx;
-            int totalCandles = candleList.Count;
-
-            while (currentIdx < totalCandles)
-            {
-                var firstCandle = candleList[currentIdx];
-                int monthKey = firstCandle.Timestamp.Year * 100 + firstCandle.Timestamp.Month;
-
-                int endIdx = currentIdx;
-                while (endIdx < totalCandles)
-                {
-                    var c = candleList[endIdx];
-                    int k = c.Timestamp.Year * 100 + c.Timestamp.Month;
-                    if (k != monthKey) break;
-                    endIdx++;
-                }
-
-                int count = endIdx - currentIdx;
-                var slice = new List<CoreCandleData>(count);
-                for (int i = 0; i < count; i++)
-                {
-                    slice.Add(candleList[currentIdx + i]);
-                }
-
-                var profile = TimeAtPriceAnalysis.CalculateProfile(slice, 50, PriceType);
-                var segVa = TimeAtPriceAnalysis.CalculateValueArea(profile);
-                var pocBin = VolumeAnalysis.FindPointOfControl(profile);
-
-                var segment = new VolumeProfileSegment
-                {
-                    StartIndex = currentIdx,
-                    Count = count,
-                    StartTime = slice[0].Timestamp,
-                    EndTime = slice[^1].Timestamp,
-                    IsPartial = (currentIdx == startBarIdx && slice[0].Timestamp.Day != 1) || endIdx == totalCandles,
-                    Bins = profile,
-                    POC = pocBin?.Price,
-                    VAH = segVa.VAH,
-                    VAL = segVa.VAL
-                };
-                Segments.Add(segment);
-
-                if (currentIdx == startBarIdx)
-                {
-                    ProfileData = profile;
-                    VAH = segVa.VAH;
-                    VAL = segVa.VAL;
-                }
-
-                currentIdx = endIdx;
-            }
+            // Repeat modes (RangeBar / Weekly / Monthly): one profile per segment; the segment that starts at the anchor bar is also the primary profile.
+            var primary = VolumeProfileSegmentBuilder.Build(
+                candleList,
+                startBarIdx,
+                baseBars,
+                RepeatMode,
+                slice => TimeAtPriceAnalysis.CalculateProfile(slice, VolumeProfileSegmentBuilder.DrawingRowCount, PriceType),
+                bins => TimeAtPriceAnalysis.CalculateValueArea(bins),
+                Segments);
+            ProfileData = primary.Bins;
+            VAH = primary.Vah;
+            VAL = primary.Val;
         }
         else if (range.Count > 0)
         {
@@ -331,6 +208,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
         _backgroundPaint.Color = SkiaFillColor;
         _profilePaint.Color = SkiaProfileColor;
         _valueAreaPaint.Color = SkiaValueColor;
+        _pocBinPaint.Color = SkiaPocColor;
 
         byte lineAlpha = (byte)(IsSelected ? Color.A : 180);
         _linePaint.Color = new SKColor(Color.R, Color.G, Color.B, lineAlpha);
@@ -383,7 +261,8 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
                 var bandRect = new SKRect(left, clip.Top, right, clip.Bottom);
                 canvas.DrawRect(bandRect, _backgroundPaint);
 
-                // 2. Draw Histogram Bins
+                // 2. Draw Histogram Bins (precedence POC > Value Area > base; no POC bin when every bin weighs 0)
+                int pocIndex = PointOfControlSelector.FindDrawableIndex(seg.Bins);
                 for (int i = 0; i < seg.Bins.Count; i++)
                 {
                     var bin = seg.Bins[i];
@@ -401,7 +280,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
 
                     bool isValueArea = seg.VAL.HasValue && seg.VAH.HasValue &&
                                       bin.Price >= seg.VAL.Value && bin.Price <= seg.VAH.Value;
-                    canvas.DrawRect(rect, isValueArea ? _valueAreaPaint : _profilePaint);
+                    canvas.DrawRect(rect, ProfileBinPaintSelector.Select(i == pocIndex, isValueArea, _pocBinPaint, _valueAreaPaint, _profilePaint));
                 }
 
                 // 3. Draw Vertical Boundary Line at segment start
@@ -426,6 +305,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
             // 2. Draw Histogram if profile data exists
             if (ProfileData != null && ProfileData.Count > 0 && width > 0)
             {
+                int pocIndex = PointOfControlSelector.FindDrawableIndex(ProfileData);
                 for (int i = 0; i < ProfileData.Count; i++)
                 {
                     var bin = ProfileData[i];
@@ -443,7 +323,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
                         Math.Max(yTop, yBottom));
 
                     bool isValueArea = bin.Price >= VAL && bin.Price <= VAH;
-                    canvas.DrawRect(rect, isValueArea ? _valueAreaPaint : _profilePaint);
+                    canvas.DrawRect(rect, ProfileBinPaintSelector.Select(i == pocIndex, isValueArea, _pocBinPaint, _valueAreaPaint, _profilePaint));
                 }
             }
 
@@ -557,8 +437,8 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
     {
         if (ProfileData == null || ProfileData.Count == 0) return Array.Empty<DrawingCalculatedValue>();
 
-        var color = new IndicatorColor(Color.A, Color.R, Color.G, Color.B);
         var vaColor = new IndicatorColor(ValueAreaColor.A, ValueAreaColor.R, ValueAreaColor.G, ValueAreaColor.B);
+        var pocColor = new IndicatorColor(EffectivePocColor.A, EffectivePocColor.R, EffectivePocColor.G, EffectivePocColor.B);
 
         decimal pocPrice;
         decimal vah = VAH;
@@ -598,7 +478,7 @@ public class TimeAtPriceObject : IChartObject, IDisposable, IDrawingCalculatedVa
 
         return new DrawingCalculatedValue[]
         {
-            new DrawingCalculatedValue("TPOC", "Time Point of Control (TPOC)", pocPrice, $"{pocPrice:F2}", color),
+            new DrawingCalculatedValue("TPOC", "Time Point of Control (TPOC)", pocPrice, $"{pocPrice:F2}", pocColor),
             new DrawingCalculatedValue("VAH", "Value Area High (VAH)", vah, $"{vah:F2}", vaColor),
             new DrawingCalculatedValue("VAL", "Value Area Low (VAL)", val, $"{val:F2}", vaColor)
         };

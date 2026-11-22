@@ -371,9 +371,11 @@ public sealed class McpCommandLineTests : IDisposable
 
         // sa_get_portfolio_summary.limit caps each requested history list; absent, every list is cut at its own configured maximum (two different numbers), so none is stated.
         // summaryBars (sa_calculate_indicators and its batch): absent = the summary covers the whole calculated window.
+        // sa_calculate_volume_profile.rankingLimit: absent = the whole ranking (every ranked bin); a number would not state that (it needs includeRanking true, and the most it can cut is MaxVolumeProfileBins).
         var withoutNumericDefaultPairs = new HashSet<string>(StringComparer.Ordinal)
         {
             "sa_get_portfolio_summary.limit",
+            "sa_calculate_volume_profile.rankingLimit",
             $"sa_calculate_indicators.{SeriesOutputOptions.SummaryBarsArgument}",
             $"sa_calculate_indicators_batch.{SeriesOutputOptions.SummaryBarsArgument}",
         };

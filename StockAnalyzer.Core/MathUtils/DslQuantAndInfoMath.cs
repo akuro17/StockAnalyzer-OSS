@@ -579,4 +579,494 @@ public static class DslQuantAndInfoMath
         => double.IsFinite(value)
             ? MathResult<double>.Ok(value == 0.0 ? 0.0 : value)
             : MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+
+    // ---- DSL v6 Domain 7: Calendar Dates, Day Count Conventions & Irregular Cash Flows ----
+
+    /// <summary>Earliest supported serial day relative to 1970-01-01 (<c>0001-01-01</c>).</summary>
+    public const int MinSerialDate = -719162;
+
+    /// <summary>Latest supported serial day relative to 1970-01-01 (<c>9999-12-31</c>).</summary>
+    public const int MaxSerialDate = 2932896;
+
+    /// <summary>
+    /// Validates a <see cref="decimal"/>-encoded integer serial date in [<see cref="MinSerialDate"/>, <see cref="MaxSerialDate"/>]
+    /// (proleptic Gregorian <c>0001-01-01</c> to <c>9999-12-31</c>, Unix epoch <c>1970-01-01 = 0</c>).
+    /// Shared across <c>date_serial</c>, <c>days_between</c>, <c>yearfrac</c>, <c>xnpv</c>, and <c>xirr</c>.
+    /// </summary>
+    public static bool TryReadSerialDate(decimal raw, out int serial)
+        => DslMathValidation.TryReadInt32InRange(raw, MinSerialDate, MaxSerialDate, out serial);
+
+    /// <summary>
+    /// Converts proleptic Gregorian (<paramref name="yearRaw"/>, <paramref name="monthRaw"/>, <paramref name="dayRaw"/>)
+    /// into an integer serial day relative to <c>1970-01-01 = 0</c>.
+    /// </summary>
+    public static MathResult<decimal> DateSerial(decimal yearRaw, decimal monthRaw, decimal dayRaw)
+    {
+        if (!DslMathValidation.TryReadInt32InRange(yearRaw, 1, 9999, out int yyyy) ||
+            !DslMathValidation.TryReadInt32InRange(monthRaw, 1, 12, out int mm) ||
+            !DslMathValidation.TryReadInt32InRange(dayRaw, 1, DaysInMonth(yyyy, mm), out int dd))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        int serial = DaysFromCivil(yyyy, mm, dd);
+        return TryReadSerialDate(serial, out _)
+            ? MathResult<decimal>.Ok(serial)
+            : MathResult<decimal>.Fail(MathErrorCode.DomainError);
+    }
+
+    /// <summary>Exact integer day difference <c>d2 - d1</c> between two serial dates.</summary>
+    public static MathResult<decimal> DaysBetween(decimal d1Raw, decimal d2Raw)
+    {
+        if (!TryReadSerialDate(d1Raw, out int d1) || !TryReadSerialDate(d2Raw, out int d2))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        return MathResult<decimal>.Ok((decimal)checked(d2 - d1));
+    }
+
+    /// <summary>
+    /// Day-count year fraction between serial dates <paramref name="d1Raw"/> and <paramref name="d2Raw"/>
+    /// (<c>d2 >= d1</c>). Bases: <c>0</c> = US 30/360 NASD, <c>1</c> = ACT/ACT ISDA (differs from Excel <c>YEARFRAC</c> across leap years),
+    /// <c>2</c> = ACT/360, <c>3</c> = ACT/365F (<c>4</c> reserved for future European 30E/360).
+    /// </summary>
+    public static MathResult<decimal> YearFrac(decimal d1Raw, decimal d2Raw, decimal basisRaw)
+    {
+        if (!TryReadSerialDate(d1Raw, out int s1) ||
+            !TryReadSerialDate(d2Raw, out int s2) ||
+            s2 < s1 ||
+            !DslMathValidation.TryReadInt32InRange(basisRaw, 0, 3, out int basis))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (s1 == s2)
+        {
+            return MathResult<decimal>.Ok(0m);
+        }
+
+        switch (basis)
+        {
+            case 0:
+            {
+                CivilFromDays(s1, out int y1, out int m1, out int d1);
+                CivilFromDays(s2, out int y2, out int m2, out int d2);
+
+                // Exact US 30/360 (NASD / SIA) step order:
+                if (m1 == 2 && d1 == DaysInMonth(y1, 2))
+                {
+                    if (m2 == 2 && d2 == DaysInMonth(y2, 2))
+                    {
+                        d2 = 30;
+                    }
+
+                    d1 = 30;
+                }
+
+                if (d2 == 31 && d1 >= 30)
+                {
+                    d2 = 30;
+                }
+
+                if (d1 == 31)
+                {
+                    d1 = 30;
+                }
+
+                decimal numerator = (360m * (y2 - y1)) + (30m * (m2 - m1)) + (d2 - d1);
+                return MathResult<decimal>.Ok(numerator / 360m);
+            }
+
+            case 1:
+            {
+                CivilFromDays(s1, out int y1, out _, out _);
+                CivilFromDays(s2, out int y2, out _, out _);
+                if (y1 == y2)
+                {
+                    return MathResult<decimal>.Ok((decimal)(s2 - s1) / DaysInYear(y1));
+                }
+
+                int nextJan1 = DaysFromCivil(y1 + 1, 1, 1);
+                int endJan1 = DaysFromCivil(y2, 1, 1);
+                decimal firstPart = (decimal)(nextJan1 - s1) / DaysInYear(y1);
+                decimal fullYears = y2 - y1 - 1;
+                decimal lastPart = (decimal)(s2 - endJan1) / DaysInYear(y2);
+                return MathResult<decimal>.Ok(firstPart + fullYears + lastPart);
+            }
+
+            case 2:
+                return MathResult<decimal>.Ok((decimal)(s2 - s1) / 360m);
+
+            default:
+                return MathResult<decimal>.Ok((decimal)(s2 - s1) / 365m);
+        }
+    }
+
+    /// <summary>Irregular net present value using ACT/365F discount exponents <c>(d_i - d_0)/365</c>.</summary>
+    public static MathResult<double> Xnpv(double rate, scoped ReadOnlySpan<double> cashFlows, scoped ReadOnlySpan<int> serialDates)
+    {
+        if (cashFlows.Length != serialDates.Length)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DimensionMismatch);
+        }
+
+        if (cashFlows.Length == 0 || !double.IsFinite(rate) || rate <= -1.0)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        int d0 = serialDates[0];
+        double baseLog = Math.Log(1.0 + rate);
+        double acc = 0.0;
+        for (int i = 0; i < cashFlows.Length; i++)
+        {
+            int di = serialDates[i];
+            if (di < d0)
+            {
+                return MathResult<double>.Fail(MathErrorCode.DomainError);
+            }
+
+            double cf = cashFlows[i];
+            if (!double.IsFinite(cf))
+            {
+                return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+            }
+
+            if (di == d0)
+            {
+                acc += cf;
+            }
+            else
+            {
+                double t = (di - d0) / 365.0;
+                double discount = Math.Exp(-t * baseLog);
+                if (!double.IsFinite(discount))
+                {
+                    return MathResult<double>.Fail(MathErrorCode.ArithmeticOverflow);
+                }
+
+                acc += cf * discount;
+            }
+        }
+
+        return double.IsFinite(acc)
+            ? MathResult<double>.Ok(acc == 0.0 ? 0.0 : acc)
+            : MathResult<double>.Fail(MathErrorCode.ArithmeticOverflow);
+    }
+
+    /// <summary>
+    /// Irregular internal rate of return: solves <c>xnpv(r, cf, dates) == 0</c> on scale-normalized cash flows
+    /// in log-rate space <c>u = ln(1 + r)</c> (<c>|u| &lt;= min(30, 600 / t_max)</c>) using Newton-Raphson from
+    /// <c>ln(1 + guess)</c>, falling back to a piecewise-dense sign-change bracket scan selecting the root closest
+    /// to <c>ln(1 + guess)</c> (leftmost interval on tie) and refining with Brent's method.
+    /// </summary>
+    public static MathResult<double> Xirr(
+        scoped ReadOnlySpan<double> cashFlows,
+        scoped ReadOnlySpan<int> serialDates,
+        double guess,
+        ref DslExecutionBudget budget)
+    {
+        if (cashFlows.Length != serialDates.Length)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DimensionMismatch);
+        }
+
+        if (cashFlows.Length < 2 || !double.IsFinite(guess) || guess <= -1.0)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        int n = cashFlows.Length;
+        int d0 = serialDates[0];
+        int maxDate = d0;
+        bool hasPositive = false;
+        bool hasNegative = false;
+        double maxAbs = 0.0;
+        Span<double> tYears = stackalloc double[n];
+        for (int i = 0; i < n; i++)
+        {
+            int di = serialDates[i];
+            if (di < d0)
+            {
+                return MathResult<double>.Fail(MathErrorCode.DomainError);
+            }
+
+            if (di > maxDate)
+            {
+                maxDate = di;
+            }
+
+            double cf = cashFlows[i];
+            if (!double.IsFinite(cf))
+            {
+                return MathResult<double>.Fail(MathErrorCode.NonFiniteResult);
+            }
+
+            hasPositive |= cf > 0.0;
+            hasNegative |= cf < 0.0;
+            maxAbs = Math.Max(maxAbs, Math.Abs(cf));
+            tYears[i] = (di - d0) / 365.0;
+        }
+
+        if (!hasPositive || !hasNegative || maxDate <= d0)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        double tMaxYears = (maxDate - d0) / 365.0;
+        double uBound = Math.Min(30.0, 600.0 / tMaxYears);
+        double uGuess = Math.Log(1.0 + guess);
+        if (!double.IsFinite(uGuess))
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        Span<double> normalized = stackalloc double[n];
+        for (int i = 0; i < n; i++)
+        {
+            normalized[i] = cashFlows[i] / maxAbs;
+        }
+
+        double u = Math.Clamp(uGuess, -uBound, uBound);
+        for (int iter = 0; iter < IrrMaxNewtonIterations; iter++)
+        {
+            if (!budget.TryConsume(1))
+            {
+                return MathResult<double>.Fail(MathErrorCode.BudgetExceeded);
+            }
+
+            double f = XirrLogValueAndDerivative(normalized, tYears, u, out double derivative);
+            if (!double.IsFinite(f))
+            {
+                break;
+            }
+
+            if (Math.Abs(f) <= IrrFunctionTolerance)
+            {
+                return RecoverRateFromLogRate(u);
+            }
+
+            if (!double.IsFinite(derivative) || Math.Abs(derivative) <= IrrDerivativeFloor)
+            {
+                break;
+            }
+
+            double next = u - (f / derivative);
+            if (!double.IsFinite(next) || next < -uBound || next > uBound)
+            {
+                break;
+            }
+
+            double fNext = XirrLogValueAndDerivative(normalized, tYears, next, out _);
+            if (!double.IsFinite(fNext))
+            {
+                break;
+            }
+
+            if (Math.Abs(fNext) <= IrrFunctionTolerance ||
+                (Math.Abs(next - u) <= IrrStepTolerance * Math.Max(1.0, Math.Abs(next)) && Math.Abs(fNext) <= IrrLooseFunctionTolerance))
+            {
+                return RecoverRateFromLogRate(next);
+            }
+
+            u = next;
+        }
+
+        return XirrBracketedSearch(normalized, tYears, -uBound, uBound, uGuess, ref budget);
+    }
+
+    private static MathResult<double> RecoverRateFromLogRate(double u)
+    {
+        double rate = DslElementaryMath.Expm1Double(u);
+        if (!double.IsFinite(rate) || rate <= -1.0)
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        return MathResult<double>.Ok(rate == 0.0 ? 0.0 : rate);
+    }
+
+    private static MathResult<double> XirrBracketedSearch(
+        scoped ReadOnlySpan<double> normalized,
+        scoped ReadOnlySpan<double> tYears,
+        double uMin,
+        double uMax,
+        double uGuess,
+        ref DslExecutionBudget budget)
+    {
+        int n = normalized.Length;
+        double[] rentedCf = ArrayPool<double>.Shared.Rent(n);
+        double[] rentedT = ArrayPool<double>.Shared.Rent(n);
+        try
+        {
+            normalized.CopyTo(rentedCf);
+            tYears.CopyTo(rentedT);
+            var objective = new XirrLogObjective(rentedCf, rentedT, n);
+
+            const double coreHalfWidth = 2.0;
+            const int coreSteps = 96;
+            const int wingSteps = 32;
+            const double tieEpsilon = 1e-12;
+
+            bool hasBracket = false;
+            double bestLeft = 0.0;
+            double bestRight = 0.0;
+            double bestDistance = double.PositiveInfinity;
+
+            double coreStart = Math.Max(uMin, -coreHalfWidth);
+            double coreEnd = Math.Min(uMax, coreHalfWidth);
+
+            if (uMin < coreStart)
+            {
+                ScanXirrLogRegion(normalized, tYears, uMin, coreStart, wingSteps, uGuess, tieEpsilon,
+                    ref hasBracket, ref bestLeft, ref bestRight, ref bestDistance, ref budget, out MathErrorCode err);
+                if (err != MathErrorCode.None) return MathResult<double>.Fail(err);
+            }
+
+            if (coreStart < coreEnd)
+            {
+                ScanXirrLogRegion(normalized, tYears, coreStart, coreEnd, coreSteps, uGuess, tieEpsilon,
+                    ref hasBracket, ref bestLeft, ref bestRight, ref bestDistance, ref budget, out MathErrorCode err);
+                if (err != MathErrorCode.None) return MathResult<double>.Fail(err);
+            }
+
+            if (coreEnd < uMax)
+            {
+                ScanXirrLogRegion(normalized, tYears, coreEnd, uMax, wingSteps, uGuess, tieEpsilon,
+                    ref hasBracket, ref bestLeft, ref bestRight, ref bestDistance, ref budget, out MathErrorCode err);
+                if (err != MathErrorCode.None) return MathResult<double>.Fail(err);
+            }
+
+            if (!hasBracket)
+            {
+                return MathResult<double>.Fail(MathErrorCode.ConvergenceFailure);
+            }
+
+            MathResult<double> uRoot = DslNumericalAnalysisMath.RootBrent(objective, bestLeft, bestRight, SolverTolerance, ref budget);
+            return uRoot.IsOk ? RecoverRateFromLogRate(uRoot.Value) : uRoot;
+        }
+        finally
+        {
+            ArrayPool<double>.Shared.Return(rentedCf);
+            ArrayPool<double>.Shared.Return(rentedT);
+        }
+    }
+
+    private static void ScanXirrLogRegion(
+        scoped ReadOnlySpan<double> normalized,
+        scoped ReadOnlySpan<double> tYears,
+        double a,
+        double b,
+        int steps,
+        double uGuess,
+        double tieEpsilon,
+        ref bool hasBracket,
+        ref double bestLeft,
+        ref double bestRight,
+        ref double bestDistance,
+        ref DslExecutionBudget budget,
+        out MathErrorCode error)
+    {
+        error = MathErrorCode.None;
+        double previousU = a;
+        double previousVal = XirrLogValueAndDerivative(normalized, tYears, previousU, out _);
+        for (int i = 1; i <= steps; i++)
+        {
+            if (!budget.TryConsume(1))
+            {
+                error = MathErrorCode.BudgetExceeded;
+                return;
+            }
+
+            double uCur = i == steps ? b : a + ((b - a) * i / steps);
+            double val = XirrLogValueAndDerivative(normalized, tYears, uCur, out _);
+            if (double.IsFinite(previousVal) && double.IsFinite(val) && Math.Sign(previousVal) * Math.Sign(val) <= 0)
+            {
+                double dist = Math.Abs((0.5 * (previousU + uCur)) - uGuess);
+                if (!hasBracket || dist < bestDistance - tieEpsilon)
+                {
+                    hasBracket = true;
+                    bestLeft = previousU;
+                    bestRight = uCur;
+                    bestDistance = dist;
+                }
+            }
+
+            previousU = uCur;
+            previousVal = val;
+        }
+    }
+
+    private static double XirrLogValueAndDerivative(
+        scoped ReadOnlySpan<double> normalized,
+        scoped ReadOnlySpan<double> tYears,
+        double u,
+        out double derivative)
+    {
+        double value = 0.0;
+        double slope = 0.0;
+        for (int i = 0; i < normalized.Length; i++)
+        {
+            double t = tYears[i];
+            double discount = t == 0.0 ? 1.0 : Math.Exp(-u * t);
+            if (!double.IsFinite(discount))
+            {
+                derivative = double.NaN;
+                return double.NaN;
+            }
+
+            double term = normalized[i] * discount;
+            value += term;
+            slope -= t * term;
+        }
+
+        derivative = slope;
+        return value;
+    }
+
+    private readonly struct XirrLogObjective(double[] cashFlows, double[] tYears, int count) : IScalarFunction
+    {
+        public bool TryEvaluate(double x, ref DslExecutionBudget budget, out double y)
+        {
+            y = XirrLogValueAndDerivative(cashFlows.AsSpan(0, count), tYears.AsSpan(0, count), x, out _);
+            return true;
+        }
+    }
+
+    private static bool IsLeapYear(int yyyy)
+        => (yyyy % 4 == 0 && yyyy % 100 != 0) || (yyyy % 400 == 0);
+
+    private static int DaysInYear(int yyyy) => IsLeapYear(yyyy) ? 366 : 365;
+
+    private static int DaysInMonth(int yyyy, int mm) => mm switch
+    {
+        2 => IsLeapYear(yyyy) ? 29 : 28,
+        4 or 6 or 9 or 11 => 30,
+        _ => 31,
+    };
+
+    private static int DaysFromCivil(int y, int m, int d)
+    {
+        int yAdj = y - (m <= 2 ? 1 : 0);
+        int era = (yAdj >= 0 ? yAdj : yAdj - 399) / 400;
+        int yoe = yAdj - (era * 400);
+        int doy = (((153 * (m + (m > 2 ? -3 : 9))) + 2) / 5) + d - 1;
+        int doe = (yoe * 365) + (yoe / 4) - (yoe / 100) + doy;
+        return (era * 146097) + doe - 719468;
+    }
+
+    private static void CivilFromDays(int serial, out int y, out int m, out int d)
+    {
+        long z = serial + 719468L;
+        long era = (z >= 0L ? z : z - 146096L) / 146097L;
+        long doe = z - (era * 146097L);
+        long yoe = (doe - (doe / 1460L) + (doe / 36524L) - (doe / 146096L)) / 365L;
+        long yBase = yoe + (era * 400L);
+        long doy = doe - ((365L * yoe) + (yoe / 4L) - (yoe / 100L));
+        long mp = ((5L * doy) + 2L) / 153L;
+        d = (int)(doy - (((153L * mp) + 2L) / 5L) + 1L);
+        m = (int)(mp + (mp < 10L ? 3L : -9L));
+        y = (int)(yBase + (m <= 2 ? 1L : 0L));
+    }
 }

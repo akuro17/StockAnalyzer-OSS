@@ -10,10 +10,11 @@ namespace StockAnalyzer.Core.MathUtils;
 /// All IEEE-754 <see cref="double"/> results narrow once through
 /// <see cref="IndicatorCalculationHelper.ToDecimalOrNull"/>; raw <c>(decimal)</c> casts are prohibited.
 /// </summary>
-public static class DslElementaryMath
+public static partial class DslElementaryMath
 {
     private const decimal DegenerateCoefficientEpsilon = 1e-12m;
-    private const decimal RadianTrigRangeLimit = 1_000_000_000m;
+    internal const decimal RadianTrigRangeLimit = 1_000_000_000m;
+    private const decimal MaxLogCombN = 1_000_000_000m;
     private const decimal SmallTaylorCutoff = 1e-4m;
     private const decimal ComplexZeroNormEpsilon = 1e-28m;
     private const double TanAsymptoteEpsilon = 1e-15;
@@ -726,7 +727,7 @@ public static class DslElementaryMath
 
     public static MathResult<decimal> LComb(decimal n, decimal k)
     {
-        if (n != decimal.Truncate(n) || k != decimal.Truncate(k) || n < 0m || k < 0m || k > n || n > 1_000_000_000m)
+        if (n != decimal.Truncate(n) || k != decimal.Truncate(k) || n < 0m || k < 0m || k > n || n > MaxLogCombN)
         {
             return MathResult<decimal>.Fail(MathErrorCode.DomainError);
         }
