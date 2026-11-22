@@ -348,7 +348,11 @@ internal sealed class ToolExecutor
         var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
         var execution = CancellationTokenSource.CreateLinkedTokenSource(callCancellation.Token, timeout.Token);
 
-        Task<ToolOutput> work = Task.Run(() => InvokeToolAsync(registered.Tool, arguments, execution.Token));
+        // Read once, before the work starts: the continuation below disposes `execution` as soon as `work` finishes, which for a tool that
+        // finishes at once can be before the wait below begins, and CancellationTokenSource.Token throws once the source is disposed.
+        CancellationToken executionToken = execution.Token;
+
+        Task<ToolOutput> work = Task.Run(() => InvokeToolAsync(registered.Tool, arguments, executionToken));
         _ = work.ContinueWith(
             finished =>
             {
@@ -363,7 +367,7 @@ internal sealed class ToolExecutor
 
         try
         {
-            ToolOutput output = await work.WaitAsync(execution.Token).ConfigureAwait(false);
+            ToolOutput output = await work.WaitAsync(executionToken).ConfigureAwait(false);
             return SuccessResult(registered.Tool, output, outcome);
         }
         catch (OperationCanceledException)

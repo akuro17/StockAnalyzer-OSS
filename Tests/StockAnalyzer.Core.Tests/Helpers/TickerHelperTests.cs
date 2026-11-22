@@ -1,3 +1,4 @@
+using System;
 using StockAnalyzer.Core.Helpers;
 using Xunit;
 
@@ -30,5 +31,22 @@ public class TickerHelperTests
     {
         string normalized = TickerHelper.NormalizeTicker(input);
         Assert.Equal(expected, normalized);
+    }
+
+    // A Japanese stock code is four ASCII digits. Digits of other scripts (full-width, Arabic-Indic) are not codes: the dialog add path used to give them the "-T" suffix.
+    // Built from code points so that no non-ASCII character appears in this file.
+    [Theory]
+    [InlineData(0xFF10)] // FULLWIDTH DIGIT ZERO
+    [InlineData(0xFF17)] // FULLWIDTH DIGIT SEVEN
+    [InlineData(0x0663)] // ARABIC-INDIC DIGIT THREE
+    [InlineData(0x0967)] // DEVANAGARI DIGIT ONE
+    public void NonAsciiDigits_AreNotAJapaneseCode_AndGetNoSuffix(int digitCodePoint)
+    {
+        string digits = new((char)digitCodePoint, 4);
+
+        Assert.False(TickerHelper.IsFourDigitJapaneseCode(digits));
+        Assert.False(TickerHelper.IsFourDigitJapaneseCode(digits.AsSpan()));
+        Assert.Equal(digits, TickerHelper.NormalizeTicker(digits));
+        Assert.False(TickerHelper.IsFourDigitJapaneseCode("72" + new string((char)digitCodePoint, 2)));
     }
 }

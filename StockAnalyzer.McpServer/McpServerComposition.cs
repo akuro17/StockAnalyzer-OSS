@@ -384,9 +384,9 @@ internal static class McpServerComposition
                     profilesByName[active.Name] = McpToolsetCatalog.ProfileOf(active);
                 }
 
-                var searchTool = new SearchToolsTool(() => registryOfTools!, profilesByName, responseFormat);
-                var invokeReadOnlyTool = new InvokeToolProxyTool(readOnlyOnly: true);
                 bool hasNonReadOnly = activeTools.Any(t => !t.IsReadOnly);
+                var searchTool = new SearchToolsTool(() => registryOfTools!, profilesByName, responseFormat, hasNonReadOnly);
+                var invokeReadOnlyTool = new InvokeToolProxyTool(readOnlyOnly: true);
                 IMcpTool[] metaTools = hasNonReadOnly
                     ? new IMcpTool[] { invokeReadOnlyTool, new InvokeToolProxyTool(readOnlyOnly: false), searchTool }
                     : new IMcpTool[] { invokeReadOnlyTool, searchTool };

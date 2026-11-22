@@ -186,6 +186,106 @@ public class HeatmapColorMapperTests
         Assert.Equal(ChartSettingsConstants.DefaultScatterHeatmapTextAlignment, valid.ScatterHeatmapTextAlignment);
     }
 
+    [Theory]
+    [InlineData("#00C853", "#2B2F3A", "#D50000")]
+    [InlineData("#FF00C853", "#FF2B2F3A", "#FFD50000")]
+    [InlineData("#ff00c853", "#ff2b2f3a", "#ffd50000")]
+    [InlineData("#FF0062A8", "#FF2B2F3A", "#FFB23510")] // short-lived blue/red default
+    public void GlobalChartSettings_ScatterHeatmap_LegacyDefaultTriple_MigratesToColorblindSafeDefaults(string up, string neutral, string down)
+    {
+        var legacy = new GlobalChartSettings
+        {
+            ScatterHeatmapUpColor = up,
+            ScatterHeatmapNeutralColor = neutral,
+            ScatterHeatmapDownColor = down
+        };
+
+        var migrated = legacy.Validate();
+
+        Assert.Equal(ChartSettingsConstants.DefaultScatterHeatmapUpColor, migrated.ScatterHeatmapUpColor);
+        Assert.Equal(ChartSettingsConstants.DefaultScatterHeatmapNeutralColor, migrated.ScatterHeatmapNeutralColor);
+        Assert.Equal(ChartSettingsConstants.DefaultScatterHeatmapDownColor, migrated.ScatterHeatmapDownColor);
+    }
+
+    [Theory]
+    [InlineData("#FF123456", "#FF2B2F3A", "#FFD50000")] // Up customized
+    [InlineData("#FF00C853", "#FF000000", "#FFD50000")] // Neutral customized
+    [InlineData("#FF00C853", "#FF2B2F3A", "#FFABCDEF")] // Down customized
+    public void GlobalChartSettings_ScatterHeatmap_PartiallyCustomizedPalette_IsPreserved(string up, string neutral, string down)
+    {
+        var custom = new GlobalChartSettings
+        {
+            ScatterHeatmapUpColor = up,
+            ScatterHeatmapNeutralColor = neutral,
+            ScatterHeatmapDownColor = down
+        };
+
+        var validated = custom.Validate();
+
+        Assert.Equal(up, validated.ScatterHeatmapUpColor);
+        Assert.Equal(neutral, validated.ScatterHeatmapNeutralColor);
+        Assert.Equal(down, validated.ScatterHeatmapDownColor);
+    }
+
+    [Theory]
+    [InlineData("#FF123456", "#FF2B2F3A", "#FFB23510")] // blue/red palette with Up customized
+    [InlineData("#FF0062A8", "#FF2B2F3A", "#FFABCDEF")] // blue/red palette with Down customized
+    [InlineData("#FF0062A8", "#FF000000", "#FFB23510")] // blue/red palette with Neutral customized
+    [InlineData("#FF00C853", "#FF2B2F3A", "#FFB23510")] // Up of one former palette, Down of the other
+    public void GlobalChartSettings_ScatterHeatmap_MixedOrCustomizedFormerPalette_IsPreserved(string up, string neutral, string down)
+    {
+        var custom = new GlobalChartSettings
+        {
+            ScatterHeatmapUpColor = up,
+            ScatterHeatmapNeutralColor = neutral,
+            ScatterHeatmapDownColor = down
+        };
+
+        var validated = custom.Validate();
+
+        Assert.Equal(up, validated.ScatterHeatmapUpColor);
+        Assert.Equal(neutral, validated.ScatterHeatmapNeutralColor);
+        Assert.Equal(down, validated.ScatterHeatmapDownColor);
+    }
+
+    [Fact]
+    public void GlobalChartSettings_ScatterHeatmap_Migration_IsIdempotentAndCurrentDefaultsAreNotFormerPalettes()
+    {
+        var legacy = new GlobalChartSettings
+        {
+            ScatterHeatmapUpColor = "#FF00C853",
+            ScatterHeatmapNeutralColor = "#FF2B2F3A",
+            ScatterHeatmapDownColor = "#FFD50000"
+        };
+
+        var once = legacy.Validate();
+        var twice = once.Validate();
+
+        Assert.Equal(once.ScatterHeatmapUpColor, twice.ScatterHeatmapUpColor);
+        Assert.Equal(once.ScatterHeatmapNeutralColor, twice.ScatterHeatmapNeutralColor);
+        Assert.Equal(once.ScatterHeatmapDownColor, twice.ScatterHeatmapDownColor);
+
+        var defaults = new GlobalChartSettings().Validate();
+        Assert.Equal(ChartSettingsConstants.DefaultScatterHeatmapUpColor, defaults.ScatterHeatmapUpColor);
+        Assert.Equal(ChartSettingsConstants.DefaultScatterHeatmapNeutralColor, defaults.ScatterHeatmapNeutralColor);
+        Assert.Equal(ChartSettingsConstants.DefaultScatterHeatmapDownColor, defaults.ScatterHeatmapDownColor);
+    }
+
+    [Fact]
+    public void LegacyScatterHeatmapConstants_AreFrozenAndDifferFromCurrentDefaults()
+    {
+        // Pinned literals: these values identify palettes written by older builds and must never follow the defaults.
+        Assert.Equal("#00C853", ChartSettingsConstants.LegacyScatterHeatmapGreenRedUpColor);
+        Assert.Equal("#2B2F3A", ChartSettingsConstants.LegacyScatterHeatmapGreenRedNeutralColor);
+        Assert.Equal("#D50000", ChartSettingsConstants.LegacyScatterHeatmapGreenRedDownColor);
+        Assert.Equal("#0062A8", ChartSettingsConstants.LegacyScatterHeatmapBlueRedUpColor);
+        Assert.Equal("#2B2F3A", ChartSettingsConstants.LegacyScatterHeatmapBlueRedNeutralColor);
+        Assert.Equal("#B23510", ChartSettingsConstants.LegacyScatterHeatmapBlueRedDownColor);
+
+        Assert.NotEqual("#FF" + ChartSettingsConstants.LegacyScatterHeatmapGreenRedUpColor.TrimStart('#'), ChartSettingsConstants.DefaultScatterHeatmapUpColor);
+        Assert.NotEqual("#FF" + ChartSettingsConstants.LegacyScatterHeatmapBlueRedUpColor.TrimStart('#'), ChartSettingsConstants.DefaultScatterHeatmapUpColor);
+    }
+
     [Fact]
     public void GlobalChartSettings_ScatterHeatmap_JsonRoundTrip_PreservesValues()
     {

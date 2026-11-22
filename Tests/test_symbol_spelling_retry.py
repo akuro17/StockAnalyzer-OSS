@@ -1,8 +1,9 @@
-"""Yahoo spelling of share-class tickers (owner decision D-08-8d = C).
+"""Yahoo spelling of share-class tickers (owner decision D-08-8d = C) and of vendor-suffixed symbols (continuous futures `=F`, currency pairs `=X`).
 
 `7203-T` must be asked as `7203.T`, but `BRK-B` only exists at Yahoo with the hyphen. The provider rewrites a trailing "-X" to ".X",
 so when that spelling returns nothing it retries ONCE with the original spelling (only when the two spellings differ).
 No network: a scripted fake yf records every symbol asked.
+A vendor-suffixed symbol (`CL=F`, `JPY=X`, `EURUSD=X`) is requested unchanged: no hyphen rewrite, no Japanese-code suffix, no retry when found.
 """
 
 import datetime
@@ -98,3 +99,25 @@ def test_the_original_spelling_retry_works_in_every_request_shape(start_ts, end_
     yf = FakeYf("BRK-A")
     assert _fetch(yf, "BRK-A", start_ts=start_ts, end_ts=end_ts) is not None
     assert yf.asked[-1] == "BRK-A"
+
+
+# --- Vendor-suffixed symbols: continuous futures (=F) and currency pairs (=X) pass through unchanged ---
+
+@pytest.mark.parametrize("symbol", ["CL=F", "GC=F", "HG=F", "JPY=X", "EURUSD=X", "USDJPY=X"])
+def test_vendor_suffixed_symbol_is_requested_unchanged_and_found_at_once(symbol):
+    yf = FakeYf(symbol)
+    df = _fetch(yf, symbol)
+    assert df is not None and len(df) == 2
+    assert yf.asked == [symbol]  # no hyphen rewrite, no Japanese-code suffix, no retry
+
+
+@pytest.mark.parametrize("symbol", ["CL=F", "GC=F", "HG=F", "JPY=X", "EURUSD=X", "USDJPY=X"])
+def test_vendor_suffixed_symbol_passes_the_file_name_guard(symbol):
+    from symbol_validator import is_well_formed_ticker
+    assert is_well_formed_ticker(symbol)
+
+
+def test_unknown_currency_pair_root_ends_with_the_index_retry_and_none():
+    yf = FakeYf()  # nothing is known: three attempts with the symbol itself, then the index retry only (no original-spelling retry)
+    assert _fetch(yf, "A=X") is None
+    assert yf.asked == ["A=X", "A=X", "A=X", "^A=X"]

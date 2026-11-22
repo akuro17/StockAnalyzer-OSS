@@ -27,9 +27,9 @@ public sealed class CalculatorDslV6Domain6And7Tests
     // ---- Registry Check ----
 
     [Fact]
-    public void FunctionRegistry_ContainsExpected532FunctionsForV6()
+    public void FunctionRegistry_ContainsExpected740FunctionsForV7()
     {
-        Assert.Equal(532, ExpressionCalculator.Functions.Count);
+        Assert.Equal(740, ExpressionCalculator.Functions.Count);
     }
 
     // ---- Domain 6a: Deterministic PRNG ----

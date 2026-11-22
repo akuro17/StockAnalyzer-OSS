@@ -242,11 +242,7 @@ public sealed class UniformHeatmapControl : Control, IDisposable
         float tickerFontSize = (float)palette.FontSize;
         float returnFontSize = (float)Math.Max(8.0, Math.Round(tickerFontSize * (12.0 / 14.0)));
 
-        var textColor = new SKColor(palette.TextColor.R, palette.TextColor.G, palette.TextColor.B, palette.TextColor.A);
-        _tickerTextPaint.Color = textColor;
         _tickerTextPaint.TextSize = tickerFontSize;
-
-        _returnTextPaint.Color = textColor;
         _returnTextPaint.TextSize = returnFontSize;
 
         _shadowTextPaint.TextSize = returnFontSize;
@@ -279,12 +275,17 @@ public sealed class UniformHeatmapControl : Control, IDisposable
                 var tileRect = new SKRoundRect(new SKRect(x, y, x + actualTileWidth, y + TargetTileHeight), 4.0f, 4.0f);
                 bool isNan = double.IsNaN(item.ReturnPercentage);
 
+                // Tile fill plus the WCAG-resolved ink for that fill (precomputed per palette; allocation-free)
+                var (tileColor, inkColor, drawShadow) = GetPaletteRenderColors(item.ReturnPercentage, palette);
+                _tickerTextPaint.Color = inkColor;
+                _returnTextPaint.Color = inkColor;
+
                 if (isNan)
                 {
                     // Missing data: Dark neutral tile with diagonal line hatch pattern
                     canvas.Save();
                     canvas.ClipRoundRect(tileRect, antialias: true);
-                    _tileFillPaint.Color = NoDataColor;
+                    _tileFillPaint.Color = tileColor;
                     canvas.DrawRoundRect(tileRect, _tileFillPaint);
 
                     for (float hx = -TargetTileHeight; hx < actualTileWidth + TargetTileHeight; hx += 16.0f)
@@ -295,8 +296,7 @@ public sealed class UniformHeatmapControl : Control, IDisposable
                 }
                 else
                 {
-                    // Interpolate Perceptually Uniform Oklab Color via HeatmapPalette
-                    SKColor tileColor = GetPaletteColor(item.ReturnPercentage, palette);
+                    // Perceptually uniform Neutral-to-Peak Oklab colour resolved via HeatmapPalette
                     _tileFillPaint.Color = tileColor;
                     canvas.DrawRoundRect(tileRect, _tileFillPaint);
                 }
@@ -349,8 +349,12 @@ public sealed class UniformHeatmapControl : Control, IDisposable
                         _ => "0.00%"
                     };
 
-                    // Subtle text shadow for readability
-                    canvas.DrawText(returnStr, textX + 1.0f, retY + 1.0f, _shadowTextPaint);
+                    // Subtle text shadow for light ink only; a dark shadow under dark ink would reduce legibility
+                    if (drawShadow)
+                    {
+                        canvas.DrawText(returnStr, textX + 1.0f, retY + 1.0f, _shadowTextPaint);
+                    }
+
                     canvas.DrawText(returnStr, textX, retY, _returnTextPaint);
                 }
             }
@@ -361,157 +365,110 @@ public sealed class UniformHeatmapControl : Control, IDisposable
         }
     }
 
+    private const int MaxLutIndex = HeatmapColorRamp.LutEntryCount - 1;
+
+    /// <summary>
+    /// Per-palette colour tables: tile fill, WCAG-resolved ink and shadow flag for every ramp slot.
+    /// Built once per palette snapshot so RenderSkia performs no colour math.
+    /// </summary>
     private sealed class PaletteLuts
     {
-        public readonly SKColor[] Up;
-        public readonly SKColor[] Down;
+        public readonly SKColor Neutral;
+        public readonly SKColor NeutralText;
+        public readonly bool NeutralDrawShadow;
+
+        public readonly SKColor[] Up = new SKColor[HeatmapColorRamp.LutEntryCount];
+        public readonly SKColor[] UpText = new SKColor[HeatmapColorRamp.LutEntryCount];
+        public readonly bool[] UpDrawShadow = new bool[HeatmapColorRamp.LutEntryCount];
+
+        public readonly SKColor[] Down = new SKColor[HeatmapColorRamp.LutEntryCount];
+        public readonly SKColor[] DownText = new SKColor[HeatmapColorRamp.LutEntryCount];
+        public readonly bool[] DownDrawShadow = new bool[HeatmapColorRamp.LutEntryCount];
+
+        public readonly SKColor NoDataText;
+        public readonly bool NoDataDrawShadow;
 
         public PaletteLuts(HeatmapPalette palette)
         {
-            Up = new SKColor[513];
-            Down = new SKColor[513];
+            Neutral = ToSkColor(palette.Neutral);
+            (NeutralText, NeutralDrawShadow) = ResolveInk(palette.Neutral, palette.TextColor);
 
-            var upColor = new SKColor(palette.Up.R, palette.Up.G, palette.Up.B, palette.Up.A);
-            var downColor = new SKColor(palette.Down.R, palette.Down.G, palette.Down.B, palette.Down.A);
+            var noDataBackground = new IndicatorColor(255, NoDataColor.Red, NoDataColor.Green, NoDataColor.Blue);
+            (NoDataText, NoDataDrawShadow) = ResolveInk(noDataBackground, palette.TextColor);
 
-            var baseUpLab = OklabColor.FromSrgb(upColor);
-            var baseDownLab = OklabColor.FromSrgb(downColor);
+            Span<IndicatorColor> ramp = stackalloc IndicatorColor[HeatmapColorRamp.LutEntryCount];
+            FillRamp(palette.Neutral, palette.Up, palette.TextColor, ramp, Up, UpText, UpDrawShadow);
+            FillRamp(palette.Neutral, palette.Down, palette.TextColor, ramp, Down, DownText, DownDrawShadow);
+        }
 
-            var peakUpLab = OklabColor.DerivePeakColor(baseUpLab);
-            var peakDownLab = OklabColor.DerivePeakColor(baseDownLab);
-
-            for (int i = 0; i <= 512; i++)
+        private static void FillRamp(
+            IndicatorColor neutral,
+            IndicatorColor peak,
+            IndicatorColor preferredText,
+            Span<IndicatorColor> ramp,
+            SKColor[] fill,
+            SKColor[] text,
+            bool[] drawShadow)
+        {
+            HeatmapColorRamp.BuildLut(neutral, peak, ramp);
+            for (int i = 0; i < ramp.Length; i++)
             {
-                double t = (double)i / 512.0;
-                Up[i] = OklabColor.Lerp(baseUpLab, peakUpLab, t).ToSrgb();
-                Down[i] = OklabColor.Lerp(baseDownLab, peakDownLab, t).ToSrgb();
+                fill[i] = ToSkColor(ramp[i]);
+                (text[i], drawShadow[i]) = ResolveInk(ramp[i], preferredText);
             }
         }
-    }
 
-    /// <summary>
-    /// Computes the luminous peak highlight color in Oklab space from a base threshold color.
-    /// Used for automatic color progression towards maximum return.
-    /// </summary>
-    public static SKColor DerivePeakColor(SKColor baseColor)
-    {
-        var baseLab = OklabColor.FromSrgb(baseColor);
-        var peakLab = OklabColor.DerivePeakColor(baseLab);
-        return peakLab.ToSrgb();
+        private static (SKColor Ink, bool DrawShadow) ResolveInk(IndicatorColor background, IndicatorColor preferredText)
+        {
+            var (ink, isLightOnDarker) = WcagColorContrast.ResolveAccessibleTextColor(background, preferredText);
+            return (ToSkColor(ink), isLightOnDarker);
+        }
+
+        private static SKColor ToSkColor(IndicatorColor c) => new(c.R, c.G, c.B, c.A);
     }
 
     private static readonly ConditionalWeakTable<HeatmapPalette, PaletteLuts> _paletteLutCache = new();
 
     /// <summary>
-    /// Evaluates perceptually uniform color in Oklab color space via settings-driven HeatmapPalette.
+    /// Evaluates the perceptually uniform Neutral-to-Peak colour (Oklab) via settings-driven HeatmapPalette.
     /// </summary>
-    public static SKColor GetPaletteColor(double ret, HeatmapPalette palette)
+    public static SKColor GetPaletteColor(double ret, HeatmapPalette palette) =>
+        GetPaletteRenderColors(ret, palette).FillColor;
+
+    /// <summary>
+    /// Resolves the tile fill, the WCAG 2.1 AA ink colour for that fill, and whether the light-ink shadow is drawn.
+    /// With <see cref="HeatmapPalette.StepCount"/> == 1 every non-neutral tile shows the full peak colour.
+    /// </summary>
+    internal static (SKColor FillColor, SKColor TextColor, bool DrawShadow) GetPaletteRenderColors(double ret, HeatmapPalette palette)
     {
         palette ??= HeatmapPalette.Default;
+        var luts = _paletteLutCache.GetValue(palette, static p => new PaletteLuts(p));
 
         var sample = HeatmapColorMapper.Classify(ret, palette.ThresholdRatio, palette.StepCount);
         switch (sample.Kind)
         {
-            case HeatmapColorKind.NoData:
-                return NoDataColor;
             case HeatmapColorKind.Neutral:
-                return new SKColor(palette.Neutral.R, palette.Neutral.G, palette.Neutral.B, palette.Neutral.A);
+                return (luts.Neutral, luts.NeutralText, luts.NeutralDrawShadow);
             case HeatmapColorKind.Up:
                 {
-                    var luts = _paletteLutCache.GetValue(palette, static p => new PaletteLuts(p));
-                    int idx = Math.Clamp((int)Math.Round(sample.Factor * 512.0), 0, 512);
-                    return luts.Up[idx];
+                    int idx = ResolveLutIndex(sample.Factor, palette.StepCount);
+                    return (luts.Up[idx], luts.UpText[idx], luts.UpDrawShadow[idx]);
                 }
             case HeatmapColorKind.Down:
                 {
-                    var luts = _paletteLutCache.GetValue(palette, static p => new PaletteLuts(p));
-                    int idx = Math.Clamp((int)Math.Round(sample.Factor * 512.0), 0, 512);
-                    return luts.Down[idx];
+                    int idx = ResolveLutIndex(sample.Factor, palette.StepCount);
+                    return (luts.Down[idx], luts.DownText[idx], luts.DownDrawShadow[idx]);
                 }
             default:
-                return NoDataColor;
+                return (NoDataColor, luts.NoDataText, luts.NoDataDrawShadow);
         }
     }
 
-    private readonly struct OklabColor
+    private static int ResolveLutIndex(double factor, int stepCount)
     {
-        public readonly double L;
-        public readonly double A;
-        public readonly double B;
-
-        public OklabColor(double l, double a, double b)
-        {
-            L = l;
-            A = a;
-            B = b;
-        }
-
-        public static OklabColor FromSrgb(SKColor color)
-        {
-            double r = SrgbToLinear(color.Red / 255.0);
-            double g = SrgbToLinear(color.Green / 255.0);
-            double b = SrgbToLinear(color.Blue / 255.0);
-
-            double lPrime = (0.4122214708 * r) + (0.5363325363 * g) + (0.0514459929 * b);
-            double mPrime = (0.2119034982 * r) + (0.6806995451 * g) + (0.1073969566 * b);
-            double sPrime = (0.0883024619 * r) + (0.2817188376 * g) + (0.6299787005 * b);
-
-            double l = Math.Cbrt(lPrime);
-            double m = Math.Cbrt(mPrime);
-            double s = Math.Cbrt(sPrime);
-
-            double lOut = (0.2104542553 * l) + (0.7936177850 * m) - (0.0040720468 * s);
-            double aOut = (1.9779984951 * l) - (2.4285922050 * m) + (0.4505937099 * s);
-            double bOut = (0.0259040371 * l) + (0.7827717662 * m) - (0.8086757660 * s);
-
-            return new OklabColor(lOut, aOut, bOut);
-        }
-
-        public SKColor ToSrgb()
-        {
-            double l = L + (0.3963377774 * A) + (0.2158037573 * B);
-            double m = L - (0.1055613458 * A) - (0.0638541728 * B);
-            double s = L - (0.0894841775 * A) - (1.2914855480 * B);
-
-            double lPrime = l * l * l;
-            double mPrime = m * m * m;
-            double sPrime = s * s * s;
-
-            double rLin = (+4.0767416621 * lPrime) - (3.3077115913 * mPrime) + (0.2309699292 * sPrime);
-            double gLin = (-1.2684380046 * lPrime) + (2.6097574011 * mPrime) - (0.3413193965 * sPrime);
-            double bLin = (-0.0041960863 * lPrime) - (0.7034186147 * mPrime) + (1.7076147010 * sPrime);
-
-            byte r = (byte)Math.Clamp((int)Math.Round(LinearToSrgb(rLin) * 255.0), 0, 255);
-            byte g = (byte)Math.Clamp((int)Math.Round(LinearToSrgb(gLin) * 255.0), 0, 255);
-            byte b = (byte)Math.Clamp((int)Math.Round(LinearToSrgb(bLin) * 255.0), 0, 255);
-
-            return new SKColor(r, g, b, 255);
-        }
-
-        public static OklabColor Lerp(OklabColor c1, OklabColor c2, double t)
-        {
-            return new OklabColor(
-                c1.L + (t * (c2.L - c1.L)),
-                c1.A + (t * (c2.A - c1.A)),
-                c1.B + (t * (c2.B - c1.B))
-            );
-        }
-
-        public static OklabColor DerivePeakColor(OklabColor baseColor)
-        {
-            // Luminous peak derivation: boost lightness towards high visibility (35% of remaining headroom)
-            double targetL = Math.Clamp(baseColor.L + ((1.0 - baseColor.L) * 0.35), 0.0, 0.95);
-            // Slight chroma boost (10%) to enhance perceived energy without out-of-gamut distortion
-            double targetA = baseColor.A * 1.10;
-            double targetB = baseColor.B * 1.10;
-            return new OklabColor(targetL, targetA, targetB);
-        }
-
-        private static double SrgbToLinear(double c) =>
-            c <= 0.04045 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
-
-        private static double LinearToSrgb(double c) =>
-            c <= 0.0031308 ? c * 12.92 : (1.055 * Math.Pow(Math.Max(c, 0.0), 1.0 / 2.4)) - 0.055;
+        // Classify yields factor 0 for a single step; that single level must render the full peak colour.
+        double effectiveFactor = stepCount == 1 ? 1.0 : factor;
+        return Math.Clamp((int)Math.Round(effectiveFactor * MaxLutIndex), 0, MaxLutIndex);
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)

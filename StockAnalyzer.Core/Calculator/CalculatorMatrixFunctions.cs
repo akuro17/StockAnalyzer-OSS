@@ -105,6 +105,28 @@ internal static partial class CalculatorMatrixFunctions
                 outcome = EvaluateOlsPredict(name, position, args, in arena);
                 return true;
 
+            case "wls_fit":
+                outcome = EvaluateWlsFit(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "wls_predict":
+                outcome = EvaluateOlsPredict(name, position, args, in arena);
+                return true;
+
+            case "wls_stats":
+                outcome = EvaluateWlsStats(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "reg_exp_fit":
+            case "reg_log_fit":
+            case "reg_pow_fit":
+                outcome = EvaluateTransformedRegression(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "reg_logistic_fit":
+                outcome = EvaluateLogisticFit(name, position, args, ref budget, ref arena);
+                return true;
+
             case "poly_project":
                 outcome = EvaluatePolyProject(name, position, args, ref budget, in arena);
                 return true;
@@ -626,5 +648,275 @@ internal static partial class CalculatorMatrixFunctions
 
         flag = false;
         return false;
+    }
+
+    private static DslEvalOutcome EvaluateWlsFit(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray || !args[2].IsArray)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' expects (X, y, w) 1D arrays.", name);
+        }
+
+        ReadOnlySpan<decimal> xDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> yDec = arena.GetSlice(args[1].Array);
+        ReadOnlySpan<decimal> wDec = arena.GetSlice(args[2].Array);
+        int n = yDec.Length;
+        if (n < 1 || xDec.Length == 0 || xDec.Length % n != 0 || wDec.Length != n)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        int p = xDec.Length / n;
+        if (p < 1 || p > DslRegressionMath.MaxFeatures)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        double[]? rentedX = null;
+        double[]? rentedY = null;
+        double[]? rentedW = null;
+        Span<double> xBuf = xDec.Length <= MathBufferLimits.StackAllocThreshold ? stackalloc double[xDec.Length] : default;
+        Span<double> yBuf = n <= MathBufferLimits.StackAllocThreshold ? stackalloc double[n] : default;
+        Span<double> wBuf = n <= MathBufferLimits.StackAllocThreshold ? stackalloc double[n] : default;
+
+        try
+        {
+            if (xDec.Length > MathBufferLimits.StackAllocThreshold)
+            {
+                rentedX = ArrayPool<double>.Shared.Rent(xDec.Length);
+                xBuf = rentedX.AsSpan(0, xDec.Length);
+            }
+
+            if (n > MathBufferLimits.StackAllocThreshold)
+            {
+                rentedY = ArrayPool<double>.Shared.Rent(n);
+                yBuf = rentedY.AsSpan(0, n);
+                rentedW = ArrayPool<double>.Shared.Rent(n);
+                wBuf = rentedW.AsSpan(0, n);
+            }
+
+            CopyToDouble(xDec, xBuf);
+            CopyToDouble(yDec, yBuf);
+            CopyToDouble(wDec, wBuf);
+            Span<double> beta = stackalloc double[p + 1];
+
+            MathErrorCode err = DslRegressionMath.WlsFit(xBuf, n, p, yBuf, wBuf, beta, ref budget);
+            return err == MathErrorCode.None
+                ? NarrowArrayResult(beta, position, name, ref arena)
+                : FailMath(err, position, name);
+        }
+        finally
+        {
+            if (rentedX is not null) ArrayPool<double>.Shared.Return(rentedX);
+            if (rentedY is not null) ArrayPool<double>.Shared.Return(rentedY);
+            if (rentedW is not null) ArrayPool<double>.Shared.Return(rentedW);
+        }
+    }
+
+    private static DslEvalOutcome EvaluateWlsStats(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        bool hasWeights = args.Length >= 4;
+        if (!args[0].IsArray || !args[1].IsArray || !args[2].IsArray || (hasWeights && !args[3].IsArray))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' expects (X, y, beta[, w]) 1D arrays.", name);
+        }
+
+        ReadOnlySpan<decimal> xDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> yDec = arena.GetSlice(args[1].Array);
+        ReadOnlySpan<decimal> betaDec = arena.GetSlice(args[2].Array);
+        ReadOnlySpan<decimal> wDec = hasWeights ? arena.GetSlice(args[3].Array) : ReadOnlySpan<decimal>.Empty;
+
+        int n = yDec.Length;
+        if (n < 1 || xDec.Length == 0 || xDec.Length % n != 0 || (hasWeights && wDec.Length != n))
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        int p = xDec.Length / n;
+        if (p < 1 || p > DslRegressionMath.MaxFeatures || betaDec.Length != p + 1)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        double[]? rentedX = null;
+        double[]? rentedY = null;
+        double[]? rentedW = null;
+        Span<double> xBuf = xDec.Length <= MathBufferLimits.StackAllocThreshold ? stackalloc double[xDec.Length] : default;
+        Span<double> yBuf = n <= MathBufferLimits.StackAllocThreshold ? stackalloc double[n] : default;
+        Span<double> wBuf = hasWeights && n <= MathBufferLimits.StackAllocThreshold ? stackalloc double[n] : default;
+        Span<double> betaBuf = stackalloc double[p + 1];
+
+        try
+        {
+            if (xDec.Length > MathBufferLimits.StackAllocThreshold)
+            {
+                rentedX = ArrayPool<double>.Shared.Rent(xDec.Length);
+                xBuf = rentedX.AsSpan(0, xDec.Length);
+            }
+
+            if (n > MathBufferLimits.StackAllocThreshold)
+            {
+                rentedY = ArrayPool<double>.Shared.Rent(n);
+                yBuf = rentedY.AsSpan(0, n);
+                if (hasWeights)
+                {
+                    rentedW = ArrayPool<double>.Shared.Rent(n);
+                    wBuf = rentedW.AsSpan(0, n);
+                }
+            }
+
+            CopyToDouble(xDec, xBuf);
+            CopyToDouble(yDec, yBuf);
+            CopyToDouble(betaDec, betaBuf);
+            if (hasWeights)
+            {
+                CopyToDouble(wDec, wBuf);
+            }
+
+            Span<double> output = stackalloc double[5];
+            MathErrorCode err = DslRegressionMath.WlsStats(xBuf, n, p, yBuf, betaBuf, wBuf, hasWeights, output, ref budget);
+            return err == MathErrorCode.None
+                ? NarrowArrayResult(output, position, name, ref arena)
+                : FailMath(err, position, name);
+        }
+        finally
+        {
+            if (rentedX is not null) ArrayPool<double>.Shared.Return(rentedX);
+            if (rentedY is not null) ArrayPool<double>.Shared.Return(rentedY);
+            if (rentedW is not null) ArrayPool<double>.Shared.Return(rentedW);
+        }
+    }
+
+    private static DslEvalOutcome EvaluateTransformedRegression(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        bool hasWeights = args.Length >= 3;
+        if (!args[0].IsArray || !args[1].IsArray || (hasWeights && !args[2].IsArray))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' expects (x, y[, w]) 1D arrays.", name);
+        }
+
+        ReadOnlySpan<decimal> xDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> yDec = arena.GetSlice(args[1].Array);
+        ReadOnlySpan<decimal> wDec = hasWeights ? arena.GetSlice(args[2].Array) : ReadOnlySpan<decimal>.Empty;
+
+        int n = xDec.Length;
+        if (yDec.Length != n || (hasWeights && wDec.Length != n))
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        if (n < 3 || n > DslRegressionMath.MaxObservations)
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        int needed = hasWeights ? n * 3 : n * 2;
+        double[]? rented = needed <= MathBufferLimits.StackAllocThreshold
+            ? null
+            : ArrayPool<double>.Shared.Rent(needed);
+        Span<double> work = rented is null
+            ? stackalloc double[needed]
+            : rented.AsSpan(0, needed);
+        try
+        {
+            Span<double> xBuf = work.Slice(0, n);
+            Span<double> yBuf = work.Slice(n, n);
+            Span<double> wBuf = hasWeights ? work.Slice(n * 2, n) : default;
+            CopyToDouble(xDec, xBuf);
+            CopyToDouble(yDec, yBuf);
+            if (hasWeights)
+            {
+                CopyToDouble(wDec, wBuf);
+            }
+
+            Span<double> output = stackalloc double[3];
+            MathErrorCode err = name switch
+            {
+                "reg_exp_fit" => DslRegressionMath.RegExpFit(xBuf, yBuf, wBuf, hasWeights, output, ref budget),
+                "reg_log_fit" => DslRegressionMath.RegLogFit(xBuf, yBuf, wBuf, hasWeights, output, ref budget),
+                _ => DslRegressionMath.RegPowFit(xBuf, yBuf, wBuf, hasWeights, output, ref budget),
+            };
+
+            return err == MathErrorCode.None
+                ? NarrowArrayResult(output, position, name, ref arena)
+                : FailMath(err, position, name);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<double>.Shared.Return(rented);
+            }
+        }
+    }
+
+    private static DslEvalOutcome EvaluateLogisticFit(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray || (args.Length >= 3 && args[2].IsArray))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"'{name}' expects (x, y[, tol]).", name);
+        }
+
+        ReadOnlySpan<decimal> xDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> yDec = arena.GetSlice(args[1].Array);
+        if (xDec.Length != yDec.Length)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        int n = xDec.Length;
+        if (n < 3 || n > DslRegressionMath.MaxObservations)
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        double tol = args.Length >= 3 ? (double)args[2].Scalar : DslTolerance.DefaultTol;
+        int needed = n * 2;
+        double[]? rented = needed <= MathBufferLimits.StackAllocThreshold
+            ? null
+            : ArrayPool<double>.Shared.Rent(needed);
+        Span<double> work = rented is null
+            ? stackalloc double[needed]
+            : rented.AsSpan(0, needed);
+        try
+        {
+            Span<double> xBuf = work.Slice(0, n);
+            Span<double> yBuf = work.Slice(n, n);
+            CopyToDouble(xDec, xBuf);
+            CopyToDouble(yDec, yBuf);
+
+            Span<double> output = stackalloc double[3];
+            MathErrorCode err = DslRegressionMath.RegLogisticFit(xBuf, yBuf, tol, output, ref budget);
+            return err == MathErrorCode.None
+                ? NarrowArrayResult(output, position, name, ref arena)
+                : FailMath(err, position, name);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<double>.Shared.Return(rented);
+            }
+        }
     }
 }

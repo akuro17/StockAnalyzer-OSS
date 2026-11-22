@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Calculator;
+using StockAnalyzer.Core.MathUtils;
 using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Calculator;
@@ -461,9 +462,18 @@ public sealed class CalculatorContractTests
             ("dft_mag", 1, 1, "dft_mag(series)", false),
         };
 
-        // V1-V5 prefix of 437 entries remains frozen in order; DSL v6 appended 95 entries (total 532).
+        // V1-V5 prefix of 437 entries remains frozen in order; DSL v6 appended 287 entries (total 724); DSL v7 appended 16 data-structure entries (total 740).
         Assert.Equal(437, expected.Length);
-        Assert.Equal(532, ExpressionCalculator.Functions.Count);
+        Assert.Equal(740, ExpressionCalculator.Functions.Count);
+        Assert.Equal(740, ExpressionCalculator.Functions.Select(f => f.Name).Distinct(StringComparer.Ordinal).Count());
+        foreach (CalculatorFunctionInfo fn in ExpressionCalculator.Functions.Skip(532))
+        {
+            Assert.False(string.IsNullOrWhiteSpace(fn.Signature));
+            Assert.True(fn.MinArguments >= 1 && fn.MinArguments <= fn.MaxArguments);
+            Assert.True(fn.Name == "mat_hstack"
+                ? fn.MaxArguments == DslRegressionMath.MaxFeatures
+                : fn.MaxArguments <= CalculatorLimits.Default.MaxFunctionArguments);
+        }
         for (int i = 0; i < expected.Length; i++)
         {
             CalculatorFunctionInfo actual = ExpressionCalculator.Functions[i];
@@ -477,6 +487,44 @@ public sealed class CalculatorContractTests
                     or "geomean" or "harmmean" or "skew" or "kurt" or "quantile"
                     or "iqr" or "mad" or "zscore" or "softplus_lse",
                 actual.IsStatisticalVariadic);
+        }
+    }
+
+    [Fact]
+    public void V7DataStructureFunctionsAreAppendedAtIndices724To739()
+    {
+        var expectedV7 = new (string Name, int Min, int Max, string Signature)[]
+        {
+            ("mat_get", 5, 5, "mat_get(A, rows, cols, r, c)"),
+            ("mat_row", 4, 4, "mat_row(A, rows, cols, r)"),
+            ("mat_col", 4, 4, "mat_col(A, rows, cols, c)"),
+            ("mat_diag_extract", 2, 2, "mat_diag_extract(A, n)"),
+            ("mat_submatrix", 7, 7, "mat_submatrix(A, rows, cols, r0, c0, rLen, cLen)"),
+            ("mat_hstack", 2, DslRegressionMath.MaxFeatures, "mat_hstack(c1, c2, ...)"),
+            ("mat_set", 6, 6, "mat_set(A, rows, cols, r, c, val)"),
+            ("mat_transpose_rect", 3, 3, "mat_transpose_rect(A, rows, cols)"),
+            ("mat_add", 4, 4, "mat_add(A, B, rows, cols)"),
+            ("mat_sub", 4, 4, "mat_sub(A, B, rows, cols)"),
+            ("mat_scale", 4, 4, "mat_scale(A, rows, cols, c)"),
+            ("arr_set", 3, 3, "arr_set(a, idx, val)"),
+            ("arr_take", 2, 2, "arr_take(a, indices)"),
+            ("arr_shift", 3, 3, "arr_shift(a, k, fill)"),
+            ("arr_scan", 5, 5, "arr_scan(expr, accVar, itemVar, arr, init)"),
+            ("arr_zip_map", 5, 5, "arr_zip_map(expr, aVar, bVar, a, b)"),
+        };
+
+        Assert.Equal(16, expectedV7.Length);
+        for (int i = 0; i < expectedV7.Length; i++)
+        {
+            CalculatorFunctionInfo actual = ExpressionCalculator.Functions[724 + i];
+            Assert.Equal(expectedV7[i].Name, actual.Name);
+            Assert.Equal(expectedV7[i].Min, actual.MinArguments);
+            Assert.Equal(expectedV7[i].Max, actual.MaxArguments);
+            Assert.Equal(expectedV7[i].Signature, actual.Signature);
+            Assert.False(actual.IsVariadic);
+            Assert.False(actual.IsStatisticalVariadic);
+            // Every v7 function except the scalar-returning mat_get is array-returning (array-lowering composition).
+            Assert.Equal(actual.Name != "mat_get", CalculatorArrayFunctions.ReturnsArray(actual.Name));
         }
     }
 

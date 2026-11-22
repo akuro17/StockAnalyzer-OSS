@@ -15,7 +15,6 @@ public static class WatchlistConstants
 
     // Search & Symbol Constraints
     public const int MaxSearchSuggestions = 10;
-    public const int MaxTickerLength = 10;
     public const int MaxRelativePerformanceTargets = 10;
 
     // Display Formats

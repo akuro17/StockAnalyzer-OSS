@@ -147,6 +147,18 @@ internal static partial class CalculatorArrayFunctions
                 outcome = EvaluateArrayAddScalar(position, name, args[0], args[1], ref arena);
                 return true;
 
+            case "arr_set":
+                outcome = EvaluateArraySet(position, args[0], args[1], args[2], ref arena);
+                return true;
+
+            case "arr_take":
+                outcome = EvaluateArrayTake(position, args[0], args[1], ref arena);
+                return true;
+
+            case "arr_shift":
+                outcome = EvaluateArrayShift(position, args[0], args[1], args[2], ref arena);
+                return true;
+
             default:
                 outcome = default;
                 return false;
@@ -270,7 +282,64 @@ internal static partial class CalculatorArrayFunctions
         "mann_whitney_u" or
         "ols_stats" or
         "adf_test" or
-        "garch11_fit";
+        "garch11_fit" or
+        "wls_fit" or
+        "wls_stats" or
+        "reg_exp_fit" or
+        "reg_log_fit" or
+        "reg_pow_fit" or
+        "reg_logistic_fit" or
+        "loan_equal_principal_pmt" or
+        "port_mrc" or
+        "port_crc" or
+        "port_min_var_weights" or
+        "tri_equilateral" or
+        "tri_right_isosceles" or
+        "tri_right" or
+        "tri_isosceles" or
+        "tri_scalene" or
+        "trapezoid_4sides" or
+        "trapezoid_3sides_h" or
+        "circle_inscribed_reg_poly" or
+        "circle_circumscribed_reg_poly" or
+        "rt_tri_from_angle_base_deg" or
+        "rt_tri_from_angle_height_deg" or
+        "rt_tri_from_angle_hyp_deg" or
+        "rt_tri_from_base_height_deg" or
+        "rt_tri_from_base_hyp_deg" or
+        "rt_tri_from_height_hyp_deg" or
+        "tri_angles_sss_deg" or
+        "line2d_2pts" or
+        "line2d_intercepts" or
+        "line2d_intersect" or
+        "rot2d_pt" or
+        "rot2d_axis" or
+        "cart_to_polar" or
+        "polar_to_cart" or
+        "plane3d_3pts" or
+        "cart_to_sph" or
+        "cart_to_cyl" or
+        "sph_to_cart" or
+        "sph_to_cyl" or
+        "cyl_to_cart" or
+        "cyl_to_sph" or
+        "mat_rot3d" or
+        "rot3d_pt" or
+        "mat_row" or
+        "mat_col" or
+        "mat_diag_extract" or
+        "mat_submatrix" or
+        "mat_hstack" or
+        "mat_set" or
+        "mat_transpose_rect" or
+        "mat_add" or
+        "mat_sub" or
+        "mat_scale" or
+        "arr_set" or
+        "arr_take" or
+        "arr_shift" or
+        "arr_scan" or
+        "arr_zip_map";
 
     public static DslEvalOutcome EvaluateArrayLoweredVariadic(
         string name,

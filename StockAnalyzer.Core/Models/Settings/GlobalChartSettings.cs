@@ -306,6 +306,20 @@ public sealed record GlobalChartSettings
             IsOld(ReverseWatchPhase7Color, "#EE82EE") &&
             IsOld(ReverseWatchPhase8Color, "#808080");
 
+        // Migration of the Scatter Heatmap palette: two former default palettes (the original green/red one and the
+        // short-lived blue/red one, see the Legacy* constants) are replaced by the current defaults.
+        // Boundary: the palette is replaced only when ALL THREE colours equal one former default palette; a palette that
+        // differs in even one colour is kept as the user saved it. A user who deliberately picks a former default palette
+        // is replaced on the next load. Revisit if a persisted schema marker (SchemaVersion, currently unused) is
+        // introduced for another reason.
+        bool isOldHeatmapPalette =
+            (IsOld(ScatterHeatmapUpColor, ChartSettingsConstants.LegacyScatterHeatmapGreenRedUpColor) &&
+             IsOld(ScatterHeatmapNeutralColor, ChartSettingsConstants.LegacyScatterHeatmapGreenRedNeutralColor) &&
+             IsOld(ScatterHeatmapDownColor, ChartSettingsConstants.LegacyScatterHeatmapGreenRedDownColor)) ||
+            (IsOld(ScatterHeatmapUpColor, ChartSettingsConstants.LegacyScatterHeatmapBlueRedUpColor) &&
+             IsOld(ScatterHeatmapNeutralColor, ChartSettingsConstants.LegacyScatterHeatmapBlueRedNeutralColor) &&
+             IsOld(ScatterHeatmapDownColor, ChartSettingsConstants.LegacyScatterHeatmapBlueRedDownColor));
+
         static bool IsValidHexColor(string? color)
         {
             if (string.IsNullOrWhiteSpace(color)) return false;
@@ -431,6 +445,16 @@ public sealed record GlobalChartSettings
                 ReverseWatchPhase6Color = ChartSettingsConstants.DefaultReverseWatchPhase6,
                 ReverseWatchPhase7Color = ChartSettingsConstants.DefaultReverseWatchPhase7,
                 ReverseWatchPhase8Color = ChartSettingsConstants.DefaultReverseWatchPhase8
+            };
+        }
+
+        if (isOldHeatmapPalette)
+        {
+            result = result with
+            {
+                ScatterHeatmapUpColor = ChartSettingsConstants.DefaultScatterHeatmapUpColor,
+                ScatterHeatmapNeutralColor = ChartSettingsConstants.DefaultScatterHeatmapNeutralColor,
+                ScatterHeatmapDownColor = ChartSettingsConstants.DefaultScatterHeatmapDownColor
             };
         }
 

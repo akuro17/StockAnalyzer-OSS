@@ -111,6 +111,11 @@ public sealed class McpProgressiveDiscoveryTests : IDisposable
                 Assert.True(annotations.GetProperty("readOnlyHint").GetBoolean());
                 Assert.True(annotations.GetProperty("idempotentHint").GetBoolean());
             });
+            string readOnlySearchDesc = readOnlyTools
+                .Single(t => t.GetProperty("name").GetString() == SearchToolsTool.ToolName)
+                .GetProperty("description").GetString()!;
+            Assert.Contains(InvokeToolProxyTool.ToolName, readOnlySearchDesc, StringComparison.Ordinal);
+            Assert.DoesNotContain(InvokeToolProxyTool.ActionToolName, readOnlySearchDesc, StringComparison.Ordinal);
         }
 
         McpServerRuntime progressiveRuntime = CreateRuntime(progressiveDiscovery: true, enableExecution: true, enableDiscussion: true);
@@ -123,6 +128,24 @@ public sealed class McpProgressiveDiscoveryTests : IDisposable
         Assert.Equal(
             new[] { InvokeToolProxyTool.ActionToolName, InvokeToolProxyTool.ToolName, SearchToolsTool.ToolName },
             progTools.Select(t => t.GetProperty("name").GetString()!).ToArray());
+        string nonReadOnlySearchDesc = progTools
+            .Single(t => t.GetProperty("name").GetString() == SearchToolsTool.ToolName)
+            .GetProperty("description").GetString()!;
+        Assert.Contains(InvokeToolProxyTool.ToolName, nonReadOnlySearchDesc, StringComparison.Ordinal);
+        Assert.Contains(InvokeToolProxyTool.ActionToolName, nonReadOnlySearchDesc, StringComparison.Ordinal);
+        Assert.All(nonReadOnlySearchDesc, ch => Assert.True(ch < 128));
+        Assert.True(nonReadOnlySearchDesc.Length <= 160, $"Expected summary-safe description <= 160 chars, got {nonReadOnlySearchDesc.Length}.");
+
+        foreach ((bool execFlag, bool discFlag) in new[] { (true, false), (false, true) })
+        {
+            McpServerRuntime singleFlagRuntime = CreateRuntime(progressiveDiscovery: true, enableExecution: execFlag, enableDiscussion: discFlag);
+            using JsonDocument singleDoc = await DispatchJsonAsync(singleFlagRuntime, """{"jsonrpc":"2.0","id":4,"method":"tools/list"}""");
+            string singleSearchDesc = singleDoc.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
+                .Single(t => t.GetProperty("name").GetString() == SearchToolsTool.ToolName)
+                .GetProperty("description").GetString()!;
+            Assert.Contains(InvokeToolProxyTool.ToolName, singleSearchDesc, StringComparison.Ordinal);
+            Assert.Contains(InvokeToolProxyTool.ActionToolName, singleSearchDesc, StringComparison.Ordinal);
+        }
         var annotationsByName = progTools.ToDictionary(t => t.GetProperty("name").GetString()!, t => t.GetProperty("annotations"), StringComparer.Ordinal);
         Assert.False(annotationsByName[InvokeToolProxyTool.ActionToolName].GetProperty("readOnlyHint").GetBoolean());
         Assert.False(annotationsByName[InvokeToolProxyTool.ActionToolName].GetProperty("idempotentHint").GetBoolean());

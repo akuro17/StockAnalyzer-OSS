@@ -182,6 +182,65 @@ public sealed class ToolInfrastructureTests
     private static FakeTool Tool(string name, Func<JsonElement, CancellationToken, Task<string>> invoke, string? schema = null, bool heavy = false)
         => new(name, invoke, schema, heavy);
 
+    /// <summary>
+    /// A tool that finishes before the caller starts waiting (an immediate result, or an immediate <see cref="ToolException"/>) used to
+    /// race with the cleanup that disposes the call's cancellation source: the occasional call came back as INTERNAL_ERROR
+    /// (ObjectDisposedException). The race window is microseconds wide, so the check repeats many calls.
+    /// </summary>
+    [Fact]
+    public async Task ToolsThatFinishImmediatelyNeverTurnIntoAnInternalError()
+    {
+        const int callsPerTool = 15_000;
+        var log = new StringWriter();
+        var dispatcher = McpTestSupport.CreateDispatcher(
+            new IMcpTool[]
+            {
+                Tool("sa_instant_ok", (_, _) => Task.FromResult("{}")),
+                Tool("sa_instant_fail", (_, _) => throw new ToolException(ToolErrorCodes.InvalidArgument, "refused immediately.")),
+            },
+            log: log);
+        await dispatcher.DispatchAsync(McpTestSupport.InitializeMessage, CancellationToken.None);
+
+        int internalErrors = 0;
+        int unexpected = 0;
+        for (int i = 0; i < callsPerTool; i++)
+        {
+            using (var ok = (await McpTestSupport.CallAsync(dispatcher, "sa_instant_ok"))!)
+            {
+                if (McpTestSupport.IsError(ok))
+                {
+                    if (McpTestSupport.ErrorCodeOf(ok) == ToolErrorCodes.InternalError)
+                    {
+                        internalErrors++;
+                    }
+                    else
+                    {
+                        unexpected++;
+                    }
+                }
+            }
+
+            using (var failed = (await McpTestSupport.CallAsync(dispatcher, "sa_instant_fail"))!)
+            {
+                if (!McpTestSupport.IsError(failed) || McpTestSupport.ErrorCodeOf(failed) != ToolErrorCodes.InvalidArgument)
+                {
+                    if (McpTestSupport.IsError(failed) && McpTestSupport.ErrorCodeOf(failed) == ToolErrorCodes.InternalError)
+                    {
+                        internalErrors++;
+                    }
+                    else
+                    {
+                        unexpected++;
+                    }
+                }
+            }
+        }
+
+        string serverLog = log.ToString();
+        Assert.True(internalErrors == 0, $"{internalErrors} INTERNAL_ERROR results. Server log: {(serverLog.Length > 1500 ? serverLog[..1500] : serverLog)}");
+        Assert.True(unexpected == 0, $"{unexpected} unexpected results. Server log: {(serverLog.Length > 1500 ? serverLog[..1500] : serverLog)}");
+    }
+
     [Fact]
     public async Task ASuccessCarriesTheStructuredJsonAsTextAndAsStructuredContent()
     {

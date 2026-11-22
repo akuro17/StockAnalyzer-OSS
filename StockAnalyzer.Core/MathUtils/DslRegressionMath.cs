@@ -10,7 +10,7 @@ namespace StockAnalyzer.Core.MathUtils;
 /// (delegating to <see cref="DslLinearAlgebraMath.MatEigenSym"/>).
 /// All flattened 2D matrices use Row-Major layout (<c>row * cols + col</c>).
 /// </summary>
-public static class DslRegressionMath
+public static partial class DslRegressionMath
 {
     public const int MaxFeatures = DslLinearAlgebraMath.MaxMatrixDim; // 16
     public const int MaxObservations = DslArrayArena.MaxArrayLength;  // 512

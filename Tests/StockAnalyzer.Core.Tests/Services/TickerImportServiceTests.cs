@@ -148,4 +148,87 @@ public class TickerImportServiceTests
         Assert.Contains("AAPL", result);
         Assert.Contains("MSFT", result);
     }
+
+    [Theory]
+    [InlineData("CL=F", "CL=F")]
+    [InlineData("gc=f", "GC=F")]
+    [InlineData("HG=F", "HG=F")]
+    public async Task ImportTickersAsync_WithContinuousFuturesSymbol_ReturnsTheUpperCaseSymbol(string token, string expected)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(token));
+
+        var result = await _service.ImportTickersAsync(stream);
+
+        Assert.Equal(new[] { expected }, result);
+    }
+
+    [Fact]
+    public async Task ImportTickersAsync_FuturesSymbolsWithDescriptions_KeepsTheSymbolsAndRejectsTheDescriptionTokens()
+    {
+        var content = "CL=F (WTI crude)\nGC=F (gold)\nHG=F (copper)";
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
+
+        var result = await _service.ImportTickersAsync(stream);
+
+        Assert.Equal(new[] { "CL=F", "GC=F", "HG=F" }, result.OrderBy(s => s, StringComparer.Ordinal).ToArray());
+    }
+
+    // The import bound (TickerSymbolLimits.ImportMaxLength = 16) also applies to the vendor-suffixed forms; the accepted rows pin the wiring of that constant from below.
+    [Theory]
+    [InlineData("AAAAAAAAAAAAAA=F", true)]   // 14 + 2 = 16 = the bound
+    [InlineData("AAAAAAAAAAAAAAA=F", false)] // 15 + 2 = 17
+    [InlineData("AAAAAAAAAAAAAA=X", true)]
+    [InlineData("AAAAAAAAAAAAAAA=X", false)]
+    public async Task ImportTickersAsync_VendorSuffixedSymbol_FollowsTheImportLengthBound(string token, bool accepted)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(token));
+
+        var result = await _service.ImportTickersAsync(stream);
+
+        Assert.Equal(accepted ? new[] { token } : Array.Empty<string>(), result);
+    }
+
+    [Theory]
+    [InlineData("JPY=X", "JPY=X")]
+    [InlineData("eurusd=x", "EURUSD=X")]
+    [InlineData("USDJPY=X", "USDJPY=X")]
+    public async Task ImportTickersAsync_WithCurrencyPairSymbol_ReturnsTheUpperCaseSymbol(string token, string expected)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(token));
+
+        var result = await _service.ImportTickersAsync(stream);
+
+        Assert.Equal(new[] { expected }, result);
+    }
+
+    [Theory]
+    [InlineData("=X")]
+    [InlineData("6E=X")]
+    [InlineData("USD1=X")]
+    [InlineData("USD-JPY=X")]
+    [InlineData("EURUSD==X")]
+    [InlineData("EURUSD=Y")]
+    public async Task ImportTickersAsync_MalformedCurrencyPairSymbols_StayRejected(string token)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(token));
+
+        var result = await _service.ImportTickersAsync(stream);
+
+        Assert.Empty(result);
+    }
+
+    [Theory]
+    [InlineData("=F")]
+    [InlineData("CL=")]
+    [InlineData("CL==F")]
+    [InlineData("CL=F=F")]
+    [InlineData("A=B")]
+    public async Task ImportTickersAsync_MalformedEqualsSymbols_StayRejected(string token)
+    {
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(token));
+
+        var result = await _service.ImportTickersAsync(stream);
+
+        Assert.Empty(result);
+    }
 }

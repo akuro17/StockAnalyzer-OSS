@@ -276,8 +276,8 @@ public partial class AddTickerViewModel : ViewModelBase, IDisposable
                     }
                     else
                     {
-                        // Allow adding as a new ticker if it follows basic symbol rules (1-10 alphanumeric)
-                        bool isPotentialSymbol = state.normalized.Length > 0 && state.normalized.Length <= WatchlistConstants.MaxTickerLength;
+                        // Allow adding as a new ticker when the text is non-empty and within the dialog length bound (no character class is checked here)
+                        bool isPotentialSymbol = state.normalized.Length > 0 && state.normalized.Length <= StockAnalyzer.Core.Models.TickerSymbolLimits.DialogMaxLength;
                         state.vm.State = isPotentialSymbol ? ValidationState.NewTicker : ValidationState.Invalid;
                     }
                 }

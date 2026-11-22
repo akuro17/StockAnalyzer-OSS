@@ -1,0 +1,204 @@
+{
+  "description": "Single machine-readable definition of the file-safety symbol rules (TickerSymbol.IsWellFormed on the C# side, symbol_validator.py on the Python side). Both sides are held to this file: Python reads it, the C# parity tests compare TickerSymbol with it.",
+  "max_file_safety_length": 32,
+  "parent_segment": "..",
+  "invalid_characters": [
+    "/",
+    "\\",
+    ":"
+  ],
+  "control_code_points": [
+    {
+      "first": 0,
+      "last": 31
+    },
+    {
+      "first": 127,
+      "last": 159
+    }
+  ],
+  "not_trimmed_code_points": [
+    {
+      "first": 28,
+      "last": 31
+    }
+  ],
+  "probes": [
+    {
+      "symbol": "AAPL",
+      "well_formed": true
+    },
+    {
+      "symbol": "BRK-B",
+      "well_formed": true
+    },
+    {
+      "symbol": "BRK.B",
+      "well_formed": true
+    },
+    {
+      "symbol": "7203-T",
+      "well_formed": true
+    },
+    {
+      "symbol": "CL=F",
+      "well_formed": true
+    },
+    {
+      "symbol": "EURUSD=X",
+      "well_formed": true
+    },
+    {
+      "symbol": "^GSPC",
+      "well_formed": true
+    },
+    {
+      "symbol": "  AAPL  ",
+      "well_formed": true
+    },
+    {
+      "symbol": "",
+      "well_formed": false
+    },
+    {
+      "symbol": "   ",
+      "well_formed": false
+    },
+    {
+      "symbol": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "well_formed": true
+    },
+    {
+      "symbol": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "well_formed": false
+    },
+    {
+      "symbol": " AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ",
+      "well_formed": true
+    },
+    {
+      "symbol": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA ",
+      "well_formed": false
+    },
+    {
+      "symbol": "A/B",
+      "well_formed": false
+    },
+    {
+      "symbol": "A\\B",
+      "well_formed": false
+    },
+    {
+      "symbol": "A:B",
+      "well_formed": false
+    },
+    {
+      "symbol": "C:",
+      "well_formed": false
+    },
+    {
+      "symbol": "..",
+      "well_formed": false
+    },
+    {
+      "symbol": "A..B",
+      "well_formed": false
+    },
+    {
+      "symbol": "A.B",
+      "well_formed": true
+    },
+    {
+      "symbol": "A...",
+      "well_formed": false
+    },
+    {
+      "symbol": "A.",
+      "well_formed": true
+    },
+    {
+      "symbol": "A\u0000B",
+      "well_formed": false
+    },
+    {
+      "symbol": "A\tB",
+      "well_formed": false
+    },
+    {
+      "symbol": "A\nB",
+      "well_formed": false
+    },
+    {
+      "symbol": "A\u001fB",
+      "well_formed": false
+    },
+    {
+      "symbol": "A\u007fB",
+      "well_formed": false
+    },
+    {
+      "symbol": "A B",
+      "well_formed": true
+    },
+    {
+      "symbol": "A\u0080B",
+      "well_formed": false
+    },
+    {
+      "symbol": "A\u0085B",
+      "well_formed": false
+    },
+    {
+      "symbol": "A\u009fB",
+      "well_formed": false
+    },
+    {
+      "symbol": "\u001cAAPL",
+      "well_formed": false
+    },
+    {
+      "symbol": "AAPL\u001c",
+      "well_formed": false
+    },
+    {
+      "symbol": "\u001dAAPL",
+      "well_formed": false
+    },
+    {
+      "symbol": "AAPL\u001d",
+      "well_formed": false
+    },
+    {
+      "symbol": "\u001eAAPL",
+      "well_formed": false
+    },
+    {
+      "symbol": "AAPL\u001e",
+      "well_formed": false
+    },
+    {
+      "symbol": "\u001fAAPL",
+      "well_formed": false
+    },
+    {
+      "symbol": "AAPL\u001f",
+      "well_formed": false
+    },
+    {
+      "symbol": "\tAAPL\n",
+      "well_formed": true
+    },
+    {
+      "symbol": "\u0085AAPL",
+      "well_formed": true
+    },
+    {
+      "symbol": "AAPL\u00a0",
+      "well_formed": true
+    },
+    {
+      "symbol": "\u2028AAPL\u2029",
+      "well_formed": true
+    }
+  ]
+}

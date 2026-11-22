@@ -617,6 +617,10 @@ internal static class CalculatorEvaluator
             return DslEvalOutcome.Fail(CalculatorErrorCode.UnknownFunction, call.NamePosition, $"Unknown function '{call.Name}'.", call.Name);
         }
 
+        // Effective argument ceiling. Variadic functions follow the configured limit. A fixed-arity function keeps its own maximum
+        // unless the configured limit is stricter than the default (then the smaller of the two applies). A limit at or above the
+        // default therefore never raises or lowers a fixed-arity function: det3 (9 arguments) and mat_hstack (16) work under the
+        // default limit of 8. Existing tests pin this rule (CalculatorEvaluatorSemanticsTests, CalculatorDslLinearAlgebraTests).
         int maxArgs = info.IsStatisticalVariadic
             ? limits.MaxStatisticalFunctionArguments
             : info.IsVariadic
@@ -702,6 +706,11 @@ internal static class CalculatorEvaluator
             return arrayOpOutcome;
         }
 
+        if (CalculatorMatrixDataFunctions.TryEvaluate(call.Name, call.NamePosition, rawArgs, ref arena, out DslEvalOutcome matrixDataOutcome))
+        {
+            return matrixDataOutcome;
+        }
+
         if (CalculatorMatrixFunctions.TryEvaluateValue(call.Name, call.NamePosition, rawArgs, ref budget, ref arena, out DslEvalOutcome matrixValueOutcome))
         {
             return matrixValueOutcome;
@@ -710,6 +719,16 @@ internal static class CalculatorEvaluator
         if (CalculatorDiagnosticsAndStatsFunctions.TryEvaluateValue(call.Name, call.NamePosition, rawArgs, ref budget, ref arena, out DslEvalOutcome diagOutcome))
         {
             return diagOutcome;
+        }
+
+        if (CalculatorFinanceFunctions.TryEvaluateValue(call.Name, call.NamePosition, rawArgs, ref budget, ref arena, out DslEvalOutcome financeValueOutcome))
+        {
+            return financeValueOutcome;
+        }
+
+        if (CalculatorGeometryFunctions.TryEvaluateValue(call.Name, call.NamePosition, rawArgs, ref budget, ref arena, out DslEvalOutcome geometryValueOutcome))
+        {
+            return geometryValueOutcome;
         }
 
         if (hasArrayArg)
@@ -1052,7 +1071,7 @@ internal static class CalculatorEvaluator
         }
 
         int firstOrdinaryArgument = 2;
-        if (call.Name == "arr_reduce" && call.Arguments.Count >= 3)
+        if ((call.Name is "arr_reduce" or "arr_scan" or "arr_zip_map") && call.Arguments.Count >= 3)
         {
             firstOrdinaryArgument = 3;
             if (call.Arguments[2] is IdentifierNode itemId)
@@ -1160,6 +1179,16 @@ internal static class CalculatorEvaluator
                     if (CalculatorMatrixFunctions.TryEvaluate(name, position, args, out CalculatorOutcome matrixOutcome))
                     {
                         return matrixOutcome;
+                    }
+
+                    if (CalculatorFinanceFunctions.TryEvaluate(name, position, args, ref budget, out CalculatorOutcome financeOutcome))
+                    {
+                        return financeOutcome;
+                    }
+
+                    if (CalculatorGeometryFunctions.TryEvaluate(name, position, args, ref budget, out CalculatorOutcome geometryOutcome))
+                    {
+                        return geometryOutcome;
                     }
 
                     throw new InvalidOperationException($"Unimplemented calculator function '{name}'.");

@@ -185,9 +185,12 @@ public sealed class CalculatorBodyErrorCodeTests
         "arr_map(zzz * x, x, [1])",
         "arr_filter(zzz * x, x, [1])",
         "arr_reduce(zzz + acc + item, acc, item, [1], 0)",
+        "arr_scan(zzz + acc + item, acc, item, [1], 0)",
+        "arr_zip_map(zzz + a + b, a, b, [1], [1])",
         "opt_lbfgsb(zzz * x, [x], [0.5], [0], [1])",
         "fsolve([zzz * x], [x], [1])",
         "ode_bdf2([zzz * y], t, [y], 0, 1, [1], 4)",
+        "inv_func(zzz * x, x, 1, 0, 2)",
     };
 
     public static IEnumerable<object[]> HigherOrderCalls => HigherOrderCallsWithUndefinedBody.Select(call => new object[] { call });

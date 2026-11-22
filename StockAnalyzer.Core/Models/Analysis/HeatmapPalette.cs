@@ -41,7 +41,7 @@ public sealed record HeatmapPalette(
     }
 
     /// <summary>
-    /// Default heatmap palette adhering to standard settings constants (Classic colors, 5% threshold, 1.0 multiplier, 10 steps, 16px font, Main Text color, Center alignment).
+    /// Default heatmap palette adhering to standard settings constants (green Up, dark-slate Neutral, red-orange Down, 5% threshold, 1.0 multiplier, 10 steps, 16px font, Main Text color, Center alignment).
     /// </summary>
     public static HeatmapPalette Default { get; } = new(
         Up: HsvData.FromHtmlSafe(ChartSettingsConstants.DefaultScatterHeatmapUpColor).ToIndicatorColor(),

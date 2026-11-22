@@ -81,6 +81,22 @@ internal static class CalculatorElementaryFunctions
                 outcome = FromMathResult(DslElementaryMath.Atan2(args[0], args[1]), position, name);
                 return true;
 
+            case "asind":
+                outcome = FromMathResult(DslElementaryMath.AsinDeg(args[0]), position, name);
+                return true;
+
+            case "acosd":
+                outcome = FromMathResult(DslElementaryMath.AcosDeg(args[0]), position, name);
+                return true;
+
+            case "atand":
+                outcome = FromMathResult(DslElementaryMath.AtanDeg(args[0]), position, name);
+                return true;
+
+            case "atan2d":
+                outcome = FromMathResult(DslElementaryMath.Atan2Deg(args[0], args[1]), position, name);
+                return true;
+
             case "sinh":
                 outcome = FromMathResult(DslElementaryMath.Sinh(args[0]), position, name);
                 return true;
@@ -363,6 +379,56 @@ internal static class CalculatorElementaryFunctions
             case "c_tanh_re":
             case "c_tanh_im":
                 outcome = FromMathResult(DslElementaryMath.ComplexTanh(args[0], args[1], takeReal: name == "c_tanh_re"), position, name);
+                return true;
+
+            case "c_add_re":
+            case "c_add_im":
+                outcome = ComplexComponent(
+                    DslElementaryMath.ComplexAdd(new DslComplex(args[0], args[1]), new DslComplex(args[2], args[3])),
+                    takeReal: name == "c_add_re",
+                    position,
+                    name);
+                return true;
+
+            case "c_sub_re":
+            case "c_sub_im":
+                outcome = ComplexComponent(
+                    DslElementaryMath.ComplexSubtract(new DslComplex(args[0], args[1]), new DslComplex(args[2], args[3])),
+                    takeReal: name == "c_sub_re",
+                    position,
+                    name);
+                return true;
+
+            case "sum_squares":
+                outcome = FromMathResult(DslElementaryMath.SumSquares(args[0]), position, name);
+                return true;
+
+            case "sum_cubes":
+                outcome = FromMathResult(DslElementaryMath.SumCubes(args[0]), position, name);
+                return true;
+
+            case "sum_consec_prod":
+                outcome = FromMathResult(DslElementaryMath.SumConsecProd(args[0]), position, name);
+                return true;
+
+            case "sum_geom_inf":
+                outcome = FromMathResult(DslElementaryMath.SumGeomInf(args[0], args[1]), position, name);
+                return true;
+
+            case "comb_rep":
+                outcome = FromMathResult(DslElementaryMath.CombRep(args[0], args[1]), position, name);
+                return true;
+
+            case "perm_rep":
+                outcome = FromMathResult(DslElementaryMath.PermRep(args[0], args[1]), position, name);
+                return true;
+
+            case "perm_circular":
+                outcome = FromMathResult(DslElementaryMath.PermCircular(args[0]), position, name);
+                return true;
+
+            case "perm_necklace":
+                outcome = FromMathResult(DslElementaryMath.PermNecklace(args[0]), position, name);
                 return true;
 
             case "if_gt":

@@ -61,6 +61,16 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
     private void ApplyRecommendedMaxResponseTokens() => MaxResponseTokens = McpResponseTokenLimits.RecommendedStrict;
 
     [RelayCommand]
+    private void ApplyProgressiveTokenPreset()
+    {
+        ProgressiveDiscovery = true;
+        Toolset = string.Empty;
+        UseTextOnlyResponse = true;
+        CompactDefaults = true;
+        MaxResponseTokens = McpResponseTokenLimits.RecommendedStrict;
+    }
+
+    [RelayCommand]
     private void ApplyRecommendedTokenPreset()
     {
         Toolset = McpToolsetProfiles.RecommendedPresetToolset;

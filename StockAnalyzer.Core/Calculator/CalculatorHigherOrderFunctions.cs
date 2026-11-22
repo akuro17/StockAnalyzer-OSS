@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using StockAnalyzer.Core.MathUtils;
 
 namespace StockAnalyzer.Core.Calculator;
@@ -12,7 +14,8 @@ namespace StockAnalyzer.Core.Calculator;
 /// </summary>
 internal static class CalculatorHigherOrderFunctions
 {
-    private const double DefaultTolerance = 1e-10;
+    internal const double DefaultTolerance = 1e-10;
+    internal const decimal DefaultToleranceDecimal = 1e-10m;
 
     public static bool IsHigherOrderFunction(string name) => name is
         "diff_central" or
@@ -50,9 +53,12 @@ internal static class CalculatorHigherOrderFunctions
         "arr_map" or
         "arr_filter" or
         "arr_reduce" or
+        "arr_scan" or
+        "arr_zip_map" or
         "opt_lbfgsb" or
         "fsolve" or
-        "ode_bdf2";
+        "ode_bdf2" or
+        "inv_func";
 
     /// <summary>True for the higher-order functions whose argument 2 is a literal array declaring the state variables (<c>yVars</c>).</summary>
     public static bool DeclaresStateVariables(string name) => name is "ode_rk4" or "ode_rk45" or "ode_bdf2";
@@ -92,6 +98,12 @@ internal static class CalculatorHigherOrderFunctions
 
             case "arr_reduce":
                 return EvaluateArrayReduce(call, in scope, limits, ref budget, in boundScope, ref arena);
+
+            case "arr_scan":
+                return EvaluateArrayScan(call, in scope, limits, ref budget, in boundScope, ref arena);
+
+            case "arr_zip_map":
+                return EvaluateArrayZipMap(call, in scope, limits, ref budget, in boundScope, ref arena);
 
             case "opt_lbfgsb":
                 return EvaluateLbfgsb(call, in scope, limits, ref budget, in boundScope, ref arena);
@@ -234,6 +246,17 @@ internal static class CalculatorHigherOrderFunctions
                 double b = (double)scalars[1];
                 double tol = scalarCount >= 3 ? (double)scalars[2] : DefaultTolerance;
                 rawResult = DslNumericalAnalysisMath.RootBrent(fn, a, b, tol, ref budget);
+                break;
+            }
+
+            case "inv_func":
+            {
+                double yTarget = (double)scalars[0];
+                double a = (double)scalars[1];
+                double b = (double)scalars[2];
+                double tol = scalarCount >= 4 ? (double)scalars[3] : DefaultTolerance;
+                var shifted = new ShiftedAstScalarFunction(fn, yTarget);
+                rawResult = DslNumericalAnalysisMath.RootBrent(shifted, a, b, tol, ref budget);
                 break;
             }
 
@@ -1142,6 +1165,247 @@ internal static class CalculatorHigherOrderFunctions
         return DslEvalOutcome.Ok(acc);
     }
 
+    /// <summary>
+    /// <c>arr_scan(expr, accVar, itemVar, arr, init)</c>: running fold returning every intermediate accumulator (length <c>len(arr)</c>).
+    /// <c>init</c> is validated even when <c>arr</c> is empty; the body then runs zero times.
+    /// </summary>
+    private static DslEvalOutcome EvaluateArrayScan(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        if (!TryReadDistinctDummyPair(call, out string accVar, out string itemVar, out DslEvalOutcome pairErr))
+        {
+            return pairErr;
+        }
+
+        DslEvalOutcome arrOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[3], in scope, limits, ref budget, in boundScope, ref arena);
+        if (arrOutcome.Error is not null)
+        {
+            return arrOutcome;
+        }
+
+        if (!arrOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(call.Arguments[3]),
+                $"'{call.Name}' requires a 1D array as its fourth argument.",
+                call.Name);
+        }
+
+        if (!TryEvaluateScalarArg(call.Arguments[4], in scope, limits, ref budget, in boundScope, ref arena, call.Name, out decimal acc, out CalculatorOutcome initErr))
+        {
+            return CalculatorArrayFunctions.ToEvalOutcome(initErr);
+        }
+
+        DslArrayHandle arrHandle = arrOutcome.Value.Array;
+        int count = arrHandle.Length;
+        if (count == 0)
+        {
+            return AllocateCombinatorResult(call, ref arena, ReadOnlySpan<decimal>.Empty);
+        }
+
+        // The input array sits below every allocation the body can make; only the result buffer is copied to the stack.
+        int loopBaseCursor = arena.Cursor;
+        Debug.Assert(arrHandle.Offset + arrHandle.Length <= loopBaseCursor);
+        Span<decimal> results = stackalloc decimal[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            if (!budget.TryConsume(1))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Execution budget exceeded.", call.Name);
+            }
+
+            decimal item = arena.GetSlice(arrHandle)[i];
+            if (!boundScope.TryPush(accVar, acc, out BoundVariableScope iterScope1) ||
+                !iterScope1.TryPush(itemVar, item, out BoundVariableScope iterScope2))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Bound variable depth exceeded.", call.Name);
+            }
+
+            int stepCursor = arena.Cursor;
+            DslEvalOutcome stepOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[0], in scope, limits, ref budget, in iterScope2, ref arena);
+            arena.RestoreCursor(stepCursor);
+            if (stepOutcome.Error is not null)
+            {
+                return stepOutcome;
+            }
+
+            if (stepOutcome.Value.IsArray)
+            {
+                return BodyMustBeScalarFailure(call);
+            }
+
+            acc = stepOutcome.Value.Scalar;
+            results[i] = CalculatorArrayFunctions.NormalizeZero(acc);
+        }
+
+        return AllocateCombinatorResult(call, ref arena, results);
+    }
+
+    /// <summary>
+    /// <c>arr_zip_map(expr, aVar, bVar, a, b)</c>: element-wise combination of two equal-length arrays through a two-variable body.
+    /// </summary>
+    private static DslEvalOutcome EvaluateArrayZipMap(
+        CallNode call,
+        in DslEvalScope scope,
+        CalculatorLimits limits,
+        ref DslExecutionBudget budget,
+        in BoundVariableScope boundScope,
+        ref DslArrayArena arena)
+    {
+        if (!TryReadDistinctDummyPair(call, out string aVar, out string bVar, out DslEvalOutcome pairErr))
+        {
+            return pairErr;
+        }
+
+        DslEvalOutcome aOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[3], in scope, limits, ref budget, in boundScope, ref arena);
+        if (aOutcome.Error is not null)
+        {
+            return aOutcome;
+        }
+
+        if (!aOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(call.Arguments[3]),
+                $"'{call.Name}' requires a 1D array as its fourth argument.",
+                call.Name);
+        }
+
+        DslEvalOutcome bOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[4], in scope, limits, ref budget, in boundScope, ref arena);
+        if (bOutcome.Error is not null)
+        {
+            return bOutcome;
+        }
+
+        if (!bOutcome.Value.IsArray)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DomainError,
+                CalculatorEvaluator.GetNodePosition(call.Arguments[4]),
+                $"'{call.Name}' requires a 1D array as its fifth argument.",
+                call.Name);
+        }
+
+        DslArrayHandle aHandle = aOutcome.Value.Array;
+        DslArrayHandle bHandle = bOutcome.Value.Array;
+        int count = aHandle.Length;
+        if (count != bHandle.Length)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DimensionMismatch,
+                call.NamePosition,
+                string.Create(CultureInfo.InvariantCulture, $"Array length mismatch in '{call.Name}' ({count} vs {bHandle.Length})."),
+                call.Name);
+        }
+
+        if (count == 0)
+        {
+            return AllocateCombinatorResult(call, ref arena, ReadOnlySpan<decimal>.Empty);
+        }
+
+        int loopBaseCursor = arena.Cursor;
+        Debug.Assert(aHandle.Offset + aHandle.Length <= loopBaseCursor && bHandle.Offset + bHandle.Length <= loopBaseCursor);
+        Span<decimal> results = stackalloc decimal[count];
+
+        for (int i = 0; i < count; i++)
+        {
+            if (!budget.TryConsume(1))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Execution budget exceeded.", call.Name);
+            }
+
+            decimal aItem = arena.GetSlice(aHandle)[i];
+            decimal bItem = arena.GetSlice(bHandle)[i];
+            if (!boundScope.TryPush(aVar, aItem, out BoundVariableScope iterScope1) ||
+                !iterScope1.TryPush(bVar, bItem, out BoundVariableScope iterScope2))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Bound variable depth exceeded.", call.Name);
+            }
+
+            int stepCursor = arena.Cursor;
+            DslEvalOutcome stepOutcome = CalculatorEvaluator.EvaluateValue(call.Arguments[0], in scope, limits, ref budget, in iterScope2, ref arena);
+            arena.RestoreCursor(stepCursor);
+            if (stepOutcome.Error is not null)
+            {
+                return stepOutcome;
+            }
+
+            if (stepOutcome.Value.IsArray)
+            {
+                return BodyMustBeScalarFailure(call);
+            }
+
+            results[i] = CalculatorArrayFunctions.NormalizeZero(stepOutcome.Value.Scalar);
+        }
+
+        return AllocateCombinatorResult(call, ref arena, results);
+    }
+
+    /// <summary>
+    /// Reads the two dummy-variable identifiers at argument positions 1 and 2 of <c>arr_scan</c> / <c>arr_zip_map</c>
+    /// and rejects a repeated name. Validation order: first identifier, second identifier, duplicate check.
+    /// </summary>
+    private static bool TryReadDistinctDummyPair(
+        CallNode call,
+        out string first,
+        out string second,
+        out DslEvalOutcome error)
+    {
+        second = string.Empty;
+        if (!TryReadDummyIdentifier(call.Arguments[1], call.Name, out first, out error))
+        {
+            return false;
+        }
+
+        if (!TryReadDummyIdentifier(call.Arguments[2], call.Name, out second, out error))
+        {
+            return false;
+        }
+
+        if (string.Equals(first, second, StringComparison.Ordinal))
+        {
+            error = DuplicateDummyFailure(call, second);
+            return false;
+        }
+
+        error = default;
+        return true;
+    }
+
+    private static DslEvalOutcome DuplicateDummyFailure(CallNode call, string duplicateName)
+        => DslEvalOutcome.Fail(
+            CalculatorErrorCode.DomainError,
+            CalculatorEvaluator.GetNodePosition(call.Arguments[2]),
+            $"Duplicate dummy variable '{duplicateName}' in '{call.Name}'.",
+            duplicateName);
+
+    private static DslEvalOutcome BodyMustBeScalarFailure(CallNode call)
+        => DslEvalOutcome.Fail(
+            CalculatorErrorCode.DomainError,
+            CalculatorEvaluator.GetNodePosition(call.Arguments[0]),
+            $"'{call.Name}' body must evaluate to a scalar.",
+            call.Name);
+
+    /// <summary>Copies the finished (already zero-normalized) stack result buffer into one arena allocation.</summary>
+    private static DslEvalOutcome AllocateCombinatorResult(CallNode call, ref DslArrayArena arena, scoped ReadOnlySpan<decimal> results)
+    {
+        if (!arena.TryAllocate(results.Length, out DslArrayHandle handle, out Span<decimal> output))
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, call.NamePosition, "Array arena budget exceeded.", call.Name);
+        }
+
+        results.CopyTo(output);
+        return DslEvalOutcome.OkArray(handle);
+    }
+
     private static DslEvalOutcome EvaluateLbfgsb(
         CallNode call,
         in DslEvalScope scope,
@@ -1418,5 +1682,20 @@ internal static class CalculatorHigherOrderFunctions
         }
 
         return CalculatorMatrixFunctions.NarrowArrayResult(yOut, call.NamePosition, call.Name, ref arena);
+    }
+
+    private readonly struct ShiftedAstScalarFunction(AstScalarFunction inner, double target) : IScalarFunction
+    {
+        public bool TryEvaluate(double x, ref DslExecutionBudget budget, out double y)
+        {
+            if (!inner.TryEvaluate(x, ref budget, out double raw))
+            {
+                y = double.NaN;
+                return false;
+            }
+
+            y = raw - target;
+            return true;
+        }
     }
 }

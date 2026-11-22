@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -14,15 +13,11 @@ namespace StockAnalyzer.Core.Services;
 /// <summary>
 /// High-performance implementation of ITickerImportService using Span-based parsing.
 /// </summary>
-public partial class TickerImportService : ITickerImportService
+public class TickerImportService : ITickerImportService
 {
     private readonly ILogger<TickerImportService> _logger;
 
-    private const int MaxSymbolLength = 16;
-
-    // Ticker Regex: Allowed characters are A-Z, 0-9, dot, and hyphen. Length 1-16.
-    [GeneratedRegex(@"^[A-Z0-9\.\-]{1,16}$", RegexOptions.Compiled)]
-    private static partial Regex TickerRegex();
+    private const string InvalidTickerSkippedMessage = "Invalid ticker format skipped: {Token}";
 
     private static readonly char[] Delimiters = [',', '\t', ' '];
 
@@ -79,14 +74,17 @@ public partial class TickerImportService : ITickerImportService
 
     private void ProcessToken(ReadOnlySpan<char> token, HashSet<string> result)
     {
-        if (token.Length > MaxSymbolLength || token.IsEmpty) return;
+        if (token.Length > StockAnalyzer.Core.Models.TickerSymbolLimits.ImportMaxLength || token.IsEmpty) return;
 
         // Use stackalloc for normalization to avoid intermediate string allocations (Rule #11)
         Span<char> normalized = stackalloc char[token.Length];
-        for (int i = 0; i < token.Length; i++)
+
+        // Only ASCII is a symbol character: the canonical form (upper case, '.' to '-') is built by the one definition, which refuses a non-ASCII character before any case mapping
+        // (upper-casing first would map U+017F to 'S', and the four-digit code pattern accepts any Unicode digit).
+        if (!StockAnalyzer.Core.Models.TickerSymbol.TryCanonicalizeAscii(token, normalized, out _))
         {
-            char c = char.ToUpperInvariant(token[i]);
-            normalized[i] = (c == '.') ? '-' : c;
+            _logger.LogWarning(InvalidTickerSkippedMessage, token.ToString());
+            return;
         }
 
         if (StockAnalyzer.Core.Helpers.TickerHelper.IsFourDigitJapaneseCode(normalized))
@@ -97,7 +95,7 @@ public partial class TickerImportService : ITickerImportService
                 _logger.LogDebug("Extracted Japanese ticker with -T suffix: {Ticker}", ticker);
             }
         }
-        else if (TickerRegex().IsMatch(normalized))
+        else if (StockAnalyzer.Core.Models.TickerSymbol.IsAcceptedSymbolFormat(normalized, StockAnalyzer.Core.Models.TickerSymbolLimits.ImportMaxLength))
         {
             string ticker = normalized.ToString(); // Single string allocation for HashSet storage
             if (result.Add(ticker))
@@ -107,7 +105,7 @@ public partial class TickerImportService : ITickerImportService
         }
         else
         {
-            _logger.LogWarning("Invalid ticker format skipped: {Token}", normalized.ToString());
+            _logger.LogWarning(InvalidTickerSkippedMessage, normalized.ToString());
         }
     }
 }

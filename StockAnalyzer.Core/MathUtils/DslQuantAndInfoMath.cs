@@ -130,6 +130,21 @@ public static class DslQuantAndInfoMath
             : decay + (r * discountedStrike * SpecialFunctionsMath.NormalCdf(-d2)) - (q * discountedSpot * SpecialFunctionsMath.NormalCdf(-d1)));
     }
 
+    /// <summary>Rho <c>dV/dr</c> per 1.0 unit of <c>r</c>: call <c>K T e^(-rT) N(d2)</c>, put <c>-K T e^(-rT) N(-d2)</c>.</summary>
+    public static MathResult<double> BsRho(double s, double k, double t, double r, double sigma, bool isCall, double q)
+    {
+        if (!ValidateGreekInputs(s, k, t, r, sigma, q))
+        {
+            return MathResult<double>.Fail(MathErrorCode.DomainError);
+        }
+
+        D1D2(s, k, t, r, sigma, q, out _, out double d2);
+        double factor = k * t * Math.Exp(-r * t);
+        return Finite(isCall
+            ? factor * SpecialFunctionsMath.NormalCdf(d2)
+            : -factor * SpecialFunctionsMath.NormalCdf(-d2));
+    }
+
     /// <summary>
     /// Implied volatility: the root of <c>BsPrice(sigma) - price</c> on <c>[1e-6, 10]</c> by <see cref="DslNumericalAnalysisMath.RootBrent{TFunc}"/> (<c>tol = 1e-10</c>).
     /// A price on or outside the no-arbitrage bounds, or <c>S, K, T &lt;= 0</c>, is a domain error; a root that is not bracketed by the interval is a domain error as well.

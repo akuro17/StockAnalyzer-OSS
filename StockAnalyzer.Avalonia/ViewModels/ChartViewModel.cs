@@ -884,7 +884,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         }
         else
         {
-            if (!SingleSymbolRegex.IsMatch(candidateSymbol))
+            if (!StockAnalyzer.Core.Models.TickerSymbol.IsAcceptedSymbolFormat(candidateSymbol, StockAnalyzer.Core.Models.TickerSymbolLimits.ChartMaxLength))
             {
                 _logger?.LogWarning("Invalid symbol format detected: {Symbol}", candidateSymbol);
                 Symbol = _previousSymbol ?? StockAnalyzer.Core.ChartConstants.DefaultSymbol;
@@ -945,9 +945,6 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
     private string? _lastSymbol;
     private string? _previousSymbol;
     private bool _isNormalizingSymbol;
-    private static readonly System.Text.RegularExpressions.Regex SingleSymbolRegex = new(
-        @"^[A-Z0-9\-\.]{1,15}$",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
     private TimeframeType? _lastTimeFrame;
     private ChartType? _lastChartType;
     private decimal _lastEffectiveSize = 0m;

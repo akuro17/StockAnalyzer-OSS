@@ -543,4 +543,296 @@ public static partial class DslElementaryMath
         double val = takeReal ? Math.Sinh(2.0 * da) / denom : Math.Sin(2.0 * db) / denom;
         return NarrowDouble(val);
     }
+
+    // ---- Degree Inverse Trigonometry, Series & Combinatorics (DSL v6 Batch 1) ----
+
+    /// <summary>Maximum exponent supported by <see cref="PermRep"/> (<c>n^k</c>).</summary>
+    public const int MaxPermRepExponent = 96;
+
+    private const int MaxSeriesSumN = 1_000_000;
+    private const int MaxCombRepN = 100;
+
+    /// <summary>Inverse sine in degrees (<c>[-90, 90]</c>) with exact rational branches.</summary>
+    public static MathResult<decimal> AsinDeg(decimal x)
+    {
+        if (x < -1m || x > 1m)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        return x switch
+        {
+            0m => MathResult<decimal>.Ok(0m),
+            0.5m => MathResult<decimal>.Ok(30m),
+            -0.5m => MathResult<decimal>.Ok(-30m),
+            1m => MathResult<decimal>.Ok(90m),
+            -1m => MathResult<decimal>.Ok(-90m),
+            _ => NarrowDouble(Math.Asin((double)x) * MathConstants.RadToDeg),
+        };
+    }
+
+    /// <summary>Inverse cosine in degrees (<c>[0, 180]</c>) with exact rational branches.</summary>
+    public static MathResult<decimal> AcosDeg(decimal x)
+    {
+        if (x < -1m || x > 1m)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        return x switch
+        {
+            1m => MathResult<decimal>.Ok(0m),
+            0.5m => MathResult<decimal>.Ok(60m),
+            0m => MathResult<decimal>.Ok(90m),
+            -0.5m => MathResult<decimal>.Ok(120m),
+            -1m => MathResult<decimal>.Ok(180m),
+            _ => NarrowDouble(Math.Acos((double)x) * MathConstants.RadToDeg),
+        };
+    }
+
+    /// <summary>Inverse tangent in degrees (<c>(-90, 90)</c>) with exact rational branches.</summary>
+    public static MathResult<decimal> AtanDeg(decimal x) => x switch
+    {
+        0m => MathResult<decimal>.Ok(0m),
+        1m => MathResult<decimal>.Ok(45m),
+        -1m => MathResult<decimal>.Ok(-45m),
+        _ => NarrowDouble(Math.Atan((double)x) * MathConstants.RadToDeg),
+    };
+
+    /// <summary>Four-quadrant inverse tangent in degrees (<c>(-180, 180]</c>) with exact axis and 45-degree branches.</summary>
+    public static MathResult<decimal> Atan2Deg(decimal y, decimal x)
+    {
+        if (y == 0m && x == 0m)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (y == 0m)
+        {
+            return MathResult<decimal>.Ok(x > 0m ? 0m : 180m);
+        }
+
+        if (x == 0m)
+        {
+            return MathResult<decimal>.Ok(y > 0m ? 90m : -90m);
+        }
+
+        if (Math.Abs(x) == Math.Abs(y))
+        {
+            if (x > 0m)
+            {
+                return MathResult<decimal>.Ok(y > 0m ? 45m : -45m);
+            }
+
+            return MathResult<decimal>.Ok(y > 0m ? 135m : -135m);
+        }
+
+        return NarrowDouble(Math.Atan2((double)y, (double)x) * MathConstants.RadToDeg);
+    }
+
+    /// <summary>Sum of squares <c>sum_{k=1..n} k^2 = n(n+1)(2n+1)/6</c> in exact <see cref="decimal"/>.</summary>
+    public static MathResult<decimal> SumSquares(decimal n)
+    {
+        if (!DslMathValidation.TryReadInt32InRange(n, 0, MaxSeriesSumN, out int ni))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (ni == 0)
+        {
+            return MathResult<decimal>.Ok(0m);
+        }
+
+        long a = ni;
+        long b = ni + 1L;
+        long c = (2L * ni) + 1L;
+
+        if ((a & 1L) == 0L)
+        {
+            a /= 2L;
+        }
+        else
+        {
+            b /= 2L;
+        }
+
+        if (a % 3L == 0L)
+        {
+            a /= 3L;
+        }
+        else if (b % 3L == 0L)
+        {
+            b /= 3L;
+        }
+        else
+        {
+            c /= 3L;
+        }
+
+        try
+        {
+            return MathResult<decimal>.Ok(NormalizeZero(checked((decimal)a * b * c)));
+        }
+        catch (OverflowException)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.ArithmeticOverflow);
+        }
+    }
+
+    /// <summary>Sum of cubes <c>sum_{k=1..n} k^3 = (n(n+1)/2)^2</c> in exact <see cref="decimal"/>.</summary>
+    public static MathResult<decimal> SumCubes(decimal n)
+    {
+        if (!DslMathValidation.TryReadInt32InRange(n, 0, MaxSeriesSumN, out int ni))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (ni == 0)
+        {
+            return MathResult<decimal>.Ok(0m);
+        }
+
+        long tri = (long)ni * (ni + 1L) / 2L;
+        decimal t = tri;
+        try
+        {
+            return MathResult<decimal>.Ok(NormalizeZero(checked(t * t)));
+        }
+        catch (OverflowException)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.ArithmeticOverflow);
+        }
+    }
+
+    /// <summary>Sum of consecutive products <c>sum_{k=1..n} k(k+1) = n(n+1)(n+2)/3</c> in exact <see cref="decimal"/>.</summary>
+    public static MathResult<decimal> SumConsecProd(decimal n)
+    {
+        if (!DslMathValidation.TryReadInt32InRange(n, 0, MaxSeriesSumN, out int ni))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (ni == 0)
+        {
+            return MathResult<decimal>.Ok(0m);
+        }
+
+        long a = ni;
+        long b = ni + 1L;
+        long c = ni + 2L;
+        if (a % 3L == 0L)
+        {
+            a /= 3L;
+        }
+        else if (b % 3L == 0L)
+        {
+            b /= 3L;
+        }
+        else
+        {
+            c /= 3L;
+        }
+
+        try
+        {
+            return MathResult<decimal>.Ok(NormalizeZero(checked((decimal)a * b * c)));
+        }
+        catch (OverflowException)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.ArithmeticOverflow);
+        }
+    }
+
+    /// <summary>Infinite geometric series <c>a / (1 - r)</c> for <c>|r| &lt; 1</c> in exact <see cref="decimal"/>.</summary>
+    public static MathResult<decimal> SumGeomInf(decimal a, decimal r)
+    {
+        if (Math.Abs(r) >= 1m)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        try
+        {
+            return MathResult<decimal>.Ok(NormalizeZero(checked(a / (1m - r))));
+        }
+        catch (OverflowException)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.ArithmeticOverflow);
+        }
+    }
+
+    /// <summary>Combinations with repetition <c>H(n, k) = C(n + k - 1, k)</c> for <c>1 &lt;= n &lt;= 100</c>, <c>k &gt;= 0</c>, <c>n + k - 1 &lt;= 100</c>.</summary>
+    public static MathResult<decimal> CombRep(decimal n, decimal k)
+    {
+        if (!DslMathValidation.TryReadInt32InRange(n, 1, MaxCombRepN, out int ni) ||
+            !DslMathValidation.TryReadInt32InRange(k, 0, MaxCombRepN, out int ki) ||
+            ni + ki - 1 > MaxCombRepN)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        return ki == 0
+            ? MathResult<decimal>.Ok(1m)
+            : Comb(ni + ki - 1, ki);
+    }
+
+    /// <summary>Permutations with repetition <c>n^k</c> for integer <c>n &gt;= 0</c> and <c>0 &lt;= k &lt;= MaxPermRepExponent (96)</c>.</summary>
+    public static MathResult<decimal> PermRep(decimal n, decimal k)
+    {
+        if (n != decimal.Truncate(n) ||
+            n < 0m ||
+            !DslMathValidation.TryReadInt32InRange(k, 0, MaxPermRepExponent, out int ki))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (ki == 0 || n == 1m)
+        {
+            return MathResult<decimal>.Ok(1m);
+        }
+
+        if (n == 0m)
+        {
+            return MathResult<decimal>.Ok(0m);
+        }
+
+        try
+        {
+            return MathResult<decimal>.Ok(NormalizeZero(PowPositiveDecimal(n, ki)));
+        }
+        catch (OverflowException)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.ArithmeticOverflow);
+        }
+    }
+
+    /// <summary>Circular permutations <c>(n - 1)!</c> for integer <c>n &gt;= 1</c>.</summary>
+    public static MathResult<decimal> PermCircular(decimal n)
+    {
+        if (n != decimal.Truncate(n) || n < 1m)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        return Fact(n - 1m);
+    }
+
+    /// <summary>Necklace permutations (distinct under rotation and reflection): <c>1</c> for <c>n in {1, 2}</c>, else <c>(n - 1)! / 2</c>.</summary>
+    public static MathResult<decimal> PermNecklace(decimal n)
+    {
+        if (n != decimal.Truncate(n) || n < 1m)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (n <= 2m)
+        {
+            return MathResult<decimal>.Ok(1m);
+        }
+
+        MathResult<decimal> factRes = Fact(n - 1m);
+        return factRes.IsOk
+            ? MathResult<decimal>.Ok(factRes.Value / 2m)
+            : factRes;
+    }
 }

@@ -145,9 +145,9 @@ public static class ChartSettingsConstants
     public const int MaxControlPointHideTimeoutSeconds = 60;
 
     // --- Scatter Analysis Heatmap ---
-    public const string DefaultScatterHeatmapUpColor = "#FF00C853";
+    public const string DefaultScatterHeatmapUpColor = "#FF00704A";
     public const string DefaultScatterHeatmapNeutralColor = "#FF2B2F3A";
-    public const string DefaultScatterHeatmapDownColor = "#FFD50000";
+    public const string DefaultScatterHeatmapDownColor = "#FFB23510";
     public const double DefaultScatterHeatmapThresholdPercent = 5.0;
     public const double MinScatterHeatmapThresholdPercent = 0.1;
     public const double MaxScatterHeatmapThresholdPercent = 100.0;
@@ -168,5 +168,16 @@ public static class ChartSettingsConstants
     public const string DefaultScatterHeatmapTextColor = "#FFE0E0E0";
     public const StockAnalyzer.Core.Models.Analysis.HeatmapTextAlignment DefaultScatterHeatmapTextAlignment =
         StockAnalyzer.Core.Models.Analysis.HeatmapTextAlignment.Center;
+
+    // FROZEN former Scatter Heatmap default palettes. They are used ONLY by GlobalChartSettings.Validate() to recognise a
+    // palette saved by an older build and migrate it to the current DefaultScatterHeatmap* values. Do NOT reuse, replace
+    // or merge them with the current DefaultScatterHeatmap* constants even when a value is equal, and do NOT change them
+    // when the current default changes. Each former palette owns its own Neutral so that the two stay self-contained.
+    public const string LegacyScatterHeatmapGreenRedUpColor = "#00C853";
+    public const string LegacyScatterHeatmapGreenRedNeutralColor = "#2B2F3A";
+    public const string LegacyScatterHeatmapGreenRedDownColor = "#D50000";
+    public const string LegacyScatterHeatmapBlueRedUpColor = "#0062A8";
+    public const string LegacyScatterHeatmapBlueRedNeutralColor = "#2B2F3A";
+    public const string LegacyScatterHeatmapBlueRedDownColor = "#B23510";
 }
 

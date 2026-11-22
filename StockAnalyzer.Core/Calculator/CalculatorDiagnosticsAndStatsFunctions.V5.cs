@@ -58,6 +58,7 @@ internal static partial class CalculatorDiagnosticsAndStatsFunctions
             case "bs_theta":
             case "bs_gamma":
             case "bs_vega":
+            case "bs_rho":
             case "bs_implied_vol":
                 outcome = EvalBlackScholes(name, position, args, ref budget);
                 return true;
@@ -259,7 +260,7 @@ internal static partial class CalculatorDiagnosticsAndStatsFunctions
 
     private static DslEvalOutcome EvalBlackScholes(string name, int position, scoped ReadOnlySpan<DslValue> args, ref DslExecutionBudget budget)
     {
-        bool hasFlag = name is "bs_price" or "bs_delta" or "bs_theta" or "bs_implied_vol";
+        bool hasFlag = name is "bs_price" or "bs_delta" or "bs_theta" or "bs_rho" or "bs_implied_vol";
         int flagIndex = 5;
         int required = hasFlag ? 6 : 5;
         for (int i = 0; i < args.Length; i++)
@@ -294,6 +295,7 @@ internal static partial class CalculatorDiagnosticsAndStatsFunctions
             "bs_theta" => DslQuantAndInfoMath.BsTheta(a0, a1, a2, a3, a4, isCall, q),
             "bs_gamma" => DslQuantAndInfoMath.BsGamma(a0, a1, a2, a3, a4, q),
             "bs_vega" => DslQuantAndInfoMath.BsVega(a0, a1, a2, a3, a4, q),
+            "bs_rho" => DslQuantAndInfoMath.BsRho(a0, a1, a2, a3, a4, isCall, q),
             _ => DslQuantAndInfoMath.BsImpliedVol(a0, a1, a2, a3, a4, isCall, q, ref budget),
         };
         return CalculatorMatrixFunctions.NarrowScalarResult(result, position, name);

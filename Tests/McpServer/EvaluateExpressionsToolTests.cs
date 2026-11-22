@@ -446,6 +446,43 @@ public sealed class EvaluateExpressionsToolTests
         Assert.Equal(0.25m, McpTestSupport.Structured(r2).GetProperty("results")[0].GetProperty("value").GetDecimal());
     }
 
+    [Fact]
+    public async Task V7DataStructureOperationsEvaluateEndToEnd()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        using JsonDocument resp = await CallAsync(dispatcher, """
+        {
+          "arrayVariables": { "c1": [1, 2, 3], "c2": [4, 5, 6], "px": [100, 101, 102] },
+          "expressions": [
+            { "name": "design", "expression": "mat_hstack(c1, c2)" },
+            { "name": "col2", "expression": "mat_col(design, 3, 2, 1)" },
+            { "name": "tr", "expression": "mat_transpose_rect(design, 3, 2)" },
+            { "name": "lag", "expression": "arr_shift(px, 1, arr_get(px, 0))" },
+            { "name": "scan", "expression": "arr_scan(acc + x, acc, x, c1, 0)" },
+            { "name": "zip", "expression": "arr_zip_map(a * b, a, b, c1, c2)" },
+            { "name": "bad", "expression": "arr_shift([], 1000, 0)" }
+          ]
+        }
+        """);
+
+        Assert.False(McpTestSupport.IsError(resp));
+        JsonElement root = McpTestSupport.Structured(resp);
+        Assert.Equal(7, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(6, root.GetProperty("okCount").GetInt32());
+        Assert.Equal(1, root.GetProperty("errorCount").GetInt32());
+
+        JsonElement results = root.GetProperty("results");
+        static decimal[] Values(JsonElement result) => result.GetProperty("values").EnumerateArray().Select(v => v.GetDecimal()).ToArray();
+        Assert.Equal(new[] { 1m, 4m, 2m, 5m, 3m, 6m }, Values(results[0]));
+        Assert.Equal(new[] { 4m, 5m, 6m }, Values(results[1]));
+        Assert.Equal(new[] { 1m, 2m, 3m, 4m, 5m, 6m }, Values(results[2]));
+        Assert.Equal(new[] { 100m, 100m, 101m }, Values(results[3]));
+        Assert.Equal(new[] { 1m, 3m, 6m }, Values(results[4]));
+        Assert.Equal(new[] { 4m, 10m, 18m }, Values(results[5]));
+        Assert.Equal("Error", results[6].GetProperty("status").GetString());
+        Assert.Equal("DOMAIN_ERROR", results[6].GetProperty("errorCode").GetString());
+    }
+
     // ---- Group B3: Calculator v2 metadata, algebraic/transcendental functions, determinism ----
 
     [Fact]
@@ -457,7 +494,7 @@ public sealed class EvaluateExpressionsToolTests
           "decimalPlaces": 6,
           "variables": { "start": 100, "end": 162.889462677744140625, "years": 10, "dailyVol": 0.015 },
           "expressions": [
-            { "name": "cagr", "expression": "pow(end / start, 1 / years) - 1" },
+            { "name": "growth", "expression": "pow(end / start, 1 / years) - 1" },
             { "name": "ann_vol", "expression": "dailyVol * sqrt(252)" },
             { "name": "rem_floor", "expression": "mod(-10, 3)" },
             { "name": "signed_frac", "expression": "frac(-1.25)" },
@@ -470,7 +507,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(6, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(7, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal("System.Decimal", root.GetProperty("arithmetic").GetString());
         Assert.Equal("IEEE-754 binary64 narrowed via ToDecimalOrNull (|x| < 7.9e27)", root.GetProperty("transcendentalArithmetic").GetString());
         Assert.Equal(7, root.GetProperty("okCount").GetInt32());
@@ -575,7 +612,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(6, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(7, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal(4, root.GetProperty("okCount").GetInt32());
         Assert.Equal(2, root.GetProperty("errorCount").GetInt32());
 
@@ -728,7 +765,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(6, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(7, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal(2, root.GetProperty("arrayVariables").GetArrayLength());
         Assert.Equal(7, root.GetProperty("okCount").GetInt32());
         Assert.Equal(2, root.GetProperty("errorCount").GetInt32());
@@ -896,7 +933,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(6, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(7, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal(15, root.GetProperty("okCount").GetInt32());
         Assert.Equal(1, root.GetProperty("errorCount").GetInt32());
 
@@ -935,7 +972,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement structured = McpTestSupport.Structured(resp);
-        Assert.Equal(6, structured.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(7, structured.GetProperty("calculatorVersion").GetInt32());
         JsonElement item = structured.GetProperty("results")[0];
         Assert.Equal("Ok", item.GetProperty("status").GetString());
         Assert.Equal((decimal)expectedValue, item.GetProperty("value").GetDecimal());
@@ -971,7 +1008,7 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(6, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(7, root.GetProperty("calculatorVersion").GetInt32());
         Assert.Equal(6, root.GetProperty("okCount").GetInt32());
         Assert.Equal(0, root.GetProperty("errorCount").GetInt32());
         JsonElement results = root.GetProperty("results");
@@ -982,5 +1019,51 @@ public sealed class EvaluateExpressionsToolTests
         Assert.True(results[3].GetProperty("values")[0].GetDecimal() > 100m);
         Assert.InRange(results[4].GetProperty("value").GetDecimal(), 0.692m, 0.693m);
         Assert.Equal(20m, results[5].GetProperty("value").GetDecimal());
+    }
+
+    [Fact]
+    public async Task V6Phase2FinanceGeometryAndInverseEvaluateEndToEnd()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+        using JsonDocument resp = await CallAsync(dispatcher, """
+        {
+          "decimalPlaces": 6,
+          "arrayVariables": {
+            "xs": [1, 2, 3, 4],
+            "ys": [3, 5, 7, 9],
+            "w": [1, 1, 1, 1],
+            "cov": [0.04, 0, 0, 0.09]
+          },
+          "expressions": [
+            { "name": "inv", "expression": "inv_func(x * x, x, 9, 0, 10)" },
+            { "name": "coeffs", "expression": "wls_fit(xs, ys, w)" },
+            { "name": "ytm", "expression": "bond_ytm(1000, 1000, 0.05, 10, 2)" },
+            { "name": "minw", "expression": "port_min_var_weights(cov)" },
+            { "name": "rho", "expression": "bs_rho(100, 100, 1, 0.05, 0.2, 1, 0)" },
+            { "name": "tri", "expression": "tri_scalene(3, 4, 5)" },
+            { "name": "nball", "expression": "nball_vol(4, 1)" },
+            { "name": "rot", "expression": "rot3d_pt([1, 0, 2], [0, 0, 1], pi / 2)" }
+          ]
+        }
+        """);
+
+        Assert.False(McpTestSupport.IsError(resp));
+        JsonElement root = McpTestSupport.Structured(resp);
+        Assert.Equal(7, root.GetProperty("calculatorVersion").GetInt32());
+        Assert.Equal(8, root.GetProperty("okCount").GetInt32());
+        Assert.Equal(0, root.GetProperty("errorCount").GetInt32());
+
+        JsonElement results = root.GetProperty("results");
+        Assert.Equal(3m, results[0].GetProperty("value").GetDecimal());
+        Assert.Equal(1m, results[1].GetProperty("values")[0].GetDecimal());
+        Assert.Equal(2m, results[1].GetProperty("values")[1].GetDecimal());
+        Assert.Equal(0.05m, results[2].GetProperty("value").GetDecimal());
+        Assert.Equal(2, results[3].GetProperty("values").GetArrayLength());
+        Assert.True(results[4].GetProperty("value").GetDecimal() > 0m);
+        Assert.Equal(6m, results[5].GetProperty("values")[0].GetDecimal());
+        Assert.InRange(results[6].GetProperty("value").GetDecimal(), 4.93m, 4.94m);
+        Assert.Equal(0m, results[7].GetProperty("values")[0].GetDecimal());
+        Assert.Equal(1m, results[7].GetProperty("values")[1].GetDecimal());
+        Assert.Equal(2m, results[7].GetProperty("values")[2].GetDecimal());
     }
 }

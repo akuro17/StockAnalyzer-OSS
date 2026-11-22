@@ -141,4 +141,24 @@ public class WatchlistManagerTests
         // p2 should be empty now
         Assert.Empty(u2.Items);
     }
+
+    [Theory]
+    [InlineData("CL=F", "CL=F")]
+    [InlineData("gc=f", "GC=F")]
+    [InlineData("  HG=F  ", "HG=F")]
+    [InlineData("jpy=x", "JPY=X")]
+    [InlineData("EURUSD=X", "EURUSD=X")]
+    public void AddTickerToProfile_VendorSuffixedSymbol_IsStoredAndDeduplicated(string typed, string expected)
+    {
+        var manager = new WatchlistManager();
+        var profile = manager.CreateProfile("Futures", IndicatorColor.Gray);
+
+        manager.AddTickerToProfile(profile.Id, typed);
+        manager.AddTickerToProfile(profile.Id, expected);
+
+        var updated = manager.GetProfileById(profile.Id);
+        Assert.NotNull(updated);
+        Assert.Single(updated.Items);
+        Assert.Equal(expected, updated.Items[0].Ticker);
+    }
 }

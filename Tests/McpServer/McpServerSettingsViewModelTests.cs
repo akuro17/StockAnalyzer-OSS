@@ -358,6 +358,31 @@ public sealed class McpServerSettingsViewModelTests : IDisposable
         Assert.True(vm.IsModified);
     }
 
+    [Fact]
+    public async Task ViewModel_ApplyProgressiveTokenPreset_ConfiguresFourPartPresetWithoutAlteringDiscussion()
+    {
+        var manager = new McpServerSettingsManager(_testFilePath);
+        using var vm = new McpServerSettingsViewModel(manager);
+        await vm.LoadTask;
+
+        vm.EnableDiscussion = true;
+        vm.Toolset = McpToolsetProfiles.RecommendedPresetToolset;
+        vm.ApplyProgressiveTokenPresetCommand.Execute(null);
+
+        Assert.True(vm.EnableDiscussion);
+        Assert.True(vm.ProgressiveDiscovery);
+        Assert.Equal(string.Empty, vm.Toolset);
+        Assert.True(vm.UseAllToolsets);
+        Assert.False(vm.UseCoreToolset);
+        Assert.False(vm.UseTechnicalToolset);
+        Assert.True(vm.UseTextOnlyResponse);
+        Assert.True(vm.CompactDefaults);
+        Assert.Equal(McpResponseTokenLimits.RecommendedStrict, vm.MaxResponseTokens);
+        Assert.True(vm.IsValid);
+        Assert.True(vm.IsModified);
+        Assert.Equal("--enable-discussion --response-format text-only --compact-defaults --progressive-discovery", vm.LaunchArgumentsPreview);
+    }
+
     private sealed class FakeMcpServerProcessService : IMcpServerProcessService
     {
         private static readonly string FakeExePath = OperatingSystem.IsWindows() ? "StockAnalyzer.McpServer.exe" : "StockAnalyzer.McpServer";

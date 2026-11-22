@@ -67,20 +67,33 @@ Detailed per-tool reference specifications extracted from `StockAnalyzer.McpServ
 | `sa_run_screener` | Read-Only | [tools/sa_run_screener.md](tools/sa_run_screener.md) | Finds the symbols whose latest bar meets a condition, with the application's own Screener (the same evaluation as the Screener tab for the daily time frame). |
 | `sa_run_walk_forward_analysis` | Read-Only | [tools/sa_run_walk_forward_analysis.md](tools/sa_run_walk_forward_analysis.md) | Walk-forward analysis of a backtest: for every window it runs the grid of sa_optimize_backtest (conditions with {"$param": name} placeholders, parameterRanges, objective, object... |
 | `sa_search_notes` | Read-Only | [tools/sa_search_notes.md](tools/sa_search_notes.md) | Searches the user's Ticker Notes (investment journal entries): each note's text, related ticker, hashtags, catalyst date, creation time and thread links, newest first. |
-| `sa_search_tools` | Meta-Tool (`--progressive-discovery`) | [tools/sa_search_tools.md](tools/sa_search_tools.md) | Searches active StockAnalyzer tools by keyword, profile, or exact names; use includeSchema: true (or toolNames) before calling sa_invoke_tool. |
+| `sa_search_tools` | Meta-Tool (`--progressive-discovery`) | [tools/sa_search_tools.md](tools/sa_search_tools.md) | Searches active StockAnalyzer tools by keyword, profile, or exact names; use includeSchema: true (or toolNames) before calling sa_invoke_tool (or sa_invoke_action when non-read-only tools are active). |
 | `sa_start_portfolio_rl_training` | Execution (`--enable-execution`) | [tools/sa_start_portfolio_rl_training.md](tools/sa_start_portfolio_rl_training.md) | Starts one sandboxed reinforcement-learning portfolio training run across 2 to 100 tickers in the temporary sandbox and returns at once with a jobId; poll sa_get_training_status... |
 | `sa_start_rl_training` | Execution (`--enable-execution`) | [tools/sa_start_rl_training.md](tools/sa_start_rl_training.md) | Starts one reinforcement-learning smoke run (the trial run of the RL window: one seed, 1024 transitions, the Backtest window's factory costs) on the stored daily bars of one sym... |
 | `sa_start_training` | Execution (`--enable-execution`) | [tools/sa_start_training.md](tools/sa_start_training.md) | Starts one supervised training job (the Training Wizard's path) on stored daily bars and returns at once with a jobId; poll sa_get_training_status until the state is final. |
 | `sa_validate_condition_tree` | Read-Only | [tools/sa_validate_condition_tree.md](tools/sa_validate_condition_tree.md) | Validates a screener conditionTree or backtest conditions without reading market data. |
 
+## Recommended Token-Saving Operational Configuration
+
+To minimize both upfront `tools/list` schema overhead and per-call response payload tokens while keeping backward-compatible defaults (`McpResponseTokenLimits.Default = 1,048,576`) intact, combine these four settings as the standard AI client configuration (also available as a one-click preset in **Settings > McpServer**):
+
+- `--progressive-discovery`: reduces initial `tools/list` from ~35.7K tokens to ~620-800 tokens (<1K tokens) by exposing only `sa_search_tools` and `sa_invoke_tool` (plus `sa_invoke_action` when `--enable-execution` or `--enable-discussion` is active) while keeping all permitted tools callable on demand.
+- `--response-format text-only`: omits `outputSchema` from `tools/list` and `structuredContent` from `tools/call` responses (~40-50% response token reduction).
+- `--compact-defaults`: enables compact/tabular defaults and `decimalPlaces: 4` on allowlisted analytical tools (such as `compactRows`, `compactReport`, `includeBarCoordinates: false`, `maxReturnedTrades: 20`, `includeSeries: false` + `summary: true`, `snippetOnly: true`; `sa_evaluate_expressions` and echoed arguments remain unrounded).
+- `AiIntegration:MaxResponseTokens = 24576` (`McpResponseTokenLimits.RecommendedStrict`): enforces a strict per-response token budget in `appsettings.json` or `Data/Config/user_mcpserver_settings.json` (configurable via **Settings > McpServer**).
+
+```shell
+StockAnalyzer.McpServer --progressive-discovery --response-format text-only --compact-defaults
+```
+
 ## Role-Based Toolset Profiles (`--toolset`)
 
-To reduce `tools/list` prompt token overhead further, pass comma-separated profiles from `all`, `core` (10), `technical` (6), `technical-extended` (10), `screener` (5), `backtest` (5), `portfolio` (7), and `ml` (4) via `--toolset`:
+To restrict exposed read-only tools directly without progressive discovery, pass comma-separated profiles from `all`, `core` (10), `technical` (6), `technical-extended` (10), `screener` (5), `backtest` (5), `portfolio` (7), and `ml` (4) via `--toolset`:
 
-- **Recommended AI Client Preset (~10K `tools/list` tokens)**: `StockAnalyzer.McpServer --toolset core,technical --response-format text-only --compact-defaults` (with `AiIntegration:MaxResponseTokens = 24576`; one-click preset available in **Settings > McpServer**)
+- **Direct Toolset Preset (~10K `tools/list` tokens, no discovery proxy)**: `StockAnalyzer.McpServer --toolset core,technical --response-format text-only --compact-defaults` (with `AiIntegration:MaxResponseTokens = 24576`; one-click direct preset also available in **Settings > McpServer**)
 - **Minimal Data & Calculator**: `StockAnalyzer.McpServer --toolset core` (10 tools)
 - **Core Technical Diagnosis**: `StockAnalyzer.McpServer --toolset core,technical` (16 tools; add `technical-extended` for batch, converted series, drawings, patterns, cycles, seasonality, and projections)
 - **Screener & Backtest Research**: `StockAnalyzer.McpServer --toolset core,screener,backtest` (20 tools)
 - **Portfolio & Catalysts + Text-Only + Compact Defaults**: `StockAnalyzer.McpServer --toolset core,portfolio --response-format text-only --compact-defaults`
 - **ML/RL Inspection + Sandboxed Execution**: `StockAnalyzer.McpServer --toolset core,ml --enable-execution`
-- **Progressive Tool Discovery (<1K `tools/list` tokens across all permitted tools)**: `StockAnalyzer.McpServer --progressive-discovery` (exposes only `sa_search_tools` and `sa_invoke_tool` in read-only mode, plus `sa_invoke_action` when `--enable-execution` or `--enable-discussion` is active; combines with `--toolset`, `--response-format`, `--compact-defaults`, `--enable-execution`, and `--enable-discussion`)
+- **Standard Progressive Discovery (<1K `tools/list` tokens across all permitted tools)**: `StockAnalyzer.McpServer --progressive-discovery --response-format text-only --compact-defaults` (combines with `--toolset`, `--enable-execution`, and `--enable-discussion`)

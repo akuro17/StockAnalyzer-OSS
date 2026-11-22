@@ -214,4 +214,29 @@ public sealed class CalculatorDslV6LanguageTests
         Assert.Equal(CalculatorErrorCode.UndefinedName, undef.Error!.Code);
         Assert.Equal("missing_var", undef.Error.Token);
     }
+
+    [Fact]
+    public void DslArrayArena_PreservesIntegrityAcrossRepeatedNestedHigherOrderBatches()
+    {
+        var arrays = new Dictionary<string, IReadOnlyList<decimal>>(StringComparer.Ordinal)
+        {
+            ["xs"] = [1m, 2m, 3m],
+        };
+
+        IReadOnlyList<ExpressionCalculator.CalculatorBatchResult> batch = ExpressionCalculator.EvaluateBatch(
+            EmptyScalars,
+            arrays,
+            new ExpressionCalculator.CalculatorBatchItem[]
+            {
+                new("a", "arr_map(sum(arr_map(y * x, y, [1, 2])), x, xs)"),
+                new("b", "sigma(i + sum([xs[0], xs[2]]), i, 1, 3)"),
+                new("c", "a[2] + b"),
+            },
+            CalculatorLimits.Default);
+
+        Assert.All(batch, r => Assert.True(r.IsOk, r.Error?.Message));
+        Assert.Equal([3m, 6m, 9m], batch[0].ArrayValues);
+        Assert.Equal(18m, batch[1].ScalarValue); // (1+4) + (2+4) + (3+4)
+        Assert.Equal(27m, batch[2].ScalarValue);
+    }
 }

@@ -42,21 +42,25 @@ internal sealed class SearchToolsTool : IMcpTool
     private readonly Func<McpToolRegistry> _registry;
     private readonly IReadOnlyDictionary<string, string> _profilesByName;
     private readonly McpResponseFormat _responseFormat;
+    private readonly bool _hasNonReadOnly;
 
     public SearchToolsTool(
         Func<McpToolRegistry> registry,
         IReadOnlyDictionary<string, string> profilesByName,
-        McpResponseFormat responseFormat = McpResponseFormat.Dual)
+        McpResponseFormat responseFormat = McpResponseFormat.Dual,
+        bool hasNonReadOnly = false)
     {
         _registry = registry;
         _profilesByName = profilesByName;
         _responseFormat = responseFormat;
+        _hasNonReadOnly = hasNonReadOnly;
     }
 
     public string Name => ToolName;
 
-    public string Description =>
-        "Searches active StockAnalyzer tools by keyword, profile, or exact names; use includeSchema: true (or toolNames) before calling sa_invoke_tool.";
+    public string Description => _hasNonReadOnly
+        ? "Searches active tools by keyword/profile/names; use includeSchema: true (or toolNames) before sa_invoke_tool (read-only) / sa_invoke_action (state-changing)."
+        : "Searches active StockAnalyzer tools by keyword, profile, or exact names; use includeSchema: true (or toolNames) before calling sa_invoke_tool.";
 
     public bool IsHeavy => false;
 
