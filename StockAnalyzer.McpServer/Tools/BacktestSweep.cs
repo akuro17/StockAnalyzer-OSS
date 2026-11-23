@@ -13,8 +13,8 @@ using StockAnalyzer.McpServer.Limits;
 
 namespace StockAnalyzer.McpServer.Tools;
 
-/// <summary>What a swept run keeps: its report (null when the run produced none) and whether it evaluated no stored bar at all (no bar of the period, which the engine does not treat as an error).</summary>
-internal sealed record SweepRun(BacktestReport? Report, bool NoEvaluatedBars);
+/// <summary>What a swept run keeps: its report (null when the run produced none), whether it evaluated no stored bar at all (no bar of the period, which the engine does not treat as an error), and the evaluated sample count.</summary>
+internal sealed record SweepRun(BacktestReport? Report, bool NoEvaluatedBars, int SampleCount = 0);
 
 /// <summary>One run of a sweep: the combination of the grid and the first and last evaluated day.</summary>
 internal readonly record struct SweepItem(int Combination, DateOnly Start, DateOnly End);
@@ -230,8 +230,18 @@ internal sealed class BacktestSweep
             throw new ToolException(ToolErrorCodes.InsufficientMarketData, $"No stored {timeFrame} bars exist for {symbol}.", symbolArgument, "Call sa_list_tickers to see the symbols that have data.");
         }
 
+        BacktestBarIntegrityValidator.ThrowIfInvalid(stored, symbol, timeFrame, symbolArgument);
+
         return new SweepSymbol(symbol, warnings, stored);
     }
+
+    public Task<IReadOnlyList<CandleData>> ResolveCoverageWindowAsync(
+        string symbol,
+        TimeFrame timeFrame,
+        IReadOnlyList<CandleData> loadedStored,
+        DateOnly earliestNeededDate,
+        CancellationToken cancellationToken)
+        => BacktestBarIntegrityValidator.ResolveCoverageWindowAsync(_gateway, symbol, timeFrame, loadedStored, earliestNeededDate, _limits.MaxCandlesPerRequest, cancellationToken);
 
     // ---- running and ranking ------------------------------------------------------------------------------------------------------------
 
@@ -263,7 +273,7 @@ internal sealed class BacktestSweep
         try
         {
             IReadOnlyList<SweepRun> runs = await _gateway
-                .RunBacktestBatchAsync(snapshots, _limits.OptimizationDegreeOfParallelism, artifact => new SweepRun(artifact.Report, artifact.Result.IsInsufficientData || artifact.Metadata.SampleCount == 0), cancellationToken)
+                .RunBacktestBatchAsync(snapshots, _limits.OptimizationDegreeOfParallelism, artifact => new SweepRun(artifact.Report, artifact.Result.IsInsufficientData || artifact.Metadata.SampleCount == 0, artifact.Metadata.SampleCount), cancellationToken)
                 .ConfigureAwait(false);
             return runs.ToArray();
         }
@@ -279,6 +289,12 @@ internal sealed class BacktestSweep
         }
         catch (ArgumentException error)
         {
+            if (BacktestBarIntegrityValidator.IsCandleInvariantFailure(error)
+                && await BacktestBarIntegrityValidator.TryDiagnoseFullHistoryAsync(_gateway, symbol, timeFrame, "symbol", cancellationToken).ConfigureAwait(false) is { } diagnosed)
+            {
+                throw diagnosed;
+            }
+
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"The backtest input was rejected: {error.Message.Split(Environment.NewLine)[0]}", hint: "Check the dates and the conditions.");
         }
     }

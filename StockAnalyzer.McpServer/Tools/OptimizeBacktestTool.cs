@@ -131,6 +131,13 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         }
 
         DateOnly inSampleEnd = outOfSampleStart is { } cut ? cut.AddDays(-1) : effectiveEnd;
+        IReadOnlyList<CandleData> coverageBars = await _sweep.ResolveCoverageWindowAsync(
+            symbol, timeFrame, stored, effectiveStart, cancellationToken).ConfigureAwait(false);
+        if (!ReferenceEquals(coverageBars, stored))
+        {
+            BacktestBarIntegrityValidator.ThrowIfInvalid(coverageBars, symbol, timeFrame, SymbolArgument);
+        }
+
         SweepRun[] inSample = await _sweep.RunAsync(
             symbol, timeFrame, bound, Enumerable.Range(0, grid.CombinationCount).Select(index => new SweepItem(index, effectiveStart, inSampleEnd)).ToList(), objective,
             index => BacktestSweep.DescribeCombination(grid, index), cancellationToken).ConfigureAwait(false);
@@ -163,6 +170,23 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         if (BacktestSweep.PositiveInfinityWarning(infinite, objective, "combination(s)") is { } infiniteWarning)
         {
             warnings.Add(infiniteWarning);
+        }
+
+        decimal? highestClose = BacktestAdvisory.HighestCloseInRange(coverageBars, effectiveStart, effectiveEnd);
+        bool anyTrade = inSample.Any(r => r.Report is { TotalTrades: >= 1 }) || outOfSample.Any(r => r.Report is { TotalTrades: >= 1 });
+        if (BacktestAdvisory.ForSweepSizing(
+                bound.Settings,
+                highestClose,
+                anyTrade,
+                BacktestAdvisory.HasExplicitSizingParameter(arguments),
+                _limits) is { } sizingWarning)
+        {
+            warnings.Add(sizingWarning);
+        }
+
+        if (BacktestAdvisory.ForOptimizeSampleSize(inSample, outOfSample, _limits) is { } sampleWarning)
+        {
+            warnings.Add(sampleWarning);
         }
 
         return ToolJson.Build(writer => Write(

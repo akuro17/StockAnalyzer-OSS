@@ -1,5 +1,6 @@
 import os
 import logging
+import math
 import datetime
 import polars as pl
 from data_provider import (
@@ -63,6 +64,83 @@ def normalize_downloaded_frame(df_pd):
     return conform_corporate_action_columns(frame)
 
 
+# Maximum individual invalid-bar warnings emitted per fetched batch; excess rows are summarized as a count.
+MAX_LOGGED_INVALID_BARS = 5
+
+
+def check_ohlc_invariants(row):
+    """Return ordered (violation_code, human_text) pairs matching C# CandleInvariant.Describe."""
+    open_ = row["open"]
+    high = row["high"]
+    low = row["low"]
+    close = row["close"]
+    volume = row["volume"]
+    prices = (open_, high, low, close)
+    if any(p is None or (isinstance(p, float) and not math.isfinite(p)) for p in prices) or volume is None:
+        return [("NonPositivePrice", f"Non-finite or missing OHLCV (O={open_}, H={high}, L={low}, C={close}, V={volume})")]
+    violations = []
+    if high < low:
+        violations.append(("HighBelowLow", f"High {high:g} < Low {low:g}"))
+    if high < open_:
+        violations.append(("HighBelowOpen", f"High {high:g} < Open {open_:g}"))
+    if high < close:
+        violations.append(("HighBelowClose", f"Close {close:g} > High {high:g}"))
+    if low > open_:
+        violations.append(("LowAboveOpen", f"Low {low:g} > Open {open_:g}"))
+    if low > close:
+        violations.append(("LowAboveClose", f"Close {close:g} < Low {low:g}"))
+    if volume < 0:
+        violations.append(("NegativeVolume", f"Volume {volume} < 0"))
+    if open_ <= 0 or high <= 0 or low <= 0 or close <= 0:
+        violations.append(("NonPositivePrice", f"Non-positive price (O={open_:g}, H={high:g}, L={low:g}, C={close:g})"))
+    return violations
+
+
+def warn_invalid_bars(symbol, frame):
+    """Log warning(s) for any OHLCV invariant violation in the fetched batch only. Never drops rows or aborts writes."""
+    if frame is None or frame.is_empty():
+        return 0
+    invalid_df = frame.filter(
+        pl.col("high").is_null()
+        | pl.col("low").is_null()
+        | pl.col("open").is_null()
+        | pl.col("close").is_null()
+        | pl.col("volume").is_null()
+        | pl.col("high").is_nan()
+        | pl.col("low").is_nan()
+        | pl.col("open").is_nan()
+        | pl.col("close").is_nan()
+        | (pl.col("high") < pl.col("low"))
+        | (pl.col("high") < pl.col("open"))
+        | (pl.col("high") < pl.col("close"))
+        | (pl.col("low") > pl.col("open"))
+        | (pl.col("low") > pl.col("close"))
+        | (pl.col("volume") < 0)
+        | (pl.col("open") <= 0)
+        | (pl.col("high") <= 0)
+        | (pl.col("low") <= 0)
+        | (pl.col("close") <= 0)
+    ).sort("date")
+    if invalid_df.is_empty():
+        return 0
+    for row in invalid_df.head(MAX_LOGGED_INVALID_BARS).iter_rows(named=True):
+        date_val = row["date"]
+        date_str = date_val.isoformat() if hasattr(date_val, "isoformat") else str(date_val)[:10]
+        violations = check_ohlc_invariants(row)
+        details = ", ".join(text for _, text in violations)
+        logging.warning(
+            f"{symbol}: invalid bar {date_str} "
+            f"O={row['open']} H={row['high']} L={row['low']} C={row['close']} V={row['volume']} "
+            f"({details}); stored as fetched"
+        )
+    if invalid_df.height > MAX_LOGGED_INVALID_BARS:
+        omitted = invalid_df.height - MAX_LOGGED_INVALID_BARS
+        logging.warning(
+            f"{symbol}: {omitted} more invalid bar(s) omitted (total {invalid_df.height} invalid bar(s) in fetched batch); stored as fetched"
+        )
+    return invalid_df.height
+
+
 def needs_split_resync(existing_df, df_new):
     """True when the fetched rows hold a split (stock_splits > 0) that the stored file has not recorded.
 
@@ -101,6 +179,7 @@ def fetch_split_resync_frame(provider, symbol, existing_df, delay=None):
         logging.warning(f"{symbol}: Split resync failed (no data returned); stored file left unchanged")
         return None
     frame = normalize_downloaded_frame(df_pd).filter(pl.col("date") >= oldest).unique(subset=["date"], keep="last").sort("date")
+    warn_invalid_bars(symbol, frame)
     if frame.is_empty() or frame.select(pl.col("date").min()).item() > oldest:
         logging.warning(f"{symbol}: Split resync skipped: provider history starts later than stored history")
         return None
@@ -218,6 +297,7 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
         return
 
     df_new = normalize_downloaded_frame(df_new_pd)
+    warn_invalid_bars(symbol, df_new)
 
     resync_stored_dates = None  # set only for a split re-sync (the dates it replaces): the extra checks before the swap apply to it alone
     if existing_df is not None:

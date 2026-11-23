@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -14,11 +15,12 @@ namespace StockAnalyzer.Tests.McpServer;
 /// </summary>
 public sealed class McpLimitsDocumentParityTests
 {
-    public sealed record DocLimitEntry(string Key, string DefaultRaw, string BandRaw, int DefaultInt, string MinRaw, string MaxRaw);
+    public sealed record DocLimitEntry(string Key, string DefaultRaw, string BandRaw, int DefaultInt, decimal DefaultDecimal, bool HasDecimal, string MinRaw, string MaxRaw);
 
-    public sealed record CommandRefEntry(string Key, string Type, string DefaultRaw, string HardMinRaw, string HardMaxRaw, int DefaultInt);
+    public sealed record CommandRefEntry(string Key, string Type, string DefaultRaw, string HardMinRaw, string HardMaxRaw, int DefaultInt, decimal DefaultDecimal, bool HasDecimal);
 
     private static readonly Regex IntPrefixRegex = new(@"^\s*(\d+)", RegexOptions.Compiled);
+    private static readonly Regex DecimalPrefixRegex = new(@"^\s*(-?\d+(?:\.\d+)?)", RegexOptions.Compiled);
     private static readonly Regex YamlKeyRegex = new(@"^\s*-\s*key:\s*(\w+)", RegexOptions.Compiled);
     private static readonly Regex YamlDefaultRegex = new(@"^\s*default:\s*([^\r\n]+)", RegexOptions.Compiled);
     private static readonly Regex YamlBandRegex = new(@"^\s*band:\s*([^\r\n]+)", RegexOptions.Compiled);
@@ -43,7 +45,13 @@ public sealed class McpLimitsDocumentParityTests
             if (currentKey is not null && currentDefault is not null && currentBand is not null)
             {
                 var match = IntPrefixRegex.Match(currentDefault);
-                int defaultInt = match.Success ? int.Parse(match.Groups[1].Value) : -1;
+                int defaultInt = match.Success && int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedInt)
+                    ? parsedInt
+                    : -1;
+                var decMatch = DecimalPrefixRegex.Match(currentDefault);
+                decimal parsedDec = 0m;
+                bool hasDec = decMatch.Success && decimal.TryParse(decMatch.Groups[1].Value, NumberStyles.Number, CultureInfo.InvariantCulture, out parsedDec);
+                decimal defaultDec = hasDec ? parsedDec : 0m;
 
                 string minRaw = string.Empty;
                 string maxRaw = string.Empty;
@@ -54,7 +62,7 @@ public sealed class McpLimitsDocumentParityTests
                     maxRaw = currentBand[(dotIndex + 2)..].Trim();
                 }
 
-                entries[currentKey] = new DocLimitEntry(currentKey, currentDefault, currentBand, defaultInt, minRaw, maxRaw);
+                entries[currentKey] = new DocLimitEntry(currentKey, currentDefault, currentBand, defaultInt, defaultDec, hasDec, minRaw, maxRaw);
             }
             currentKey = null;
             currentDefault = null;
@@ -167,7 +175,7 @@ public sealed class McpLimitsDocumentParityTests
                 {
                     if (!line.StartsWith("|", StringComparison.Ordinal))
                     {
-                        if (entries.Count > 0) break;
+                        inTable = false;
                         continue;
                     }
 
@@ -187,9 +195,15 @@ public sealed class McpLimitsDocumentParityTests
                         }
 
                         var match = IntPrefixRegex.Match(defaultRaw);
-                        int defaultInt = match.Success ? int.Parse(match.Groups[1].Value) : -1;
+                        int defaultInt = match.Success && int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedInt)
+                            ? parsedInt
+                            : -1;
+                        var decMatch = DecimalPrefixRegex.Match(defaultRaw);
+                        decimal parsedDec = 0m;
+                        bool hasDec = decMatch.Success && decimal.TryParse(decMatch.Groups[1].Value, NumberStyles.Number, CultureInfo.InvariantCulture, out parsedDec);
+                        decimal defaultDec = hasDec ? parsedDec : 0m;
 
-                        entries[paramName] = new CommandRefEntry(paramName, type, defaultRaw, hardMin, hardMax, defaultInt);
+                        entries[paramName] = new CommandRefEntry(paramName, type, defaultRaw, hardMin, hardMax, defaultInt, defaultDec, hasDec);
                     }
                 }
             }
@@ -202,7 +216,7 @@ public sealed class McpLimitsDocumentParityTests
     {
         return typeof(McpLimits)
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.PropertyType == typeof(int))
+            .Where(p => p.PropertyType == typeof(int) || p.PropertyType == typeof(decimal))
             .OrderBy(p => p.Name, StringComparer.Ordinal)
             .ToList();
     }
@@ -248,6 +262,28 @@ public sealed class McpLimitsDocumentParityTests
 
         foreach (var prop in codeProps)
         {
+            if (prop.PropertyType == typeof(decimal))
+            {
+                decimal codeDec = (decimal)prop.GetValue(limits)!;
+                if (integrationLimits.TryGetValue(prop.Name, out var intDecEntry))
+                {
+                    if (!intDecEntry.HasDecimal || codeDec != intDecEntry.DefaultDecimal)
+                    {
+                        mismatches.Add($"{prop.Name}: Code={codeDec}, SA_AI_INTEGRATION='{intDecEntry.DefaultRaw}'");
+                    }
+                }
+
+                if (commandRefLimits.TryGetValue(prop.Name, out var refDecEntry))
+                {
+                    if (!refDecEntry.HasDecimal || codeDec != refDecEntry.DefaultDecimal)
+                    {
+                        mismatches.Add($"{prop.Name}: Code={codeDec}, MCP_SERVER_COMMAND_REF='{refDecEntry.DefaultRaw}'");
+                    }
+                }
+
+                continue;
+            }
+
             int codeDefault = (int)prop.GetValue(limits)!;
 
             if (integrationLimits.TryGetValue(prop.Name, out var intEntry))
@@ -332,7 +368,7 @@ public sealed class McpLimitsDocumentParityTests
         var codeProps = new HashSet<string> { "MaxCandlesPerRequest", "NonExistentLimit" };
         var docLimits = new Dictionary<string, DocLimitEntry>
         {
-            { "MaxCandlesPerRequest", new DocLimitEntry("MaxCandlesPerRequest", "10000", "1..50000", 10000, "1", "50000") }
+            { "MaxCandlesPerRequest", new DocLimitEntry("MaxCandlesPerRequest", "10000", "1..50000", 10000, 10000m, true, "1", "50000") }
         };
 
         var missing = codeProps.Except(docLimits.Keys).ToList();

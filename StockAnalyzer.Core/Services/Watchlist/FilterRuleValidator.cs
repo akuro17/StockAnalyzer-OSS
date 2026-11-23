@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Settings;
 
 namespace StockAnalyzer.Core.Services.Watchlist;
@@ -46,21 +47,40 @@ public static class FilterRuleValidator
 
     private static readonly IReadOnlyList<string> NumericOperators = Array.AsReadOnly(new[]
     {
-        "==", "=", "Equals", "!=", "NotEquals",
-        ">", "GreaterThan", ">=", "GreaterThanOrEqual", "<", "LessThan", "<=", "LessThanOrEqual",
+        "==", "=", "Equals", nameof(ComparisonOperator.Equal), "!=", "NotEquals", nameof(ComparisonOperator.NotEqual),
+        ">", nameof(ComparisonOperator.GreaterThan), ">=", nameof(ComparisonOperator.GreaterThanOrEqual),
+        "<", nameof(ComparisonOperator.LessThan), "<=", nameof(ComparisonOperator.LessThanOrEqual),
     });
 
     private static readonly IReadOnlyList<string> TextOperators = Array.AsReadOnly(new[]
     {
-        "*=", "Contains", "!*=", "NotContains", "!Contains",
-        "==", "=", "Equals", "!=", "NotEquals",
+        "*=", nameof(ComparisonOperator.Contains), "!*=", "NotContains", "!Contains", nameof(ComparisonOperator.DoesNotContain),
+        "==", "=", "Equals", nameof(ComparisonOperator.Equal), "!=", "NotEquals", nameof(ComparisonOperator.NotEqual),
     });
 
     private static readonly IReadOnlyList<string> TagOperators = Array.AsReadOnly(new[]
     {
-        "*=", "Contains", "ContainsTag", "!*=", "NotContains", "!Contains",
-        "==", "=", "Equals", "!=", "NotEquals",
+        "*=", nameof(ComparisonOperator.Contains), "ContainsTag", "!*=", "NotContains", "!Contains", nameof(ComparisonOperator.DoesNotContain),
+        "==", "=", "Equals", nameof(ComparisonOperator.Equal), "!=", "NotEquals", nameof(ComparisonOperator.NotEqual),
     });
+
+    /// <summary>
+    /// Resolves <see cref="ComparisonOperator"/> enum names (case-insensitive) to their canonical symbol
+    /// via <see cref="ComparisonOperatorExtensions.ToSymbolString"/>; passes other spellings through trimmed.
+    /// </summary>
+    public static string NormalizeOperator(string? op)
+    {
+        string trimmed = op?.Trim() ?? string.Empty;
+        if (trimmed.Length > 0
+            && char.IsLetter(trimmed[0])
+            && Enum.TryParse<ComparisonOperator>(trimmed, ignoreCase: true, out ComparisonOperator parsed)
+            && Enum.IsDefined(parsed))
+        {
+            return parsed.ToSymbolString();
+        }
+
+        return trimmed;
+    }
 
     /// <summary>The operator spellings (case-insensitive, surrounding spaces ignored) accepted for a field family.</summary>
     public static IReadOnlyList<string> OperatorsFor(FilterFieldKind kind) => kind switch

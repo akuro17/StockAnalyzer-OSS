@@ -4,7 +4,9 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using StockAnalyzer.Core.Execution;
+using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.ReinforcementLearning;
+using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.ReinforcementLearning;
 
@@ -22,19 +24,22 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
     private readonly RlDialogDataService? _dataService;
     private readonly RlLocalSourceFolders? _sourceFolders;
     private readonly ErrorMessageSanitizer _sanitizer;
+    private readonly IReadOnlyStockAnalyzerGateway? _gateway;
 
     public CheckRlPlaybackPreflightTool(
         SymbolResolver symbols,
         IRlModelGenerationRegistry? registry = null,
         RlDialogDataService? dataService = null,
         RlLocalSourceFolders? sourceFolders = null,
-        ErrorMessageSanitizer? sanitizer = null)
+        ErrorMessageSanitizer? sanitizer = null,
+        IReadOnlyStockAnalyzerGateway? gateway = null)
     {
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
         _registry = registry ?? new ReadOnlyModelGenerationRegistry();
         _dataService = dataService;
         _sourceFolders = sourceFolders;
         _sanitizer = sanitizer ?? new ErrorMessageSanitizer(Array.Empty<string?>());
+        _gateway = gateway;
     }
 
     private RlDialogDataService GetDataService()
@@ -109,14 +114,14 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
         catch (RlExternalReplayException ex)
         {
             canReplay = false;
-            reason = ex.Message;
+            reason = await TryEnrichInvalidOhlcvReasonAsync(symbol, ex.Message, ex.Reason == RlExternalReplayRejection.SourceUnavailable, cancellationToken).ConfigureAwait(false);
             earliestAnchor = ex.EarliestAnchor;
             latestAnchor = ex.LatestAnchor;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             canReplay = false;
-            reason = ex.Message;
+            reason = await TryEnrichInvalidOhlcvReasonAsync(symbol, ex.Message, isSourceUnavailable: false, cancellationToken).ConfigureAwait(false);
         }
 
         return BuildReplayReport(modelIdArg, symbol, generation.Symbol, generation.Target, canReplay, reason, earliestAnchor, latestAnchor, resolvedModelId);
@@ -177,6 +182,33 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
 
             writer.WriteEndObject();
         });
+    }
+
+    private async Task<string> TryEnrichInvalidOhlcvReasonAsync(string symbol, string baseReason, bool isSourceUnavailable, CancellationToken cancellationToken)
+    {
+        if (_gateway is null
+            || string.IsNullOrWhiteSpace(symbol)
+            || (!isSourceUnavailable
+                && !baseReason.Contains("OHLCV", StringComparison.OrdinalIgnoreCase)
+                && !baseReason.Contains("source bar", StringComparison.OrdinalIgnoreCase)))
+        {
+            return baseReason;
+        }
+
+        try
+        {
+            IReadOnlyList<CandleData> stored = await _gateway.GetCandlesAsync(symbol, TimeFrame.D1, int.MaxValue, cancellationToken).ConfigureAwait(false);
+            if (CandleInvariant.TryFindFirstViolation(stored, out CandleData badBar, out IReadOnlyList<CandleViolationCode> codes))
+            {
+                return $"{baseReason} First invalid bar: {CandleInvariant.FormatBarViolation(symbol, badBar, codes)}.";
+            }
+        }
+        catch (DataUnavailableException)
+        {
+            // Keep the original reason when the stored series cannot be read.
+        }
+
+        return baseReason;
     }
 
     private static void WriteOptionalDate(Utf8JsonWriter writer, string name, DateOnly? date)

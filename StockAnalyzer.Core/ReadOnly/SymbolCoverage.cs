@@ -9,7 +9,9 @@ public sealed record TimeFrameCoverage(
     TimeFrame TimeFrame,
     int BarCount,
     DateTime EarliestTimestamp,
-    DateTime LatestTimestamp);
+    DateTime LatestTimestamp,
+    int InvalidBarCount = 0,
+    DateTime? FirstInvalidBarTimestamp = null);
 
 /// <summary>
 /// Stored history coverage summary for a ticker symbol across all supported timeframes.

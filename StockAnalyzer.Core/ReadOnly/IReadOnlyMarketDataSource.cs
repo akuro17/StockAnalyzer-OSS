@@ -15,6 +15,6 @@ public interface IReadOnlyMarketDataSource
     /// <exception cref="DataUnavailableException">The stored file exists but could not be read.</exception>
     Task<TickerMetadata?> TryGetStoredMetadataAsync(string canonicalSymbol, CancellationToken cancellationToken = default);
 
-    /// <summary>Last write time of the stored time series of <paramref name="canonicalSymbol"/>, or null.</summary>
+    /// <summary>Latest stored bar timestamp (e.g. DuckDB <c>MAX(date)</c>) of <paramref name="canonicalSymbol"/>, or null when nothing is stored.</summary>
     Task<DateTimeOffset?> GetTimeSeriesLastUpdatedAsync(string canonicalSymbol, CancellationToken cancellationToken = default);
 }

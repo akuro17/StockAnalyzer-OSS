@@ -177,6 +177,25 @@ internal sealed class RunWalkForwardTool : IMcpTool
             planned = PlanGenerated(resolved.StoredBars, firstDay.Value, lastDay.Value, mode, inSampleBars, outOfSampleBars, stepBars, out barCount);
         }
 
+        var windowRanges = new List<(DateOnly Start, DateOnly End)>(planned.Count * 2);
+        DateOnly earliestWindowStart = planned[0].InSampleStart;
+        foreach (PlannedWindow window in planned)
+        {
+            windowRanges.Add((window.InSampleStart, window.InSampleEnd));
+            windowRanges.Add((window.OutOfSampleStart, window.OutOfSampleEnd));
+            if (window.InSampleStart < earliestWindowStart)
+            {
+                earliestWindowStart = window.InSampleStart;
+            }
+        }
+
+        IReadOnlyList<CandleData> coverageBars = await _sweep.ResolveCoverageWindowAsync(
+            resolved.Symbol, timeFrame, resolved.StoredBars, earliestWindowStart, cancellationToken).ConfigureAwait(false);
+        if (!ReferenceEquals(coverageBars, resolved.StoredBars))
+        {
+            BacktestBarIntegrityValidator.ThrowIfInvalid(coverageBars, resolved.Symbol, timeFrame, SymbolArgument);
+        }
+
         var inSampleItems = new List<SweepItem>(planned.Count * grid.CombinationCount);
         foreach (PlannedWindow window in planned)
         {
@@ -251,6 +270,30 @@ internal sealed class RunWalkForwardTool : IMcpTool
         if (FirstOutOfSampleOverlap(planned) is { } overlap)
         {
             warnings.Add($"The out-of-sample ranges of window {overlap.First} and window {overlap.Second} overlap, so the same bars count more than once in the aggregate; the windows are still evaluated as given.");
+        }
+
+        decimal? highestClose = BacktestAdvisory.HighestCloseInRanges(coverageBars, windowRanges);
+        bool anyTrade = inSampleRuns.Any(r => r.Report is { TotalTrades: >= 1 }) || outOfSampleRuns.Any(r => r.Report is { TotalTrades: >= 1 });
+        if (BacktestAdvisory.ForSweepSizing(
+                bound.Settings,
+                highestClose,
+                anyTrade,
+                BacktestAdvisory.HasExplicitSizingParameter(arguments),
+                _limits) is { } sizingWarning)
+        {
+            warnings.Add(sizingWarning);
+        }
+
+        var evaluatedWindowSamples = results
+            .Where(r => r.Best >= 0)
+            .Select(r => (
+                r.Window.Index,
+                InSampleCount: r.InSample is { NoEvaluatedBars: false } ins ? ins.SampleCount : (int?)null,
+                OutOfSampleCount: r.OutOfSample is { NoEvaluatedBars: false } oos ? oos.SampleCount : (int?)null))
+            .ToList();
+        if (BacktestAdvisory.ForWalkForwardSampleSize(evaluatedWindowSamples, _limits) is { } sampleWarning)
+        {
+            warnings.Add(sampleWarning);
         }
 
         return ToolJson.Build(writer => Write(

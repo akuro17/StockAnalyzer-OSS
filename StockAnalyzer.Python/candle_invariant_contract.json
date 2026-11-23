@@ -1,0 +1,160 @@
+{
+  "description": "Shared contract between C# CandleInvariant and Python update_daily.check_ohlc_invariants. Prices are chosen so Polars Float32 and C# decimal evaluate identical inequalities.",
+  "violation_order": [
+    "HighBelowLow",
+    "HighBelowOpen",
+    "HighBelowClose",
+    "LowAboveOpen",
+    "LowAboveClose",
+    "NegativeVolume",
+    "NonPositivePrice"
+  ],
+  "cases": [
+    {
+      "name": "valid_normal",
+      "date": "2026-11-20",
+      "open": 100.0,
+      "high": 105.0,
+      "low": 95.0,
+      "close": 102.5,
+      "volume": 1000,
+      "expected_codes": []
+    },
+    {
+      "name": "valid_flat_doji_zero_volume",
+      "date": "2026-11-20",
+      "open": 100.0,
+      "high": 100.0,
+      "low": 100.0,
+      "close": 100.0,
+      "volume": 0,
+      "expected_codes": []
+    },
+    {
+      "name": "audit_8035_t_close_above_high",
+      "date": "2022-05-17",
+      "open": 3821.333,
+      "high": 3866.667,
+      "low": 3770.667,
+      "close": 3869.333,
+      "volume": 1000,
+      "expected_codes": [
+        "HighBelowClose"
+      ]
+    },
+    {
+      "name": "audit_8411_t_close_below_low",
+      "date": "2022-05-17",
+      "open": 1500.0,
+      "high": 1513.5,
+      "low": 1487.5,
+      "close": 1486.5,
+      "volume": 2000,
+      "expected_codes": [
+        "LowAboveClose"
+      ]
+    },
+    {
+      "name": "high_below_low_inverted_range",
+      "date": "2026-11-20",
+      "open": 100.0,
+      "high": 98.0,
+      "low": 102.0,
+      "close": 100.0,
+      "volume": 100,
+      "expected_codes": [
+        "HighBelowLow",
+        "HighBelowOpen",
+        "HighBelowClose",
+        "LowAboveOpen",
+        "LowAboveClose"
+      ]
+    },
+    {
+      "name": "high_below_open_only",
+      "date": "2026-11-20",
+      "open": 105.0,
+      "high": 104.0,
+      "low": 100.0,
+      "close": 102.0,
+      "volume": 100,
+      "expected_codes": [
+        "HighBelowOpen"
+      ]
+    },
+    {
+      "name": "low_above_open_only",
+      "date": "2026-11-20",
+      "open": 98.0,
+      "high": 105.0,
+      "low": 99.0,
+      "close": 102.0,
+      "volume": 100,
+      "expected_codes": [
+        "LowAboveOpen"
+      ]
+    },
+    {
+      "name": "negative_volume_only",
+      "date": "2026-11-20",
+      "open": 100.0,
+      "high": 105.0,
+      "low": 95.0,
+      "close": 102.0,
+      "volume": -1,
+      "expected_codes": [
+        "NegativeVolume"
+      ]
+    },
+    {
+      "name": "non_positive_zero_low",
+      "date": "2026-11-20",
+      "open": 100.0,
+      "high": 105.0,
+      "low": 0.0,
+      "close": 102.0,
+      "volume": 100,
+      "expected_codes": [
+        "NonPositivePrice"
+      ]
+    },
+    {
+      "name": "non_positive_negative_close",
+      "date": "2026-11-20",
+      "open": 100.0,
+      "high": 105.0,
+      "low": 95.0,
+      "close": -2.0,
+      "volume": 100,
+      "expected_codes": [
+        "LowAboveClose",
+        "NonPositivePrice"
+      ]
+    },
+    {
+      "name": "close_above_high_and_negative_volume",
+      "date": "2026-11-20",
+      "open": 100.0,
+      "high": 105.0,
+      "low": 95.0,
+      "close": 106.0,
+      "volume": -5,
+      "expected_codes": [
+        "HighBelowClose",
+        "NegativeVolume"
+      ]
+    },
+    {
+      "name": "all_zero_prices",
+      "date": "2026-11-20",
+      "open": 0.0,
+      "high": 0.0,
+      "low": 0.0,
+      "close": 0.0,
+      "volume": 0,
+      "expected_codes": [
+        "NonPositivePrice"
+      ]
+    }
+  ]
+}

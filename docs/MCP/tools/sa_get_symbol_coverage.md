@@ -4,7 +4,7 @@
 
 ## Contract & Constraints
 
-Retrieves time-series data coverage (stored bar counts, earliest and latest timestamps across D1, W1, MN1) and metadata status for the given symbols. Duplicate symbols are returned once. A time frame whose stored bars could not be read is named in unreadableTimeFrames, not reported as having no data. At most 100 symbols per call. Read-only.
+Retrieves dataset identity (`dataSetId`, `tickerCount`, `latestBarDate`; `latestBarDate` is `null` when no queried symbol has stored bars), time-series data coverage (stored bar counts, earliest and latest timestamps, and `invalidBarCount` across D1, W1, MN1 via `CandleInvariant.IsValidBar`), and metadata status for the given symbols. Each `timeFrames[]` entry always includes `invalidBarCount` and includes `firstInvalidBarDate` (`yyyy-MM-dd`, oldest violating bar) iff `invalidBarCount >= 1`. Duplicate symbols are returned once. A time frame whose stored bars could not be read is named in `unreadableTimeFrames`, not reported as having no data. At most 100 symbols per call. Read-only.
 
 ## Arguments (`inputSchema`)
 

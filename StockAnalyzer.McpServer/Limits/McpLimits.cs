@@ -1,6 +1,7 @@
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Watchlist;
 using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.Core.Services.Backtest.Reporting;
 
 namespace StockAnalyzer.McpServer.Limits;
 
@@ -273,4 +274,18 @@ public sealed class McpLimits
     /// (barsOmittedCount) and never silently dropped. Standard value: 200.
     /// </summary>
     public int MaxImageBarsListed { get; set; } = 200;
+
+    /// <summary>
+    /// Minimum evaluated return samples (<c>m = SampleCount = evaluatedBarCount = Equity.Length - 1</c>)
+    /// before ratio metrics omit <c>SAMPLE_TOO_SMALL</c> advisory warnings.
+    /// Defaults to <see cref="BacktestReportGenerator.MinReturnSamplesForRatioMetrics"/>. Standard value: 20.
+    /// </summary>
+    public int BacktestMinBarsForRatioMetrics { get; set; } = BacktestReportGenerator.MinReturnSamplesForRatioMetrics;
+
+    /// <summary>
+    /// Minimum fraction of initial capital that a FixedQuantity backtest position's largest notional
+    /// (<c>sizingParameter * highestClose</c>) must reach before <c>SIZING_NOTIONAL_SMALL</c> warns.
+    /// Standard value: 0.01 (1%).
+    /// </summary>
+    public decimal BacktestSizingWarnRatio { get; set; } = 0.01m;
 }

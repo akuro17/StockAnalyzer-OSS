@@ -216,6 +216,13 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         // 7. Resolve each symbol and prepare snapshots
         var sleeveHolders = new SleeveHolder[symbolCount];
         var validSnapshots = new List<(int Index, BacktestRunSnapshot Snapshot)>();
+        var invalidBarViolations = new List<string>();
+        var sleeveHighestCloses = new List<decimal>(symbolCount);
+        string universeArgument = arguments.TryGetProperty(SymbolsArgument, out _)
+            ? SymbolsArgument
+            : arguments.TryGetProperty(GroupIdArgument, out _)
+                ? GroupIdArgument
+                : McpResultHandleStore.SymbolsFromResultIdArgument;
 
         for (int i = 0; i < symbolCount; i++)
         {
@@ -236,6 +243,19 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
                 continue;
             }
 
+            IReadOnlyList<CandleData> coverageBars = await BacktestBarIntegrityValidator.ResolveCoverageWindowAsync(
+                _gateway, symbol, timeFrame, stored, effectiveStart, _limits.MaxCandlesPerRequest, cancellationToken).ConfigureAwait(false);
+            if (BacktestBarIntegrityValidator.TryFormatViolation(coverageBars, symbol, out string violation))
+            {
+                invalidBarViolations.Add(violation);
+                continue;
+            }
+
+            if (BacktestAdvisory.HighestCloseInRange(coverageBars, effectiveStart, effectiveEnd) is { } maxClose)
+            {
+                sleeveHighestCloses.Add(maxClose);
+            }
+
             var snapshot = new BacktestRunSnapshot(
                 symbol,
                 timeFrame,
@@ -252,6 +272,11 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
                 CaptureArithmeticFailures: true); // owner decision D-8 = C: one symbol that overflows becomes a Failed sleeve, not a failed call
 
             validSnapshots.Add((i, snapshot));
+        }
+
+        if (invalidBarViolations.Count > 0)
+        {
+            throw BacktestBarIntegrityValidator.CreatePortfolioException(invalidBarViolations, timeFrame, _limits.MaxReturnedWarnings, universeArgument);
         }
 
         // 8. Execute batch backtests
@@ -276,6 +301,24 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
             }
             catch (ArgumentException error)
             {
+                if (BacktestBarIntegrityValidator.IsCandleInvariantFailure(error))
+                {
+                    var fullHistoryViolations = new List<string>();
+                    foreach ((_, BacktestRunSnapshot snap) in validSnapshots)
+                    {
+                        IReadOnlyList<CandleData> allBars = await _gateway.GetCandlesAsync(snap.Symbol, timeFrame, int.MaxValue, cancellationToken).ConfigureAwait(false);
+                        if (BacktestBarIntegrityValidator.TryFormatViolation(allBars, snap.Symbol, out string violation))
+                        {
+                            fullHistoryViolations.Add(violation);
+                        }
+                    }
+
+                    if (fullHistoryViolations.Count > 0)
+                    {
+                        throw BacktestBarIntegrityValidator.CreatePortfolioException(fullHistoryViolations, timeFrame, _limits.MaxReturnedWarnings, universeArgument);
+                    }
+                }
+
                 throw new ToolException(ToolErrorCodes.InvalidArgument, $"The backtest input was rejected: {error.Message.Split(Environment.NewLine)[0]}", hint: "Check the conditions.");
             }
 
@@ -384,6 +427,26 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         // Ordinal sort for symbolResults
         var orderedSleeves = sleeveHolders.OrderBy(h => h.Symbol, StringComparer.Ordinal).ToList();
 
+        var advisoryWarnings = new List<string>();
+        if (BacktestAdvisory.ForPortfolioSizing(
+                settings.Configuration,
+                sleeveHighestCloses,
+                composite.PooledTradeCount,
+                BacktestAdvisory.HasExplicitSizingParameter(arguments),
+                _limits) is { } sizingAdvisory)
+        {
+            advisoryWarnings.Add(sizingAdvisory);
+        }
+
+        var succeededSleeveSamples = orderedSleeves
+            .Where(h => h.IsSuccess && h.Artifact is not null)
+            .Select(h => (h.Symbol, h.Artifact!.Metadata.SampleCount))
+            .ToList();
+        if (BacktestAdvisory.ForPortfolioSampleSize(succeededSleeveSamples, _limits) is { } sampleAdvisory)
+        {
+            advisoryWarnings.Add(sampleAdvisory);
+        }
+
         return ToolJson.Build(writer =>
         {
             writer.WriteStartObject();
@@ -423,6 +486,10 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
             foreach (string warning in universeWarnings)
             {
                 writer.WriteStringValue(warning);
+            }
+            foreach (string advisory in advisoryWarnings)
+            {
+                writer.WriteStringValue(advisory);
             }
             writer.WriteEndArray();
 

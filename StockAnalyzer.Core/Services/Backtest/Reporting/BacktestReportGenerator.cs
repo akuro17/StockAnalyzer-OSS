@@ -11,6 +11,12 @@ namespace StockAnalyzer.Core.Services.Backtest.Reporting;
 /// <summary>Builds and validates the complete 18-slot report while isolating arithmetic dependency graphs.</summary>
 public sealed class BacktestReportGenerator : IBacktestReportGenerator, ICancellableBacktestReportGenerator, IQualifiedBacktestReportGenerator
 {
+    /// <summary>
+    /// Minimum number of equity return samples (<c>m = SampleCount = evaluatedBarCount = Equity.Length - 1</c>)
+    /// required before ratio metrics and bootstrap confidence intervals are considered statistically reliable.
+    /// </summary>
+    public const int MinReturnSamplesForRatioMetrics = 20;
+
     private readonly ILogger<BacktestReportGenerator> _logger;
 
     public BacktestReportGenerator(ILogger<BacktestReportGenerator>? logger = null)

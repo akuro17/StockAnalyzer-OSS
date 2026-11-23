@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Portfolio;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.McpServer.Limits;
@@ -121,7 +122,61 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
             }
         }
 
+        if (mode is ComparisonMode.Ratio or ComparisonMode.Spread && order.Count > 1)
+        {
+            await AppendCurrencyWarningsAsync(aligned.PrimarySymbol, order, mode, warnings, cancellationToken).ConfigureAwait(false);
+        }
+
         return ToolJson.Build(writer => WriteResult(writer, aligned, values, order, excluded, ignored, warnings, symbol, timeFrame, endDate, mode, zScorePeriod, lookback, returned, windowStart, decimalPlaces));
+    }
+
+    private async Task AppendCurrencyWarningsAsync(
+        string primarySymbol,
+        IReadOnlyList<string> order,
+        ComparisonMode mode,
+        List<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        string? primaryCurrency = await ReadCurrencyAsync(primarySymbol, cancellationToken).ConfigureAwait(false);
+        if (primaryCurrency is null)
+        {
+            warnings.Add($"CURRENCY_UNKNOWN: {primarySymbol} has no stored currency; the unit of {mode} cannot be confirmed.");
+        }
+
+        for (int i = 1; i < order.Count; i++)
+        {
+            string comparison = order[i];
+            string? comparisonCurrency = await ReadCurrencyAsync(comparison, cancellationToken).ConfigureAwait(false);
+            if (comparisonCurrency is null)
+            {
+                warnings.Add($"CURRENCY_UNKNOWN: {comparison} has no stored currency; the unit of {mode} cannot be confirmed.");
+            }
+            else if (primaryCurrency is not null && !string.Equals(primaryCurrency, comparisonCurrency, StringComparison.OrdinalIgnoreCase))
+            {
+                warnings.Add($"CURRENCY_MISMATCH: {primarySymbol} ({primaryCurrency}) vs {comparison} ({comparisonCurrency}): {mode} mixes price units.");
+            }
+        }
+    }
+
+    private async Task<string?> ReadCurrencyAsync(string symbol, CancellationToken cancellationToken)
+    {
+        try
+        {
+            TickerMetadata? meta = await _gateway.GetStoredTickerMetadataAsync(symbol, cancellationToken).ConfigureAwait(false);
+            if (meta is not { } metadata || string.IsNullOrWhiteSpace(metadata.Currency))
+            {
+                return null;
+            }
+
+            string trimmed = metadata.Currency.Trim();
+            return string.Equals(trimmed, "N/A", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : trimmed.ToUpperInvariant();
+        }
+        catch (DataUnavailableException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

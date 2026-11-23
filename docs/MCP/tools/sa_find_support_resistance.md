@@ -4,7 +4,7 @@
 
 ## Contract & Constraints
 
-Extracts support and resistance price levels, hit counts, and strength scores using Singular Spectrum Analysis (SSA). Computes active nearest support/resistance levels and distance ratios relative to the current price. Read-only. Causal as of endDate (bars after it are never read), but the SSA reconstruction smooths over the whole loaded window including its last bar, so the levels are not prefix-invariant: a level can move when later bars are added. clusterTolerance is a multiplier of residualStdDev; effectiveClusterTolerance is the resulting price distance.
+Extracts support and resistance price levels, hit counts, and strength scores using Singular Spectrum Analysis (SSA). Computes active nearest support/resistance levels and distance ratios relative to the current price. `kind` (`Support` | `Resistance`) indicates extremum origin (local minima vs local maxima), not price side relative to `currentPrice`. `levels.Count <= maxLevels` strictly holds: when `maxLevels >= 2`, non-null `activeSupport` and `activeResistance` are reserved first before filling remaining slots by `strengthScore` descending then `price` descending; when `maxLevels == 1` and both active levels exist, selection uses (1) smaller exact `decimal` `|price - currentPrice|` (skipped when `currentPrice == 0`), (2) higher `strengthScore`, (3) `activeSupport`. Read-only. Causal as of endDate (bars after it are never read), but the SSA reconstruction smooths over the whole loaded window including its last bar, so the levels are not prefix-invariant: a level can move when later bars are added. clusterTolerance is a multiplier of residualStdDev; effectiveClusterTolerance is the resulting price distance.
 
 ## Arguments (`inputSchema`)
 

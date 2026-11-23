@@ -268,7 +268,8 @@ internal static class McpServerComposition
             }
 
             var capabilitiesTool = new GetCapabilitiesTool(catalog, screenerCatalog, executionSettings, compactDefaults);
-            var settingsTool = new GetSettingsTool(settings);
+            var dataIdentity = new InstanceDataIdentity(gateway, marketData.DailyDataPath);
+            var settingsTool = new GetSettingsTool(settings, dataIdentity);
             var modelRegistry = services.GetService<IRlModelGenerationRegistry>() as ReadOnlyModelGenerationRegistry ?? new ReadOnlyModelGenerationRegistry();
 
             var calculateIndicators = new CalculateIndicatorsTool(gateway, symbols, catalog, indicatorBinder, new IndicatorChainPlan(factory), sanitizer, limits, compactDefaults);
@@ -314,11 +315,11 @@ internal static class McpServerComposition
                 new CalculateRelativePerformanceTool(gateway, symbols, sanitizer, limits, compactDefaults),
                 new CalculateCrossAssetStatsTool(gateway, symbols, groupResolver, limits, resultHandles, compactDefaults),
                 new CalculateMarketBreadthTool(gateway, symbols, groupResolver, limits, resultHandles),
-                new CheckPortfolioRlPreflightTool(symbols, services.GetService<IRlPortfolioService>()),
-                new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders, sanitizer: sanitizer),
+                new CheckPortfolioRlPreflightTool(symbols, services.GetService<IRlPortfolioService>(), gateway, sanitizer),
+                new CheckRlPlaybackPreflightTool(symbols, services.GetService<IRlModelGenerationRegistry>(), sourceFolders: rlSourceFolders, sanitizer: sanitizer, gateway: gateway),
                 new ListModelsTool(symbols, modelRegistry, limits),
                 new GetModelExplanationTool(gateway, symbols, modelRegistry),
-                new GetSymbolCoverageTool(gateway, limits),
+                new GetSymbolCoverageTool(gateway, limits, dataIdentity),
                 new ValidateConditionTreeTool(gateway, screenerBinder, backtestBinder, limits),
                 new GetTemplateDetailTool(gateway, templateWriter),
                 new BuildTemplateTool(templateBuilder),
@@ -415,7 +416,7 @@ internal static class McpServerComposition
                         "Current settings",
                         "The allow-listed application settings (limits and defaults); the same content as sa_get_settings. File locations and credentials are never included.",
                         McpResourceRegistry.JsonMimeType,
-                        () => settingsTool.Build()),
+                        cancellationToken => settingsTool.BuildAsync(null, cancellationToken)),
                     new McpResource(
                         GetActiveWorkspaceTool.ResourceUri,
                         "Active workspace",

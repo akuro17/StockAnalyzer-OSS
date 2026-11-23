@@ -44,7 +44,7 @@ public interface IReadOnlyStockAnalyzerGateway
     /// <exception cref="DataUnavailableException">The stored file exists but could not be read.</exception>
     Task<TickerMetadata?> GetStoredTickerMetadataAsync(string symbol, CancellationToken cancellationToken = default);
 
-    /// <summary>Last write time of the stored time series of <paramref name="symbol"/>, or null.</summary>
+    /// <summary>Latest stored bar timestamp (e.g. DuckDB <c>MAX(date)</c>) of <paramref name="symbol"/>, or null when nothing is stored.</summary>
     Task<DateTimeOffset?> GetTimeSeriesLastUpdatedAsync(string symbol, CancellationToken cancellationToken = default);
 
     /// <summary>Stored history coverage summary (available bar counts and earliest/latest dates across supported timeframes) for <paramref name="symbol"/>.</summary>

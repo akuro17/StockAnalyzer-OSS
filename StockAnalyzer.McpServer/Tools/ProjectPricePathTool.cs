@@ -251,6 +251,7 @@ internal sealed class ProjectPricePathTool : IMcpTool
             writer.WriteNumber("horizonBars", horizon);
             writer.WriteString("disclaimer", McpDisclaimerConstants.ResearchNotAdvice);
             writer.WriteBoolean("isEmpty", isEmpty);
+            ProjectionEmptyReason.WriteIfEmpty(writer, isEmpty, canonicalMethod, loaded.Count, arimaD);
 
             writer.WriteStartArray("projectedPath");
             if (!isEmpty)

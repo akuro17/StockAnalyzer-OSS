@@ -173,6 +173,10 @@ internal sealed class RunBacktestTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"{StartArgument} must not be after {EndArgument}.", StartArgument);
         }
 
+        IReadOnlyList<CandleData> coverageBars = await BacktestBarIntegrityValidator.ResolveCoverageWindowAsync(
+            _gateway, symbol, timeFrame, stored, effectiveStart, _limits.MaxCandlesPerRequest, cancellationToken).ConfigureAwait(false);
+        BacktestBarIntegrityValidator.ThrowIfInvalid(coverageBars, symbol, timeFrame, SymbolArgument);
+
         if (diagnosticsRequest.Curve == EquityCurveResolution.Bar)
         {
             // The stored bars inside the period are a lower bound of the evaluated bars, so a refusal here is never wrong and saves the run.
@@ -205,12 +209,29 @@ internal sealed class RunBacktestTool : IMcpTool
         }
         catch (ArgumentException error)
         {
+            if (BacktestBarIntegrityValidator.IsCandleInvariantFailure(error)
+                && await BacktestBarIntegrityValidator.TryDiagnoseFullHistoryAsync(_gateway, symbol, timeFrame, SymbolArgument, cancellationToken).ConfigureAwait(false) is { } diagnosed)
+            {
+                throw diagnosed;
+            }
+
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"The backtest input was rejected: {error.Message.Split(Environment.NewLine)[0]}", hint: "Check the dates and the conditions.");
         }
 
         BacktestDiagnostics? diagnostics = diagnosticsRequest.Any ? BacktestDiagnostics.Compute(artifact, diagnosticsRequest, _limits) : null;
         JsonElement? accountArguments = arguments.TryGetProperty(BacktestSettingsBinder.AccountArgument, out JsonElement accountElement) ? accountElement : null;
-        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, accountArguments, conditions, maxTrades, template, symbolWarnings, diagnostics, compactReport, compactRows));
+        var advisoryWarnings = new List<string>();
+        decimal? highestClose = BacktestAdvisory.HighestCloseInRange(coverageBars, effectiveStart, effectiveEnd);
+        int totalTrades = artifact.Report?.TotalTrades ?? artifact.Result.Trades.Length;
+        if (BacktestAdvisory.ForSingleSizing(settings.Configuration, highestClose, totalTrades, BacktestAdvisory.HasExplicitSizingParameter(accountArguments), _limits) is { } sizingWarning)
+        {
+            advisoryWarnings.Add(sizingWarning);
+        }
+        if (BacktestAdvisory.ForSingleSampleSize(artifact.Metadata.SampleCount, _limits) is { } sampleWarning)
+        {
+            advisoryWarnings.Add(sampleWarning);
+        }
+        return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, accountArguments, conditions, maxTrades, template, symbolWarnings, advisoryWarnings, diagnostics, compactReport, compactRows));
     }
 
     internal static DateTime ToUtc(DateOnly date) => DateTime.SpecifyKind(date.ToDateTime(TimeOnly.MinValue), DateTimeKind.Utc);
@@ -250,6 +271,7 @@ internal sealed class RunBacktestTool : IMcpTool
         int maxTrades,
         TemplateReference? template,
         IReadOnlyList<string> symbolWarnings,
+        IReadOnlyList<string> advisoryWarnings,
         BacktestDiagnostics? diagnostics,
         bool compactReport,
         bool compactRows)
@@ -316,6 +338,7 @@ internal sealed class RunBacktestTool : IMcpTool
         {
             notes.Add("No stored bar lies inside the period: nothing was evaluated, so every metric is undefined.");
         }
+        notes.AddRange(advisoryWarnings);
 
         if (notes.Count > 0)
         {

@@ -205,8 +205,15 @@ internal sealed class FindSupportResistanceTool : IMcpTool
             .ThenByDescending(l => l.Price)
             .ToList();
 
-        bool truncated = sortedLevels.Count > maxLevels;
-        var returnedLevels = truncated ? sortedLevels.Take(maxLevels).ToList() : sortedLevels;
+        SsaSupportResistanceLevel? activeSup = result.ActiveSupport.HasValue
+            ? sortedLevels.FirstOrDefault(l => !l.IsResistance && l.Price == result.ActiveSupport.Value)
+            : null;
+        SsaSupportResistanceLevel? activeRes = result.ActiveResistance.HasValue
+            ? sortedLevels.FirstOrDefault(l => l.IsResistance && l.Price == result.ActiveResistance.Value)
+            : null;
+
+        var returnedLevels = SelectLevels(sortedLevels, activeSup, activeRes, maxLevels, currentPrice);
+        bool truncated = sortedLevels.Count > returnedLevels.Count;
 
         return ToolJson.Build(writer =>
         {
@@ -292,5 +299,78 @@ internal sealed class FindSupportResistanceTool : IMcpTool
 
             writer.WriteEndObject();
         });
+    }
+
+    internal static IReadOnlyList<SsaSupportResistanceLevel> SelectLevels(
+        IReadOnlyList<SsaSupportResistanceLevel> sortedLevels,
+        SsaSupportResistanceLevel? activeSup,
+        SsaSupportResistanceLevel? activeRes,
+        int maxLevels,
+        decimal currentPrice)
+    {
+        if (maxLevels <= 0 || sortedLevels.Count == 0)
+        {
+            return Array.Empty<SsaSupportResistanceLevel>();
+        }
+
+        if (maxLevels == 1 && activeSup is not null && activeRes is not null)
+        {
+            return new[] { ChooseActiveWinnerForSingleSlot(activeSup, activeRes, currentPrice) };
+        }
+
+        var selected = new List<SsaSupportResistanceLevel>(Math.Min(maxLevels, sortedLevels.Count));
+        var seen = new HashSet<SsaSupportResistanceLevel>(ReferenceEqualityComparer.Instance);
+
+        void TryAdd(SsaSupportResistanceLevel? level)
+        {
+            if (level is not null && selected.Count < maxLevels && seen.Add(level))
+            {
+                selected.Add(level);
+            }
+        }
+
+        TryAdd(activeSup);
+        TryAdd(activeRes);
+
+        foreach (var level in sortedLevels)
+        {
+            if (selected.Count >= maxLevels)
+            {
+                break;
+            }
+
+            TryAdd(level);
+        }
+
+        selected.Sort((a, b) =>
+        {
+            int strengthCmp = b.StrengthScore.CompareTo(a.StrengthScore);
+            return strengthCmp != 0 ? strengthCmp : b.Price.CompareTo(a.Price);
+        });
+
+        return selected;
+    }
+
+    internal static SsaSupportResistanceLevel ChooseActiveWinnerForSingleSlot(
+        SsaSupportResistanceLevel activeSup,
+        SsaSupportResistanceLevel activeRes,
+        decimal currentPrice)
+    {
+        if (currentPrice != 0m)
+        {
+            decimal supDist = Math.Abs((decimal)activeSup.Price - currentPrice);
+            decimal resDist = Math.Abs((decimal)activeRes.Price - currentPrice);
+            if (supDist != resDist)
+            {
+                return supDist < resDist ? activeSup : activeRes;
+            }
+        }
+
+        if (activeSup.StrengthScore != activeRes.StrengthScore)
+        {
+            return activeSup.StrengthScore > activeRes.StrengthScore ? activeSup : activeRes;
+        }
+
+        return activeSup;
     }
 }

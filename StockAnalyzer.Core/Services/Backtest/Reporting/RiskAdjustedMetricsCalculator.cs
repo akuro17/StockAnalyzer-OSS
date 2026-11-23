@@ -305,7 +305,7 @@ internal static class RiskAdjustedMetricsCalculator
         (double mean, double downsideVariance) = MeanAndDownsideVariance(y, cancellationToken);
         if (!double.IsFinite(mean) || !double.IsFinite(downsideVariance)) return FailedBootstrap(NonFinite());
         if (downsideVariance == 0d) return FailedBootstrap(DownsideZero());
-        if (m < 20) return FailedBootstrap(TooSmall());
+        if (m < BacktestReportGenerator.MinReturnSamplesForRatioMetrics) return FailedBootstrap(TooSmall());
 
         if (samplingStatus is { } status && status != SamplingStatus.Verified)
         {

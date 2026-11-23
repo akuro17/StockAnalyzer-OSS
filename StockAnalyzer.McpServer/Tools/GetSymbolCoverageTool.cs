@@ -15,18 +15,20 @@ internal sealed class GetSymbolCoverageTool : IMcpTool
 
     private readonly IReadOnlyStockAnalyzerGateway _gateway;
     private readonly McpLimits _limits;
+    private readonly InstanceDataIdentity? _identity;
 
-    public GetSymbolCoverageTool(IReadOnlyStockAnalyzerGateway gateway, McpLimits limits)
+    public GetSymbolCoverageTool(IReadOnlyStockAnalyzerGateway gateway, McpLimits limits, InstanceDataIdentity? identity = null)
     {
         _gateway = gateway;
         _limits = limits;
+        _identity = identity;
     }
 
     public string Name => "sa_get_symbol_coverage";
 
     public string Description =>
-        "Retrieves time-series data coverage (stored bar counts, earliest and latest timestamps across D1, W1, MN1) " +
-        "and metadata status for the given symbols. Duplicate symbols are returned once. " +
+        "Retrieves time-series data coverage (stored bar counts, earliest and latest timestamps, invalidBarCount, and firstInvalidBarDate across D1, W1, MN1), " +
+        "metadata status, and instance identity (dataSetId, tickerCount, latestBarDate) for the given symbols. Duplicate symbols are returned once. " +
         "A time frame whose stored bars could not be read is named in unreadableTimeFrames, not reported as having no data. " +
         $"At most {_limits.MaxSymbolsPerMetadataCall} symbols per call. Read-only.";
 
@@ -73,9 +75,18 @@ internal sealed class GetSymbolCoverageTool : IMcpTool
             results.Add(coverage);
         }
 
+        InstanceIdentitySnapshot? identity = _identity is not null
+            ? await _identity.GetForCoverageAsync(results, cancellationToken).ConfigureAwait(false)
+            : null;
+
         return ToolJson.Build(writer =>
         {
             writer.WriteStartObject();
+            if (identity is not null)
+            {
+                InstanceDataIdentity.Write(writer, identity);
+            }
+
             writer.WriteStartArray("results");
 
             foreach (SymbolCoverage coverage in results)
@@ -102,6 +113,12 @@ internal sealed class GetSymbolCoverageTool : IMcpTool
                     writer.WriteNumber("barCount", tf.BarCount);
                     writer.WriteString("earliestTimestamp", ToolJson.FormatDate(tf.EarliestTimestamp));
                     writer.WriteString("latestTimestamp", ToolJson.FormatDate(tf.LatestTimestamp));
+                    writer.WriteNumber("invalidBarCount", tf.InvalidBarCount);
+                    if (tf.InvalidBarCount >= 1 && tf.FirstInvalidBarTimestamp is { } firstInvalid)
+                    {
+                        writer.WriteString("firstInvalidBarDate", ToolJson.FormatDate(firstInvalid));
+                    }
+
                     writer.WriteEndObject();
                 }
                 writer.WriteEndArray();

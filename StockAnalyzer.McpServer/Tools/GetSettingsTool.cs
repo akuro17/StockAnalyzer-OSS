@@ -10,18 +10,20 @@ internal sealed class GetSettingsTool : IMcpTool
     private const string SectionArgument = "section";
 
     private readonly IStockAnalyzerSettings _settings;
+    private readonly InstanceDataIdentity? _identity;
 
-    public GetSettingsTool(IStockAnalyzerSettings settings)
+    public GetSettingsTool(IStockAnalyzerSettings settings, InstanceDataIdentity? identity = null)
     {
         _settings = settings;
+        _identity = identity;
     }
 
     public string Name => "sa_get_settings";
 
     public string Description =>
         "Returns selected StockAnalyzer settings that shape what the tools accept: the default symbol, screener and backtest condition limits, " +
-        "the zigzag threshold (percent) and the prediction window. File locations, credentials and interface settings are never returned. " +
-        "Without section, all sections are returned.";
+        "the zigzag threshold (percent) and the prediction window, plus dataSetId, tickerCount, and latestBarDate for the active market-data folder. " +
+        "File locations, credentials and interface settings are never returned. Without section, all sections are returned.";
 
     public bool IsHeavy => false;
 
@@ -32,16 +34,24 @@ internal sealed class GetSettingsTool : IMcpTool
         .Build();
 
     public Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
-        => Task.FromResult(Build(ToolArgs.String(arguments, SectionArgument)));
+        => BuildAsync(ToolArgs.String(arguments, SectionArgument), cancellationToken);
 
     /// <summary>The settings JSON of one section, or of every section when <paramref name="section"/> is null (also the content of the settings resource).</summary>
-    public string Build(string? section = null)
+    public async Task<string> BuildAsync(string? section = null, CancellationToken cancellationToken = default)
     {
         IEnumerable<string> sections = section is null ? McpSettingsExposure.Sections : new[] { section };
+        InstanceIdentitySnapshot? identity = _identity is not null
+            ? await _identity.GetForSettingsAsync(cancellationToken).ConfigureAwait(false)
+            : null;
 
         return ToolJson.Build(writer =>
         {
             writer.WriteStartObject();
+            if (identity is not null)
+            {
+                InstanceDataIdentity.Write(writer, identity);
+            }
+
             writer.WriteStartObject("settings");
             foreach (string name in sections)
             {

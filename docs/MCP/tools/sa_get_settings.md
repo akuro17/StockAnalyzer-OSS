@@ -4,7 +4,7 @@
 
 ## Contract & Constraints
 
-Returns selected StockAnalyzer settings that shape what the tools accept: the default symbol, screener and backtest condition limits, the zigzag threshold (percent) and the prediction window. File locations, credentials and interface settings are never returned. Without section, all sections are returned.
+Returns dataset identity (`dataSetId` matching `^[0-9a-f]{8}$`, registered `tickerCount`, and `latestBarDate`, which is `null` when `tickerCount == 0`; two distinct path spellings to the same directory may produce different `dataSetId` hashes) alongside selected StockAnalyzer settings that shape what the tools accept: the default symbol, screener and backtest condition limits, the zigzag threshold (percent) and the prediction window. File locations, credentials and interface settings are never returned. Without section, all sections are returned.
 
 ## Arguments (`inputSchema`)
 

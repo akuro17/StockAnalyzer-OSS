@@ -184,11 +184,7 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
 
             if (candles.Count > 0)
             {
-                timeFrames.Add(new TimeFrameCoverage(
-                    tf,
-                    candles.Count,
-                    candles[0].Timestamp,
-                    candles[^1].Timestamp));
+                timeFrames.Add(BuildTimeFrameCoverage(tf, candles));
             }
         }
 
@@ -226,11 +222,7 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
 
             if (candles.Count > 0)
             {
-                synthTimeFrames.Add(new TimeFrameCoverage(
-                    tf,
-                    candles.Count,
-                    candles[0].Timestamp,
-                    candles[^1].Timestamp));
+                synthTimeFrames.Add(BuildTimeFrameCoverage(tf, candles));
             }
         }
 
@@ -244,6 +236,33 @@ public sealed class ReadOnlyStockAnalyzerGateway : IReadOnlyStockAnalyzerGateway
         {
             UnreadableTimeFrames = synthUnreadable,
         };
+    }
+
+    private static TimeFrameCoverage BuildTimeFrameCoverage(TimeFrame timeFrame, IReadOnlyList<CandleData> candles)
+    {
+        int invalidCount = 0;
+        DateTime? firstInvalid = null;
+        for (int i = 0; i < candles.Count; i++)
+        {
+            CandleData bar = candles[i];
+            if (!CandleInvariant.IsValidBar(bar))
+            {
+                if (firstInvalid is null || bar.Timestamp < firstInvalid.Value)
+                {
+                    firstInvalid = bar.Timestamp;
+                }
+
+                invalidCount++;
+            }
+        }
+
+        return new TimeFrameCoverage(
+            timeFrame,
+            candles.Count,
+            candles[0].Timestamp,
+            candles[^1].Timestamp,
+            invalidCount,
+            firstInvalid);
     }
 
     /// <summary>Answers daily requests from bars that were already read, so aggregating them needs no second read of the file.</summary>

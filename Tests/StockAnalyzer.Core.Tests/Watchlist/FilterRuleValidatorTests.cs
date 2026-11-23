@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Services.Watchlist;
 using Xunit;
@@ -22,8 +23,10 @@ public sealed class FilterRuleValidatorTests
         ["=="] = "FTF",
         ["="] = "FTF",
         ["Equals"] = "FTF",
+        ["Equal"] = "FTF",
         ["!="] = "TFT",
         ["NotEquals"] = "TFT",
+        ["NotEqual"] = "TFT",
         [">"] = "TFF",
         ["GreaterThan"] = "TFF",
         [">="] = "TTF",
@@ -41,11 +44,14 @@ public sealed class FilterRuleValidatorTests
         ["!*="] = "FFT",
         ["NotContains"] = "FFT",
         ["!Contains"] = "FFT",
+        ["DoesNotContain"] = "FFT",
         ["=="] = "FTF",
         ["="] = "FTF",
         ["Equals"] = "FTF",
+        ["Equal"] = "FTF",
         ["!="] = "TFT",
         ["NotEquals"] = "TFT",
+        ["NotEqual"] = "TFT",
     };
 
     private static readonly Dictionary<string, string> TagVectors = new(StringComparer.OrdinalIgnoreCase)
@@ -56,11 +62,14 @@ public sealed class FilterRuleValidatorTests
         ["!*="] = "FTT",
         ["NotContains"] = "FTT",
         ["!Contains"] = "FTT",
+        ["DoesNotContain"] = "FTT",
         ["=="] = "FTF",
         ["="] = "FTF",
         ["Equals"] = "FTF",
+        ["Equal"] = "FTF",
         ["!="] = "TFT",
         ["NotEquals"] = "TFT",
+        ["NotEqual"] = "TFT",
     };
 
     private static string Vector(string field, string op, params string[] values)
@@ -260,5 +269,62 @@ public sealed class FilterRuleValidatorTests
     public void ANullRuleIsRejected()
     {
         Assert.Throws<ArgumentNullException>(() => FilterRuleValidator.Validate(null!));
+    }
+
+    [Fact]
+    public void EveryScreenerComparisonOperatorIsAcceptedAndAppearsInHints()
+    {
+        foreach (ComparisonOperator op in Enum.GetValues<ComparisonOperator>())
+        {
+            string name = op.ToString();
+            string lower = name.ToLowerInvariant();
+            bool isTextOnly = op is ComparisonOperator.Contains or ComparisonOperator.DoesNotContain;
+            bool isOrdering = op is ComparisonOperator.GreaterThan
+                or ComparisonOperator.GreaterThanOrEqual
+                or ComparisonOperator.LessThan
+                or ComparisonOperator.LessThanOrEqual;
+
+            if (isTextOnly)
+            {
+                Assert.Null(FilterRuleValidator.Validate(Rule("Sector", name, "Tech")));
+                Assert.Null(FilterRuleValidator.Validate(Rule("Sector", lower, "Tech")));
+                Assert.Null(FilterRuleValidator.Validate(Rule("Tag", name, "AI")));
+                Assert.Contains(name, FilterRuleValidator.Validate(Rule("Sector", "BOGUS", "x"))!.Message);
+                Assert.Contains(name, FilterRuleValidator.Validate(Rule("Tag", "BOGUS", "x"))!.Message);
+
+                Assert.Equal(FilterRuleProblemPart.Operator, FilterRuleValidator.Validate(Rule("Close", name, "100"))!.Part);
+            }
+            else if (isOrdering)
+            {
+                Assert.Null(FilterRuleValidator.Validate(Rule("Close", name, "100")));
+                Assert.Null(FilterRuleValidator.Validate(Rule("Close", lower, "100")));
+                Assert.Contains(name, FilterRuleValidator.Validate(Rule("Close", "BOGUS", "1"))!.Message);
+
+                Assert.Equal(FilterRuleProblemPart.Operator, FilterRuleValidator.Validate(Rule("Sector", name, "x"))!.Part);
+                Assert.Equal(FilterRuleProblemPart.Operator, FilterRuleValidator.Validate(Rule("Tag", name, "x"))!.Part);
+            }
+            else
+            {
+                Assert.Null(FilterRuleValidator.Validate(Rule("Close", name, "100")));
+                Assert.Null(FilterRuleValidator.Validate(Rule("Close", lower, "100")));
+                Assert.Null(FilterRuleValidator.Validate(Rule("Sector", name, "Technology")));
+                Assert.Null(FilterRuleValidator.Validate(Rule("Tag", name, "AI, Cloud")));
+                Assert.Contains(name, FilterRuleValidator.Validate(Rule("Close", "BOGUS", "1"))!.Message);
+                Assert.Contains(name, FilterRuleValidator.Validate(Rule("Sector", "BOGUS", "x"))!.Message);
+                Assert.Contains(name, FilterRuleValidator.Validate(Rule("Tag", "BOGUS", "x"))!.Message);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("Close", "0", "100")]
+    [InlineData("Close", "1", "100")]
+    [InlineData("Sector", "6", "Tech")]
+    [InlineData("Tag", "7", "AI")]
+    public void NumericEnumStringsAreNotAcceptedAsOperatorNames(string field, string op, string value)
+    {
+        FilterRuleProblem? problem = FilterRuleValidator.Validate(Rule(field, op, value));
+        Assert.NotNull(problem);
+        Assert.Equal(FilterRuleProblemPart.Operator, problem.Part);
     }
 }

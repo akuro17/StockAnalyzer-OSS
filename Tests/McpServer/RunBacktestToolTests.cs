@@ -134,7 +134,9 @@ public sealed class RunBacktestToolTests : IDisposable
         JsonElement roots = result.GetProperty("conditionRoots");
         Assert.Equal(new[] { "EntryLong", "ExitLong" }, roots.EnumerateArray().Select(r => r.GetProperty("root").GetString()).ToArray());
         Assert.Equal("Close > Close [1 bars back]", roots[0].GetProperty("text").GetString());
-        Assert.False(result.TryGetProperty("warnings", out _));
+        string[] warnings = result.GetProperty("warnings").EnumerateArray().Select(w => w.GetString()!).ToArray();
+        Assert.Single(warnings);
+        Assert.StartsWith("SIZING_NOTIONAL_SMALL:", warnings[0], StringComparison.Ordinal);
     }
 
     [Fact]

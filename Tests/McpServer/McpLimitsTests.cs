@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Watchlist;
+using StockAnalyzer.Core.Services.Backtest.Reporting;
 using StockAnalyzer.McpServer.Limits;
 
 namespace StockAnalyzer.Tests.McpServer;
@@ -75,6 +76,8 @@ public class McpLimitsTests
         Assert.Equal(50, limits.MaxImageSavedDrawings);
         Assert.Equal(1024 * 1024, limits.MaxDrawingFileBytes);
         Assert.Equal(200, limits.MaxImageBarsListed);
+        Assert.Equal(BacktestReportGenerator.MinReturnSamplesForRatioMetrics, limits.BacktestMinBarsForRatioMetrics);
+        Assert.Equal(0.01m, limits.BacktestSizingWarnRatio);
         Assert.Equal(WatchlistConstants.MaxRelativePerformanceTargets, limits.MaxComparisonTargets);
         Assert.Equal(McpResponseTokenLimits.Default, limits.MaxResponseTokens);
         Assert.Equal(1, McpLimitsContract.MaxConcurrentToolCalls);
@@ -401,5 +404,31 @@ public class McpLimitsTests
         Assert.Equal(7, limits.MaxComparisonTargets);
         Assert.Equal(200, limits.DefaultCandleCount);
         McpLimitsContract.Validate(limits);
+    }
+
+    [Theory]
+    [InlineData(2, 0.0)]
+    [InlineData(1000, 1.0)]
+    public void TheEdgesOfTheBacktestAdvisoryBandsAreAccepted(int minBars, decimal sizingWarnRatio)
+    {
+        McpLimitsContract.Validate(new McpLimits
+        {
+            BacktestMinBarsForRatioMetrics = minBars,
+            BacktestSizingWarnRatio = sizingWarnRatio,
+        });
+    }
+
+    [Theory]
+    [InlineData(1, 0.01)]
+    [InlineData(1001, 0.01)]
+    [InlineData(20, -0.001)]
+    [InlineData(20, 1.01)]
+    public void OutOfBandBacktestAdvisorySettingsAreRejected(int minBars, decimal sizingWarnRatio)
+    {
+        Assert.Throws<McpLimitsException>(() => McpLimitsContract.Validate(new McpLimits
+        {
+            BacktestMinBarsForRatioMetrics = minBars,
+            BacktestSizingWarnRatio = sizingWarnRatio,
+        }));
     }
 }

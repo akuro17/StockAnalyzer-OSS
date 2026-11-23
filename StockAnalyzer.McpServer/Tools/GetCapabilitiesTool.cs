@@ -15,6 +15,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
     private const string FilterArgument = "indicatorTypeFilter";
     private const string DetailsArgument = "includeDetails";
     private const string ScreenerCatalogArgument = "includeScreenerCatalog";
+    private const string RegisteredOnlyArgument = "registeredOnly";
 
     /// <summary>The unit of every period parameter and result length the tools use, whatever the time frame.</summary>
     public const string PeriodUnit = "bars";
@@ -50,6 +51,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
         .StringArray(FilterArgument, "Only these indicator types (case-insensitive names, for example RSI). Turns the details on unless includeDetails is false.", minItems: 1)
         .Boolean(DetailsArgument, "Add parameters, output series and flags to each indicator. Default: true when indicatorTypeFilter is given, otherwise false.")
         .Boolean(ScreenerCatalogArgument, "Add the screener catalogue (columns, criteria, price sources, operators). Default false.")
+        .Boolean(RegisteredOnlyArgument, "Only return indicators that are registered for calculation (isRegistered true). Default false.")
         .Build();
 
     public string? OutputSchemaJson => OutputSchema;
@@ -102,6 +104,7 @@ internal sealed class GetCapabilitiesTool : IMcpTool
         IReadOnlyList<string>? filter = ToolArgs.StringArray(arguments, FilterArgument);
         bool details = ToolArgs.Boolean(arguments, DetailsArgument) ?? filter is not null;
         bool screener = ToolArgs.Boolean(arguments, ScreenerCatalogArgument) ?? false;
+        bool registeredOnly = ToolArgs.Boolean(arguments, RegisteredOnlyArgument) ?? false;
 
         IEnumerable<IndicatorCatalogEntry> selected = _catalog.Entries;
         if (filter is not null)
@@ -118,6 +121,11 @@ internal sealed class GetCapabilitiesTool : IMcpTool
         if (category is not null)
         {
             selected = selected.Where(entry => string.Equals(entry.Category, category, StringComparison.Ordinal));
+        }
+
+        if (registeredOnly)
+        {
+            selected = selected.Where(entry => entry.IsRegistered);
         }
 
         return Task.FromResult(BuildJson(selected.ToList(), details, screener, includeExecution: true));

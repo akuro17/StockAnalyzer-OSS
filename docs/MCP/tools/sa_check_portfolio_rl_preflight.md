@@ -4,7 +4,7 @@
 
 ## Contract & Constraints
 
-Performs preflight checks for portfolio reinforcement learning across 2 to 100 tickers without modifying Data or executing training. Checks date alignment, union calendar length, holdout splits, and per-symbol readiness.
+Performs preflight checks for portfolio reinforcement learning across 2 to 100 tickers without modifying Data or executing training. Checks date alignment, union calendar length, holdout splits, and per-symbol readiness. Each `symbolDetails[]` entry always includes a path-free `detail` string; when `blocker` is `NoUsableData`, `symbolDetails[]` still reports per-symbol probe entries, and `ReadError` entries caused by invalid stored OHLCV bars are re-scanned at the MCP layer with `CandleInvariant` to surface symbol, date, O/H/L/C/V, and violation diagnostics.
 
 ## Arguments (`inputSchema`)
 

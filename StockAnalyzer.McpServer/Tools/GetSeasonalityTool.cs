@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.ReadOnly;
+using StockAnalyzer.Core.Services;
 using StockAnalyzer.McpServer.Limits;
 
 namespace StockAnalyzer.McpServer.Tools;
@@ -90,6 +91,8 @@ internal sealed class GetSeasonalityTool : IMcpTool
         int years = ToolArgs.PositiveWithin(arguments, YearsArgument, Math.Min(DefaultYears, _limits.MaxSeasonalityYears), _limits.MaxSeasonalityYears);
         int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments, _compactDefaults ? SeriesOutputOptions.DefaultCompactDecimalPlaces : null);
 
+        DateTime? referenceDate = await _loader.ReferenceDateAsync(symbol, endDate, cancellationToken).ConfigureAwait(false);
+
         List<CandleData> loaded;
         if (endDate is not null)
         {
@@ -131,6 +134,11 @@ internal sealed class GetSeasonalityTool : IMcpTool
         SeasonalityMonthlyReturnsTable table = SeasonalityMonthlyReturnsEngine.Build(chartResult);
 
         string[] abbreviatedMonths = CultureInfo.InvariantCulture.DateTimeFormat.AbbreviatedMonthNames;
+        DateTime lastBarTs = loaded[^1].Timestamp;
+        DateTime lastBarPeriodEnd = TimeFrameAggregator.PeriodEnd(lastBarTs, TimeFrame.MN1);
+        bool lastBarPartial = referenceDate is { } refDt && lastBarPeriodEnd.Date > refDt.Date;
+        int lastBarMonth = lastBarTs.Month;
+        int lastBarCycleYear = startMonth <= 1 || lastBarMonth >= startMonth ? lastBarTs.Year : lastBarTs.Year - 1;
 
         return ToolJson.Build(writer =>
         {
@@ -139,6 +147,7 @@ internal sealed class GetSeasonalityTool : IMcpTool
             writer.WriteString("timeFrame", timeFrame.ToString());
             writer.WriteString("asOfDate", ToolJson.FormatDate(loaded[^1].Timestamp));
             writer.WriteNumber("startMonth", startMonth);
+            PartialBarOutput.Write(writer, referenceDate, lastBarPeriodEnd, lastBarPartial, droppedPartialBar: false);
 
             writer.WriteStartArray("years");
             foreach (int y in table.Years)
@@ -172,6 +181,16 @@ internal sealed class GetSeasonalityTool : IMcpTool
                     {
                         writer.WriteNull("returnRatio");
                     }
+
+                    if (lastBarPartial && ret.HasValue && table.Years[y] == lastBarCycleYear)
+                    {
+                        int cellMonth = ((startMonth - 1 + r) % 12) + 1;
+                        if (isAnnual || cellMonth == lastBarMonth)
+                        {
+                            writer.WriteBoolean("partial", true);
+                        }
+                    }
+
                     writer.WriteEndObject();
                 }
                 writer.WriteEndArray();

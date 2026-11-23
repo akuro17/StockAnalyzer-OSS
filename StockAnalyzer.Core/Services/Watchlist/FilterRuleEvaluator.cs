@@ -68,8 +68,8 @@ public static class FilterRuleEvaluator
                 filterVal = GetPropertyValue(item, rule.Value)?.ToString() ?? string.Empty;
             }
 
-            var op = rule.Operator?.Trim();
-            if (string.IsNullOrEmpty(op) || string.Equals(op, "*=", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "Contains", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "ContainsTag", StringComparison.OrdinalIgnoreCase))
+            var op = FilterRuleValidator.NormalizeOperator(rule.Operator);
+            if (string.IsNullOrEmpty(op) || string.Equals(op, "*=", StringComparison.OrdinalIgnoreCase) || string.Equals(op, "ContainsTag", StringComparison.OrdinalIgnoreCase))
             {
                 return ContainsTag(value, filterVal);
             }
@@ -131,26 +131,26 @@ public static class FilterRuleEvaluator
 
     public static bool EvaluateNumericOp(decimal a, decimal b, string? op)
     {
-        var cleanOp = op?.Trim();
+        var cleanOp = FilterRuleValidator.NormalizeOperator(op);
         if (string.Equals(cleanOp, "==", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "Equals", StringComparison.OrdinalIgnoreCase))
             return a == b;
         if (string.Equals(cleanOp, "!=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "NotEquals", StringComparison.OrdinalIgnoreCase))
             return a != b;
-        if (string.Equals(cleanOp, ">", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "GreaterThan", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(cleanOp, ">", StringComparison.OrdinalIgnoreCase))
             return a > b;
-        if (string.Equals(cleanOp, ">=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "GreaterThanOrEqual", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(cleanOp, ">=", StringComparison.OrdinalIgnoreCase))
             return a >= b;
-        if (string.Equals(cleanOp, "<", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "LessThan", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(cleanOp, "<", StringComparison.OrdinalIgnoreCase))
             return a < b;
-        if (string.Equals(cleanOp, "<=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "LessThanOrEqual", StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(cleanOp, "<=", StringComparison.OrdinalIgnoreCase))
             return a <= b;
         return false;
     }
 
     public static bool EvaluateTextOp(string strVal, string filterStr, string? op)
     {
-        var cleanOp = op?.Trim();
-        if (string.IsNullOrEmpty(cleanOp) || string.Equals(cleanOp, "*=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "Contains", StringComparison.OrdinalIgnoreCase))
+        var cleanOp = FilterRuleValidator.NormalizeOperator(op);
+        if (string.IsNullOrEmpty(cleanOp) || string.Equals(cleanOp, "*=", StringComparison.OrdinalIgnoreCase))
             return strVal.Contains(filterStr, StringComparison.OrdinalIgnoreCase);
         if (string.Equals(cleanOp, "!*=", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "NotContains", StringComparison.OrdinalIgnoreCase) || string.Equals(cleanOp, "!Contains", StringComparison.OrdinalIgnoreCase))
             return !strVal.Contains(filterStr, StringComparison.OrdinalIgnoreCase);

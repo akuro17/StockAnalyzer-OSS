@@ -131,6 +131,8 @@ public static class McpLimitsContract
         Band(nameof(McpLimits.MaxImageSavedDrawings), limits.MaxImageSavedDrawings, 1, 500);
         Band(nameof(McpLimits.MaxImageBarsListed), limits.MaxImageBarsListed, 0, MaxChartImageBarsBandMaximum);
         Band(nameof(McpLimits.MaxDrawingFileBytes), limits.MaxDrawingFileBytes, 64 * Kibibyte, 64 * Mebibyte);
+        Band(nameof(McpLimits.BacktestMinBarsForRatioMetrics), limits.BacktestMinBarsForRatioMetrics, 2, 1000);
+        Band(nameof(McpLimits.BacktestSizingWarnRatio), limits.BacktestSizingWarnRatio, 0.0m, 1.0m);
     }
 
     /// <summary>
@@ -169,6 +171,14 @@ public static class McpLimitsContract
         if (value < minimum || value > maximum)
         {
             throw new McpLimitsException(key, $"= {value} is outside {minimum}..{maximum}.");
+        }
+    }
+
+    private static void Band(string key, decimal value, decimal minimum, decimal maximum)
+    {
+        if (value < minimum || value > maximum)
+        {
+            throw new McpLimitsException(key, FormattableString.Invariant($"= {value} is outside {minimum}..{maximum}."));
         }
     }
 }
