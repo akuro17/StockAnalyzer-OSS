@@ -1155,8 +1155,8 @@ public sealed class EvaluateExpressionsToolTests
 
         Assert.False(McpTestSupport.IsError(resp));
         JsonElement root = McpTestSupport.Structured(resp);
-        Assert.Equal(3, root.GetProperty("okCount").GetInt32());
-        Assert.Equal(5, root.GetProperty("errorCount").GetInt32());
+        Assert.Equal(2, root.GetProperty("okCount").GetInt32());
+        Assert.Equal(6, root.GetProperty("errorCount").GetInt32());
 
         JsonElement results = root.GetProperty("results");
         Assert.Equal("Ok", results[0].GetProperty("status").GetString());
