@@ -169,6 +169,10 @@ internal static partial class CalculatorGeometryFunctions
                 outcome = CalculatorElementaryFunctions.FromMathResult(DslGeometryMath.NBallVol(args[0], args[1]), position, name);
                 return true;
 
+            case "log_nball_vol":
+                outcome = CalculatorElementaryFunctions.FromMathResult(DslGeometryMath.LogNBallVol(args[0], args[1]), position, name);
+                return true;
+
             case "sphere_area":
                 outcome = CalculatorElementaryFunctions.FromMathResult(DslGeometryMath.SphereArea(args[0]), position, name);
                 return true;

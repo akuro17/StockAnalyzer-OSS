@@ -6,7 +6,7 @@ namespace StockAnalyzer.Core.MathUtils;
 /// Zero-allocation biased sample ACF and un-clamped Levinson-Durbin PACF kernels.
 /// Uses <see cref="WindowMoments"/> for canonical flat-series detection without altering <see cref="ArimaMath"/>.
 /// </summary>
-public static class DslTimeSeriesMath
+public static partial class DslTimeSeriesMath
 {
     public const int MaxAcfLag = 128;
     public const int MaxPacfLag = 64;

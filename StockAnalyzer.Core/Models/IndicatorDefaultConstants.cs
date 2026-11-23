@@ -864,7 +864,7 @@ public static class IndicatorDefaultConstants
     public const double GrangerCausalityVarianceFloor = 1e-24;
     public const int GrangerCausalityEwmaSeedBars = 10;
 
-    // === Johansen Bivariate Cointegration (Trace / MaxEigen test statistics >= 0; Osterwald-Lenum 1992 CV95 = 15.4947) ===
+    // === Johansen Bivariate Cointegration (Trace / MaxEigen test statistics >= 0; MacKinnon, Haug & Michelis 1999 Table II Case III r=0 Trace CV95 = 15.4947; distinct from MaxEigenStat & Osterwald-Lenum 1992 two-decimal 15.41) ===
     public const int JohansenDefaultPeriod = 100;
     public const int JohansenMinPeriod = 30;
     public const int JohansenMaxPeriod = 500;

@@ -120,6 +120,14 @@ internal static partial class CalculatorMatrixFunctions
                 outcome = EvaluateOptQp(name, position, args, ref budget, ref arena);
                 return true;
 
+            case "opt_lp":
+                outcome = EvaluateOptLp(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "opt_qp_eq":
+                outcome = EvaluateOptQpEq(name, position, args, ref budget, ref arena);
+                return true;
+
             default:
                 outcome = default;
                 return false;
@@ -1016,6 +1024,121 @@ internal static partial class CalculatorMatrixFunctions
         CopyToDouble(ubDec, ub);
 
         MathErrorCode err = DslOptimizationMath.OptQp(h, c, n, lb, ub, tol, xOut, ref budget);
+        return err != MathErrorCode.None
+            ? FailMath(err, position, name)
+            : NarrowArrayResult(xOut, position, name, ref arena);
+    }
+
+    private static DslEvalOutcome EvaluateOptLp(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray || !args[2].IsArray ||
+            !args[3].IsArray || !args[4].IsArray || (args.Length >= 6 && args[5].IsArray))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> cDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> aDec = arena.GetSlice(args[1].Array);
+        ReadOnlySpan<decimal> bDec = arena.GetSlice(args[2].Array);
+        ReadOnlySpan<decimal> lbDec = arena.GetSlice(args[3].Array);
+        ReadOnlySpan<decimal> ubDec = arena.GetSlice(args[4].Array);
+
+        int n = cDec.Length;
+        int m = bDec.Length;
+        if (n == 0)
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        if (n > DslLinearAlgebraMath.MaxMatrixDim ||
+            m > DslLinearAlgebraMath.MaxMatrixDim ||
+            lbDec.Length != n ||
+            ubDec.Length != n ||
+            aDec.Length != m * n)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        double tol = args.Length >= 6 ? (double)args[5].Scalar : DslTolerance.DefaultTol;
+        Span<double> c = stackalloc double[n];
+        Span<double> a = m > 0 ? stackalloc double[m * n] : Span<double>.Empty;
+        Span<double> b = m > 0 ? stackalloc double[m] : Span<double>.Empty;
+        Span<double> lb = stackalloc double[n];
+        Span<double> ub = stackalloc double[n];
+        Span<double> xOut = stackalloc double[n];
+        CopyToDouble(cDec, c);
+        if (m > 0)
+        {
+            CopyToDouble(aDec, a);
+            CopyToDouble(bDec, b);
+        }
+        CopyToDouble(lbDec, lb);
+        CopyToDouble(ubDec, ub);
+
+        MathErrorCode err = DslOptimizationMath.OptLp(c, a, b, lb, ub, n, m, tol, xOut, ref budget);
+        return err != MathErrorCode.None
+            ? FailMath(err, position, name)
+            : NarrowArrayResult(xOut, position, name, ref arena);
+    }
+
+    private static DslEvalOutcome EvaluateOptQpEq(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray || !args[2].IsArray || !args[3].IsArray ||
+            !args[4].IsArray || !args[5].IsArray || (args.Length >= 7 && args[6].IsArray))
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> hDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> cDec = arena.GetSlice(args[1].Array);
+        ReadOnlySpan<decimal> aEqDec = arena.GetSlice(args[2].Array);
+        ReadOnlySpan<decimal> bEqDec = arena.GetSlice(args[3].Array);
+        ReadOnlySpan<decimal> lbDec = arena.GetSlice(args[4].Array);
+        ReadOnlySpan<decimal> ubDec = arena.GetSlice(args[5].Array);
+
+        int n = cDec.Length;
+        int mEq = bEqDec.Length;
+        if (n == 0 || mEq == 0)
+        {
+            return FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        if (n > DslLinearAlgebraMath.MaxMatrixDim ||
+            mEq > n ||
+            hDec.Length != n * n ||
+            aEqDec.Length != mEq * n ||
+            lbDec.Length != n ||
+            ubDec.Length != n)
+        {
+            return FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        double tol = args.Length >= 7 ? (double)args[6].Scalar : DslTolerance.DefaultTol;
+        Span<double> h = stackalloc double[n * n];
+        Span<double> c = stackalloc double[n];
+        Span<double> aEq = stackalloc double[mEq * n];
+        Span<double> bEq = stackalloc double[mEq];
+        Span<double> lb = stackalloc double[n];
+        Span<double> ub = stackalloc double[n];
+        Span<double> xOut = stackalloc double[n];
+        CopyToDouble(hDec, h);
+        CopyToDouble(cDec, c);
+        CopyToDouble(aEqDec, aEq);
+        CopyToDouble(bEqDec, bEq);
+        CopyToDouble(lbDec, lb);
+        CopyToDouble(ubDec, ub);
+
+        MathErrorCode err = DslOptimizationMath.OptQpEq(h, c, aEq, bEq, lb, ub, n, mEq, tol, xOut, ref budget);
         return err != MathErrorCode.None
             ? FailMath(err, position, name)
             : NarrowArrayResult(xOut, position, name, ref arena);

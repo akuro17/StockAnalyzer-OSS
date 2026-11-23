@@ -7,7 +7,7 @@ namespace StockAnalyzer.Core.MathUtils;
 /// (Brent and golden-section 1D minimization, Nelder-Mead and BFGS for 1..8 variables).
 /// All working storage is stack-allocated; every objective evaluation consumes one <see cref="DslExecutionBudget"/> unit.
 /// </summary>
-public static class DslOptimizationMath
+public static partial class DslOptimizationMath
 {
     /// <summary>Maximum number of variables of <see cref="OptNelderMead{TFunc}"/> and <see cref="OptBfgs{TFunc}"/>.</summary>
     public const int MaxOptDimensions = 8;

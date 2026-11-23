@@ -12,7 +12,7 @@ namespace StockAnalyzer.Core.Calculator;
 /// <c>quad_trapz</c>, <c>quad_simpson</c>, <c>quad_de</c>, <c>quad_gauss_legendre</c>, <c>quad_gk21</c>, <c>quad_romberg</c>).
 /// Argument 0 is an expression AST and argument 1 is the dummy variable identifier.
 /// </summary>
-internal static class CalculatorHigherOrderFunctions
+internal static partial class CalculatorHigherOrderFunctions
 {
     internal const double DefaultTolerance = 1e-10;
     internal const decimal DefaultToleranceDecimal = 1e-10m;
@@ -55,6 +55,10 @@ internal static class CalculatorHigherOrderFunctions
         "arr_reduce" or
         "arr_scan" or
         "arr_zip_map" or
+        "arr_scan_state" or
+        "arr_reduce_state" or
+        "arr_rolling_map" or
+        "quad2d_gk" or
         "opt_lbfgsb" or
         "fsolve" or
         "ode_bdf2" or
@@ -104,6 +108,16 @@ internal static class CalculatorHigherOrderFunctions
 
             case "arr_zip_map":
                 return EvaluateArrayZipMap(call, in scope, limits, ref budget, in boundScope, ref arena);
+
+            case "arr_scan_state":
+            case "arr_reduce_state":
+                return EvaluateArrayScanOrReduceState(call, in scope, limits, ref budget, in boundScope, ref arena, isScan: call.Name == "arr_scan_state");
+
+            case "arr_rolling_map":
+                return EvaluateArrayRollingMap(call, in scope, limits, ref budget, in boundScope, ref arena);
+
+            case "quad2d_gk":
+                return EvaluateQuad2dGk(call, in scope, limits, ref budget, in boundScope, ref arena);
 
             case "opt_lbfgsb":
                 return EvaluateLbfgsb(call, in scope, limits, ref budget, in boundScope, ref arena);

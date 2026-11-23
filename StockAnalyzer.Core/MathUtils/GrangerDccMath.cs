@@ -120,16 +120,29 @@ public static class GrangerDccMath
         int period,
         int lagOrder,
         int df2)
+        => period <= 0
+            ? 0.0
+            : ComputeGrangerFStatisticOnSpan(
+                target.AsSpan(start, period),
+                exogenous.AsSpan(start, period),
+                lagOrder,
+                df2);
+
+    internal static double ComputeGrangerFStatisticOnSpan(
+        ReadOnlySpan<double> target,
+        ReadOnlySpan<double> exogenous,
+        int lagOrder,
+        int df2)
     {
-        if (period <= 0)
+        int period = target.Length;
+        if (period <= 0 || exogenous.Length != period)
         {
             return 0.0;
         }
 
-        int end = start + period - 1;
         double sumT = 0.0;
         double sumE = 0.0;
-        for (int u = start; u <= end; u++)
+        for (int u = 0; u < period; u++)
         {
             sumT += target[u];
             sumE += exogenous[u];
@@ -139,7 +152,7 @@ public static class GrangerDccMath
         double meanE = sumE / period;
         double varT = 0.0;
         double varE = 0.0;
-        for (int u = start; u <= end; u++)
+        for (int u = 0; u < period; u++)
         {
             double dt = target[u] - meanT;
             double de = exogenous[u] - meanE;
@@ -178,7 +191,7 @@ public static class GrangerDccMath
         aU.Clear();
         bU.Clear();
 
-        for (int k = start + lagOrder; k <= end; k++)
+        for (int k = lagOrder; k < period; k++)
         {
             double y = PopulateStandardizedGrangerRow(
                 target, exogenous, k, lagOrder, meanT, invStdT, meanE, invStdE, xR, xU);
@@ -205,7 +218,7 @@ public static class GrangerDccMath
 
         double rssR = 0.0;
         double rssU = 0.0;
-        for (int k = start + lagOrder; k <= end; k++)
+        for (int k = lagOrder; k < period; k++)
         {
             double y = PopulateStandardizedGrangerRow(
                 target, exogenous, k, lagOrder, meanT, invStdT, meanE, invStdE, xR, xU);
@@ -231,8 +244,8 @@ public static class GrangerDccMath
     }
 
     private static double PopulateStandardizedGrangerRow(
-        double[] target,
-        double[] exogenous,
+        ReadOnlySpan<double> target,
+        ReadOnlySpan<double> exogenous,
         int k,
         int lagOrder,
         double meanT,

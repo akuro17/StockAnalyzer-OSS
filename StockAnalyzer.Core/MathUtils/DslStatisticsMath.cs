@@ -228,6 +228,70 @@ public static class DslStatisticsMath
         return DslElementaryMath.NarrowDouble(dMax + Math.Log(sumExp));
     }
 
+    /// <summary>
+    /// Overflow-safe non-negative weighted Log-Sum-Exp <c>ln(sum(w_i * exp(v_i)))</c>.
+    /// </summary>
+    public static MathResult<decimal> LogSumExpWeighted(ReadOnlySpan<decimal> values, ReadOnlySpan<decimal> weights)
+    {
+        if (values.Length != weights.Length)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DimensionMismatch);
+        }
+
+        if (values.Length == 0)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        bool hasPositive = false;
+        double maxVal = double.NegativeInfinity;
+        for (int i = 0; i < weights.Length; i++)
+        {
+            decimal w = weights[i];
+            if (w < 0m)
+            {
+                return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+            }
+
+            if (w > 0m)
+            {
+                double v = (double)values[i];
+                if (!double.IsFinite(v))
+                {
+                    return MathResult<decimal>.Fail(MathErrorCode.NonFiniteResult);
+                }
+
+                if (!hasPositive || v > maxVal)
+                {
+                    maxVal = v;
+                    hasPositive = true;
+                }
+            }
+        }
+
+        if (!hasPositive)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        double sum = 0.0;
+        for (int i = 0; i < weights.Length; i++)
+        {
+            decimal w = weights[i];
+            if (w > 0m)
+            {
+                sum += (double)w * Math.Exp((double)values[i] - maxVal);
+            }
+        }
+
+        if (!(sum > 0.0) || !double.IsFinite(sum))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.ArithmeticOverflow);
+        }
+
+        return DslElementaryMath.NarrowDouble(maxVal + Math.Log(sum));
+    }
+
     private static bool TryComputeMoments(ReadOnlySpan<decimal> values, out WindowMoments moments)
     {
         Span<double> buf = values.Length <= StackBufferLimit

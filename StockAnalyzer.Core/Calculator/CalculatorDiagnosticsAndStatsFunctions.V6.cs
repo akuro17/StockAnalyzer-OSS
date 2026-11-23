@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using StockAnalyzer.Core.MathUtils;
+using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Core.Calculator;
 
@@ -58,6 +59,38 @@ internal static partial class CalculatorDiagnosticsAndStatsFunctions
 
             case "interp2d_bilinear":
                 outcome = EvalInterp2DBilinear(name, position, args, in arena);
+                return true;
+
+            case "interp2d_bicubic":
+                outcome = EvalInterp2DBicubic(name, position, args, in arena);
+                return true;
+
+            case "log_sum_exp_weighted":
+                outcome = EvalLogSumExpWeighted(name, position, args, in arena);
+                return true;
+
+            case "kalman_1d_filter":
+                outcome = EvalKalman1DFilter(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "granger_test":
+                outcome = EvalGrangerTest(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "johansen_test":
+                outcome = EvalJohansenTest(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "arima_fit":
+                outcome = EvalArimaFit(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "arima_forecast":
+                outcome = EvalArimaForecast(name, position, args, ref budget, ref arena);
+                return true;
+
+            case "mvnorm_logpdf":
+                outcome = EvalMvNormLogPdf(name, position, args, ref budget, in arena);
                 return true;
 
             case "rand_unif":
@@ -1281,5 +1314,343 @@ internal static partial class CalculatorDiagnosticsAndStatsFunctions
         }
 
         return DslEvalOutcome.OkArray(handle);
+    }
+
+    // ---- DSL v8: 2D Interpolation, Weighted LSE, Time-Series, & MVN Log-PDF ----
+
+    private static DslEvalOutcome EvalInterp2DBicubic(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        in DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray || !args[2].IsArray || args[3].IsArray || args[4].IsArray)
+        {
+            return FailExpected(position, name, "(xs, ys, Z, x, y)");
+        }
+
+        ReadOnlySpan<decimal> xsDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> ysDec = arena.GetSlice(args[1].Array);
+        ReadOnlySpan<decimal> zDec = arena.GetSlice(args[2].Array);
+        int nx = xsDec.Length;
+        int ny = ysDec.Length;
+        if (nx < 3 || ny < 3)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        if (zDec.Length != nx * ny)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        int total = nx + ny + zDec.Length;
+        double[]? rented = total <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(total);
+        Span<double> work = rented is null ? stackalloc double[total] : rented.AsSpan(0, total);
+        try
+        {
+            Span<double> xs = work.Slice(0, nx);
+            Span<double> ys = work.Slice(nx, ny);
+            Span<double> z = work.Slice(nx + ny, zDec.Length);
+            ToDouble(xsDec, xs);
+            ToDouble(ysDec, ys);
+            ToDouble(zDec, z);
+            return CalculatorMatrixFunctions.NarrowScalarResult(
+                DslInterpolationMath.Interp2DBicubic(xs, ys, z, (double)args[3].Scalar, (double)args[4].Scalar),
+                position,
+                name);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<double>.Shared.Return(rented, clearArray: false);
+            }
+        }
+    }
+
+    private static DslEvalOutcome EvalLogSumExpWeighted(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        in DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray)
+        {
+            return FailExpected(position, name, "(values, weights) 1D arrays");
+        }
+
+        ReadOnlySpan<decimal> values = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> weights = arena.GetSlice(args[1].Array);
+        return CalculatorArrayFunctions.ToEvalOutcome(
+            CalculatorElementaryFunctions.FromMathResult(
+                DslStatisticsMath.LogSumExpWeighted(values, weights),
+                position,
+                name));
+    }
+
+    private static DslEvalOutcome EvalKalman1DFilter(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || args[1].IsArray || args[2].IsArray ||
+            (args.Length >= 4 && args[3].IsArray) ||
+            (args.Length >= 5 && args[4].IsArray))
+        {
+            return FailExpected(position, name, "(series, q, r[, initX, initP])");
+        }
+
+        ReadOnlySpan<decimal> src = arena.GetSlice(args[0].Array);
+        int n = src.Length;
+        if (n == 0)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        double q = (double)args[1].Scalar;
+        double r = (double)args[2].Scalar;
+        bool initialIsPosterior = args.Length < 4;
+        double initX = !initialIsPosterior ? (double)args[3].Scalar : (double)src[0];
+        double initP = args.Length >= 5 ? (double)args[4].Scalar : r;
+
+        Span<double> series = stackalloc double[n];
+        Span<double> output = stackalloc double[n];
+        ToDouble(src, series);
+
+        MathErrorCode err = DslTimeSeriesMath.Kalman1DFilter(series, q, r, initX, initP, output, ref budget, initialIsPosterior);
+        return err != MathErrorCode.None
+            ? CalculatorMatrixFunctions.FailMath(err, position, name)
+            : CalculatorMatrixFunctions.NarrowArrayResult(output, position, name, ref arena);
+    }
+
+    private static DslEvalOutcome EvalGrangerTest(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray || (args.Length >= 3 && args[2].IsArray))
+        {
+            return FailExpected(position, name, "(x, y[, lagOrder])");
+        }
+
+        ReadOnlySpan<decimal> xDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> yDec = arena.GetSlice(args[1].Array);
+        if (xDec.Length != yDec.Length)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        int lagOrder = IndicatorDefaultConstants.GrangerCausalityDefaultLagOrder;
+        if (args.Length >= 3 &&
+            !DslMathValidation.TryReadInt32InRange(
+                args[2].Scalar,
+                IndicatorDefaultConstants.GrangerCausalityMinLagOrder,
+                IndicatorDefaultConstants.GrangerCausalityMaxLagOrder,
+                out lagOrder))
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        int n = xDec.Length;
+        int needed = n * 2;
+        double[]? rented = needed <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(needed);
+        Span<double> work = rented is null ? stackalloc double[needed] : rented.AsSpan(0, needed);
+        try
+        {
+            Span<double> x = work.Slice(0, n);
+            Span<double> y = work.Slice(n, n);
+            ToDouble(xDec, x);
+            ToDouble(yDec, y);
+
+            Span<double> output = stackalloc double[4];
+            MathErrorCode err = DslTimeSeriesMath.GrangerTest(x, y, lagOrder, output, ref budget);
+            return err != MathErrorCode.None
+                ? CalculatorMatrixFunctions.FailMath(err, position, name)
+                : CalculatorMatrixFunctions.NarrowArrayResult(output, position, name, ref arena);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<double>.Shared.Return(rented, clearArray: false);
+            }
+        }
+    }
+
+    private static DslEvalOutcome EvalJohansenTest(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray)
+        {
+            return FailExpected(position, name, "(x, y) 1D arrays");
+        }
+
+        ReadOnlySpan<decimal> xDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> yDec = arena.GetSlice(args[1].Array);
+        if (xDec.Length != yDec.Length)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        int n = xDec.Length;
+        int needed = n * 2;
+        double[]? rented = needed <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(needed);
+        Span<double> work = rented is null ? stackalloc double[needed] : rented.AsSpan(0, needed);
+        try
+        {
+            Span<double> x = work.Slice(0, n);
+            Span<double> y = work.Slice(n, n);
+            ToDouble(xDec, x);
+            ToDouble(yDec, y);
+
+            Span<double> output = stackalloc double[3];
+            MathErrorCode err = DslTimeSeriesMath.JohansenTest(x, y, output, ref budget);
+            return err != MathErrorCode.None
+                ? CalculatorMatrixFunctions.FailMath(err, position, name)
+                : CalculatorMatrixFunctions.NarrowArrayResult(output, position, name, ref arena);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<double>.Shared.Return(rented, clearArray: false);
+            }
+        }
+    }
+
+    private static DslEvalOutcome EvalArimaFit(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || args[1].IsArray || args[2].IsArray || args[3].IsArray)
+        {
+            return FailExpected(position, name, "(series, p, d, q)");
+        }
+
+        if (!DslMathValidation.TryReadInt32InRange(args[1].Scalar, 0, DslTimeSeriesMath.MaxArimaOrder, out int p) ||
+            !DslMathValidation.TryReadInt32InRange(args[2].Scalar, 0, DslTimeSeriesMath.MaxArimaDiffOrder, out int d) ||
+            !DslMathValidation.TryReadInt32InRange(args[3].Scalar, 0, DslTimeSeriesMath.MaxArimaOrder, out int q) ||
+            p + q < 1)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> src = arena.GetSlice(args[0].Array);
+        int n = src.Length;
+        double[]? rented = n <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(n);
+        Span<double> series = rented is null ? stackalloc double[n] : rented.AsSpan(0, n);
+        try
+        {
+            ToDouble(src, series);
+
+            Span<double> output = stackalloc double[p + q + 2];
+            MathErrorCode err = DslTimeSeriesMath.ArimaFit(series, p, d, q, output, ref budget);
+            return err != MathErrorCode.None
+                ? CalculatorMatrixFunctions.FailMath(err, position, name)
+                : CalculatorMatrixFunctions.NarrowArrayResult(output, position, name, ref arena);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<double>.Shared.Return(rented, clearArray: false);
+            }
+        }
+    }
+
+    private static DslEvalOutcome EvalArimaForecast(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        ref DslArrayArena arena)
+    {
+        if (!args[0].IsArray || args[1].IsArray || args[2].IsArray || args[3].IsArray || args[4].IsArray)
+        {
+            return FailExpected(position, name, "(series, p, d, q, horizon)");
+        }
+
+        if (!DslMathValidation.TryReadInt32InRange(args[1].Scalar, 0, DslTimeSeriesMath.MaxArimaOrder, out int p) ||
+            !DslMathValidation.TryReadInt32InRange(args[2].Scalar, 0, DslTimeSeriesMath.MaxArimaDiffOrder, out int d) ||
+            !DslMathValidation.TryReadInt32InRange(args[3].Scalar, 0, DslTimeSeriesMath.MaxArimaOrder, out int q) ||
+            p + q < 1 ||
+            !DslMathValidation.TryReadInt32InRange(args[4].Scalar, 1, DslTimeSeriesMath.MaxArimaForecastHorizon, out int horizon))
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        ReadOnlySpan<decimal> src = arena.GetSlice(args[0].Array);
+        int n = src.Length;
+        double[]? rented = n <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(n);
+        Span<double> series = rented is null ? stackalloc double[n] : rented.AsSpan(0, n);
+        try
+        {
+            ToDouble(src, series);
+
+            Span<double> output = stackalloc double[horizon * 2];
+            MathErrorCode err = DslTimeSeriesMath.ArimaForecast(series, p, d, q, horizon, output, ref budget);
+            return err != MathErrorCode.None
+                ? CalculatorMatrixFunctions.FailMath(err, position, name)
+                : CalculatorMatrixFunctions.NarrowArrayResult(output, position, name, ref arena);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                ArrayPool<double>.Shared.Return(rented, clearArray: false);
+            }
+        }
+    }
+
+    private static DslEvalOutcome EvalMvNormLogPdf(
+        string name,
+        int position,
+        scoped ReadOnlySpan<DslValue> args,
+        ref DslExecutionBudget budget,
+        in DslArrayArena arena)
+    {
+        if (!args[0].IsArray || !args[1].IsArray || !args[2].IsArray)
+        {
+            return FailExpected(position, name, "(x, mu, cov) 1D arrays");
+        }
+
+        ReadOnlySpan<decimal> xDec = arena.GetSlice(args[0].Array);
+        ReadOnlySpan<decimal> muDec = arena.GetSlice(args[1].Array);
+        ReadOnlySpan<decimal> covDec = arena.GetSlice(args[2].Array);
+        int k = xDec.Length;
+        if (k == 0)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DomainError, position, name);
+        }
+
+        if (k > DslLinearAlgebraMath.MaxMatrixDim || muDec.Length != k || covDec.Length != k * k)
+        {
+            return CalculatorMatrixFunctions.FailMath(MathErrorCode.DimensionMismatch, position, name);
+        }
+
+        Span<double> x = stackalloc double[k];
+        Span<double> mu = stackalloc double[k];
+        Span<double> cov = stackalloc double[k * k];
+        ToDouble(xDec, x);
+        ToDouble(muDec, mu);
+        ToDouble(covDec, cov);
+
+        return CalculatorArrayFunctions.ToEvalOutcome(
+            CalculatorElementaryFunctions.FromMathResult(
+                DslProbabilityDistributionsMath.MvNormLogPdf(x, mu, cov, ref budget),
+                position,
+                name));
     }
 }

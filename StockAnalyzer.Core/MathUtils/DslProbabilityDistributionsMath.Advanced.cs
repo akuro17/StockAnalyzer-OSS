@@ -1591,4 +1591,113 @@ public static partial class DslProbabilityDistributionsMath
             return Math.Exp(lg) * TukeyQPdfInf(q * s, k);
         }
     }
+
+    /// <summary>
+    /// Multivariate normal log-density <c>-0.5 * (k*ln(2*pi) + ln|cov| + (x - mu)^T cov^-1 (x - mu))</c>
+    /// for <c>1 &lt;= k &lt;= 16</c> using <see cref="DslLinearAlgebraMath.MatChol"/> for symmetry and SPD validation.
+    /// </summary>
+    public static MathResult<decimal> MvNormLogPdf(
+        scoped ReadOnlySpan<double> x,
+        scoped ReadOnlySpan<double> mu,
+        scoped ReadOnlySpan<double> cov,
+        ref DslExecutionBudget budget)
+    {
+        int k = x.Length;
+        if (k == 0)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (k > DslLinearAlgebraMath.MaxMatrixDim || mu.Length != k || cov.Length != k * k)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DimensionMismatch);
+        }
+
+        if (DslLinearAlgebraMath.ValidateFinite(x) != MathErrorCode.None ||
+            DslLinearAlgebraMath.ValidateFinite(mu) != MathErrorCode.None ||
+            DslLinearAlgebraMath.ValidateFinite(cov) != MathErrorCode.None)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.NonFiniteResult);
+        }
+
+        Span<double> chol = stackalloc double[k * k];
+        MathErrorCode cholErr = DslLinearAlgebraMath.MatChol(cov, k, chol, ref budget);
+        if (cholErr == MathErrorCode.BudgetExceeded || cholErr == MathErrorCode.NonFiniteResult)
+        {
+            return MathResult<decimal>.Fail(cholErr);
+        }
+
+        if (cholErr != MathErrorCode.None)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        Span<double> z = stackalloc double[k];
+        double logDetHalf = 0.0;
+        double quad = 0.0;
+        for (int i = 0; i < k; i++)
+        {
+            double diag = chol[i * k + i];
+            if (!(diag > 0.0) || !double.IsFinite(diag))
+            {
+                return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+            }
+
+            logDetHalf += Math.Log(diag);
+            double sum = x[i] - mu[i];
+            int rowOff = i * k;
+            for (int j = 0; j < i; j++)
+            {
+                sum -= chol[rowOff + j] * z[j];
+            }
+
+            double zi = sum / diag;
+            z[i] = zi;
+            quad += zi * zi;
+        }
+
+        double logPdf = -0.5 * ((k * Math.Log(MathConstants.TwoPi)) + (2.0 * logDetHalf) + quad);
+        return DslElementaryMath.NarrowDouble(logPdf);
+    }
+
+    /// <summary>
+    /// Bivariate Gaussian copula CDF <c>C(u, v; rho) = Phi_2(Phi^-1(u), Phi^-1(v); rho)</c>
+    /// for <c>u, v in [0, 1]</c> and <c>|rho| &lt; 0.9999999</c>.
+    /// </summary>
+    public static MathResult<decimal> CopulaGaussCdf(decimal u, decimal v, decimal rho)
+    {
+        if (u < 0m || u > 1m || v < 0m || v > 1m || Math.Abs(rho) >= 0.9999999m)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (u == 0m || v == 0m)
+        {
+            return MathResult<decimal>.Ok(0m);
+        }
+
+        if (u == 1m)
+        {
+            return MathResult<decimal>.Ok(DslElementaryMath.NormalizeZero(v));
+        }
+
+        if (v == 1m)
+        {
+            return MathResult<decimal>.Ok(DslElementaryMath.NormalizeZero(u));
+        }
+
+        double zu = SpecialFunctionsMath.NormalQuantile((double)u);
+        double zv = SpecialFunctionsMath.NormalQuantile((double)v);
+        if (!double.IsFinite(zu) || !double.IsFinite(zv))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.NonFiniteResult);
+        }
+
+        double cdf = DslProbabilityDistributionsMath.BvNormCdfStandard(zu, zv, (double)rho);
+        double ud = (double)u;
+        double vd = (double)v;
+        double lowerBound = Math.Max(0.0, ud + vd - 1.0);
+        double upperBound = Math.Min(ud, vd);
+        return DslElementaryMath.NarrowDouble(Math.Clamp(cdf, lowerBound, upperBound));
+    }
 }

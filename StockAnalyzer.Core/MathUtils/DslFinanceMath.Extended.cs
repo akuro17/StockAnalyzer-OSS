@@ -41,6 +41,54 @@ public static partial class DslFinanceMath
         return DslElementaryMath.NarrowDouble(price);
     }
 
+    /// <summary>
+    /// Dirty (full) fixed-rate bond price with real-valued <c>0 &lt;= daysSinceCoupon &lt; daysInPeriod</c>
+    /// matching <see cref="BondPrice"/> when <c>daysSinceCoupon == 0</c>.
+    /// </summary>
+    public static MathResult<decimal> BondPriceDirty(
+        decimal face,
+        decimal cRate,
+        decimal ytm,
+        decimal daysSinceCoupon,
+        decimal daysInPeriod,
+        decimal remainingCoupons,
+        decimal freq,
+        ref DslExecutionBudget budget)
+    {
+        if (face <= 0m ||
+            cRate < 0m ||
+            daysInPeriod <= 0m ||
+            daysSinceCoupon < 0m ||
+            daysSinceCoupon >= daysInPeriod ||
+            !DslMathValidation.TryReadInt32InRange(remainingCoupons, 1, MaxBondTotalPeriods, out int n) ||
+            !TryReadBondFrequency(freq, out int m))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        double y = (double)ytm / m;
+        if (!double.IsFinite(y) || y <= -1.0 || y > BondYtmMaxPerPeriod)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        double log1pY = DslElementaryMath.Log1pDouble(y);
+        if (!double.IsFinite(log1pY) || n * log1pY <= -MaxLogGrowthExponent)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        if (!budget.TryConsume(Math.Max(1, n / DslExecutionBudget.CheapOperationsPerUnit)))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.BudgetExceeded);
+        }
+
+        double p0 = ComputeBondPriceDouble((double)face, (double)cRate, y, n, m);
+        double alpha = (double)daysSinceCoupon / (double)daysInPeriod;
+        double dirty = p0 * Math.Exp(alpha * log1pY);
+        return DslElementaryMath.NarrowDouble(dirty);
+    }
+
     public static MathResult<decimal> BondYtm(
         decimal price,
         decimal face,
@@ -664,6 +712,101 @@ public static partial class DslFinanceMath
         double d = 1.0 / u;
         double df = Math.Exp(-r * dt);
         double growth = Math.Exp(r * dt);
+        if (!double.IsFinite(u) || !double.IsFinite(d) || !double.IsFinite(df) || !double.IsFinite(growth) || u <= d)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        double p = (growth - d) / (u - d);
+        if (!double.IsFinite(p) || p <= 0.0 || p >= 1.0)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        double oneMinusP = 1.0 - p;
+        Span<double> values = stackalloc double[steps + 1];
+        for (int j = 0; j <= steps; j++)
+        {
+            double spotTerminal = s * Math.Exp(((2 * j) - steps) * sigmaSqrtDt);
+            values[j] = isCall ? Math.Max(0.0, spotTerminal - k) : Math.Max(0.0, k - spotTerminal);
+        }
+
+        for (int i = steps - 1; i >= 0; i--)
+        {
+            for (int j = 0; j <= i; j++)
+            {
+                double hold = df * ((p * values[j + 1]) + (oneMinusP * values[j]));
+                if (isAmerican)
+                {
+                    double spotNode = s * Math.Exp(((2 * j) - i) * sigmaSqrtDt);
+                    double intrinsic = isCall ? Math.Max(0.0, spotNode - k) : Math.Max(0.0, k - spotNode);
+                    hold = Math.Max(hold, intrinsic);
+                }
+
+                values[j] = hold;
+            }
+        }
+
+        return DslElementaryMath.NarrowDouble(values[0]);
+    }
+
+    /// <summary>
+    /// CRR binomial option pricing with continuous dividend yield <c>q</c>, unified <c>style in {0..3}</c>
+    /// (<c>0=EuroCall, 1=EuroPut, 2=AmerCall, 3=AmerPut</c>), and intrinsic value return at <c>T == 0</c>.
+    /// </summary>
+    public static MathResult<decimal> BinomialOptionPriceDiv(
+        decimal sDec,
+        decimal kDec,
+        decimal tDec,
+        decimal rDec,
+        decimal qDec,
+        decimal sigmaDec,
+        decimal stepsDec,
+        decimal styleDec,
+        ref DslExecutionBudget budget)
+    {
+        if (sDec <= 0m ||
+            kDec <= 0m ||
+            tDec < 0m ||
+            sigmaDec <= 0m ||
+            !DslMathValidation.TryReadInt32InRange(stepsDec, 1, MaxBinomialSteps, out int steps) ||
+            !DslMathValidation.TryReadInt32InRange(styleDec, 0, 3, out int style))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        bool isCall = (style & 1) == 0;
+        bool isAmerican = style >= 2;
+        if (tDec == 0m)
+        {
+            decimal intrinsic = isCall ? Math.Max(sDec - kDec, 0m) : Math.Max(kDec - sDec, 0m);
+            return MathResult<decimal>.Ok(DslElementaryMath.NormalizeZero(intrinsic));
+        }
+
+        int workOps = (steps * (steps + 1)) / 2;
+        if (!budget.TryConsume(Math.Max(1, workOps / DslExecutionBudget.CheapOperationsPerUnit)))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.BudgetExceeded);
+        }
+
+        double s = (double)sDec;
+        double k = (double)kDec;
+        double t = (double)tDec;
+        double r = (double)rDec;
+        double q = (double)qDec;
+        double sigma = (double)sigmaDec;
+        if (!double.IsFinite(s) || !double.IsFinite(k) || !double.IsFinite(t) ||
+            !double.IsFinite(r) || !double.IsFinite(q) || !double.IsFinite(sigma))
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        double dt = t / steps;
+        double sigmaSqrtDt = sigma * Math.Sqrt(dt);
+        double u = Math.Exp(sigmaSqrtDt);
+        double d = 1.0 / u;
+        double df = Math.Exp(-r * dt);
+        double growth = Math.Exp((r - q) * dt);
         if (!double.IsFinite(u) || !double.IsFinite(d) || !double.IsFinite(df) || !double.IsFinite(growth) || u <= d)
         {
             return MathResult<decimal>.Fail(MathErrorCode.DomainError);

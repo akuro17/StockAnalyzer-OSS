@@ -644,14 +644,14 @@ public static class DslQuantAndInfoMath
     /// <summary>
     /// Day-count year fraction between serial dates <paramref name="d1Raw"/> and <paramref name="d2Raw"/>
     /// (<c>d2 >= d1</c>). Bases: <c>0</c> = US 30/360 NASD, <c>1</c> = ACT/ACT ISDA (differs from Excel <c>YEARFRAC</c> across leap years),
-    /// <c>2</c> = ACT/360, <c>3</c> = ACT/365F (<c>4</c> reserved for future European 30E/360).
+    /// <c>2</c> = ACT/360, <c>3</c> = ACT/365F, <c>4</c> = European 30E/360 (ICMA / ISDA).
     /// </summary>
     public static MathResult<decimal> YearFrac(decimal d1Raw, decimal d2Raw, decimal basisRaw)
     {
         if (!TryReadSerialDate(d1Raw, out int s1) ||
             !TryReadSerialDate(d2Raw, out int s2) ||
             s2 < s1 ||
-            !DslMathValidation.TryReadInt32InRange(basisRaw, 0, 3, out int basis))
+            !DslMathValidation.TryReadInt32InRange(basisRaw, 0, 4, out int basis))
         {
             return MathResult<decimal>.Fail(MathErrorCode.DomainError);
         }
@@ -689,6 +689,16 @@ public static class DslQuantAndInfoMath
                     d1 = 30;
                 }
 
+                decimal numerator = (360m * (y2 - y1)) + (30m * (m2 - m1)) + (d2 - d1);
+                return MathResult<decimal>.Ok(numerator / 360m);
+            }
+
+            case 4:
+            {
+                CivilFromDays(s1, out int y1, out int m1, out int d1);
+                CivilFromDays(s2, out int y2, out int m2, out int d2);
+                if (d1 == 31) d1 = 30;
+                if (d2 == 31) d2 = 30;
                 decimal numerator = (360m * (y2 - y1)) + (30m * (m2 - m1)) + (d2 - d1);
                 return MathResult<decimal>.Ok(numerator / 360m);
             }

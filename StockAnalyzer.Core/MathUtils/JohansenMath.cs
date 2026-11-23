@@ -9,7 +9,7 @@ namespace StockAnalyzer.Core.MathUtils;
 /// <summary>
 /// Bivariate Johansen (1988) fixed lag-1 VECM cointegration engine solving the closed-form 2x2 generalized eigenproblem
 /// for Trace statistic, Maximum Eigenvalue statistic, and first-eigenvector equilibrium spread Z-score.
-/// Note: CriticalValue95 (15.4947m) is Osterwald-Lenum (1992) Case 1 (r=0) critical value for TraceStat only; MaxEigenStat has a distinct critical value not emitted here.
+/// Note: CriticalValue95 (15.4947m) is the MacKinnon, Haug & Michelis (1999) Table II Case III (unrestricted constant, r=0) 5% critical value for TraceStat only (Osterwald-Lenum 1992 two-decimal value is 15.41); MaxEigenStat has a distinct critical value not emitted here.
 /// Causal: bar t uses only levels in [t - period + 1 .. t].
 /// </summary>
 public static class JohansenMath
@@ -120,7 +120,7 @@ public static class JohansenMath
         return true;
     }
 
-    private static void ComputeWindow(
+    internal static void ComputeWindow(
         ReadOnlySpan<double> y1,
         ReadOnlySpan<double> y2,
         out double traceStat,

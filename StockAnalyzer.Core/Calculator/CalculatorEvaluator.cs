@@ -51,6 +51,72 @@ internal struct BoundVariableScope
         next.Count = Count + 1;
         return true;
     }
+
+    public static BoundVariableScope RemoveByName(in BoundVariableScope src, string name)
+    {
+        if (src.Count == 0)
+        {
+            return default;
+        }
+
+        BoundVariableScope filtered = default;
+        for (int i = 0; i < src.Count; i++)
+        {
+            if (!string.Equals(src.Items[i].Name, name, StringComparison.Ordinal))
+            {
+                filtered.Items[filtered.Count] = src.Items[i];
+                filtered.Count++;
+            }
+        }
+
+        return filtered;
+    }
+}
+
+internal readonly record struct BoundArrayVariable(string Name, DslArrayHandle Handle);
+
+[InlineArray(BoundArrayScope.MaxBoundArrays)]
+internal struct BoundArrayBuffer
+{
+    public BoundArrayVariable Element0;
+}
+
+internal struct BoundArrayScope
+{
+    public const int MaxBoundArrays = 8;
+
+    public BoundArrayBuffer Items;
+    public int Count;
+
+    public readonly bool TryGetValue(string name, out DslArrayHandle handle)
+    {
+        for (int i = Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(Items[i].Name, name, StringComparison.Ordinal))
+            {
+                handle = Items[i].Handle;
+                return true;
+            }
+        }
+
+        handle = default;
+        return false;
+    }
+
+    public readonly bool Contains(string name) => TryGetValue(name, out _);
+
+    public bool TryPush(string name, DslArrayHandle handle, out BoundArrayScope next)
+    {
+        next = this;
+        if (Count >= MaxBoundArrays)
+        {
+            return false;
+        }
+
+        next.Items[Count] = new BoundArrayVariable(name, handle);
+        next.Count = Count + 1;
+        return true;
+    }
 }
 
 /// <summary>
@@ -59,7 +125,8 @@ internal struct BoundVariableScope
 internal readonly record struct DslEvalScope(
     IReadOnlyDictionary<string, decimal> ScalarNames,
     IReadOnlyDictionary<string, DslArrayHandle>? ArrayNames,
-    DslArrayArenaSnapshot ArenaSnapshot = default);
+    DslArrayArenaSnapshot ArenaSnapshot = default,
+    BoundArrayScope BoundArrays = default);
 
 /// <summary>
 /// Pure checked-<see cref="decimal"/> evaluator for parsed <see cref="CalcNode"/> ASTs,
@@ -355,10 +422,15 @@ internal static class CalculatorEvaluator
                 identifier.Name);
         }
 
-        // (2) Higher-order dummy binding or caller-provided variables (backwards compatible).
+        // (2) Higher-order dummy bindings (scalar shadows array; array shadows caller variables).
         if (boundScope.Count > 0 && boundScope.TryGetValue(identifier.Name, out decimal boundValue))
         {
             return DslEvalOutcome.Ok(boundValue);
+        }
+
+        if (scope.BoundArrays.Count > 0 && scope.BoundArrays.TryGetValue(identifier.Name, out DslArrayHandle boundArrayHandle))
+        {
+            return DslEvalOutcome.OkArray(boundArrayHandle);
         }
 
         if (scope.ScalarNames.TryGetValue(identifier.Name, out decimal namedValue))
@@ -631,8 +703,8 @@ internal static class CalculatorEvaluator
 
         int argCount = call.Arguments.Count;
         bool mayBeArrayLowered =
-            (argCount == 1 && CalculatorArrayFunctions.AcceptsSingleArrayArgument(call.Name) && CanNodeProduceArray(call.Arguments[0], in scope)) ||
-            (argCount == 2 && CalculatorArrayFunctions.AcceptsScalarPlusArrayArgument(call.Name) && CanNodeProduceArray(call.Arguments[1], in scope));
+            (argCount == 1 && CalculatorArrayFunctions.AcceptsSingleArrayArgument(call.Name) && CanNodeProduceArray(call.Arguments[0], in scope, in boundScope)) ||
+            (argCount == 2 && CalculatorArrayFunctions.AcceptsScalarPlusArrayArgument(call.Name) && CanNodeProduceArray(call.Arguments[1], in scope, in boundScope));
 
         if (!mayBeArrayLowered && (argCount < info.MinArguments || argCount > maxArgs))
         {
@@ -757,15 +829,17 @@ internal static class CalculatorEvaluator
         ref DslExecutionBudget budget)
         => EvaluateScalarCall(name, position, values, limits, ref budget);
 
-    private static bool CanNodeProduceArray(CalcNode node, in DslEvalScope scope) => node switch
+    private static bool CanNodeProduceArray(CalcNode node, in DslEvalScope scope, in BoundVariableScope boundScope) => node switch
     {
         ArrayLiteralNode => true,
-        IdentifierNode id => scope.ArrayNames is not null && scope.ArrayNames.ContainsKey(id.Name),
+        IdentifierNode id => !(boundScope.Count > 0 && boundScope.TryGetValue(id.Name, out _)) &&
+            ((scope.BoundArrays.Count > 0 && scope.BoundArrays.Contains(id.Name)) ||
+             (!scope.ScalarNames.ContainsKey(id.Name) && scope.ArrayNames is not null && scope.ArrayNames.ContainsKey(id.Name))),
         CallNode fn => CalculatorArrayFunctions.ReturnsArray(fn.Name) ||
             (fn.Name is "if_gt" or "if_ge" or "if_eq" &&
              fn.Arguments.Count >= 4 &&
-             (CanNodeProduceArray(fn.Arguments[2], in scope) || CanNodeProduceArray(fn.Arguments[3], in scope))),
-        TernaryNode ternary => CanNodeProduceArray(ternary.WhenTrue, in scope) || CanNodeProduceArray(ternary.WhenFalse, in scope),
+             (CanNodeProduceArray(fn.Arguments[2], in scope, in boundScope) || CanNodeProduceArray(fn.Arguments[3], in scope, in boundScope))),
+        TernaryNode ternary => CanNodeProduceArray(ternary.WhenTrue, in scope, in boundScope) || CanNodeProduceArray(ternary.WhenFalse, in scope, in boundScope),
         _ => false,
     };
 
@@ -948,6 +1022,7 @@ internal static class CalculatorEvaluator
     private static bool IsIdentifierResolvable(string name, in DslEvalScope scope, in BoundVariableScope boundScope)
         => name is "nan" or "inf"
             || (boundScope.Count > 0 && boundScope.TryGetValue(name, out _))
+            || (scope.BoundArrays.Count > 0 && scope.BoundArrays.Contains(name))
             || scope.ScalarNames.ContainsKey(name)
             || (scope.ArrayNames is not null && scope.ArrayNames.ContainsKey(name))
             || TryResolveBuiltInConstant(name, out _);
@@ -1071,7 +1146,7 @@ internal static class CalculatorEvaluator
         }
 
         int firstOrdinaryArgument = 2;
-        if ((call.Name is "arr_reduce" or "arr_scan" or "arr_zip_map") && call.Arguments.Count >= 3)
+        if ((call.Name is "arr_reduce" or "arr_scan" or "arr_zip_map" or "arr_scan_state" or "arr_reduce_state" or "quad2d_gk") && call.Arguments.Count >= 3)
         {
             firstOrdinaryArgument = 3;
             if (call.Arguments[2] is IdentifierNode itemId)

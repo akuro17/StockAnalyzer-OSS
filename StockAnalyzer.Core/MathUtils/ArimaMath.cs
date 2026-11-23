@@ -11,8 +11,20 @@ namespace StockAnalyzer.Core.MathUtils;
 /// </summary>
 public static class ArimaMath
 {
+    internal const int MaxArOrder = 5;
+    internal const int MaxDiffOrder = 2;
+    private const int MinStabilizedBaseWindow = 20;
+    private const int StabilizedMinSampleMargin = 10;
+    private const int MaxLegacyProjectionHorizon = 100;
+    private const double StabilizedReflectionLimit = 0.98;
+    private const double LegacyMinResidualThreshold = 100.0;
+    private const double LegacyMaxPsiSqClamp = 1e15;
+    private const double LegacyMaxAbsPsiClamp = 1e7;
     private const double ZeroVarianceTolerance = 1e-9;
     private const double MatrixSingularityTolerance = 1e-12;
+    private const double DimensionlessVarianceFloor = 1e-12;
+    private const double DimensionlessResidualExplosionFactor = 20.0;
+    private const int MaxPublicForecastHorizon = 1024;
     private const double KpssCriticalValue5Percent = 0.463;
     private const int KpssMinSampleLength = 8;
     private const double KpssZeroVarianceThreshold = 1e-20;
@@ -22,6 +34,14 @@ public static class ArimaMath
     private const double AiccCoefAbsMax = 1.5;
     private const double AiccImproveTolerance = 1e-9;
     private const int MaxStepwiseSearchIterations = 16;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsValidOrderSpec(int p, int d, int q)
+        => p >= 0 && p <= MaxArOrder && d >= 0 && d <= MaxDiffOrder && q >= 0 && q <= MaxArOrder;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static int ComputeMinimumStabilizedWindow(int p, int d, int q)
+        => Math.Max(MinStabilizedBaseWindow + d, (2 * (p + q)) + d + StabilizedMinSampleMargin);
 
     /// <summary>
     /// Computes the d-th order difference of an input series.
@@ -468,8 +488,12 @@ public static class ArimaMath
 
     /// <summary>
     /// Estimates ARIMA(p, d, q) parameters on an in-sample window and produces a multi-step future forecast
-    /// with Box-Jenkins forecast error variances. Zero allocations on hot paths via stackalloc or ArrayPool.
-    /// Preserves existing 1-step EstimateArimaForecast completely intact.
+    /// <summary>
+    /// Computes h-step ARIMA(p, d, q) price forecasts and cumulative conditional forecast error variances.
+    /// Routes standard well-sized ARIMA(p+q &gt;= 1) windows through <see cref="TryEstimateStabilizedArimaCore"/>
+    /// (scale-invariant centering, Householder QR OLS, Schur-Cohn pole stabilization) while preserving
+    /// compatibility handling for ARIMA(0,d,0), flat series, short windows (&lt; minWindow), and horizon caps (1..100).
+    /// Zero allocations on hot paths via stackalloc or ArrayPool.
     /// </summary>
     public static bool EstimateArimaMultiStepForecast(
         ReadOnlySpan<double> window,
@@ -481,13 +505,13 @@ public static class ArimaMath
         out double residualStdDev)
     {
         int w = window.Length;
-        int steps = Math.Clamp(futureSteps, 1, 100);
+        int steps = Math.Clamp(futureSteps, 1, MaxLegacyProjectionHorizon);
 
         innovationVariance = 0.0;
         residualStdDev = 0.0;
 
         // Fallback condition: insufficient samples or invalid parameters
-        if (w <= d || p < 0 || p > 5 || d < 0 || d > 2 || q < 0 || q > 5 ||
+        if (w <= d || !IsValidOrderSpec(p, d, q) ||
             forecastedPrices.Length < steps || errorVariances.Length < steps)
         {
             double fallbackPrice = w > 0 ? window[^1] : 0.0;
@@ -525,7 +549,7 @@ public static class ArimaMath
             return true;
         }
 
-        // 1. Differencing
+        // 1. Differencing (shared single pass for both stabilized and legacy paths)
         int n = w - d;
         double[]? rentedDiff = null;
         Span<double> diff = (n <= MathBufferLimits.StackAllocThreshold)
@@ -536,343 +560,349 @@ public static class ArimaMath
         {
             Difference(window, diff, d);
 
-            // 2. Mean centering
-            double sumY = 0.0;
-            for (int i = 0; i < n; i++) sumY += diff[i];
-            double mu = sumY / n;
+            Span<double> phi = p > 0 ? stackalloc double[p] : Span<double>.Empty;
+            Span<double> theta = q > 0 ? stackalloc double[q] : Span<double>.Empty;
+            Span<double> tailYTilde = p > 0 ? stackalloc double[p] : Span<double>.Empty;
+            Span<double> tailResiduals = q > 0 ? stackalloc double[q] : Span<double>.Empty;
+            phi.Clear();
+            theta.Clear();
+            tailYTilde.Clear();
+            tailResiduals.Clear();
 
-            double[]? rentedTilde = null;
-            Span<double> yTilde = (n <= MathBufferLimits.StackAllocThreshold)
+            double mu;
+            double sigmaSq;
+            int minWindow = ComputeMinimumStabilizedWindow(p, d, q);
+
+            if (p + q >= 1 && w >= minWindow)
+            {
+                MathErrorCode err = TryEstimateStabilizedArimaCore(
+                    diff,
+                    p,
+                    q,
+                    phi,
+                    theta,
+                    tailYTilde,
+                    tailResiduals,
+                    out mu,
+                    out double maxAbs,
+                    out double sigma2U,
+                    out _);
+                if (err != MathErrorCode.None)
+                {
+                    forecastedPrices.Slice(0, steps).Fill(window[^1]);
+                    errorVariances.Slice(0, steps).Clear();
+                    return false;
+                }
+
+                sigmaSq = maxAbs * maxAbs * sigma2U;
+                if (!double.IsFinite(mu) || !double.IsFinite(sigmaSq))
+                {
+                    forecastedPrices.Slice(0, steps).Fill(window[^1]);
+                    errorVariances.Slice(0, steps).Clear();
+                    return false;
+                }
+            }
+            else if (!TryEstimateLegacyMultiStepCore(
+                diff,
+                p,
+                q,
+                phi,
+                theta,
+                tailYTilde,
+                tailResiduals,
+                out mu,
+                out sigmaSq))
+            {
+                forecastedPrices.Slice(0, steps).Fill(window[^1]);
+                errorVariances.Slice(0, steps).Clear();
+                return false;
+            }
+
+            double xPrev1 = window[^1];
+            double xPrev2 = (w >= 2) ? window[^2] : window[^1];
+            if (!ComputeMultiStepPricesAndVariances(
+                xPrev1,
+                xPrev2,
+                p,
+                d,
+                q,
+                steps,
+                phi,
+                theta,
+                tailYTilde,
+                tailResiduals,
+                mu,
+                sigmaSq,
+                forecastedPrices,
+                errorVariances))
+            {
+                forecastedPrices.Slice(0, steps).Fill(xPrev1);
+                errorVariances.Slice(0, steps).Clear();
+                return false;
+            }
+
+            innovationVariance = sigmaSq;
+            residualStdDev = Math.Sqrt(Math.Max(0.0, sigmaSq));
+            return true;
+        }
+        finally
+        {
+            if (rentedDiff != null) ArrayPool<double>.Shared.Return(rentedDiff, clearArray: false);
+        }
+    }
+
+    /// <summary>
+    /// Legacy estimation compatibility kernel for ARIMA(0, d, 0) and sub-<c>minWindow</c> rolling slices
+    /// preserved behind the <see cref="EstimateArimaMultiStepForecast"/> wrapper boundary.
+    /// </summary>
+    private static bool TryEstimateLegacyMultiStepCore(
+        ReadOnlySpan<double> diff,
+        int p,
+        int q,
+        Span<double> phi,
+        Span<double> theta,
+        Span<double> tailYTilde,
+        Span<double> tailResiduals,
+        out double mu,
+        out double sigmaSq)
+    {
+        int n = diff.Length;
+        double sumY = 0.0;
+        for (int i = 0; i < n; i++) sumY += diff[i];
+        mu = sumY / n;
+
+        double[]? rentedTilde = null;
+        Span<double> yTilde = (n <= MathBufferLimits.StackAllocThreshold)
+            ? stackalloc double[n]
+            : (rentedTilde = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
+
+        try
+        {
+            for (int i = 0; i < n; i++) yTilde[i] = diff[i] - mu;
+
+            if (p > 0)
+            {
+                int copyCount = Math.Min(n, p);
+                yTilde.Slice(n - copyCount, copyCount).CopyTo(tailYTilde.Slice(p - copyCount, copyCount));
+            }
+
+            // Case A: ARIMA(0, d, 0)
+            if (p == 0 && q == 0)
+            {
+                double sumSq = 0.0;
+                for (int i = 0; i < n; i++) sumSq += yTilde[i] * yTilde[i];
+                sigmaSq = Math.Max(ZeroVarianceTolerance, sumSq / n);
+                return true;
+            }
+
+            // Case B: ARIMA(p, d, 0) - Pure AR via Levinson-Durbin
+            if (q == 0)
+            {
+                Span<double> gamma = stackalloc double[p + 1];
+                for (int k = 0; k <= p; k++)
+                {
+                    double c = 0.0;
+                    for (int i = 0; i < n - k; i++) c += yTilde[i] * yTilde[i + k];
+                    gamma[k] = c / n;
+                }
+
+                return SolveLevinsonDurbin(gamma, phi.Slice(0, p), out sigmaSq);
+            }
+
+            // Case C: Short-window ARIMA(p, d, q) with q > 0 - Hannan-Rissanen 2-stage regression
+            sigmaSq = 0.0;
+            int m = Math.Min(n / 4, Math.Max(p + q + 2, 8));
+            int kTotal = p + q;
+            int t0 = Math.Max(p, m + q);
+            int sampleCount = n - t0;
+
+            // Strict precondition: n >= 20, m >= 1, m < n - 1, and sampleCount > kTotal
+            if (m < 1 || m >= n - 1 || n < 20 || sampleCount <= kTotal)
+            {
+                // Strictly refuse silent fallback to AR(p) to preserve user model identity
+                return false;
+            }
+
+            Span<double> gammaAux = stackalloc double[m + 1];
+            for (int k = 0; k <= m; k++)
+            {
+                double c = 0.0;
+                for (int i = 0; i < n - k; i++) c += yTilde[i] * yTilde[i + k];
+                gammaAux[k] = c / n;
+            }
+
+            Span<double> phiAux = stackalloc double[m];
+            if (!SolveLevinsonDurbin(gammaAux, phiAux, out _))
+            {
+                return false;
+            }
+
+            double[]? rentedResid = null;
+            Span<double> residuals = (n <= MathBufferLimits.StackAllocThreshold)
                 ? stackalloc double[n]
-                : (rentedTilde = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
+                : (rentedResid = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
 
             try
             {
-                for (int i = 0; i < n; i++) yTilde[i] = diff[i] - mu;
-
-                Span<double> phi = stackalloc double[Math.Max(p, 1)];
-                phi.Clear();
-                Span<double> theta = stackalloc double[Math.Max(q, 1)];
-                theta.Clear();
-
-                Span<double> hatTildeY = stackalloc double[steps];
-                hatTildeY.Clear();
-
-                double sigmaSq = 0.0;
-                bool isModelFitted = false;
-
-                // Case A: ARIMA(0, d, 0)
-                if (p == 0 && q == 0)
+                residuals.Slice(0, m).Clear();
+                for (int t = m; t < n; t++)
                 {
-                    double sumSq = 0.0;
-                    for (int i = 0; i < n; i++) sumSq += yTilde[i] * yTilde[i];
-                    sigmaSq = Math.Max(ZeroVarianceTolerance, sumSq / n);
-                    isModelFitted = true;
+                    double pred = 0.0;
+                    for (int k = 1; k <= m; k++)
+                    {
+                        pred += phiAux[k - 1] * yTilde[t - k];
+                    }
+                    residuals[t] = yTilde[t] - pred;
                 }
-                // Case B: ARIMA(p, d, 0) - Pure AR via Levinson-Durbin
-                else if (q == 0)
+
+                Span<double> ztz = stackalloc double[kTotal * kTotal];
+                ztz.Clear();
+                Span<double> zty = stackalloc double[kTotal];
+                zty.Clear();
+                Span<double> zRow = stackalloc double[kTotal];
+
+                for (int t = t0; t < n; t++)
                 {
-                    Span<double> gamma = stackalloc double[p + 1];
-                    for (int k = 0; k <= p; k++)
+                    for (int i = 0; i < p; i++) zRow[i] = yTilde[t - 1 - i];
+                    for (int j = 0; j < q; j++) zRow[p + j] = residuals[t - 1 - j];
+
+                    double yVal = yTilde[t];
+                    for (int r = 0; r < kTotal; r++)
                     {
-                        double c = 0.0;
-                        for (int i = 0; i < n - k; i++) c += yTilde[i] * yTilde[i + k];
-                        gamma[k] = c / n;
-                    }
-
-                    if (SolveLevinsonDurbin(gamma, phi.Slice(0, p), out sigmaSq))
-                    {
-                        isModelFitted = true;
-                    }
-                    else
-                    {
-                        return false;
-                    }
-                }
-                // Case C: ARIMA(p, d, q) with q > 0 - Hannan-Rissanen 2-stage regression
-                else
-                {
-                    int m = Math.Min(n / 4, Math.Max(p + q + 2, 8));
-                    int kTotal = p + q;
-                    int t0 = Math.Max(p, m + q);
-                    int sampleCount = n - t0;
-
-                    // Strict precondition: n >= 20, m >= 1, m < n - 1, and sampleCount > kTotal
-                    if (m < 1 || m >= n - 1 || n < 20 || sampleCount <= kTotal)
-                    {
-                        // Strictly refuse silent fallback to AR(p) to preserve user model identity
-                        return false;
-                    }
-
-                    Span<double> gammaAux = stackalloc double[m + 1];
-                    for (int k = 0; k <= m; k++)
-                    {
-                        double c = 0.0;
-                        for (int i = 0; i < n - k; i++) c += yTilde[i] * yTilde[i + k];
-                        gammaAux[k] = c / n;
-                    }
-
-                    Span<double> phiAux = stackalloc double[m];
-                    if (!SolveLevinsonDurbin(gammaAux, phiAux, out _))
-                    {
-                        return false;
-                    }
-
-                    double[]? rentedResid = null;
-                    Span<double> residuals = (n <= MathBufferLimits.StackAllocThreshold)
-                        ? stackalloc double[n]
-                        : (rentedResid = ArrayPool<double>.Shared.Rent(n)).AsSpan(0, n);
-
-                    try
-                    {
-                        residuals.Slice(0, m).Clear();
-                        for (int t = m; t < n; t++)
+                        zty[r] += zRow[r] * yVal;
+                        for (int c = 0; c < kTotal; c++)
                         {
-                            double pred = 0.0;
-                            for (int k = 1; k <= m; k++)
-                            {
-                                pred += phiAux[k - 1] * yTilde[t - k];
-                            }
-                            residuals[t] = yTilde[t] - pred;
+                            ztz[r * kTotal + c] += zRow[r] * zRow[c];
                         }
-
-                        Span<double> ztz = stackalloc double[kTotal * kTotal];
-                        ztz.Clear();
-                        Span<double> zty = stackalloc double[kTotal];
-                        zty.Clear();
-                        Span<double> zRow = stackalloc double[kTotal];
-
-                        for (int t = t0; t < n; t++)
-                        {
-                            for (int i = 0; i < p; i++) zRow[i] = yTilde[t - 1 - i];
-                            for (int j = 0; j < q; j++) zRow[p + j] = residuals[t - 1 - j];
-
-                            double yVal = yTilde[t];
-                            for (int r = 0; r < kTotal; r++)
-                            {
-                                zty[r] += zRow[r] * yVal;
-                                for (int c = 0; c < kTotal; c++)
-                                {
-                                    ztz[r * kTotal + c] += zRow[r] * zRow[c];
-                                }
-                            }
-                        }
-
-                        Span<double> beta = stackalloc double[kTotal];
-                        if (!SolveLinearSystem(ztz, zty, beta, kTotal))
-                        {
-                            return false;
-                        }
-
-                        // AR stability and MA invertibility clamp (|coef| <= 0.98)
-                        for (int i = 0; i < p; i++)
-                        {
-                            double coef = beta[i];
-                            if (Math.Abs(coef) > 0.98) coef = Math.Sign(coef) * 0.98;
-                            phi[i] = coef;
-                        }
-                        for (int j = 0; j < q; j++)
-                        {
-                            double coef = beta[p + j];
-                            if (Math.Abs(coef) > 0.98) coef = Math.Sign(coef) * 0.98;
-                            theta[j] = coef;
-                        }
-
-                        // WebAI Review #1/#2: Compute recursive final ARMA residuals on all t in [0, n-1]
-                        // e^{final}_t = yTilde_t - sum_{i=1}^p phi_i * yTilde_{t-i} - sum_{j=1}^q theta_j * e^{final}_{t-j}
-                        double maxYTilde = 0.0;
-                        for (int t = 0; t < n; t++)
-                        {
-                            if (Math.Abs(yTilde[t]) > maxYTilde) maxYTilde = Math.Abs(yTilde[t]);
-                        }
-                        double residThreshold = Math.Max(100.0, maxYTilde * 20.0);
-
-                        for (int t = 0; t < n; t++)
-                        {
-                            double fitVal = 0.0;
-                            for (int i = 1; i <= p; i++)
-                            {
-                                if (t - i >= 0) fitVal += phi[i - 1] * yTilde[t - i];
-                            }
-                            for (int j = 1; j <= q; j++)
-                            {
-                                if (t - j >= 0) fitVal += theta[j - 1] * residuals[t - j];
-                            }
-                            double r = yTilde[t] - fitVal;
-                            if (Math.Abs(r) > residThreshold || double.IsNaN(r) || double.IsInfinity(r))
-                            {
-                                return false; // Non-invertible explosive filter detected -> refuse divergent forecast
-                            }
-                            residuals[t] = r;
-                        }
-
-                        double sumResidSq = 0.0;
-                        for (int t = t0; t < n; t++)
-                        {
-                            double err = residuals[t];
-                            sumResidSq += err * err;
-                        }
-                        sigmaSq = Math.Max(ZeroVarianceTolerance, sumResidSq / sampleCount);
-                        isModelFitted = true;
-
-                        // Multi-step forecast recurrence with recursive final residuals
-                        for (int h = 1; h <= steps; h++)
-                        {
-                            double acc = 0.0;
-                            for (int i = 1; i <= p; i++)
-                            {
-                                double yRef = (h - i > 0) ? hatTildeY[h - i - 1] : yTilde[n - 1 + h - i];
-                                acc += phi[i - 1] * yRef;
-                            }
-                            for (int j = 1; j <= q; j++)
-                            {
-                                double epsRef = (h - j > 0) ? 0.0 : residuals[n - 1 + h - j];
-                                acc += theta[j - 1] * epsRef;
-                            }
-                            hatTildeY[h - 1] = acc;
-                        }
-                    }
-                    finally
-                    {
-                        if (rentedResid != null) ArrayPool<double>.Shared.Return(rentedResid);
                     }
                 }
 
-                if (!isModelFitted)
+                Span<double> beta = stackalloc double[kTotal];
+                if (!SolveLinearSystem(ztz, zty, beta, kTotal))
                 {
                     return false;
                 }
 
-                // If recurrence was not run in Case C, run general recurrence for Case A / B:
-                if (q == 0)
+                // Legacy element-wise stability and invertibility clamp (|coef| <= StabilizedReflectionLimit)
+                for (int i = 0; i < p; i++)
                 {
-                    for (int h = 1; h <= steps; h++)
-                    {
-                        double acc = 0.0;
-                        for (int i = 1; i <= p; i++)
-                        {
-                            double yRef = (h - i > 0) ? hatTildeY[h - i - 1] : yTilde[n - 1 + h - i];
-                            acc += phi[i - 1] * yRef;
-                        }
-                        hatTildeY[h - 1] = acc;
-                    }
+                    double coef = beta[i];
+                    if (Math.Abs(coef) > StabilizedReflectionLimit) coef = Math.Sign(coef) * StabilizedReflectionLimit;
+                    phi[i] = coef;
+                }
+                for (int j = 0; j < q; j++)
+                {
+                    double coef = beta[p + j];
+                    if (Math.Abs(coef) > StabilizedReflectionLimit) coef = Math.Sign(coef) * StabilizedReflectionLimit;
+                    theta[j] = coef;
                 }
 
-                // 4. Stateful Cumulative Undifferencing
-                double xPrev1 = window[^1];
-                double xPrev2 = (w >= 2) ? window[^2] : window[^1];
-
-                for (int h = 1; h <= steps; h++)
+                double maxYTilde = 0.0;
+                for (int t = 0; t < n; t++)
                 {
-                    double predY = mu + hatTildeY[h - 1];
-                    double xH = d switch
-                    {
-                        0 => predY,
-                        1 => xPrev1 + predY,
-                        2 => 2.0 * xPrev1 - xPrev2 + predY,
-                        _ => predY
-                    };
+                    if (Math.Abs(yTilde[t]) > maxYTilde) maxYTilde = Math.Abs(yTilde[t]);
+                }
+                double residThreshold = Math.Max(LegacyMinResidualThreshold, maxYTilde * DimensionlessResidualExplosionFactor);
 
-                    if (d == 1)
+                for (int t = 0; t < n; t++)
+                {
+                    double fitVal = 0.0;
+                    for (int i = 1; i <= p; i++)
                     {
-                        xPrev1 = xH;
+                        if (t - i >= 0) fitVal += phi[i - 1] * yTilde[t - i];
                     }
-                    else if (d == 2)
+                    for (int j = 1; j <= q; j++)
                     {
-                        xPrev2 = xPrev1;
-                        xPrev1 = xH;
+                        if (t - j >= 0) fitVal += theta[j - 1] * residuals[t - j];
                     }
-
-                    forecastedPrices[h - 1] = xH;
+                    double r = yTilde[t] - fitVal;
+                    if (Math.Abs(r) > residThreshold || double.IsNaN(r) || double.IsInfinity(r))
+                    {
+                        return false;
+                    }
+                    residuals[t] = r;
                 }
 
-                // 5. Box-Jenkins psi-weights & Error Variances
-                // Generalized AR polynomial Phi*(B) = Phi(B) * (1 - B)^d
-                // Degree of Phi*(B) is p + d
-                int starDegree = p + d;
-                Span<double> poly = stackalloc double[starDegree + 1];
-                poly.Clear();
-                poly[0] = 1.0;
-                for (int i = 1; i <= p; i++)
+                int copyResCount = Math.Min(n, q);
+                residuals.Slice(n - copyResCount, copyResCount).CopyTo(tailResiduals.Slice(q - copyResCount, copyResCount));
+
+                double sumResidSq = 0.0;
+                for (int t = t0; t < n; t++)
                 {
-                    poly[i] = -phi[i - 1];
+                    double err = residuals[t];
+                    sumResidSq += err * err;
                 }
-
-                // Multiply by (1 - B) d times
-                Span<double> tempPoly = stackalloc double[starDegree + 1];
-                for (int iter = 0; iter < d; iter++)
-                {
-                    tempPoly.Clear();
-                    for (int k = 0; k <= starDegree; k++)
-                    {
-                        double current = poly[k];
-                        double prev = (k > 0) ? poly[k - 1] : 0.0;
-                        tempPoly[k] = current - prev;
-                    }
-                    tempPoly.CopyTo(poly);
-                }
-
-                // Generalized AR coefficients: phiStar[k] = -poly[k] for k = 1..starDegree
-                Span<double> phiStar = stackalloc double[starDegree + 1];
-                phiStar.Clear();
-                for (int k = 1; k <= starDegree; k++)
-                {
-                    phiStar[k] = -poly[k];
-                }
-
-                // Compute psi weights: psi_0 = 1, psi_j = theta_j + sum_{k=1}^{min(j, p+d)} phiStar[k] * psi_{j-k}
-                Span<double> psi = stackalloc double[steps];
-                psi.Clear();
-                psi[0] = 1.0;
-
-                for (int j = 1; j < steps; j++)
-                {
-                    double thetaVal = (j <= q) ? theta[j - 1] : 0.0;
-                    double acc = 0.0;
-                    int maxK = Math.Min(j, starDegree);
-                    for (int k = 1; k <= maxK; k++)
-                    {
-                        acc += phiStar[k] * psi[j - k];
-                    }
-                    double psiVal = thetaVal + acc;
-                    if (psiVal * psiVal > 1e15)
-                    {
-                        psiVal = Math.Sign(psiVal) * 1e7; // Guard against numerical overflow
-                    }
-                    psi[j] = psiVal;
-                }
-
-                // Cumulative forecast error variance: sigma^2(h) = sigmaSq * sum_{j=0}^{h-1} psi_j^2
-                double sumPsiSq = 0.0;
-                for (int h = 1; h <= steps; h++)
-                {
-                    double pWeight = psi[h - 1];
-                    sumPsiSq += pWeight * pWeight;
-                    if (sumPsiSq > 1e15)
-                    {
-                        sumPsiSq = 1e15; // Hard limit divergence guard
-                        for (int rem = h; rem <= steps; rem++)
-                        {
-                            errorVariances[rem - 1] = Math.Max(0.0, sigmaSq * sumPsiSq);
-                        }
-                        break;
-                    }
-                    errorVariances[h - 1] = Math.Max(0.0, sigmaSq * sumPsiSq);
-                }
-
-                innovationVariance = sigmaSq;
-                residualStdDev = Math.Sqrt(Math.Max(0.0, sigmaSq));
+                sigmaSq = Math.Max(ZeroVarianceTolerance, sumResidSq / sampleCount);
                 return true;
             }
             finally
             {
-                if (rentedTilde != null) ArrayPool<double>.Shared.Return(rentedTilde);
+                if (rentedResid != null) ArrayPool<double>.Shared.Return(rentedResid, clearArray: false);
             }
         }
         finally
         {
-            if (rentedDiff != null) ArrayPool<double>.Shared.Return(rentedDiff);
+            if (rentedTilde != null) ArrayPool<double>.Shared.Return(rentedTilde, clearArray: false);
         }
+    }
+
+    private static bool ComputeMultiStepPricesAndVariances(
+        double last1,
+        double last2,
+        int p,
+        int d,
+        int q,
+        int steps,
+        ReadOnlySpan<double> phi,
+        ReadOnlySpan<double> theta,
+        ReadOnlySpan<double> tailYTilde,
+        ReadOnlySpan<double> tailResiduals,
+        double mu,
+        double sigmaSq,
+        Span<double> forecastedPrices,
+        Span<double> errorVariances)
+    {
+        if (TryComputeArimaMeanAdjustedPointForecasts(
+                last1,
+                last2,
+                p,
+                d,
+                q,
+                steps,
+                phi,
+                theta,
+                tailYTilde,
+                tailResiduals,
+                mu,
+                forecastedPrices) != MathErrorCode.None)
+        {
+            return false;
+        }
+
+        Span<double> psi = stackalloc double[steps];
+        if (TryComputeIntegratedArAndPsiWeights(p, d, q, steps, phi, theta, clampExtremePsi: true, psi) != MathErrorCode.None)
+        {
+            return false;
+        }
+
+        double sumPsiSq = 0.0;
+        for (int h = 1; h <= steps; h++)
+        {
+            double pWeight = psi[h - 1];
+            sumPsiSq += pWeight * pWeight;
+            if (sumPsiSq > LegacyMaxPsiSqClamp)
+            {
+                sumPsiSq = LegacyMaxPsiSqClamp; // Hard limit divergence guard
+                for (int rem = h; rem <= steps; rem++)
+                {
+                    errorVariances[rem - 1] = Math.Max(0.0, sigmaSq * sumPsiSq);
+                }
+                break;
+            }
+            errorVariances[h - 1] = Math.Max(0.0, sigmaSq * sumPsiSq);
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -1216,26 +1246,33 @@ public static class ArimaMath
     /// using the Schur-Cohn reflection step-down test on <c>z^q + theta_1 z^{q-1} + ... + theta_q</c>.
     /// </summary>
     private static bool IsMaPolynomialInvertible(ReadOnlySpan<double> theta)
+        => IsPolynomialStable(theta, AiccArSumMax);
+
+    /// <summary>
+    /// Generalized Schur-Cohn reflection step-down stability check for monic reciprocal polynomial
+    /// <c>1 + c_1 L + ... + c_k L^k</c> requiring all reflection magnitudes strictly below <paramref name="maxAbsReflection"/>.
+    /// </summary>
+    private static bool IsPolynomialStable(ReadOnlySpan<double> coeffs, double maxAbsReflection)
     {
-        int q = theta.Length;
-        if (q == 0)
+        int order = coeffs.Length;
+        if (order == 0)
         {
             return true;
         }
 
-        if (q > 5)
+        if (order > 5)
         {
             return false;
         }
 
-        Span<double> cur = stackalloc double[q];
-        Span<double> next = stackalloc double[q];
-        theta.CopyTo(cur);
+        Span<double> cur = stackalloc double[order];
+        Span<double> next = stackalloc double[order];
+        coeffs.CopyTo(cur);
 
-        for (int m = q; m >= 1; m--)
+        for (int m = order; m >= 1; m--)
         {
             double km = cur[m - 1];
-            if (!double.IsFinite(km) || Math.Abs(km) >= AiccArSumMax)
+            if (!double.IsFinite(km) || Math.Abs(km) >= maxAbsReflection)
             {
                 return false;
             }
@@ -1260,6 +1297,71 @@ public static class ArimaMath
         }
 
         return true;
+    }
+
+    private static bool TryStabilizePolynomial(ReadOnlySpan<double> orig, Span<double> stabilized, double maxAbsReflection)
+    {
+        int order = orig.Length;
+        if (order == 0)
+        {
+            return true;
+        }
+
+        if (order > 5 || stabilized.Length < order)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < order; i++)
+        {
+            if (!double.IsFinite(orig[i]))
+            {
+                return false;
+            }
+        }
+
+        if (IsPolynomialStable(orig, maxAbsReflection))
+        {
+            orig.CopyTo(stabilized.Slice(0, order));
+            return true;
+        }
+
+        Span<double> trial = stackalloc double[order];
+        double lo = 0.0;
+        double hi = 1.0;
+        for (int iter = 0; iter < 40; iter++)
+        {
+            double gamma = 0.5 * (lo + hi);
+            double factor = gamma;
+            for (int i = 0; i < order; i++)
+            {
+                trial[i] = orig[i] * factor;
+                factor *= gamma;
+            }
+
+            if (IsPolynomialStable(trial, maxAbsReflection))
+            {
+                lo = gamma;
+            }
+            else
+            {
+                hi = gamma;
+            }
+        }
+
+        if (lo <= 1e-6)
+        {
+            return false;
+        }
+
+        double finalFactor = lo;
+        for (int i = 0; i < order; i++)
+        {
+            stabilized[i] = orig[i] * finalFactor;
+            finalFactor *= lo;
+        }
+
+        return IsPolynomialStable(stabilized.Slice(0, order), maxAbsReflection);
     }
 
     /// <summary>
@@ -1681,6 +1783,799 @@ public static class ArimaMath
                 c += centered[i] * centered[i + k];
             }
             gamma[k] = c / n;
+        }
+    }
+
+    /// <summary>
+    /// Fits ARIMA(p, d, q) parameters (<c>p, q in [0, 5]</c>, <c>d in [0, 2]</c>, <c>p + q &gt;= 1</c>) on a real-valued window
+    /// using the shared <see cref="Difference"/>, <see cref="SolveLevinsonDurbin"/>, and Hannan-Rissanen two-stage OLS kernels
+    /// (additive MA convention, Schur-Cohn reflection stabilization below <c>0.98</c>, and relative AIC normalized to sample length <c>n = w - d</c>)
+    /// without modifying forecasting APIs.
+    /// </summary>
+    public static MathErrorCode TryFitArimaParameters(
+        ReadOnlySpan<double> window,
+        int p,
+        int d,
+        int q,
+        Span<double> phiOut,
+        Span<double> thetaOut,
+        out double sigma2,
+        out double aic)
+    {
+        sigma2 = 0.0;
+        aic = 0.0;
+        int w = window.Length;
+        int minWindow = ComputeMinimumStabilizedWindow(p, d, q);
+        if (!IsValidOrderSpec(p, d, q) || p + q < 1 ||
+            phiOut.Length < p || thetaOut.Length < q || w < minWindow)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        MathErrorCode finiteErr = ValidateWindowFinite(window);
+        if (finiteErr != MathErrorCode.None)
+        {
+            return finiteErr;
+        }
+
+        int n = w - d;
+        double[]? rentedDiff = n <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(n);
+        Span<double> diff = rentedDiff is null ? stackalloc double[n] : rentedDiff.AsSpan(0, n);
+        try
+        {
+            Difference(window, diff, d);
+            return TryFitArimaDifferenced(diff, p, d, q, phiOut, thetaOut, out sigma2, out aic);
+        }
+        finally
+        {
+            if (rentedDiff is not null)
+            {
+                ArrayPool<double>.Shared.Return(rentedDiff, clearArray: false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Internal differenced-series entry point shared with <see cref="DslTimeSeriesMath.ArimaFit"/>
+    /// to eliminate duplicate finite validation and duplicate differencing stack allocations.
+    /// </summary>
+    internal static MathErrorCode TryFitArimaDifferenced(
+        ReadOnlySpan<double> diff,
+        int p,
+        int d,
+        int q,
+        Span<double> phiOut,
+        Span<double> thetaOut,
+        out double sigma2,
+        out double aic)
+    {
+        sigma2 = 0.0;
+        aic = 0.0;
+        int minWindow = ComputeMinimumStabilizedWindow(p, d, q);
+        if (!IsValidOrderSpec(p, d, q) || p + q < 1 ||
+            phiOut.Length < p || thetaOut.Length < q || diff.Length + d < minWindow)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        MathErrorCode err = TryEstimateStabilizedArimaCore(
+            diff,
+            p,
+            q,
+            phiOut,
+            thetaOut,
+            Span<double>.Empty,
+            Span<double>.Empty,
+            out _,
+            out double maxAbs,
+            out double sigma2U,
+            out int n);
+        if (err != MathErrorCode.None)
+        {
+            return err;
+        }
+
+        sigma2 = maxAbs * maxAbs * sigma2U;
+        if (double.IsNaN(sigma2))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        if (!double.IsFinite(sigma2))
+        {
+            return MathErrorCode.ArithmeticOverflow;
+        }
+
+        int kParams = p + q + 2;
+        aic = (n * ((2.0 * Math.Log(maxAbs)) + Math.Log(sigma2U))) + (2.0 * kParams);
+        if (double.IsNaN(aic))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        return double.IsFinite(aic) ? MathErrorCode.None : MathErrorCode.ArithmeticOverflow;
+    }
+
+    /// <summary>
+    /// Estimates stabilized ARIMA(p, d, q) parameters via the shared <see cref="TryEstimateStabilizedArimaCore"/> kernel
+    /// and produces multi-step original-scale forecasts and Box-Jenkins standard errors for <paramref name="horizon"/> steps.
+    /// </summary>
+    public static MathErrorCode TryForecastArima(
+        ReadOnlySpan<double> window,
+        int p,
+        int d,
+        int q,
+        int horizon,
+        Span<double> forecastOut,
+        Span<double> standardErrorOut)
+    {
+        int w = window.Length;
+        int minWindow = ComputeMinimumStabilizedWindow(p, d, q);
+        if (!IsValidOrderSpec(p, d, q) || p + q < 1 ||
+            horizon < 1 || horizon > MaxPublicForecastHorizon ||
+            forecastOut.Length < horizon || standardErrorOut.Length < horizon || w < minWindow)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        MathErrorCode finiteErr = ValidateWindowFinite(window);
+        if (finiteErr != MathErrorCode.None)
+        {
+            return finiteErr;
+        }
+
+        int n = w - d;
+        double[]? rentedDiff = n <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(n);
+        Span<double> diff = rentedDiff is null ? stackalloc double[n] : rentedDiff.AsSpan(0, n);
+        try
+        {
+            Difference(window, diff, d);
+            double last1 = window[w - 1];
+            double last2 = w >= 2 ? window[w - 2] : window[w - 1];
+            return TryForecastArimaDifferenced(diff, last1, last2, p, d, q, horizon, forecastOut, standardErrorOut);
+        }
+        finally
+        {
+            if (rentedDiff is not null)
+            {
+                ArrayPool<double>.Shared.Return(rentedDiff, clearArray: false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Internal differenced-series forecasting kernel shared with <see cref="DslTimeSeriesMath.ArimaForecast"/>.
+    /// Computes forecasts in dimensional difference space and scales Box-Jenkins standard errors via
+    /// <c>maxAbs * sqrt(sigma2U * sumPsiSq)</c> to prevent premature squaring overflow at extreme amplitudes.
+    /// </summary>
+    internal static MathErrorCode TryForecastArimaDifferenced(
+        ReadOnlySpan<double> diff,
+        double last1,
+        double last2,
+        int p,
+        int d,
+        int q,
+        int horizon,
+        Span<double> forecastOut,
+        Span<double> standardErrorOut)
+    {
+        int minWindow = ComputeMinimumStabilizedWindow(p, d, q);
+        if (!IsValidOrderSpec(p, d, q) || p + q < 1 ||
+            horizon < 1 || horizon > MaxPublicForecastHorizon ||
+            forecastOut.Length < horizon || standardErrorOut.Length < horizon ||
+            diff.Length + d < minWindow)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        if (double.IsNaN(last1) || double.IsNaN(last2))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        if (double.IsInfinity(last1) || double.IsInfinity(last2))
+        {
+            return MathErrorCode.ArithmeticOverflow;
+        }
+
+        Span<double> phi = p > 0 ? stackalloc double[p] : Span<double>.Empty;
+        Span<double> theta = q > 0 ? stackalloc double[q] : Span<double>.Empty;
+        Span<double> tailYTilde = p > 0 ? stackalloc double[p] : Span<double>.Empty;
+        Span<double> tailResiduals = q > 0 ? stackalloc double[q] : Span<double>.Empty;
+
+        MathErrorCode err = TryEstimateStabilizedArimaCore(
+            diff,
+            p,
+            q,
+            phi,
+            theta,
+            tailYTilde,
+            tailResiduals,
+            out double mu,
+            out double maxAbs,
+            out double sigma2U,
+            out _);
+        if (err != MathErrorCode.None)
+        {
+            return err;
+        }
+
+        if (double.IsNaN(mu) || double.IsNaN(maxAbs) || double.IsNaN(sigma2U))
+        {
+            return MathErrorCode.NonFiniteResult;
+        }
+
+        if (!double.IsFinite(mu) || !double.IsFinite(maxAbs) || !double.IsFinite(sigma2U))
+        {
+            return MathErrorCode.ArithmeticOverflow;
+        }
+
+        // Step 1 & 2: Recursive multi-step forecast and cumulative undifferencing back to original price scale.
+        MathErrorCode pointErr = TryComputeArimaMeanAdjustedPointForecasts(
+            last1,
+            last2,
+            p,
+            d,
+            q,
+            horizon,
+            phi,
+            theta,
+            tailYTilde,
+            tailResiduals,
+            mu,
+            forecastOut);
+        if (pointErr != MathErrorCode.None)
+        {
+            return pointErr;
+        }
+
+        // Step 3: Box-Jenkins psi-weights & scaled standard errors from Phi*(B) = (1 - B)^d * Phi(B).
+        double[]? rentedPsi = horizon <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(horizon);
+        Span<double> psi = rentedPsi is null ? stackalloc double[horizon] : rentedPsi.AsSpan(0, horizon);
+        try
+        {
+            MathErrorCode psiErr = TryComputeIntegratedArAndPsiWeights(p, d, q, horizon, phi, theta, clampExtremePsi: false, psi);
+            if (psiErr != MathErrorCode.None)
+            {
+                return psiErr;
+            }
+
+            double sumPsiSq = 0.0;
+            for (int h = 1; h <= horizon; h++)
+            {
+                double pk = psi[h - 1];
+                sumPsiSq += pk * pk;
+                double seH = maxAbs * Math.Sqrt(Math.Max(0.0, sigma2U * sumPsiSq));
+                if (double.IsNaN(seH))
+                {
+                    return MathErrorCode.NonFiniteResult;
+                }
+
+                if (double.IsInfinity(sumPsiSq) || double.IsInfinity(seH))
+                {
+                    return MathErrorCode.ArithmeticOverflow;
+                }
+
+                standardErrorOut[h - 1] = seH;
+            }
+
+            return MathErrorCode.None;
+        }
+        finally
+        {
+            if (rentedPsi is not null)
+            {
+                ArrayPool<double>.Shared.Return(rentedPsi, clearArray: false);
+            }
+        }
+    }
+
+    private static MathErrorCode TryComputeArimaMeanAdjustedPointForecasts(
+        double last1,
+        double last2,
+        int p,
+        int d,
+        int q,
+        int steps,
+        ReadOnlySpan<double> phi,
+        ReadOnlySpan<double> theta,
+        ReadOnlySpan<double> tailYTilde,
+        ReadOnlySpan<double> tailResiduals,
+        double mu,
+        Span<double> forecastOut)
+    {
+        double[]? rentedHat = steps <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(steps);
+        Span<double> hatTildeY = rentedHat is null ? stackalloc double[steps] : rentedHat.AsSpan(0, steps);
+        try
+        {
+            for (int h = 1; h <= steps; h++)
+            {
+                double acc = 0.0;
+                for (int i = 1; i <= p; i++)
+                {
+                    double yRef = (h - i > 0)
+                        ? hatTildeY[h - i - 1]
+                        : tailYTilde[p - 1 + h - i];
+                    acc += phi[i - 1] * yRef;
+                }
+
+                for (int j = h; j <= q; j++)
+                {
+                    double epsRef = tailResiduals[q - 1 + h - j];
+                    acc += theta[j - 1] * epsRef;
+                }
+
+                if (double.IsNaN(acc))
+                {
+                    return MathErrorCode.NonFiniteResult;
+                }
+
+                if (double.IsInfinity(acc))
+                {
+                    return MathErrorCode.ArithmeticOverflow;
+                }
+
+                hatTildeY[h - 1] = acc;
+            }
+
+            double xPrev1 = last1;
+            double xPrev2 = last2;
+            for (int h = 1; h <= steps; h++)
+            {
+                double wHat = hatTildeY[h - 1] + mu;
+                double xH = d switch
+                {
+                    0 => wHat,
+                    1 => xPrev1 + wHat,
+                    2 => (2.0 * xPrev1) - xPrev2 + wHat,
+                    _ => wHat,
+                };
+
+                if (double.IsNaN(xH))
+                {
+                    return MathErrorCode.NonFiniteResult;
+                }
+
+                if (double.IsInfinity(xH))
+                {
+                    return MathErrorCode.ArithmeticOverflow;
+                }
+
+                if (d == 1)
+                {
+                    xPrev1 = xH;
+                }
+                else if (d == 2)
+                {
+                    xPrev2 = xPrev1;
+                    xPrev1 = xH;
+                }
+
+                forecastOut[h - 1] = xH;
+            }
+
+            return MathErrorCode.None;
+        }
+        finally
+        {
+            if (rentedHat is not null)
+            {
+                ArrayPool<double>.Shared.Return(rentedHat, clearArray: false);
+            }
+        }
+    }
+
+    private static MathErrorCode TryComputeIntegratedArAndPsiWeights(
+        int p,
+        int d,
+        int q,
+        int steps,
+        ReadOnlySpan<double> phi,
+        ReadOnlySpan<double> theta,
+        bool clampExtremePsi,
+        Span<double> psiOut)
+    {
+        int starDegree = p + d;
+        Span<double> poly = stackalloc double[starDegree + 1];
+        Span<double> tempPoly = stackalloc double[starDegree + 1];
+        poly.Clear();
+        poly[0] = 1.0;
+        for (int i = 1; i <= p; i++)
+        {
+            poly[i] = -phi[i - 1];
+        }
+
+        for (int iter = 0; iter < d; iter++)
+        {
+            tempPoly.Clear();
+            for (int k = 0; k <= starDegree; k++)
+            {
+                double prev = k > 0 ? poly[k - 1] : 0.0;
+                tempPoly[k] = poly[k] - prev;
+            }
+
+            tempPoly.CopyTo(poly);
+        }
+
+        Span<double> phiStar = stackalloc double[starDegree + 1];
+        phiStar.Clear();
+        for (int k = 1; k <= starDegree; k++)
+        {
+            phiStar[k] = -poly[k];
+        }
+
+        psiOut[0] = 1.0;
+        for (int k = 1; k < steps; k++)
+        {
+            double thetaVal = k <= q ? theta[k - 1] : 0.0;
+            double acc = 0.0;
+            int maxI = Math.Min(k, starDegree);
+            for (int i = 1; i <= maxI; i++)
+            {
+                acc += phiStar[i] * psiOut[k - i];
+            }
+
+            double psiVal = thetaVal + acc;
+            if (double.IsNaN(psiVal))
+            {
+                return MathErrorCode.NonFiniteResult;
+            }
+
+            if (clampExtremePsi)
+            {
+                if (psiVal * psiVal > LegacyMaxPsiSqClamp)
+                {
+                    psiVal = Math.Sign(psiVal) * LegacyMaxAbsPsiClamp;
+                }
+            }
+            else if (double.IsInfinity(psiVal))
+            {
+                return MathErrorCode.ArithmeticOverflow;
+            }
+
+            psiOut[k] = psiVal;
+        }
+
+        return MathErrorCode.None;
+    }
+
+    private static MathErrorCode ValidateWindowFinite(ReadOnlySpan<double> window)
+    {
+        for (int i = 0; i < window.Length; i++)
+        {
+            double val = window[i];
+            if (double.IsNaN(val))
+            {
+                return MathErrorCode.NonFiniteResult;
+            }
+
+            if (double.IsInfinity(val))
+            {
+                return MathErrorCode.ArithmeticOverflow;
+            }
+        }
+
+        return MathErrorCode.None;
+    }
+
+    private static MathErrorCode TryEstimateStabilizedArimaCore(
+        ReadOnlySpan<double> diff,
+        int p,
+        int q,
+        Span<double> phiOut,
+        Span<double> thetaOut,
+        Span<double> tailYTildeOut,
+        Span<double> tailResidualsOut,
+        out double mu,
+        out double maxAbs,
+        out double sigma2U,
+        out int n)
+    {
+        mu = 0.0;
+        maxAbs = 0.0;
+        sigma2U = 0.0;
+        n = diff.Length;
+        if (n < 1)
+        {
+            return MathErrorCode.DomainError;
+        }
+
+        double[]? rentedWork = (n * 2) <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(n * 2);
+        Span<double> yCentered = rentedWork is null ? stackalloc double[n] : rentedWork.AsSpan(0, n);
+        Span<double> u = rentedWork is null ? stackalloc double[n] : rentedWork.AsSpan(n, n);
+
+        try
+        {
+            double s0 = 0.0;
+            for (int i = 0; i < n; i++)
+            {
+                double val = diff[i];
+                if (double.IsNaN(val))
+                {
+                    return MathErrorCode.NonFiniteResult;
+                }
+
+                if (double.IsInfinity(val))
+                {
+                    return MathErrorCode.ArithmeticOverflow;
+                }
+
+                double absVal = Math.Abs(val);
+                if (absVal > s0)
+                {
+                    s0 = absVal;
+                }
+            }
+
+            if (!(s0 > 0.0))
+            {
+                return MathErrorCode.ConvergenceFailure;
+            }
+
+            double scaledSum = 0.0;
+            for (int i = 0; i < n; i++)
+            {
+                scaledSum += diff[i] / s0;
+            }
+
+            mu = s0 * (scaledSum / n);
+            if (double.IsNaN(mu))
+            {
+                return MathErrorCode.NonFiniteResult;
+            }
+
+            if (double.IsInfinity(mu))
+            {
+                return MathErrorCode.ArithmeticOverflow;
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                double yt = diff[i] - mu;
+                if (double.IsNaN(yt))
+                {
+                    return MathErrorCode.NonFiniteResult;
+                }
+
+                if (double.IsInfinity(yt))
+                {
+                    return MathErrorCode.ArithmeticOverflow;
+                }
+
+                yCentered[i] = yt;
+                double ay = Math.Abs(yt);
+                if (ay > maxAbs)
+                {
+                    maxAbs = ay;
+                }
+            }
+
+            if (!(maxAbs > 0.0))
+            {
+                return MathErrorCode.ConvergenceFailure;
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                u[i] = yCentered[i] / maxAbs;
+            }
+
+            if (p > 0 && tailYTildeOut.Length >= p)
+            {
+                yCentered.Slice(n - p, p).CopyTo(tailYTildeOut);
+            }
+
+            if (q == 0)
+            {
+                Span<double> gammaU = stackalloc double[p + 1];
+                ComputeSampleAutocovariance(u, p, gammaU);
+                if (!SolveLevinsonDurbin(gammaU, phiOut.Slice(0, p), out double rawVarU) ||
+                    !(rawVarU > 0.0) ||
+                    !double.IsFinite(rawVarU))
+                {
+                    return MathErrorCode.ConvergenceFailure;
+                }
+
+                sigma2U = Math.Max(DimensionlessVarianceFloor, rawVarU);
+                return MathErrorCode.None;
+            }
+
+            int m = Math.Min(n / 4, Math.Max(p + q + 2, 8));
+            int kTotal = p + q;
+            int t0 = Math.Max(p, m + q);
+            int nEff = n - t0;
+            if (m < 1 || m >= n - 1 || n < 20 || nEff <= kTotal + 2)
+            {
+                return MathErrorCode.DomainError;
+            }
+
+            Span<double> gammaAux = stackalloc double[m + 1];
+            ComputeSampleAutocovariance(u, m, gammaAux);
+            Span<double> phiAux = stackalloc double[m];
+            if (!SolveLevinsonDurbin(gammaAux, phiAux, out _))
+            {
+                return MathErrorCode.ConvergenceFailure;
+            }
+
+            double[]? rentedResid = n <= MathBufferLimits.StackAllocThreshold ? null : ArrayPool<double>.Shared.Rent(n);
+            Span<double> residU = rentedResid is null ? stackalloc double[n] : rentedResid.AsSpan(0, n);
+            double[]? rentedZ = ArrayPool<double>.Shared.Rent(nEff * kTotal);
+            double[]? rentedRhs = ArrayPool<double>.Shared.Rent(nEff);
+            try
+            {
+                residU.Slice(0, m).Clear();
+                for (int t = m; t < n; t++)
+                {
+                    double pred = 0.0;
+                    for (int k = 1; k <= m; k++)
+                    {
+                        pred += phiAux[k - 1] * u[t - k];
+                    }
+
+                    double rAux = u[t] - pred;
+                    if (double.IsNaN(rAux))
+                    {
+                        return MathErrorCode.NonFiniteResult;
+                    }
+
+                    if (double.IsInfinity(rAux))
+                    {
+                        return MathErrorCode.ArithmeticOverflow;
+                    }
+
+                    residU[t] = rAux;
+                }
+
+                Span<double> zMat = rentedZ.AsSpan(0, nEff * kTotal);
+                Span<double> rhsVec = rentedRhs.AsSpan(0, nEff);
+                for (int t = t0; t < n; t++)
+                {
+                    int rowOffset = (t - t0) * kTotal;
+                    for (int i = 0; i < p; i++)
+                    {
+                        zMat[rowOffset + i] = u[t - 1 - i];
+                    }
+
+                    for (int j = 0; j < q; j++)
+                    {
+                        zMat[rowOffset + p + j] = residU[t - 1 - j];
+                    }
+
+                    rhsVec[t - t0] = u[t];
+                }
+
+                if (!SmallMatrixMath.TryHouseholderQr(zMat, nEff, kTotal, rhsVec, out _))
+                {
+                    return MathErrorCode.ConvergenceFailure;
+                }
+
+                Span<double> beta = stackalloc double[kTotal];
+                SmallMatrixMath.SolveUpperTriangular(zMat, kTotal, rhsVec.Slice(0, kTotal), beta);
+                for (int i = 0; i < kTotal; i++)
+                {
+                    if (double.IsNaN(beta[i]))
+                    {
+                        return MathErrorCode.NonFiniteResult;
+                    }
+
+                    if (double.IsInfinity(beta[i]))
+                    {
+                        return MathErrorCode.ArithmeticOverflow;
+                    }
+                }
+
+                if (p > 0)
+                {
+                    Span<double> arPoly = stackalloc double[p];
+                    Span<double> arStable = stackalloc double[p];
+                    for (int i = 0; i < p; i++)
+                    {
+                        arPoly[i] = -beta[i];
+                    }
+
+                    if (!TryStabilizePolynomial(arPoly, arStable, StabilizedReflectionLimit))
+                    {
+                        return MathErrorCode.ConvergenceFailure;
+                    }
+
+                    for (int i = 0; i < p; i++)
+                    {
+                        phiOut[i] = -arStable[i];
+                    }
+                }
+
+                if (!TryStabilizePolynomial(beta.Slice(p, q), thetaOut.Slice(0, q), StabilizedReflectionLimit))
+                {
+                    return MathErrorCode.ConvergenceFailure;
+                }
+
+                for (int t = 0; t < n; t++)
+                {
+                    double fitVal = 0.0;
+                    for (int i = 1; i <= p; i++)
+                    {
+                        if (t - i >= 0) fitVal += phiOut[i - 1] * u[t - i];
+                    }
+
+                    for (int j = 1; j <= q; j++)
+                    {
+                        if (t - j >= 0) fitVal += thetaOut[j - 1] * residU[t - j];
+                    }
+
+                    double r = u[t] - fitVal;
+                    if (double.IsNaN(r))
+                    {
+                        return MathErrorCode.NonFiniteResult;
+                    }
+
+                    if (double.IsInfinity(r))
+                    {
+                        return MathErrorCode.ArithmeticOverflow;
+                    }
+
+                    if (Math.Abs(r) > DimensionlessResidualExplosionFactor)
+                    {
+                        return MathErrorCode.ConvergenceFailure;
+                    }
+
+                    residU[t] = r;
+                }
+
+                if (tailResidualsOut.Length >= q)
+                {
+                    for (int j = 0; j < q; j++)
+                    {
+                        double scaledRes = maxAbs * residU[n - q + j];
+                        if (double.IsNaN(scaledRes))
+                        {
+                            return MathErrorCode.NonFiniteResult;
+                        }
+
+                        if (double.IsInfinity(scaledRes))
+                        {
+                            return MathErrorCode.ArithmeticOverflow;
+                        }
+
+                        tailResidualsOut[j] = scaledRes;
+                    }
+                }
+
+                double sumResidSqU = 0.0;
+                for (int t = t0; t < n; t++)
+                {
+                    double err = residU[t];
+                    sumResidSqU += err * err;
+                }
+
+                if (double.IsNaN(sumResidSqU))
+                {
+                    return MathErrorCode.NonFiniteResult;
+                }
+
+                if (double.IsInfinity(sumResidSqU))
+                {
+                    return MathErrorCode.ArithmeticOverflow;
+                }
+
+                sigma2U = Math.Max(DimensionlessVarianceFloor, sumResidSqU / nEff);
+                return MathErrorCode.None;
+            }
+            finally
+            {
+                ArrayPool<double>.Shared.Return(rentedRhs, clearArray: false);
+                ArrayPool<double>.Shared.Return(rentedZ, clearArray: false);
+                if (rentedResid is not null)
+                {
+                    ArrayPool<double>.Shared.Return(rentedResid, clearArray: false);
+                }
+            }
+        }
+        finally
+        {
+            if (rentedWork is not null)
+            {
+                ArrayPool<double>.Shared.Return(rentedWork, clearArray: false);
+            }
         }
     }
 }

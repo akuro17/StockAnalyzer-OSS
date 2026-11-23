@@ -484,6 +484,19 @@ public static partial class DslGeometryMath
         return DslElementaryMath.NarrowDouble(Math.Exp(logVol));
     }
 
+    /// <summary>Natural logarithm of n-dimensional Euclidean ball volume (<c>1 &lt;= n &lt;= 1000</c>, <c>r &gt; 0</c>).</summary>
+    public static MathResult<decimal> LogNBallVol(decimal nDec, decimal r)
+    {
+        if (!DslMathValidation.TryReadInt32InRange(nDec, MinNBallDim, MaxNBallDim, out int n) || r <= 0m)
+        {
+            return MathResult<decimal>.Fail(MathErrorCode.DomainError);
+        }
+
+        double halfN = 0.5 * n;
+        double logVol = (halfN * Math.Log(Math.PI)) + (n * Math.Log((double)r)) - DslElementaryMath.LogGammaPositive(halfN + 1.0);
+        return DslElementaryMath.NarrowDouble(logVol);
+    }
+
     public static MathResult<decimal> SphereArea(decimal r)
         => r <= 0m
             ? MathResult<decimal>.Fail(MathErrorCode.DomainError)

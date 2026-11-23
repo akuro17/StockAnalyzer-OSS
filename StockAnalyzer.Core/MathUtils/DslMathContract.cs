@@ -67,7 +67,10 @@ public readonly record struct DslArrayHandle(int Offset, int Length);
 /// allowing nested higher-order functors to read outer array slices and allocate transient arrays
 /// above <see cref="BaseCursor"/> without extra pool rentals or mutating outer bindings.
 /// </summary>
-internal readonly record struct DslArrayArenaSnapshot(decimal[]? SharedBuffer, int BaseCursor);
+internal readonly record struct DslArrayArenaSnapshot(
+    decimal[]? SharedBuffer,
+    int BaseCursor,
+    int Capacity = DslArrayArena.DefaultMaxArenaElements);
 
 /// <summary>
 /// Zero-allocation bump-allocated arena backed by a lazily rented <see cref="ArrayPool{T}"/> buffer
@@ -76,19 +79,43 @@ internal readonly record struct DslArrayArenaSnapshot(decimal[]? SharedBuffer, i
 public ref struct DslArrayArena
 {
     public const int MaxArrayLength = 512;
-    public const int MaxArenaElements = 4_096;
+    public const int DefaultMaxArenaElements = 4_096;
+    public const int MaxAllowedArenaElements = 32_768;
+    public const int MaxArenaElements = DefaultMaxArenaElements;
 
     private decimal[]? _sharedBuffer;
     private Span<decimal> _buffer;
     private int _cursor;
     private int _baseCursor;
+    private int _capacity;
     private bool _isScopedView;
+
+    /// <summary>Initializes an owning arena with configurable element capacity within [DefaultMaxArenaElements, MaxAllowedArenaElements].</summary>
+    public DslArrayArena(int maxElements)
+    {
+        if (maxElements < DefaultMaxArenaElements || maxElements > MaxAllowedArenaElements)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(maxElements),
+                maxElements,
+                $"{nameof(maxElements)} must be between {DefaultMaxArenaElements} and {MaxAllowedArenaElements}.");
+        }
+
+        _sharedBuffer = null;
+        _buffer = default;
+        _cursor = 0;
+        _baseCursor = 0;
+        _capacity = maxElements;
+        _isScopedView = false;
+    }
+
+    private readonly int EffectiveCapacity => _capacity > 0 ? _capacity : DefaultMaxArenaElements;
 
     /// <summary>Current bump allocation offset in elements.</summary>
     public readonly int Cursor => _cursor;
 
-    /// <summary>Creates a snapshot of the active backing buffer and cursor for scoped higher-order evaluation.</summary>
-    internal readonly DslArrayArenaSnapshot CreateSnapshot() => new(_sharedBuffer, _cursor);
+    /// <summary>Creates a snapshot of the active backing buffer, cursor, and capacity for scoped higher-order evaluation.</summary>
+    internal readonly DslArrayArenaSnapshot CreateSnapshot() => new(_sharedBuffer, _cursor, EffectiveCapacity);
 
     /// <summary>
     /// Creates a scoped view sharing the parent's rented backing array starting at <see cref="DslArrayArenaSnapshot.BaseCursor"/>,
@@ -96,17 +123,19 @@ public ref struct DslArrayArena
     /// </summary>
     internal static DslArrayArena CreateScopedView(DslArrayArenaSnapshot snapshot)
     {
+        int capacity = snapshot.Capacity > 0 ? snapshot.Capacity : DefaultMaxArenaElements;
         if (snapshot.SharedBuffer is null)
         {
-            return default;
+            return new DslArrayArena(capacity);
         }
 
         return new DslArrayArena
         {
             _sharedBuffer = snapshot.SharedBuffer,
-            _buffer = snapshot.SharedBuffer.AsSpan(0, MaxArenaElements),
+            _buffer = snapshot.SharedBuffer.AsSpan(0, capacity),
             _cursor = snapshot.BaseCursor,
             _baseCursor = snapshot.BaseCursor,
+            _capacity = capacity,
             _isScopedView = true,
         };
     }
@@ -210,8 +239,9 @@ public ref struct DslArrayArena
     {
         if (_sharedBuffer is null && !_isScopedView)
         {
-            _sharedBuffer = ArrayPool<decimal>.Shared.Rent(MaxArenaElements);
-            _buffer = _sharedBuffer.AsSpan(0, MaxArenaElements);
+            int capacity = EffectiveCapacity;
+            _sharedBuffer = ArrayPool<decimal>.Shared.Rent(capacity);
+            _buffer = _sharedBuffer.AsSpan(0, capacity);
         }
     }
 
@@ -483,6 +513,15 @@ public ref struct DslExecutionBudget
 public interface IScalarFunction
 {
     bool TryEvaluate(double x, ref DslExecutionBudget budget, out double y);
+}
+
+/// <summary>
+/// Zero-allocation two-variable scalar functor interface for 2D quadrature.
+/// Implement as a <c>struct</c> constrained by <c>where TFunc : struct, IBinaryScalarFunction</c>.
+/// </summary>
+public interface IBinaryScalarFunction
+{
+    bool TryEvaluate(double x, double y, ref DslExecutionBudget budget, out double z);
 }
 
 /// <summary>

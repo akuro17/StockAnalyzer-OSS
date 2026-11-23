@@ -15,6 +15,8 @@ public sealed record CalculatorLimits
     public const int MaxAllowedFunctionArguments = 64;
     public const int MaxAllowedExecutionOps = 1_000_000;
     public const int MaxAllowedArrayLiteralElements = 512;
+    public const int MinAllowedArenaElements = MathUtils.DslArrayArena.DefaultMaxArenaElements;
+    public const int MaxAllowedArenaElements = MathUtils.DslArrayArena.MaxAllowedArenaElements;
 
     public static CalculatorLimits Default { get; } = new();
 
@@ -36,8 +38,10 @@ public sealed record CalculatorLimits
 
     public int MaxExecutionOps { get; init; } = 10_000;
 
+    public int MaxArenaElements { get; init; } = MathUtils.DslArrayArena.DefaultMaxArenaElements;
+
     /// <summary>
-    /// Validates that every configured limit is within [1, MaxAllowed*].
+    /// Validates that every configured limit is within its allowed range.
     /// </summary>
     /// <exception cref="ArgumentOutOfRangeException">Thrown when any limit falls outside its allowed range.</exception>
     public void Validate()
@@ -51,6 +55,13 @@ public sealed record CalculatorLimits
         ValidateRange(MaxVariadicFunctionArguments, MaxAllowedFunctionArguments, nameof(MaxVariadicFunctionArguments));
         ValidateRange(MaxArrayLiteralElements, MaxAllowedArrayLiteralElements, nameof(MaxArrayLiteralElements));
         ValidateRange(MaxExecutionOps, MaxAllowedExecutionOps, nameof(MaxExecutionOps));
+        if (MaxArenaElements < MinAllowedArenaElements || MaxArenaElements > MaxAllowedArenaElements)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(MaxArenaElements),
+                MaxArenaElements,
+                $"{nameof(MaxArenaElements)} must be between {MinAllowedArenaElements} and {MaxAllowedArenaElements}.");
+        }
     }
 
     private static void ValidateRange(int value, int maxAllowed, string paramName)

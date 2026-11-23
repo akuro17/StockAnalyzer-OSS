@@ -78,6 +78,21 @@ internal static partial class CalculatorFinanceFunctions
                     name);
                 return true;
 
+            case "bond_price_dirty":
+                outcome = CalculatorElementaryFunctions.FromMathResult(
+                    DslFinanceMath.BondPriceDirty(
+                        args[0],
+                        args[1],
+                        args[2],
+                        args[3],
+                        args[4],
+                        args[5],
+                        args.Length >= 7 ? args[6] : 2m,
+                        ref budget),
+                    position,
+                    name);
+                return true;
+
             // ---- Foreign Exchange / FX ----
             case "fx_cross_rate":
                 outcome = CalculatorElementaryFunctions.FromMathResult(
@@ -144,6 +159,14 @@ internal static partial class CalculatorFinanceFunctions
 
             case "binomial_option_price":
                 outcome = EvaluateBinomialOptionPrice(name, position, args, ref budget);
+                return true;
+
+            case "binomial_option_price_div":
+                outcome = CalculatorElementaryFunctions.FromMathResult(
+                    DslFinanceMath.BinomialOptionPriceDiv(
+                        args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7], ref budget),
+                    position,
+                    name);
                 return true;
 
             case "futures_fair_value":

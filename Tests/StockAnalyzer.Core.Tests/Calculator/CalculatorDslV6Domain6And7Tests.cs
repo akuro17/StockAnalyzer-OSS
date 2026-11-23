@@ -27,9 +27,11 @@ public sealed class CalculatorDslV6Domain6And7Tests
     // ---- Registry Check ----
 
     [Fact]
-    public void FunctionRegistry_ContainsExpected740FunctionsForV7()
+    public void FunctionRegistry_ContainsExpectedV6Functions()
     {
-        Assert.Equal(740, ExpressionCalculator.Functions.Count);
+        // Exact total registry count (760 in v8) is asserted centrally in CalculatorContractTests.
+        Assert.Contains(ExpressionCalculator.Functions, f => f.Name == "rand_unif");
+        Assert.Contains(ExpressionCalculator.Functions, f => f.Name == "bond_price");
     }
 
     // ---- Domain 6a: Deterministic PRNG ----
@@ -288,8 +290,8 @@ public sealed class CalculatorDslV6Domain6And7Tests
 
         Assert.Equal(-31m, EvalBatchOne("days_between(date_serial(2024, 2, 1), date_serial(2024, 1, 1))").ScalarValue);
 
-        // d1 == d2 -> exact 0 across bases 0..3
-        for (int b = 0; b <= 3; b++)
+        // d1 == d2 -> exact 0 across bases 0..4
+        for (int b = 0; b <= 4; b++)
         {
             var same = EvalBatchOne($"yearfrac(date_serial(2024, 6, 15), date_serial(2024, 6, 15), {b})");
             Assert.True(same.IsOk);
@@ -298,8 +300,14 @@ public sealed class CalculatorDslV6Domain6And7Tests
 
         // d2 < d1 -> DOMAIN_ERROR
         Assert.Equal(CalculatorErrorCode.DomainError, EvalBatchOne("yearfrac(100, 99, 3)").Error!.Code);
-        // Reserved basis 4 -> DOMAIN_ERROR
-        Assert.Equal(CalculatorErrorCode.DomainError, EvalBatchOne("yearfrac(100, 200, 4)").Error!.Code);
+        Assert.Equal(CalculatorErrorCode.DomainError, EvalBatchOne("yearfrac(100, 99, 4)").Error!.Code);
+        // Basis 4 = European 30E/360 (rounds day 31 -> 30 without Feb adjustment: 2020-02-29 to 2020-03-31 -> 31/360)
+        var eur30 = EvalBatchOne("yearfrac(date_serial(2020, 2, 29), date_serial(2020, 3, 31), 4)");
+        Assert.True(eur30.IsOk, eur30.Error?.Message);
+        Assert.InRange(Math.Abs(eur30.ScalarValue - (31m / 360m)), 0m, 1e-12m);
+        // Out-of-range basis -> DOMAIN_ERROR
+        Assert.Equal(CalculatorErrorCode.DomainError, EvalBatchOne("yearfrac(100, 200, -1)").Error!.Code);
+        Assert.Equal(CalculatorErrorCode.DomainError, EvalBatchOne("yearfrac(100, 200, 5)").Error!.Code);
 
         // US 30/360 NASD Feb end-of-month rule: 2020-02-29 to 2020-03-31 -> d1=30, d2=30 -> 30/360 = 1/12
         var nasd = EvalBatchOne("yearfrac(date_serial(2020, 2, 29), date_serial(2020, 3, 31), 0)");

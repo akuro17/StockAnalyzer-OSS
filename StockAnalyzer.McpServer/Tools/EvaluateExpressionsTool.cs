@@ -13,11 +13,12 @@ namespace StockAnalyzer.McpServer.Tools;
 /// </summary>
 internal sealed class EvaluateExpressionsTool : IMcpTool
 {
-    private const int CalculatorVersion = 7;
+    private const int CalculatorVersion = 8;
     private const string ArithmeticName = "System.Decimal";
     private const string VariablesArgument = "variables";
     private const string ArrayVariablesArgument = "arrayVariables";
     private const string ExpressionsArgument = "expressions";
+    private const string AllowFunctionNameVariablesArgument = "allowFunctionNameVariables";
     private const string NameProperty = "name";
     private const string ExpressionProperty = "expression";
     private const decimal DecimalScaleStripDivisor = 1.0000000000000000000000000000m;
@@ -32,9 +33,6 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
 
     private static readonly string IdentifierRegexHint =
         $"[A-Za-z_][A-Za-z0-9_]{{0,{ExpressionCalculator.MaxIdentifierLength - 1}}}";
-
-    private static readonly IReadOnlySet<string> ReservedFunctionNames =
-        ExpressionCalculator.Functions.Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
 
     private static readonly IReadOnlyDictionary<string, string> Hints = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -86,6 +84,10 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
             required: false,
             minimum: 0,
             maximum: SeriesOutputOptions.MaxDecimalPlaces)
+        .Boolean(
+            AllowFunctionNameVariablesArgument,
+            "Optional boolean (default false). When true, declared variable and expression names may match built-in function names while 'nan', 'inf', and duplicate names remain rejected.",
+            required: false)
         .Build();
 
     public bool IsHeavy => false;
@@ -109,6 +111,7 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
         }
 
         int? decimalPlaces = SeriesOutputOptions.ReadDecimalPlaces(arguments);
+        bool allowFunctionNameVariables = ToolArgs.Boolean(arguments, AllowFunctionNameVariablesArgument) ?? false;
 
         int expressionCount = expressionsElement.GetArrayLength();
         if (expressionCount > _limits.MaxCalculatorExpressions)
@@ -181,7 +184,7 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
             {
                 string varName = prop.Name;
                 string varPath = varName.Length == 0 ? VariablesArgument : $"{VariablesArgument}.{varName}";
-                ValidateDeclaredName(varName, varPath, declaredNames);
+                ValidateDeclaredName(varName, varPath, declaredNames, allowFunctionNameVariables);
             }
         }
 
@@ -191,7 +194,7 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
             {
                 string varName = prop.Name;
                 string varPath = varName.Length == 0 ? ArrayVariablesArgument : $"{ArrayVariablesArgument}.{varName}";
-                ValidateDeclaredName(varName, varPath, declaredNames);
+                ValidateDeclaredName(varName, varPath, declaredNames, allowFunctionNameVariables);
             }
         }
 
@@ -217,7 +220,7 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
             }
 
             string exprName = nameElement.GetString()!;
-            ValidateDeclaredName(exprName, namePath, declaredNames);
+            ValidateDeclaredName(exprName, namePath, declaredNames, allowFunctionNameVariables);
             itemNames[index] = exprName;
             index++;
         }
@@ -410,7 +413,13 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
             {
                 CalculatorError error = batchItem.Error!;
                 failedExpressions.Add(batchItem.Name);
-                (string wireCode, string message) = RefineError(batchItem.Name, i, error, expressionIndexByName, failedExpressions);
+                (string wireCode, string message) = RefineError(
+                    batchItem.Name,
+                    i,
+                    batchItem.Expression,
+                    error,
+                    expressionIndexByName,
+                    failedExpressions);
                 results.Add(ExpressionEvalResult.Fail(batchItem.Name, batchItem.Expression, wireCode, error.Position, message));
                 errorCount++;
             }
@@ -503,6 +512,7 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
     private static (string WireCode, string Message) RefineError(
         string currentName,
         int currentIndex,
+        string expressionText,
         CalculatorError error,
         IReadOnlyDictionary<string, int> expressionIndexByName,
         IReadOnlySet<string> failedExpressions)
@@ -510,51 +520,83 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
         string wireCode = error.Code.ToWireName();
         string message = error.Message;
 
-        if (error.Code == CalculatorErrorCode.UndefinedName
-            && error.Token is not null
-            && expressionIndexByName.TryGetValue(error.Token, out int refIndex))
+        if (error.Code == CalculatorErrorCode.UndefinedName && error.Token is not null)
         {
-            if (refIndex < currentIndex && failedExpressions.Contains(error.Token))
+            if (expressionIndexByName.TryGetValue(error.Token, out int refIndex))
             {
-                return (DependencyFailedCode, $"'{error.Token}' failed, so '{currentName}' cannot be calculated.");
-            }
+                if (refIndex < currentIndex && failedExpressions.Contains(error.Token))
+                {
+                    return (DependencyFailedCode, $"'{error.Token}' failed, so '{currentName}' cannot be calculated.");
+                }
 
-            if (refIndex > currentIndex)
+                if (refIndex == currentIndex)
+                {
+                    return (wireCode, $"{message} Expression '{currentName}' cannot reference itself.");
+                }
+
+                if (refIndex > currentIndex)
+                {
+                    return (wireCode, $"'{error.Token}' is declared after '{currentName}'; an expression can only use earlier expressions.");
+                }
+            }
+            else if (ExpressionCalculator.IsReservedFunctionName(error.Token))
             {
-                return (wireCode, $"'{error.Token}' is declared after '{currentName}'; an expression can only use earlier expressions.");
+                bool isArraySubscript = false;
+                if (error.Position >= 0
+                    && !string.IsNullOrEmpty(error.Token)
+                    && error.Position + error.Token.Length <= expressionText.Length)
+                {
+                    int idx = error.Position + error.Token.Length;
+                    while (idx < expressionText.Length && char.IsWhiteSpace(expressionText[idx]))
+                    {
+                        idx++;
+                    }
+
+                    isArraySubscript = idx < expressionText.Length && expressionText[idx] == '[';
+                }
+
+                if (!isArraySubscript)
+                {
+                    return (wireCode, $"{message} To call built-in function '{error.Token}(...)', include parentheses.");
+                }
             }
         }
 
         return (wireCode, message);
     }
 
-    private static void ValidateDeclaredName(string name, string paramPath, HashSet<string> declaredNames)
+    private static void ValidateDeclaredName(
+        string name,
+        string paramPath,
+        HashSet<string> declaredNames,
+        bool allowFunctionNameVariables)
     {
-        if (!ExpressionCalculator.IsValidIdentifier(name))
+        if (!ExpressionCalculator.TryValidateDeclaredIdentifier(
+                name,
+                allowFunctionNameVariables,
+                out ExpressionCalculator.DeclaredIdentifierValidationError error))
         {
-            throw new ToolException(
-                ToolErrorCodes.InvalidArgument,
-                $"Identifier '{name}' is invalid.",
-                paramPath,
-                $"Identifiers must match {IdentifierRegexHint}.");
-        }
-
-        if (ReservedFunctionNames.Contains(name))
-        {
-            throw new ToolException(
-                ToolErrorCodes.InvalidArgument,
-                $"Identifier '{name}' is a reserved function name.",
-                paramPath,
-                "Function names are reserved.");
-        }
-
-        if (name is "nan" or "inf")
-        {
-            throw new ToolException(
-                ToolErrorCodes.InvalidArgument,
-                $"Identifier '{name}' is reserved for non-finite rejection.",
-                paramPath,
-                "Non-finite identifiers 'nan' and 'inf' cannot be declared.");
+            switch (error)
+            {
+                case ExpressionCalculator.DeclaredIdentifierValidationError.InvalidSyntax:
+                    throw new ToolException(
+                        ToolErrorCodes.InvalidArgument,
+                        $"Identifier '{name}' is invalid.",
+                        paramPath,
+                        $"Identifiers must match {IdentifierRegexHint}.");
+                case ExpressionCalculator.DeclaredIdentifierValidationError.ReservedFunctionName:
+                    throw new ToolException(
+                        ToolErrorCodes.InvalidArgument,
+                        $"Identifier '{name}' is a reserved function name.",
+                        paramPath,
+                        "Function names are reserved.");
+                case ExpressionCalculator.DeclaredIdentifierValidationError.NonFiniteLiteral:
+                    throw new ToolException(
+                        ToolErrorCodes.InvalidArgument,
+                        $"Identifier '{name}' is reserved for non-finite rejection.",
+                        paramPath,
+                        "Non-finite identifiers 'nan' and 'inf' cannot be declared.");
+            }
         }
 
         if (!declaredNames.Add(name))

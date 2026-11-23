@@ -210,6 +210,37 @@ public static partial class DslProbabilityDistributionsMath
             return SpecialFunctionsMath.NormalCdf(h) * SpecialFunctionsMath.NormalCdf(k);
         }
 
+        // Genz (2004) high-|r| transformation removes endpoint boundary-layer spike as |r| -> 1.
+        if (Math.Abs(r) >= 0.925)
+        {
+            if (r < 0.0)
+            {
+                return Math.Clamp(SpecialFunctionsMath.NormalCdf(h) - BvNormCdfStandard(h, -k, -r), 0.0, 1.0);
+            }
+
+            double sinPhiMax = Math.Sqrt(Math.Max(0.0, (1.0 - r) * (1.0 + r)));
+            double phiMax = Math.Asin(Math.Clamp(sinPhiMax, 0.0, 1.0));
+            if (phiMax == 0.0)
+            {
+                return Math.Clamp(SpecialFunctionsMath.NormalCdf(Math.Min(h, k)), 0.0, 1.0);
+            }
+
+            double halfPhiMax = 0.5 * phiMax;
+            double diff = h - k;
+            double hkTail = h * k;
+            double tailSum = 0.0;
+            for (int i = 0; i < Gl20Nodes.Length; i++)
+            {
+                double w = Gl20Weights[i];
+                double phi1 = halfPhiMax * (1.0 - Gl20Nodes[i]);
+                double phi2 = halfPhiMax * (1.0 + Gl20Nodes[i]);
+                tailSum += w * (EvalHighCorrIntegrand(phi1, diff, hkTail) + EvalHighCorrIntegrand(phi2, diff, hkTail));
+            }
+
+            double tailVal = SpecialFunctionsMath.NormalCdf(Math.Min(h, k)) - ((halfPhiMax / MathConstants.TwoPi) * tailSum);
+            return Math.Clamp(tailVal, 0.0, 1.0);
+        }
+
         // Drezner-Wesolowsky / Genz 20-point Gauss-Legendre integration in theta = asin(rho).
         double asr = Math.Asin(Math.Clamp(r, -1.0, 1.0));
         double halfAsr = 0.5 * asr;
@@ -229,6 +260,22 @@ public static partial class DslProbabilityDistributionsMath
         bvn *= halfAsr / MathConstants.TwoPi;
         bvn += SpecialFunctionsMath.NormalCdf(h) * SpecialFunctionsMath.NormalCdf(k);
         return Math.Clamp(bvn, 0.0, 1.0);
+    }
+
+    private static double EvalHighCorrIntegrand(double phi, double diff, double hk)
+    {
+        double sinPhi = Math.Sin(phi);
+        double cosHalf = Math.Cos(0.5 * phi);
+        double term1 = diff == 0.0
+            ? 0.0
+            : (sinPhi == 0.0 ? double.PositiveInfinity : (diff * diff) / (2.0 * sinPhi * sinPhi));
+        if (double.IsPositiveInfinity(term1))
+        {
+            return 0.0;
+        }
+
+        double term2 = hk == 0.0 ? 0.0 : hk / (2.0 * cosHalf * cosHalf);
+        return Math.Exp(-Math.Max(0.0, term1 + term2));
     }
 
     // ---- 4. Chi-Square Distribution ----

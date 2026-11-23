@@ -462,10 +462,10 @@ public sealed class CalculatorContractTests
             ("dft_mag", 1, 1, "dft_mag(series)", false),
         };
 
-        // V1-V5 prefix of 437 entries remains frozen in order; DSL v6 appended 287 entries (total 724); DSL v7 appended 16 data-structure entries (total 740).
+        // V1-V5 prefix of 437 entries remains frozen in order; DSL v6 appended 287 entries (total 724); DSL v7 appended 16 (total 740); DSL v8 appended 20 (total 760).
         Assert.Equal(437, expected.Length);
-        Assert.Equal(740, ExpressionCalculator.Functions.Count);
-        Assert.Equal(740, ExpressionCalculator.Functions.Select(f => f.Name).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(760, ExpressionCalculator.Functions.Count);
+        Assert.Equal(760, ExpressionCalculator.Functions.Select(f => f.Name).Distinct(StringComparer.Ordinal).Count());
         foreach (CalculatorFunctionInfo fn in ExpressionCalculator.Functions.Skip(532))
         {
             Assert.False(string.IsNullOrWhiteSpace(fn.Signature));
@@ -525,6 +525,47 @@ public sealed class CalculatorContractTests
             Assert.False(actual.IsStatisticalVariadic);
             // Every v7 function except the scalar-returning mat_get is array-returning (array-lowering composition).
             Assert.Equal(actual.Name != "mat_get", CalculatorArrayFunctions.ReturnsArray(actual.Name));
+        }
+    }
+
+    [Fact]
+    public void V8ExpressivenessFunctionsAreAppendedAtIndices740To759()
+    {
+        var expectedV8 = new (string Name, int Min, int Max, string Signature, bool ReturnsArray)[]
+        {
+            ("arr_scan_state", 6, 6, "arr_scan_state(stepExprs, stateVars, itemVar, arr, initState, outputIndex)", true),
+            ("arr_reduce_state", 5, 5, "arr_reduce_state(stepExprs, stateVars, itemVar, arr, initState)", true),
+            ("arr_rolling_map", 4, 4, "arr_rolling_map(expr, winVar, arr, window)", true),
+            ("arr_where", 3, 3, "arr_where(condArr, trueArr, falseArr)", true),
+            ("mat_vstack", 3, 3, "mat_vstack(A, B, cols)", true),
+            ("opt_lp", 5, 6, "opt_lp(c, A, b, lb, ub[, tol])", true),
+            ("opt_qp_eq", 6, 7, "opt_qp_eq(H, c, Aeq, beq, lb, ub[, tol])", true),
+            ("quad2d_gk", 7, 7, "quad2d_gk(expr, xVar, yVar, ax, bx, ay, by)", false),
+            ("interp2d_bicubic", 5, 5, "interp2d_bicubic(xs, ys, Z, x, y)", false),
+            ("log_nball_vol", 2, 2, "log_nball_vol(n, r)", false),
+            ("log_sum_exp_weighted", 2, 2, "log_sum_exp_weighted(values, weights)", false),
+            ("kalman_1d_filter", 3, 5, "kalman_1d_filter(series, q, r[, initX, initP])", true),
+            ("granger_test", 2, 3, "granger_test(x, y[, lagOrder])", true),
+            ("johansen_test", 2, 2, "johansen_test(x, y)", true),
+            ("arima_fit", 4, 4, "arima_fit(series, p, d, q)", true),
+            ("mvnorm_logpdf", 3, 3, "mvnorm_logpdf(x, mu, cov)", false),
+            ("copula_gauss_cdf", 3, 3, "copula_gauss_cdf(u, v, rho)", false),
+            ("bond_price_dirty", 6, 7, "bond_price_dirty(face, couponRate, ytm, daysSinceCoupon, daysInPeriod, remainingCoupons[, freq])", false),
+            ("binomial_option_price_div", 8, 8, "binomial_option_price_div(S, K, T, r, q, sigma, steps, style)", false),
+            ("arima_forecast", 5, 5, "arima_forecast(series, p, d, q, horizon)", true),
+        };
+
+        Assert.Equal(20, expectedV8.Length);
+        for (int i = 0; i < expectedV8.Length; i++)
+        {
+            CalculatorFunctionInfo actual = ExpressionCalculator.Functions[740 + i];
+            Assert.Equal(expectedV8[i].Name, actual.Name);
+            Assert.Equal(expectedV8[i].Min, actual.MinArguments);
+            Assert.Equal(expectedV8[i].Max, actual.MaxArguments);
+            Assert.Equal(expectedV8[i].Signature, actual.Signature);
+            Assert.False(actual.IsVariadic);
+            Assert.False(actual.IsStatisticalVariadic);
+            Assert.Equal(expectedV8[i].ReturnsArray, CalculatorArrayFunctions.ReturnsArray(actual.Name));
         }
     }
 

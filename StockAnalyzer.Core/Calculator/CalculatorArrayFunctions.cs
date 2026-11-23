@@ -159,6 +159,10 @@ internal static partial class CalculatorArrayFunctions
                 outcome = EvaluateArrayShift(position, args[0], args[1], args[2], ref arena);
                 return true;
 
+            case "arr_where":
+                outcome = EvaluateArrayWhere(position, args[0], args[1], args[2], ref arena);
+                return true;
+
             default:
                 outcome = default;
                 return false;
@@ -339,7 +343,19 @@ internal static partial class CalculatorArrayFunctions
         "arr_take" or
         "arr_shift" or
         "arr_scan" or
-        "arr_zip_map";
+        "arr_zip_map" or
+        "arr_scan_state" or
+        "arr_reduce_state" or
+        "arr_rolling_map" or
+        "arr_where" or
+        "mat_vstack" or
+        "opt_lp" or
+        "opt_qp_eq" or
+        "kalman_1d_filter" or
+        "granger_test" or
+        "johansen_test" or
+        "arima_fit" or
+        "arima_forecast";
 
     public static DslEvalOutcome EvaluateArrayLoweredVariadic(
         string name,

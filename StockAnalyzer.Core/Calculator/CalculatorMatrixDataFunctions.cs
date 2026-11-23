@@ -51,6 +51,10 @@ internal static class CalculatorMatrixDataFunctions
                 outcome = EvaluateHorizontalStack(position, args, ref arena);
                 return true;
 
+            case "mat_vstack":
+                outcome = EvaluateVerticalStack(position, args, ref arena);
+                return true;
+
             case "mat_set":
                 outcome = EvaluateSet(position, args, ref arena);
                 return true;
@@ -289,6 +293,45 @@ internal static class CalculatorMatrixDataFunctions
             }
         }
 
+        return DslEvalOutcome.OkArray(handle);
+    }
+
+    private static DslEvalOutcome EvaluateVerticalStack(int position, scoped ReadOnlySpan<DslValue> args, ref DslArrayArena arena)
+    {
+        const string name = "mat_vstack";
+        if (!args[0].IsArray || !args[1].IsArray || args[2].IsArray)
+        {
+            return KindError(position, name, "(A, B, cols) with A and B arrays and cols a scalar");
+        }
+
+        if (!DslMathValidation.TryReadInt32InRange(args[2].Scalar, 1, DslArrayArena.MaxArrayLength, out int cols))
+        {
+            return RangeError(position, name, $"cols must be an integer in [1, {DslArrayArena.MaxArrayLength}]");
+        }
+
+        int lenA = args[0].Array.Length;
+        int lenB = args[1].Array.Length;
+        if (lenA == 0 || lenB == 0)
+        {
+            return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, $"Matrix arrays in '{name}' must be non-empty.", name);
+        }
+
+        if (lenA < cols || lenB < cols || lenA % cols != 0 || lenB % cols != 0 || lenA + lenB > DslArrayArena.MaxArrayLength)
+        {
+            return DslEvalOutcome.Fail(
+                CalculatorErrorCode.DimensionMismatch,
+                position,
+                string.Create(CultureInfo.InvariantCulture, $"Dimension mismatch in '{name}' (lenA={lenA}, lenB={lenB}, cols={cols})."),
+                name);
+        }
+
+        if (!arena.TryAllocate(lenA + lenB, out DslArrayHandle handle, out Span<decimal> output))
+        {
+            return BudgetError(position, name);
+        }
+
+        CalculatorArrayFunctions.CopyNormalized(arena.GetSlice(args[0].Array), output.Slice(0, lenA));
+        CalculatorArrayFunctions.CopyNormalized(arena.GetSlice(args[1].Array), output.Slice(lenA, lenB));
         return DslEvalOutcome.OkArray(handle);
     }
 

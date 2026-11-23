@@ -93,6 +93,13 @@ internal static class CalculatorDistributionFunctions
                 outcome = CalculatorElementaryFunctions.FromMathResult(bvRes, position, name);
                 return true;
 
+            case "copula_gauss_cdf":
+                outcome = CalculatorElementaryFunctions.FromMathResult(
+                    DslProbabilityDistributionsMath.CopulaGaussCdf(args[0], args[1], args[2]),
+                    position,
+                    name);
+                return true;
+
             // 4. Chi-square
             case "chi2_pdf":
                 outcome = CalculatorElementaryFunctions.FromMathResult(DslProbabilityDistributionsMath.Chi2Pdf(args[0], args[1]), position, name);

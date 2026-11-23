@@ -797,6 +797,26 @@ public static class ExpressionCalculator
         new("arr_shift", 3, 3, "arr_shift(a, k, fill)"),
         new("arr_scan", 5, 5, "arr_scan(expr, accVar, itemVar, arr, init)"),
         new("arr_zip_map", 5, 5, "arr_zip_map(expr, aVar, bVar, a, b)"),
+        new("arr_scan_state", 6, 6, "arr_scan_state(stepExprs, stateVars, itemVar, arr, initState, outputIndex)"),
+        new("arr_reduce_state", 5, 5, "arr_reduce_state(stepExprs, stateVars, itemVar, arr, initState)"),
+        new("arr_rolling_map", 4, 4, "arr_rolling_map(expr, winVar, arr, window)"),
+        new("arr_where", 3, 3, "arr_where(condArr, trueArr, falseArr)"),
+        new("mat_vstack", 3, 3, "mat_vstack(A, B, cols)"),
+        new("opt_lp", 5, 6, "opt_lp(c, A, b, lb, ub[, tol])"),
+        new("opt_qp_eq", 6, 7, "opt_qp_eq(H, c, Aeq, beq, lb, ub[, tol])"),
+        new("quad2d_gk", 7, 7, "quad2d_gk(expr, xVar, yVar, ax, bx, ay, by)"),
+        new("interp2d_bicubic", 5, 5, "interp2d_bicubic(xs, ys, Z, x, y)"),
+        new("log_nball_vol", 2, 2, "log_nball_vol(n, r)"),
+        new("log_sum_exp_weighted", 2, 2, "log_sum_exp_weighted(values, weights)"),
+        new("kalman_1d_filter", 3, 5, "kalman_1d_filter(series, q, r[, initX, initP])"),
+        new("granger_test", 2, 3, "granger_test(x, y[, lagOrder])"),
+        new("johansen_test", 2, 2, "johansen_test(x, y)"),
+        new("arima_fit", 4, 4, "arima_fit(series, p, d, q)"),
+        new("mvnorm_logpdf", 3, 3, "mvnorm_logpdf(x, mu, cov)"),
+        new("copula_gauss_cdf", 3, 3, "copula_gauss_cdf(u, v, rho)"),
+        new("bond_price_dirty", 6, 7, "bond_price_dirty(face, couponRate, ytm, daysSinceCoupon, daysInPeriod, remainingCoupons[, freq])"),
+        new("binomial_option_price_div", 8, 8, "binomial_option_price_div(S, K, T, r, q, sigma, steps, style)"),
+        new("arima_forecast", 5, 5, "arima_forecast(series, p, d, q, horizon)"),
     };
 
     /// <summary>Input item for sequential batch evaluation in <see cref="EvaluateBatch"/>.</summary>
@@ -876,7 +896,7 @@ public static class ExpressionCalculator
             (arrayVariables?.Count ?? 0) + expressions.Count,
             StringComparer.Ordinal);
 
-        var arena = new MathUtils.DslArrayArena();
+        var arena = new MathUtils.DslArrayArena(limits.MaxArenaElements);
         try
         {
             if (arrayVariables is not null)
@@ -888,7 +908,7 @@ public static class ExpressionCalculator
                     {
                         throw new ArgumentOutOfRangeException(
                             nameof(arrayVariables),
-                            $"Array variable '{kv.Key}' exceeds arena bounds ({MathUtils.DslArrayArena.MaxArrayLength} per array, {MathUtils.DslArrayArena.MaxArenaElements} total).");
+                            $"Array variable '{kv.Key}' exceeds arena bounds ({MathUtils.DslArrayArena.MaxArrayLength} per array, {limits.MaxArenaElements} total).");
                     }
 
                     for (int i = 0; i < source.Count; i++)
@@ -972,11 +992,58 @@ public static class ExpressionCalculator
         }
     }
 
+    private static readonly HashSet<string> ReservedFunctionNames =
+        Functions.Select(static f => f.Name).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>Validation failure classification for declared DSL batch identifiers.</summary>
+    public enum DeclaredIdentifierValidationError : byte
+    {
+        None = 0,
+        InvalidSyntax,
+        ReservedFunctionName,
+        NonFiniteLiteral,
+    }
+
     public static bool IsAsciiDigit(char ch) => ch is >= '0' and <= '9';
 
     public static bool IsIdentifierStart(char ch) => ch is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or '_';
 
     public static bool IsIdentifierPart(char ch) => IsIdentifierStart(ch) || IsAsciiDigit(ch);
+
+    /// <summary>Returns <c>true</c> if <paramref name="name"/> is a registered built-in DSL function name.</summary>
+    public static bool IsReservedFunctionName(string? name)
+        => name is not null && ReservedFunctionNames.Contains(name);
+
+    /// <summary>
+    /// Validates declared variable/expression identifier syntax, built-in function name policy,
+    /// and rejection of reserved non-finite literals (<c>nan</c>, <c>inf</c>) as a single source of truth.
+    /// </summary>
+    public static bool TryValidateDeclaredIdentifier(
+        string? name,
+        bool allowFunctionNameVariables,
+        out DeclaredIdentifierValidationError error)
+    {
+        if (!IsValidIdentifier(name))
+        {
+            error = DeclaredIdentifierValidationError.InvalidSyntax;
+            return false;
+        }
+
+        if (!allowFunctionNameVariables && ReservedFunctionNames.Contains(name!))
+        {
+            error = DeclaredIdentifierValidationError.ReservedFunctionName;
+            return false;
+        }
+
+        if (name is "nan" or "inf")
+        {
+            error = DeclaredIdentifierValidationError.NonFiniteLiteral;
+            return false;
+        }
+
+        error = DeclaredIdentifierValidationError.None;
+        return true;
+    }
 
     /// <summary>
     /// Validates whether <paramref name="name"/> satisfies the ASCII calculator identifier grammar
