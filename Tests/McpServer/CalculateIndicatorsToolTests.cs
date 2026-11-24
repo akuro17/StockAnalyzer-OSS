@@ -287,13 +287,45 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
     public static TheoryData<string, string, string> BadChains => new()
     {
         { """[{"id":"a","type":"SMA","sourceIndicatorId":"a"}]""", ToolErrorCodes.InvalidArgument, "indicators[0].sourceIndicatorId" },
-        { """[{"id":"a","type":"SMA","sourceIndicatorId":"b"},{"id":"b","type":"SMA","sourceIndicatorId":"a"}]""", ToolErrorCodes.InvalidArgument, "indicators[0].sourceIndicatorId" },
-        { """[{"id":"a","type":"SMA","dynamicPeriodIndicatorId":"b"},{"id":"b","type":"SMA","sourceIndicatorId":"a"}]""", ToolErrorCodes.InvalidArgument, "indicators[0].sourceIndicatorId" },
+        { """[{"id":"a","type":"SMA","sourceIndicatorId":"b"},{"id":"b","type":"SMA","sourceIndicatorId":"a"}]""", ToolErrorCodes.InvalidArgument, "indicators[1].sourceIndicatorId" },
+        { """[{"id":"a","type":"SMA","dynamicPeriodIndicatorId":"b"},{"id":"b","type":"SMA","sourceIndicatorId":"a"}]""", ToolErrorCodes.InvalidArgument, "indicators[1].sourceIndicatorId" },
+        { """[{"id":"a","type":"SMA","dynamicPeriodIndicatorId":"b"},{"id":"b","type":"SMA","dynamicPeriodIndicatorId":"a"}]""", ToolErrorCodes.InvalidArgument, "indicators[1].dynamicPeriodIndicatorId" },
         { """[{"id":"a","type":"SMA","sourceIndicatorId":"nobody"}]""", ToolErrorCodes.InvalidArgument, "indicators[0].sourceIndicatorId" },
         { """[{"id":"a","type":"SMA","sourceOutputSeriesName":"Main"}]""", ToolErrorCodes.InvalidArgument, "indicators[0].sourceOutputSeriesName" },
         { """[{"id":"m","type":"MACD"},{"id":"a","type":"SMA","sourceIndicatorId":"m","sourceOutputSeriesName":"Nope"}]""", ToolErrorCodes.InvalidOutputSeries, "indicators[1].sourceOutputSeriesName" },
-        { """[{"id":"m","type":"MACD"},{"id":"a","type":"SMA","sourceIndicatorId":"m","sourceOutputSeriesName":"Signal"},{"id":"b","type":"SMA","sourceIndicatorId":"m","sourceOutputSeriesName":"Histogram"}]""", ToolErrorCodes.InvalidArgument, "indicators[2].sourceOutputSeriesName" },
     };
+
+    [Fact]
+    public async Task MultipleConsumersCanReadDifferentOutputSeriesFromOneUpstreamIndicator()
+    {
+        CoreIndicatorSettings macd = Default(IndicatorType.MACD);
+        CoreIndicatorSettings smaSignal = Default(IndicatorType.SMA);
+        smaSignal.SourceIndicatorId = macd.Id;
+        smaSignal.SourceOutputSeriesName = "Signal";
+        CoreIndicatorSettings smaHist = Default(IndicatorType.SMA);
+        smaHist.SourceIndicatorId = macd.Id;
+        smaHist.SourceOutputSeriesName = "Histogram";
+        CoreIndicatorSettings smaDyn = Default(IndicatorType.SMA);
+        smaDyn.SourceIndicatorId = macd.Id;
+        smaDyn.SourceOutputSeriesName = "Signal";
+        smaDyn.DynamicPeriodIndicatorId = macd.Id;
+        smaDyn.DynamicPeriodOutputSeriesName = "Histogram";
+
+        var (_, direct) = await DirectAsync("MSFT", TimeFrame.D1, macd, smaSignal, smaHist, smaDyn);
+
+        using var response = await CallAsync(await StartAsync(), Args(
+            """[{"id":"m","type":"MACD"},{"id":"a","type":"SMA","sourceIndicatorId":"m","sourceOutputSeriesName":"Signal"},{"id":"b","type":"SMA","sourceIndicatorId":"m","sourceOutputSeriesName":"Histogram"},{"id":"c","type":"SMA","sourceIndicatorId":"m","sourceOutputSeriesName":"Signal","dynamicPeriodIndicatorId":"m","dynamicPeriodOutputSeriesName":"Histogram"}]"""));
+
+        Assert.False(McpTestSupport.IsError(response));
+        decimal?[] actualA = Values(Result(response, "a").GetProperty("series").GetProperty("SMA"));
+        decimal?[] actualB = Values(Result(response, "b").GetProperty("series").GetProperty("SMA"));
+        decimal?[] actualC = Values(Result(response, "c").GetProperty("series").GetProperty("SMA"));
+
+        Assert.Equal(direct[smaSignal.Id].MainValues.TakeLast(200).ToArray(), actualA);
+        Assert.Equal(direct[smaHist.Id].MainValues.TakeLast(200).ToArray(), actualB);
+        Assert.Equal(direct[smaDyn.Id].MainValues.TakeLast(200).ToArray(), actualC);
+        Assert.NotEqual(actualA, actualB);
+    }
 
     [Theory]
     [MemberData(nameof(BadChains))]
@@ -584,5 +616,33 @@ public sealed class CalculateIndicatorsToolTests : IDisposable
         Assert.Equal(ToolErrorCodes.InvalidIndicatorParameter, McpTestSupport.ErrorCodeOf(response));
         Assert.Equal("indicators[0].parameters.UniverseGroupId", Param(response));
         Assert.Contains(typeName, McpTestSupport.Structured(response).GetProperty("message").GetString());
+    }
+
+    [Fact]
+    public void PartialNonCausalIndicatorWithNonCausalMainSeries_PropagatesNonCausalityWhenSeriesOmitted()
+    {
+        var plan = new IndicatorChainPlan(Factory);
+        IndicatorCatalogEntry macdBase = Catalog.Find(nameof(IndicatorType.MACD))!;
+
+        // 1. Main series ("MacdLine") is non-causal, secondary series ("Signal") is causal -> omitting sourceOutputSeriesName reads Main -> non-causal.
+        var mainNonCausalEntry = macdBase with { NonCausalSeries = new[] { "MacdLine" } };
+        var upstreamMainNc = new RequestedIndicator(0, "up", mainNonCausalEntry, Default(IndicatorType.MACD), null, null, null, null);
+        var smaBase = Catalog.Find(nameof(IndicatorType.SMA))!;
+        var downstreamOmitted = new RequestedIndicator(1, "dn", smaBase, Default(IndicatorType.SMA), "up", null, null, null);
+        var requestsMain = new[] { upstreamMainNc, downstreamOmitted };
+        plan.Apply(requestsMain);
+
+        Assert.Equal(new[] { "SMA" }, plan.NonCausalSeries(downstreamOmitted, requestsMain));
+        Assert.Equal(RequestedIndicator.SourceKey, plan.NonCausalCauseOf(downstreamOmitted, requestsMain)?.Argument);
+
+        // 2. Only secondary series ("Signal") is non-causal -> omitting sourceOutputSeriesName reads causal Main ("MACD") -> stays causal.
+        var signalNonCausalEntry = macdBase with { NonCausalSeries = new[] { "Signal" } };
+        var upstreamSignalNc = new RequestedIndicator(0, "up2", signalNonCausalEntry, Default(IndicatorType.MACD), null, null, null, null);
+        var downstreamMain = new RequestedIndicator(1, "dnMain", smaBase, Default(IndicatorType.SMA), "up2", null, null, null);
+        var requestsSignal = new[] { upstreamSignalNc, downstreamMain };
+        plan.Apply(requestsSignal);
+
+        Assert.Empty(plan.NonCausalSeries(downstreamMain, requestsSignal));
+        Assert.Null(plan.NonCausalCauseOf(downstreamMain, requestsSignal));
     }
 }

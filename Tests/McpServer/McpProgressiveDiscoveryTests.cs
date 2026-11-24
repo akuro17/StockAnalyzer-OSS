@@ -97,7 +97,7 @@ public sealed class McpProgressiveDiscoveryTests : IDisposable
                 .ToArray();
             Assert.DoesNotContain(SearchToolsTool.ToolName, names);
             Assert.DoesNotContain(InvokeToolProxyTool.ToolName, names);
-            Assert.Equal(47, names.Length);
+            Assert.Equal(48, names.Length);
         }
 
         McpServerRuntime readOnlyProgressiveRuntime = CreateRuntime(progressiveDiscovery: true, enableExecution: false, enableDiscussion: false);
@@ -183,13 +183,13 @@ public sealed class McpProgressiveDiscoveryTests : IDisposable
 
         string overviewNoExec = McpHelpText.Overview(runtime.Tools, includeExecutionTools: false);
         Assert.Contains(McpCommandLine.ProgressiveDiscoveryToken, overviewNoExec, StringComparison.Ordinal);
-        Assert.Contains("47 additional active tools are discoverable", overviewNoExec, StringComparison.Ordinal);
+        Assert.Contains("48 additional active tools are discoverable", overviewNoExec, StringComparison.Ordinal);
         Assert.Contains($"  {InvokeToolProxyTool.ActionToolName}", overviewNoExec, StringComparison.Ordinal);
         Assert.Contains($"  {InvokeToolProxyTool.ToolName}", overviewNoExec, StringComparison.Ordinal);
         Assert.Contains($"  {SearchToolsTool.ToolName}", overviewNoExec, StringComparison.Ordinal);
 
         string overviewWithExec = McpHelpText.Overview(runtime.Tools, includeExecutionTools: true);
-        Assert.Contains("56 additional active tools are discoverable", overviewWithExec, StringComparison.Ordinal);
+        Assert.Contains("57 additional active tools are discoverable", overviewWithExec, StringComparison.Ordinal);
 
         Assert.True(McpHelpText.TryTool(runtime.Tools, includeExecutionTools: false, "sa_run_backtest", out string backtestHelp, out _));
         Assert.Contains("sa_run_backtest", backtestHelp, StringComparison.Ordinal);
@@ -205,11 +205,11 @@ public sealed class McpProgressiveDiscoveryTests : IDisposable
         McpServerRuntime runtime = CreateRuntime(progressiveDiscovery: true, toolsets: new[] { "core", "technical-extended", "backtest" });
 
         // Browse with whitespace query (equivalent to omitted) + docUri always present and resolvable
-        (bool errBrowse, _, JsonElement browse) = await CallToolAsync(runtime, SearchToolsTool.ToolName, """{"query":"   ","limit":25}""");
+        (bool errBrowse, _, JsonElement browse) = await CallToolAsync(runtime, SearchToolsTool.ToolName, """{"query":"   ","limit":26}""");
         Assert.False(errBrowse);
-        Assert.Equal(25, browse.GetProperty("totalAvailableTools").GetInt32());
-        Assert.Equal(25, browse.GetProperty("matchedCount").GetInt32());
-        Assert.Equal(25, browse.GetProperty("returnedCount").GetInt32());
+        Assert.Equal(26, browse.GetProperty("totalAvailableTools").GetInt32());
+        Assert.Equal(26, browse.GetProperty("matchedCount").GetInt32());
+        Assert.Equal(26, browse.GetProperty("returnedCount").GetInt32());
         Assert.False(browse.GetProperty("hasMore").GetBoolean());
         Assert.False(browse.TryGetProperty("availableProfiles", out _));
         JsonElement firstEntry = browse.GetProperty("tools")[0];
@@ -494,6 +494,68 @@ public sealed class McpProgressiveDiscoveryTests : IDisposable
             InvokeToolProxyTool.ActionToolName,
             $$$$"""{"toolName":"sa_discussion_attach_analysis","arguments":{"sessionId":"{{{{sessionId}}}}","participantToken":"{{{{token}}}}","tool":"sa_evaluate_expressions","arguments":{"expressions":[{"name":"x","expression":"1 + 2"}]}}}""");
         Assert.False(errAttachOk);
+    }
+
+    [Fact]
+    public async Task SearchTools_UsesDomainAliasesAndShortTokenWordBoundaries_WithStrictAsciiAliases()
+    {
+        McpServerRuntime runtime = CreateRuntime(progressiveDiscovery: true, enableExecution: true, enableDiscussion: true);
+        var allToolNames = runtime.Tools.CallableTools.Select(t => t.Tool.Name).ToHashSet(StringComparer.Ordinal);
+
+        foreach ((string toolName, var aliases) in McpToolSearchAliases.ByToolName)
+        {
+            Assert.Contains(toolName, allToolNames);
+            Assert.NotEmpty(aliases);
+            foreach (string alias in aliases)
+            {
+                Assert.False(string.IsNullOrEmpty(alias));
+                Assert.All(alias, c => Assert.True((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_', $"Invalid alias char '{c}' in '{alias}' for '{toolName}'."));
+            }
+        }
+
+        foreach (string indicatorQuery in new[] { "rsi", "macd", "bollinger", "ema", "atr" })
+        {
+            (bool err, _, JsonElement root) = await CallToolAsync(runtime, SearchToolsTool.ToolName, $$"""{"query":"{{indicatorQuery}}","limit":20}""");
+            Assert.False(err);
+            string[] names = root.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToArray();
+            Assert.NotEmpty(names);
+            Assert.Equal("sa_calculate_indicators", names[0]);
+            if (indicatorQuery == "atr")
+            {
+                Assert.DoesNotContain("sa_calculate_cross_asset_stats", names);
+            }
+
+            if (indicatorQuery == "ema")
+            {
+                Assert.DoesNotContain("sa_project_price_path", names);
+            }
+        }
+
+        (bool errSharpe, _, JsonElement sharpeRoot) = await CallToolAsync(runtime, SearchToolsTool.ToolName, """{"query":"sharpe"}""");
+        Assert.False(errSharpe);
+        string[] sharpeNames = sharpeRoot.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToArray();
+        Assert.Contains("sa_run_backtest", sharpeNames);
+        Assert.Contains("sa_analyze_portfolio_risk", sharpeNames);
+
+        (bool errCandle, _, JsonElement candleRoot) = await CallToolAsync(runtime, SearchToolsTool.ToolName, """{"query":"candlestick"}""");
+        Assert.False(errCandle);
+        Assert.Equal("sa_detect_candle_patterns", candleRoot.GetProperty("tools")[0].GetProperty("name").GetString());
+
+        (bool errBos, _, JsonElement bosRoot) = await CallToolAsync(runtime, SearchToolsTool.ToolName, """{"query":"bos"}""");
+        Assert.False(errBos);
+        Assert.Equal("sa_analyze_market_structure", bosRoot.GetProperty("tools")[0].GetProperty("name").GetString());
+
+        // Acronym CamelCase split: "sma" matches "SMACross" / "fft" matches "FFTCycle" even without an exact alias hit
+        (bool errFft, _, JsonElement fftRoot) = await CallToolAsync(runtime, SearchToolsTool.ToolName, """{"query":"fft"}""");
+        Assert.False(errFft);
+        Assert.Contains(fftRoot.GetProperty("tools").EnumerateArray(), t => t.GetProperty("name").GetString() == "sa_analyze_cycles");
+
+        (bool errCap, _, JsonElement capErr) = await CallToolAsync(runtime, SearchToolsTool.ToolName, """{"query":"sa","includeSchema":true,"limit":6}""");
+        Assert.True(errCap);
+        Assert.Equal(ToolErrorCodes.LimitExceeded, capErr.GetProperty("code").GetString());
+        Assert.Contains("limit <= 5", capErr.GetProperty("hint").GetString(), StringComparison.Ordinal);
+        Assert.Contains("toolNames", capErr.GetProperty("hint").GetString(), StringComparison.Ordinal);
+        Assert.Contains("includeSchema: false", capErr.GetProperty("hint").GetString(), StringComparison.Ordinal);
     }
 
     private sealed class InMemoryCommandLog : ICommandLog

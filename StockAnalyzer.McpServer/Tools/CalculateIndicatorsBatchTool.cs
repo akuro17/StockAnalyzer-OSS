@@ -66,6 +66,8 @@ internal sealed class CalculateIndicatorsBatchTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
     public string? CompactUsageHint => "Pass includeSeries: false, decimalPlaces: 4, fewer indicators, fewer symbols, or paginate with resultOffset/resultLimit.";
 
     public string? ExampleArgumentsJson =>

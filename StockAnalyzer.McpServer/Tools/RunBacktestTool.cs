@@ -66,6 +66,8 @@ internal sealed class RunBacktestTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDate;
+
     public string? CompactUsageHint => "Pass compactReport: true, compactRows: true, maxReturnedTrades: 0, or omit includeEquityCurve.";
 
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"conditions\":{\"entryLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":30},\"exitLong\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"GreaterThan\",\"right\":70}},\"maxReturnedTrades\":50}";

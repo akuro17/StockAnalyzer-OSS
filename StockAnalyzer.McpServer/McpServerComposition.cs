@@ -324,6 +324,7 @@ internal static class McpServerComposition
                 new GetTemplateDetailTool(gateway, templateWriter),
                 new BuildTemplateTool(templateBuilder),
                 new EvaluateExpressionsTool(limits),
+                new ListResultHandlesTool(resultHandles),
             };
 
             Action? prepareExecution = null;

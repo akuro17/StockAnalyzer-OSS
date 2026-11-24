@@ -44,6 +44,8 @@ internal sealed class GetRlPlaybackTool : IMcpTool
 
     public bool IsExecution => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForAsOfDate;
+
     public string? ExampleArgumentsJson => "{\"modelId\":\"active\",\"symbol\":\"7203-T\"}";
 
     public string InputSchemaJson => ToolSchema.Object()

@@ -118,6 +118,30 @@ public sealed class McpPromptsTests : IDisposable
         using JsonDocument response = await SendAsync(dispatcher, "prompts/list", """{"cursor":"x"}""");
 
         Assert.Equal((-32602, "Invalid cursor."), ErrorOf(response));
+
+        using JsonDocument numericCursor = await SendAsync(dispatcher, "tools/list", """{"cursor":123}""");
+        Assert.Equal((-32602, "Invalid cursor."), ErrorOf(numericCursor));
+    }
+
+    [Theory]
+    [InlineData("tools/list")]
+    [InlineData("resources/list")]
+    [InlineData("resources/templates/list")]
+    [InlineData("prompts/list")]
+    public async Task ListMethods_AcceptParamsNull_AndNullOrEmptyCursor(string method)
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+
+        foreach (string raw in new[]
+        {
+            $$"""{"jsonrpc":"2.0","id":1,"method":"{{method}}","params":null}""",
+            $$$"""{"jsonrpc":"2.0","id":2,"method":"{{{method}}}","params":{"cursor":null}}""",
+            $$$"""{"jsonrpc":"2.0","id":3,"method":"{{{method}}}","params":{"cursor":""}}""",
+        })
+        {
+            using JsonDocument response = JsonDocument.Parse((await dispatcher.DispatchAsync(raw, CancellationToken.None))!);
+            Assert.True(response.RootElement.TryGetProperty("result", out _), $"Expected result for {method} with {raw}, got {response.RootElement.GetRawText()}");
+        }
     }
 
     [Fact]

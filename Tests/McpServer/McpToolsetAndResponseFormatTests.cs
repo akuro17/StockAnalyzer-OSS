@@ -54,11 +54,11 @@ public sealed class McpToolsetAndResponseFormatTests : IDisposable
     // ---- Partition completeness invariant -----------------------------------------------------------------------------
 
     [Fact]
-    public void ToolsetCatalog_SevenProfilesFormExactPartitionOfAll47ReadOnlyTools()
+    public void ToolsetCatalog_SevenProfilesFormExactPartitionOfAll48ReadOnlyTools()
     {
         McpServerRuntime full = CreateRuntime();
         string[] allReadOnlyNames = full.Tools.Tools.Select(t => t.Tool.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
-        Assert.Equal(47, allReadOnlyNames.Length);
+        Assert.Equal(48, allReadOnlyNames.Length);
         Assert.Equal(7, McpToolsetCatalog.Profiles.Count);
         Assert.Equal(6, McpToolsetCatalog.Profiles["technical"].Count);
         Assert.Equal(10, McpToolsetCatalog.Profiles["technical-extended"].Count);
@@ -204,13 +204,13 @@ public sealed class McpToolsetAndResponseFormatTests : IDisposable
         Assert.Equal(McpToolsetCatalog.Profiles["core"].OrderBy(n => n, StringComparer.Ordinal).ToArray(), coreNames);
 
         McpServerRuntime coreAndMl = CreateRuntime(toolsets: new[] { "core", "ml" });
-        Assert.Equal(14, coreAndMl.Tools.Tools.Count);
+        Assert.Equal(15, coreAndMl.Tools.Tools.Count);
 
         McpServerRuntime coreWithExecAndDisc = CreateRuntime(enableExecution: true, enableDiscussion: true, toolsets: new[] { "core" });
-        Assert.Equal(10 + 9 + 9, coreWithExecAndDisc.Tools.Tools.Count);
+        Assert.Equal(11 + 9 + 9, coreWithExecAndDisc.Tools.Tools.Count);
 
         McpServerRuntime allExplicit = CreateRuntime(toolsets: new[] { "all" });
-        Assert.Equal(47, allExplicit.Tools.Tools.Count);
+        Assert.Equal(48, allExplicit.Tools.Tools.Count);
     }
 
     // ---- Response format (Dual vs TextOnly) ---------------------------------------------------------------------------
@@ -297,7 +297,7 @@ public sealed class McpToolsetAndResponseFormatTests : IDisposable
 
             using JsonDocument list = await Ask("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}""");
             string[] names = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToArray();
-            Assert.Equal(10, names.Length);
+            Assert.Equal(11, names.Length);
             Assert.Contains("sa_get_settings", names);
             Assert.DoesNotContain("sa_run_backtest", names);
 

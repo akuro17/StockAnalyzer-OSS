@@ -67,6 +67,10 @@ internal sealed class DetectDivergencesTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDate;
+
+    public string? CompactUsageHint => "Pass a smaller maxEvents or narrower startDate-endDate window.";
+
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"indicator\":\"RSI\",\"pivotOrder\":5,\"detectCrosses\":true,\"shortMaPeriod\":25,\"longMaPeriod\":75}";
 

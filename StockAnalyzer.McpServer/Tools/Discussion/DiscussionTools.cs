@@ -127,6 +127,8 @@ internal sealed class DiscussionReadTool : DiscussionToolBase
 
     public override string Name => "sa_discussion_read";
 
+    public override string? CompactUsageHint => "Pass a smaller limit.";
+
     public override string Description =>
         "Reads the messages after afterSequence in order, at most limit of them; continue with nextAfterSequence while hasMore is true. " +
         "With waitSeconds above 0 and nothing new, waits up to that many seconds (at most maxWaitSeconds) and returns as soon as someone posts; the wait does not block other tools, and timedOut is true when nothing arrived. " +

@@ -6,6 +6,7 @@ using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.ViewModels;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Rendering;
 using StockAnalyzer.Core.Theme;
 using StockAnalyzer.Core.Utilities;
 
@@ -140,6 +141,11 @@ public static class ChartInformationDataProvider
                 var seriesNames = result.SeriesNamesList;
                 if (seriesNames == null || seriesNames.Count == 0)
                 {
+                    if (!SeriesRenderStyleCatalog.IsSeriesVisible(indicator, IndicatorResult.MainSeriesName))
+                    {
+                        continue;
+                    }
+
                     var main = result.MainValues;
                     decimal? val = (main != null && globalIndex >= 0 && globalIndex < main.Count) ? main[globalIndex] : null;
                     string valStr = val.HasValue ? val.Value.ToString("0.000") : "N/A";
@@ -149,20 +155,33 @@ public static class ChartInformationDataProvider
                 }
 
                 var validSeries = new List<string>();
+                bool anyHiddenByVisibility = false;
                 foreach (var n in seriesNames)
                 {
                     if (IndicatorSeriesNames.IsDirectionalSignalSeries(n))
                         continue;
 
-                    bool isMainExplicitlyMapped = indicator.SeriesColors != null && indicator.SeriesColors.Any(sc => sc.TargetSeries.Contains("Main"));
-                    if (n == "Main" && !isMainExplicitlyMapped && seriesNames.Any(other => other != "Main" && !other.Contains("Signal") && !other.Contains("Histogram") && !other.Contains("Trend")))
+                    bool isMainExplicitlyMapped = SeriesRenderStyleCatalog.FindSeriesConfig(indicator, IndicatorResult.MainSeriesName) != null;
+                    if (n == "Main" && !isMainExplicitlyMapped && HasOtherChartableSeriesName(seriesNames))
                         continue;
+
+                    // Hover overlay filters solely by visibility so visible ColorStrip series remain inspectable.
+                    if (!SeriesRenderStyleCatalog.IsSeriesVisible(indicator, n))
+                    {
+                        anyHiddenByVisibility = true;
+                        continue;
+                    }
 
                     validSeries.Add(n);
                 }
 
                 if (validSeries.Count == 0)
                 {
+                    if (anyHiddenByVisibility || !SeriesRenderStyleCatalog.IsSeriesVisible(indicator, IndicatorResult.MainSeriesName))
+                    {
+                        continue;
+                    }
+
                     var main = result.MainValues;
                     decimal? val = (main != null && globalIndex >= 0 && globalIndex < main.Count) ? main[globalIndex] : null;
                     string valStr = val.HasValue ? val.Value.ToString("0.000") : "N/A";
@@ -170,10 +189,12 @@ public static class ChartInformationDataProvider
                 }
                 else if (validSeries.Count == 1)
                 {
-                    var series = result.GetSeries(validSeries[0]);
+                    var singleSeriesName = validSeries[0];
+                    var series = result.GetSeries(singleSeriesName);
                     decimal? val = (series != null && globalIndex >= 0 && globalIndex < series.Count) ? series[globalIndex] : null;
                     string valStr = val.HasValue ? val.Value.ToString("0.000") : "N/A";
-                    indicatorItems.Add(new IndicatorInformationItem(indicatorName, valStr, indicator.Color));
+                    var singleColor = SeriesRenderStyleCatalog.FindSeriesConfig(indicator, singleSeriesName)?.Color ?? indicator.Color;
+                    indicatorItems.Add(new IndicatorInformationItem(indicatorName, valStr, singleColor));
                 }
                 else
                 {
@@ -185,7 +206,7 @@ public static class ChartInformationDataProvider
 
                         var childColor = indicator.Color;
                         string label = seriesName;
-                        var colorConfig = indicator.SeriesColors?.FirstOrDefault(sc => sc.TargetSeries.Contains(seriesName));
+                        var colorConfig = SeriesRenderStyleCatalog.FindSeriesConfig(indicator, seriesName);
                         if (colorConfig != null)
                         {
                             childColor = colorConfig.Color;
@@ -233,6 +254,19 @@ public static class ChartInformationDataProvider
             Indicators: indicatorItems,
             Drawings: drawingItems
         );
+    }
+
+    private static bool HasOtherChartableSeriesName(IReadOnlyList<string> seriesNames)
+    {
+        for (int i = 0; i < seriesNames.Count; i++)
+        {
+            string other = seriesNames[i];
+            if (other != "Main" && !other.Contains("Signal") && !other.Contains("Histogram") && !other.Contains("Trend"))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static readonly Func<string, string> LocalizeFromManager = key => LocalizationManager.Instance[key];

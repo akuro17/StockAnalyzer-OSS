@@ -11,6 +11,7 @@ using StockAnalyzer.Core.Models.Indicators.Chart;
 using StockAnalyzer.Core.Models.DivergenceCross;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Parameters;
+using StockAnalyzer.Core.Models.Rendering;
 using StockAnalyzer.Core.Theme;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -434,7 +435,7 @@ public sealed class ChartRenderPipeline : IDisposable
                     labelPanelIdx = resolvedPanelIdx;
                 }
 
-                if (setting.ShowAxisLabel && renderConfig.ChartType != ChartType.RelativePerformance)
+                if (ShouldEmitIndicatorAxisLabel(setting, renderConfig.ChartType))
                 {
                     if (snapshot.IndicatorResults.TryGetValue(setting.Id, out var result) && result.IsSuccessful)
                     {
@@ -744,6 +745,16 @@ public sealed class ChartRenderPipeline : IDisposable
     }
 
     /// <summary>
+    /// Returns true if an active indicator should emit a Y-axis current-value label.
+    /// Hidden main series and <see cref="SeriesPrimitiveType.ColorStrip"/> scalar bands are excluded
+    /// identically to Y-axis auto-range scaling.
+    /// </summary>
+    internal static bool ShouldEmitIndicatorAxisLabel(CoreIndicatorSettings setting, ChartType chartType) =>
+        setting.ShowAxisLabel &&
+        chartType != ChartType.RelativePerformance &&
+        !SeriesRenderStyleCatalog.ShouldExcludeFromYRange(setting, IndicatorResult.MainSeriesName);
+
+    /// <summary>
     /// Picks the first two charted series of one sub-panel indicator for an intra-indicator cross
     /// (e.g. MACD vs Signal). Series that <see cref="IndicatorChartSuppression"/> hides are skipped so a
     /// marker never sits on an invisible line. A null <paramref name="setting"/> keeps the type-less rule.
@@ -754,7 +765,7 @@ public sealed class ChartRenderPipeline : IDisposable
         string? shortName = null;
         foreach (var seriesName in result.SeriesNames)
         {
-            if (IndicatorChartSuppression.IsSuppressed(setting?.TypeEnum, seriesName, setting?.ParameterObject))
+            if (SeriesRenderStyleCatalog.ShouldExcludeFromYRange(setting, seriesName))
                 continue;
             if (shortName == null) shortName = seriesName;
             else return (shortName, seriesName);

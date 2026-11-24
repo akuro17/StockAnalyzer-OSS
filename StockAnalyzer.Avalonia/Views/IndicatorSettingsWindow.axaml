@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:models="clr-namespace:StockAnalyzer.Core.Models;assembly=StockAnalyzer.Core"
+        xmlns:rendering="clr-namespace:StockAnalyzer.Core.Models.Rendering;assembly=StockAnalyzer.Core"
         xmlns:params="clr-namespace:StockAnalyzer.Core.Models.Parameters;assembly=StockAnalyzer.Core"
         xmlns:converters="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
         xmlns:vm="clr-namespace:StockAnalyzer.Avalonia.ViewModels.Dialogs;assembly=StockAnalyzer.Avalonia"
@@ -526,16 +527,46 @@
                                             <TextBlock Text="{l:Localize Label_ColorSettings}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource BaseFontSize}" FontWeight="Bold"/>
 
                                             <!-- Panel C: Main Color & Line Thickness (paired) -->
-                                            <controls:ResponsiveFormPanel>
+                                            <controls:ResponsiveFormPanel Name="MainColorResponsiveFormPanel">
                                                 <!-- Main Color (Hidden if SeriesColors is present) -->
                                                 <StackPanel IsVisible="{Binding SelectedIndicator.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsEqualToZero}}"
                                                             Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
                                                     <TextBlock Text="{l:Localize Label_MainColor}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}"/>
-                                                    <ColorPicker Color="{Binding SelectedIndicator.Color, Converter={StaticResource ColorConverter}}" 
-                                                                 ColorSpectrumShape="Box"
-                                                                 Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
-                                                                 HorizontalAlignment="Stretch"
-                                                                 MinWidth="0"/>
+                                                    <Grid ColumnDefinitions="Auto, Auto, *">
+                                                        <CheckBox Grid.Column="0"
+                                                                  Name="MainSeriesVisibleCheckBox"
+                                                                  IsChecked="{Binding SelectedMainSeriesVisible, Mode=TwoWay}"
+                                                                  IsVisible="{Binding ShowSeriesStyleAndVisibilityControls}"
+                                                                  ToolTip.Tip="{l:Localize Tooltip_SeriesVisible}"
+                                                                  MinWidth="0"
+                                                                  Padding="0"
+                                                                  Margin="0,0,6,0"
+                                                                  VerticalAlignment="Center"/>
+                                                        <ComboBox Grid.Column="1"
+                                                                  Name="MainSeriesRenderStyleComboBox"
+                                                                  ItemsSource="{Binding SelectableRenderPrimitives}"
+                                                                  SelectedItem="{Binding SelectedMainRenderPrimitive, Mode=TwoWay}"
+                                                                  IsVisible="{Binding ShowSeriesStyleAndVisibilityControls}"
+                                                                  ToolTip.Tip="{l:Localize Tooltip_SeriesRenderStyle}"
+                                                                  Width="{x:Static lc:LayoutConstants.IndicatorFormInlineComboWidth}"
+                                                                  Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                                  Margin="0,0,6,0"
+                                                                  VerticalAlignment="Center">
+                                                            <ComboBox.ItemTemplate>
+                                                                <DataTemplate x:DataType="rendering:SeriesPrimitiveType">
+                                                                    <TextBlock Text="{Binding ., Converter={x:Static converters:EnumToLocalizedDisplayNameConverter.Instance}}"
+                                                                               TextTrimming="CharacterEllipsis"/>
+                                                                </DataTemplate>
+                                                            </ComboBox.ItemTemplate>
+                                                        </ComboBox>
+                                                        <ColorPicker Grid.Column="2"
+                                                                     Name="MainSeriesColorPicker"
+                                                                     Color="{Binding SelectedIndicator.Color, Converter={StaticResource ColorConverter}}"
+                                                                     ColorSpectrumShape="Box"
+                                                                     Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                                     HorizontalAlignment="Stretch"
+                                                                     MinWidth="{x:Static lc:LayoutConstants.IndicatorFormColorPickerMinWidth}"/>
+                                                    </Grid>
                                                 </StackPanel>
 
                                                 <!-- Line Thickness -->
@@ -588,22 +619,50 @@
                                             </controls:ResponsiveFormPanel>
 
                                             <!-- Multi-Series Colors -->
-                                            <ItemsControl ItemsSource="{Binding SelectedIndicator.SeriesColors}"
+                                            <ItemsControl Name="SeriesColorSettingsItemsControl"
+                                                          ItemsSource="{Binding ActiveSeriesStyleRows}"
                                                           IsVisible="{Binding SelectedIndicator.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsGreaterThanZero}}">
                                                 <ItemsControl.ItemsPanel>
                                                     <ItemsPanelTemplate>
-                                                        <controls:ResponsiveFormPanel/>
+                                                        <controls:ResponsiveFormPanel Name="MultiSeriesResponsiveFormPanel"/>
                                                     </ItemsPanelTemplate>
                                                 </ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
+                                                    <DataTemplate x:DataType="vm:ActiveSeriesStyleRow">
                                                         <StackPanel Spacing="{x:Static lc:LayoutConstants.IndicatorFormLabelInputSpacing}">
                                                             <TextBlock Text="{Binding DisplayName}" Foreground="{DynamicResource Brush.Text.Primary}" FontSize="{DynamicResource DetailFontSize}"/>
-                                                            <ColorPicker Color="{Binding Color, Converter={StaticResource ColorConverter}}" 
-                                                                         ColorSpectrumShape="Box"
-                                                                         Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
-                                                                         HorizontalAlignment="Stretch"
-                                                                         MinWidth="0"/>
+                                                            <Grid ColumnDefinitions="Auto, Auto, *">
+                                                                <CheckBox Grid.Column="0"
+                                                                          IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                                                          IsVisible="{Binding ShowStyleControls}"
+                                                                          ToolTip.Tip="{l:Localize Tooltip_SeriesVisible}"
+                                                                          MinWidth="0"
+                                                                          Padding="0"
+                                                                          Margin="0,0,6,0"
+                                                                          VerticalAlignment="Center"/>
+                                                                <ComboBox Grid.Column="1"
+                                                                          ItemsSource="{Binding SelectableRenderPrimitives}"
+                                                                          SelectedItem="{Binding EffectivePrimitive, Mode=TwoWay}"
+                                                                          IsVisible="{Binding ShowStyleControls}"
+                                                                          ToolTip.Tip="{l:Localize Tooltip_SeriesRenderStyle}"
+                                                                          Width="{x:Static lc:LayoutConstants.IndicatorFormInlineComboWidth}"
+                                                                          Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                                          Margin="0,0,6,0"
+                                                                          VerticalAlignment="Center">
+                                                                    <ComboBox.ItemTemplate>
+                                                                        <DataTemplate x:DataType="rendering:SeriesPrimitiveType">
+                                                                            <TextBlock Text="{Binding ., Converter={x:Static converters:EnumToLocalizedDisplayNameConverter.Instance}}"
+                                                                                       TextTrimming="CharacterEllipsis"/>
+                                                                        </DataTemplate>
+                                                                    </ComboBox.ItemTemplate>
+                                                                </ComboBox>
+                                                                <ColorPicker Grid.Column="2"
+                                                                             Color="{Binding Color, Converter={StaticResource ColorConverter}}"
+                                                                             ColorSpectrumShape="Box"
+                                                                             Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                                             HorizontalAlignment="Stretch"
+                                                                             MinWidth="{x:Static lc:LayoutConstants.IndicatorFormColorPickerMinWidth}"/>
+                                                            </Grid>
                                                         </StackPanel>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>

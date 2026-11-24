@@ -223,9 +223,11 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
         {
             if (result.TryGetValue(setting.SourceIndicatorId, out var sourceResult) && sourceResult.IsSuccessful)
             {
-                string? targetSeriesName = settingsById.TryGetValue(setting.SourceIndicatorId, out var srcSetting)
-                    ? srcSetting.OutputSeriesName
-                    : null;
+                string? targetSeriesName = !string.IsNullOrEmpty(setting.SourceOutputSeriesName)
+                    ? setting.SourceOutputSeriesName
+                    : (settingsById.TryGetValue(setting.SourceIndicatorId, out var srcSetting)
+                        ? srcSetting.OutputSeriesName
+                        : null);
 
                 IReadOnlyList<decimal?> series = !string.IsNullOrEmpty(targetSeriesName)
                     ? sourceResult.GetSeries(targetSeriesName)
@@ -262,9 +264,11 @@ public class AnalysisPipelineService : IAnalysisPipelineService, ICancellableInd
         {
             if (result.TryGetValue(setting.DynamicPeriodIndicatorId, out var dynResult) && dynResult.IsSuccessful)
             {
-                string? dynSeriesName = settingsById.TryGetValue(setting.DynamicPeriodIndicatorId, out var dynSetting)
-                    ? dynSetting.OutputSeriesName
-                    : null;
+                string? dynSeriesName = !string.IsNullOrEmpty(setting.DynamicPeriodOutputSeriesName)
+                    ? setting.DynamicPeriodOutputSeriesName
+                    : (settingsById.TryGetValue(setting.DynamicPeriodIndicatorId, out var dynSetting)
+                        ? dynSetting.OutputSeriesName
+                        : null);
 
                 IReadOnlyList<decimal?> driverVals = !string.IsNullOrEmpty(dynSeriesName)
                     ? dynResult.GetSeries(dynSeriesName)

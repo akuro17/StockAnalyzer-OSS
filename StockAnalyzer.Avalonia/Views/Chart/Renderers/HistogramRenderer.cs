@@ -10,9 +10,14 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// <summary>
 /// Renders indicator values as a histogram (bar chart).
 /// </summary>
-public class HistogramRenderer
+public class HistogramRenderer : IDisposable
 {
     private readonly SKPaint _paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
+
+    public void Dispose()
+    {
+        _paint.Dispose();
+    }
     public void Render(SKCanvas canvas, Rect chartArea,
         IReadOnlyList<decimal?> values,
         CoreIndicatorSettings setting,

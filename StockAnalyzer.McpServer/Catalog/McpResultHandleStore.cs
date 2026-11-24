@@ -90,6 +90,27 @@ internal sealed class McpResultHandleStore
         }
     }
 
+    /// <summary>Returns a point-in-time snapshot of active handles ordered most-recently-used first without altering LRU recency.</summary>
+    public IReadOnlyList<SymbolListHandleEntry> SnapshotMostRecentFirst()
+    {
+        lock (_sync)
+        {
+            if (_lru.Count == 0)
+            {
+                return Array.Empty<SymbolListHandleEntry>();
+            }
+
+            var snapshot = new SymbolListHandleEntry[_lru.Count];
+            int index = 0;
+            for (LinkedListNode<SymbolListHandleEntry>? node = _lru.First; node is not null; node = node.Next)
+            {
+                snapshot[index++] = node.Value;
+            }
+
+            return snapshot;
+        }
+    }
+
     /// <summary>
     /// Resolves <paramref name="resultId"/> and verifies that its symbol count fits <paramref name="minCount"/>..<paramref name="maxCount"/>,
     /// throwing structured <see cref="ToolException"/> failures otherwise.
@@ -213,6 +234,15 @@ internal sealed class McpResultHandleStore
 
         if (entry.Symbols.Count == 0)
         {
+            if (offset > 0)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.InvalidArgument,
+                    $"'{ResultOffsetArgument}' ({offset}) is at or beyond the 0 symbols in result handle '{normalized}'.",
+                    ResultOffsetArgument,
+                    "Use resultOffset 0 when the result handle is empty.");
+            }
+
             if (minCount > 0)
             {
                 throw new ToolException(

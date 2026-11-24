@@ -15,6 +15,7 @@ using StockAnalyzer.Avalonia.ViewModels.Dialogs.Common;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Rendering;
 using StockAnalyzer.Core.Models.Templates;
 using StockAnalyzer.Core.Services;
 
@@ -83,11 +84,73 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
     [NotifyPropertyChangedFor(nameof(HasDynamicPeriodDriver))]
     [NotifyPropertyChangedFor(nameof(HiddenParameterTags))]
     [NotifyPropertyChangedFor(nameof(SupportsDynamicPeriod))]
+    [NotifyPropertyChangedFor(nameof(ShowSeriesStyleAndVisibilityControls))]
+    [NotifyPropertyChangedFor(nameof(SelectedMainSeriesVisible))]
+    [NotifyPropertyChangedFor(nameof(SelectedMainRenderPrimitive))]
     private CoreIndicatorSettings? _selectedIndicator;
+
+    private readonly SeriesStyleEditorAdapter _seriesStyleEditor = new();
+
+    /// <summary>
+    /// Selectable single-series rendering modes exposed to Active Color Settings dropdowns.
+    /// </summary>
+    public IReadOnlyList<SeriesPrimitiveType> SelectableRenderPrimitives => _seriesStyleEditor.SelectableRenderPrimitives;
+
+    /// <summary>
+    /// Whether the currently selected indicator supports per-series visibility and render-style selection.
+    /// </summary>
+    public bool ShowSeriesStyleAndVisibilityControls =>
+        SelectedIndicator != null &&
+        SeriesRenderStyleCatalog.SupportsRenderStyleSelection(SelectedIndicator.TypeEnum);
+
+    /// <summary>
+    /// Per-series row adapters for multi-series Color Settings (<see cref="CoreIndicatorSettings.SeriesColors"/>).
+    /// </summary>
+    public ObservableCollection<ActiveSeriesStyleRow> ActiveSeriesStyleRows => _seriesStyleEditor.SeriesStyleRows;
+
+    /// <summary>
+    /// Visibility toggle for single-series indicators (<c>SeriesColors.Count == 0</c>).
+    /// </summary>
+    public bool SelectedMainSeriesVisible
+    {
+        get => _seriesStyleEditor.MainSeriesVisible;
+        set
+        {
+            bool prev = _seriesStyleEditor.MainSeriesVisible;
+            _seriesStyleEditor.MainSeriesVisible = value;
+            if (prev != _seriesStyleEditor.MainSeriesVisible)
+            {
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Render primitive selector for single-series indicators (<c>SeriesColors.Count == 0</c>).
+    /// Displays the resolved default when <see cref="CoreIndicatorSettings.MainRenderPrimitive"/> is null
+    /// and normalizes back to null when the default style is re-selected.
+    /// </summary>
+    public SeriesPrimitiveType SelectedMainRenderPrimitive
+    {
+        get => _seriesStyleEditor.MainRenderPrimitive;
+        set
+        {
+            var prevOverride = SelectedIndicator?.MainRenderPrimitive;
+            var prevEffective = _seriesStyleEditor.MainRenderPrimitive;
+            _seriesStyleEditor.MainRenderPrimitive = value;
+            if (SelectedIndicator?.MainRenderPrimitive != prevOverride || _seriesStyleEditor.MainRenderPrimitive != prevEffective)
+            {
+                OnPropertyChanged();
+            }
+        }
+    }
 
     partial void OnSelectedIndicatorChanged(CoreIndicatorSettings? value)
     {
         SyncSelectionFromMaster(value);
+        _seriesStyleEditor.Attach(value, () => OnPropertyChanged(nameof(SelectedMainRenderPrimitive)));
+        OnPropertyChanged(nameof(SelectedMainSeriesVisible));
+        OnPropertyChanged(nameof(SelectedMainRenderPrimitive));
         UpdateReferenceOptions();
     }
 
@@ -1575,6 +1638,7 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
             SelectedLibraryIndicatorSettings.ParameterObject.PropertyChanged -= OnLibraryParameterChanged;
         }
 
+        _seriesStyleEditor.Dispose();
         WeakReferenceMessenger.Default.UnregisterAll(this);
         GC.SuppressFinalize(this);
     }

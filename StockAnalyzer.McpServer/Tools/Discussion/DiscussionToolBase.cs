@@ -39,6 +39,8 @@ internal abstract class DiscussionToolBase : IMcpTool
     /// <summary>A discussion tool changes the in-memory board and is not idempotent, except the status.</summary>
     public virtual bool IsReadOnly => false;
 
+    public virtual string? CompactUsageHint => null;
+
     public Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
         => DiscussionToolCalls.ExecuteAsync(_gateway, Operation, _identity, arguments.ValueKind == JsonValueKind.Object ? arguments.GetRawText() : "{}", cancellationToken);
 }

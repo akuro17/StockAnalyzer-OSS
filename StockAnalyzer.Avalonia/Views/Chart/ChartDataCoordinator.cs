@@ -2106,7 +2106,7 @@ public class ChartDataCoordinator
         return alignedResults;
     }
 
-    private class IndexAlignedIndicatorResult : IIndicatorResult
+    private class IndexAlignedIndicatorResult : IIndicatorResult, IPrimitiveAwareIndicatorResult
     {
         private readonly IIndicatorResult _original;
         private readonly int[] _indexMapping;
@@ -2136,6 +2136,10 @@ public class ChartDataCoordinator
         public IEnumerable<string> SeriesNames => _original.SeriesNames;
         public IReadOnlyList<string> SeriesNamesList => _original.SeriesNamesList;
         public IReadOnlyDictionary<string, string> SeriesLabels => _original.SeriesLabels;
+        public IReadOnlyList<StockAnalyzer.Core.Models.Rendering.SeriesPrimitiveDescriptor> PrimitiveDescriptors =>
+            _original is IPrimitiveAwareIndicatorResult aware
+                ? aware.PrimitiveDescriptors
+                : Array.Empty<StockAnalyzer.Core.Models.Rendering.SeriesPrimitiveDescriptor>();
         public object? CustomData => _original.CustomData;
         public IConfluenceSignalProvider? SignalProvider => _original.SignalProvider;
         public IReadOnlyList<decimal?>? EffectiveDynamicPeriods =>

@@ -92,6 +92,8 @@ internal sealed class EvaluateExpressionsTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? CompactUsageHint => "Pass decimalPlaces: 4 or evaluate fewer expressions per call.";
+
     public string? ExampleArgumentsJson =>
         "{\"variables\":{\"close\":2950,\"atr\":48.5},\"expressions\":[{\"name\":\"stop\",\"expression\":\"close - 2 * atr\"}]}";
 

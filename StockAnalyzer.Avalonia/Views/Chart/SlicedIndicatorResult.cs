@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Confluence;
+using StockAnalyzer.Core.Models.Rendering;
 
 namespace StockAnalyzer.Avalonia.Views.Chart
 {
@@ -10,11 +11,12 @@ namespace StockAnalyzer.Avalonia.Views.Chart
     /// Wraps an IIndicatorResult and provides sliced access to its data series.
     /// Used by ChartDataSnapshot to provided view-specific data subsets.
     /// </summary>
-    public class SlicedIndicatorResult : IIndicatorResult
+    public class SlicedIndicatorResult : IIndicatorResult, IPrimitiveAwareIndicatorResult
     {
         private readonly IIndicatorResult _original;
         private readonly int _startIndex;
         private readonly int _count;
+        private readonly Dictionary<string, IReadOnlyList<decimal?>> _listCache = new();
 
         public SlicedIndicatorResult(IIndicatorResult original, int startIndex, int count)
         {
@@ -36,13 +38,21 @@ namespace StockAnalyzer.Avalonia.Views.Chart
 
         public IReadOnlyList<decimal?> GetSeries(string name)
         {
+            if (_listCache.TryGetValue(name, out var cached)) return cached;
+
             var source = _original.GetSeries(name);
-            return new VirtualSlicedList(source, _startIndex, _count);
+            var sliced = new VirtualSlicedList(source, _startIndex, _count);
+            _listCache[name] = sliced;
+            return sliced;
         }
 
         public IEnumerable<string> SeriesNames => _original.SeriesNames;
         public IReadOnlyList<string> SeriesNamesList => _original.SeriesNamesList;
         public IReadOnlyDictionary<string, string> SeriesLabels => _original.SeriesLabels;
+        public IReadOnlyList<SeriesPrimitiveDescriptor> PrimitiveDescriptors =>
+            _original is IPrimitiveAwareIndicatorResult aware
+                ? aware.PrimitiveDescriptors
+                : Array.Empty<SeriesPrimitiveDescriptor>();
 
         public decimal? this[int index] => MainValues[index];
         public int Count => MainValues.Count;

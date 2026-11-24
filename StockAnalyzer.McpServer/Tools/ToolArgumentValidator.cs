@@ -44,7 +44,14 @@ internal static class ToolArgumentValidator
                     throw new ToolException(ToolErrorCodes.InvalidArgument, $"Unknown argument '{path}'.", path, hint);
                 }
 
-                CheckValue(path, argument.Value, propertySchema);
+                if (argument.Value.ValueKind == JsonValueKind.Null
+                    && !IsRequired(schema, argument.Name)
+                    && propertySchema.GetProperty("type").GetString() is "string" or "integer" or "number" or "boolean")
+                {
+                    continue;
+                }
+
+                CheckValue(path, argument.Value, propertySchema, unknownArgumentHint);
             }
         }
 
@@ -61,7 +68,25 @@ internal static class ToolArgumentValidator
         }
     }
 
-    private static void CheckValue(string name, JsonElement value, JsonElement schema)
+    private static bool IsRequired(JsonElement schema, string propertyName)
+    {
+        if (!schema.TryGetProperty("required", out JsonElement required) || required.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        foreach (JsonElement item in required.EnumerateArray())
+        {
+            if (string.Equals(item.GetString(), propertyName, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void CheckValue(string name, JsonElement value, JsonElement schema, string? unknownArgumentHint = null)
     {
         string type = schema.GetProperty("type").GetString()!;
         bool typeMatches = type switch
@@ -92,7 +117,7 @@ internal static class ToolArgumentValidator
 
         if (type == "object" && schema.TryGetProperty("properties", out _))
         {
-            ValidateObject(name + ".", schema, value);
+            ValidateObject(name + ".", schema, value, misnamedHints: null, unknownArgumentHint: unknownArgumentHint);
         }
 
         if (type == "array")
@@ -107,7 +132,7 @@ internal static class ToolArgumentValidator
                 int index = 0;
                 foreach (JsonElement item in value.EnumerateArray())
                 {
-                    CheckValue($"{name}[{index}]", item, items);
+                    CheckValue($"{name}[{index}]", item, items, unknownArgumentHint);
                     index++;
                 }
             }

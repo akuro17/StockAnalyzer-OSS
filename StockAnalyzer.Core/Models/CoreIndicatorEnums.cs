@@ -2,11 +2,11 @@ namespace StockAnalyzer.Core.Models;
 
 public enum CoreLineStyle
 {
-    Solid,
-    Dash,
-    Dot,
-    DashDot,
-    Step
+    Solid = 0,
+    Dash = 1,
+    Dot = 2,
+    DashDot = 3,
+    Step = 4
 }
 
 public enum CoreIndicatorCategory

@@ -4,7 +4,7 @@ using StockAnalyzer.McpServer.Tools;
 namespace StockAnalyzer.McpServer.Catalog;
 
 /// <summary>
-/// Closed partition of the 47 read-only MCP tools into opt-in CLI <c>--toolset</c> profiles.
+/// Closed partition of the 48 read-only MCP tools into opt-in CLI <c>--toolset</c> profiles.
 /// Execution tools (<c>--enable-execution</c>) and discussion tools (<c>--enable-discussion</c>) remain governed by their own flags.
 /// </summary>
 internal static class McpToolsetCatalog
@@ -35,7 +35,8 @@ internal static class McpToolsetCatalog
                 "sa_get_capabilities",
                 "sa_get_settings",
                 "sa_get_active_workspace",
-                "sa_evaluate_expressions"),
+                "sa_evaluate_expressions",
+                "sa_list_result_handles"),
             [TechnicalProfile] = Set(
                 "sa_calculate_indicators",
                 "sa_analyze_market_structure",

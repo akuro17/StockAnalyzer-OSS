@@ -49,6 +49,8 @@ internal sealed class ListModelsTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? CompactUsageHint => "Pass a smaller limit or filter by kind / symbol.";
+
     public string? ExampleArgumentsJson => "{\"kind\":\"All\",\"limit\":20}";
 
     public string InputSchemaJson => ToolSchema.Object()

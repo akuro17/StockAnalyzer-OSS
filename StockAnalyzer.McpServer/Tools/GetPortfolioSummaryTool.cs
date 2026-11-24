@@ -36,6 +36,8 @@ internal sealed class GetPortfolioSummaryTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? CompactUsageHint => "Pass a smaller limit, or set includeClosedPositions / includeTransactions to false.";
+
     public string? ExampleArgumentsJson => "{\"baseCurrency\":\"JPY\"}";
 
     public string InputSchemaJson => ToolSchema.Object()

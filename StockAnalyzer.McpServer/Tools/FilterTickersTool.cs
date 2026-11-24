@@ -77,12 +77,17 @@ internal sealed class FilterTickersTool : IMcpTool
     // The Screener condition can read long histories of up to MaxScreenerSymbols symbols, so the tool gets the longer time limit of sa_run_screener.
     public bool IsHeavy => true;
 
+    public string? CompactUsageHint => "Pass a smaller limit, fewer includeFields, or includeMatches: false with storeResult: true.";
+
     public string? ExampleArgumentsJson =>
         "{\"symbols\":[\"MSFT\",\"AAPL\"],\"rules\":[{\"field\":\"Close\",\"operator\":\">\",\"value\":\"100\"}],\"screener\":{\"conditionTree\":{\"left\":{\"indicator\":\"RSI\",\"parameters\":{\"Period\":14}},\"comparison\":\"LessThan\",\"right\":70}},\"includeFields\":[\"Close\",\"ChangePercent\"],\"limit\":50}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .StringArray(SymbolsArgument, $"Symbols to filter, 1 to {_limits.MaxFilterEvaluationSymbols}. Excludes {GroupIdArgument}. Omit both to filter every registered symbol.", minItems: 1)
-        .String(GroupIdArgument, "Guid of a ticker group from sa_list_ticker_groups; its members are the universe. Excludes symbols.")
+        .StringArray(SymbolsArgument, $"Symbols to filter (1..{_limits.MaxFilterEvaluationSymbols}); omit all universe args for all registered. Excludes {GroupIdArgument}, {McpResultHandleStore.SymbolsFromResultIdArgument}.", minItems: 1)
+        .String(GroupIdArgument, $"Workspace ticker group guid. Excludes {SymbolsArgument}, {McpResultHandleStore.SymbolsFromResultIdArgument}.")
+        .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle from sa_run_screener/sa_filter_tickers ({McpResultHandleStore.StoreResultArgument}). Excludes {SymbolsArgument}, {GroupIdArgument}.")
+        .Integer(McpResultHandleStore.ResultOffsetArgument, $"0-based offset in {McpResultHandleStore.SymbolsFromResultIdArgument}. Default 0.", defaultValue: 0, minimum: 0)
+        .Integer(McpResultHandleStore.ResultLimitArgument, $"Max symbols from {McpResultHandleStore.SymbolsFromResultIdArgument} (1..{_limits.MaxFilterEvaluationSymbols}).", minimum: 1, maximum: _limits.MaxFilterEvaluationSymbols)
         .ObjectArray(
             RulesArgument,
             $"Filter rules, at most {_limits.MaxInlineFilterRules}; all must hold. Omit or send [] for no rule.",
@@ -98,7 +103,7 @@ internal sealed class FilterTickersTool : IMcpTool
         .StringArray(IncludeFieldsArgument, "Ticker columns to add to each returned match; each must be a known column name or alias.")
         .Integer(OffsetArgument, "Number of matches to skip. Default 0.", defaultValue: 0, minimum: 0)
         .Integer(LimitArgument, $"Page size. Default {_limits.DefaultTickerPageSize}, at most {_limits.MaxTickersPerPage}.", defaultValue: _limits.DefaultTickerPageSize, minimum: 1, maximum: _limits.MaxTickersPerPage)
-        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Evaluate listed symbols that are not in the ticker list but have stored daily bars. Applies to symbols only. Default false.")
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Evaluate listed symbols that are not in the ticker list but have stored daily bars. Applies to symbols and symbolsFromResultId (groupId and all-tickers modes evaluate registered symbols only). Default false.")
         .Boolean(McpResultHandleStore.StoreResultArgument, $"Store all matching symbols in memory and return {McpResultHandleStore.ResultIdKey} for downstream tools. Default false.")
         .Boolean(IncludeMatchesArgument, $"Include matches in the response. Default true; false requires {McpResultHandleStore.StoreResultArgument} true and cannot be combined with {IncludeFieldsArgument}.")
         .Build();
@@ -340,13 +345,30 @@ internal sealed class FilterTickersTool : IMcpTool
     {
         IReadOnlyList<string>? requested = ToolArgs.StringArray(arguments, SymbolsArgument);
         string? groupIdRaw = ToolArgs.String(arguments, GroupIdArgument)?.Trim();
+        string? resultIdRaw = ToolArgs.String(arguments, McpResultHandleStore.SymbolsFromResultIdArgument);
+
+        if (resultIdRaw is not null && (requested is not null || groupIdRaw is not null))
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"'{McpResultHandleStore.SymbolsFromResultIdArgument}' cannot be combined with '{SymbolsArgument}' or '{GroupIdArgument}'.",
+                McpResultHandleStore.SymbolsFromResultIdArgument,
+                "Send at most one of symbols, groupId, or symbolsFromResultId.");
+        }
 
         if (requested is not null && groupIdRaw is not null)
         {
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"'{SymbolsArgument}' and '{GroupIdArgument}' cannot be combined.", GroupIdArgument, "Send one of them, or neither for every registered symbol.");
         }
 
+        (int sliceOffset, int? sliceLimit) = McpResultHandleStore.ReadSliceArguments(arguments, resultIdRaw, 1, _limits.MaxFilterEvaluationSymbols);
         IReadOnlyList<string> available = await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
+
+        if (resultIdRaw is not null)
+        {
+            IReadOnlyList<string> slice = _resultHandles.ResolveSymbolsSlice(resultIdRaw, minCount: 0, maxCount: _limits.MaxFilterEvaluationSymbols, sliceOffset, sliceLimit);
+            return await ValidateSymbolUniverseAsync("resultHandle", slice, available, allowUnregistered, rejectUnregistered: true, rules, evaluator, warnings, cancellationToken).ConfigureAwait(false);
+        }
 
         if (requested is not null)
         {
@@ -355,44 +377,7 @@ internal sealed class FilterTickersTool : IMcpTool
                 throw LimitExceeded(requested.Count, SymbolsArgument);
             }
 
-            var known = new HashSet<string>(available, StringComparer.OrdinalIgnoreCase);
-            var evaluated = new SortedSet<string>(StringComparer.Ordinal);
-            var unregistered = new SortedSet<string>(StringComparer.Ordinal);
-            bool rulesReadBars = TickerFilterEvaluator.NeedsCandles(rules);
-            for (int index = 0; index < requested.Count; index++)
-            {
-                string canonical = SymbolResolver.Canonical(requested[index], $"{SymbolsArgument}[{index}]");
-                if (known.Contains(canonical))
-                {
-                    evaluated.Add(canonical);
-                    continue;
-                }
-
-                if (allowUnregistered && !unregistered.Contains(canonical))
-                {
-                    // When a rule reads the bars anyway, the evaluator reads and keeps them here, so the symbol is not read a second time.
-                    bool hasBars = rulesReadBars
-                        ? await evaluator.HasStoredBarsAsync(canonical, cancellationToken).ConfigureAwait(false)
-                        : await _symbols.HasStoredBarsAsync(canonical, cancellationToken).ConfigureAwait(false);
-                    if (!hasBars)
-                    {
-                        throw SymbolResolver.NotStored(canonical, $"{SymbolsArgument}[{index}]");
-                    }
-
-                    evaluated.Add(canonical);
-                }
-
-                unregistered.Add(canonical);
-            }
-
-            if (unregistered.Count > 0)
-            {
-                warnings.Add(allowUnregistered
-                    ? SymbolResolver.OffListWarning(unregistered)
-                    : $"{unregistered.Count} symbol(s) are not registered and were left out: {SymbolResolver.NameList(unregistered)}.");
-            }
-
-            return new Universe("symbols", requested.Count, unregistered.Count, evaluated.ToList(), null);
+            return await ValidateSymbolUniverseAsync("symbols", requested, available, allowUnregistered, rejectUnregistered: false, rules, evaluator, warnings, cancellationToken).ConfigureAwait(false);
         }
 
         if (groupIdRaw is not null)
@@ -431,6 +416,67 @@ internal sealed class FilterTickersTool : IMcpTool
         }
 
         return new Universe("all", distinct.Count, 0, all, null);
+    }
+
+    private async Task<Universe> ValidateSymbolUniverseAsync(
+        string kind,
+        IReadOnlyList<string> requested,
+        IReadOnlyList<string> available,
+        bool allowUnregistered,
+        bool rejectUnregistered,
+        IReadOnlyList<FilterRule> rules,
+        TickerFilterEvaluator evaluator,
+        List<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        var known = new HashSet<string>(available, StringComparer.OrdinalIgnoreCase);
+        var evaluated = new SortedSet<string>(StringComparer.Ordinal);
+        var unregistered = new SortedSet<string>(StringComparer.Ordinal);
+        bool rulesReadBars = TickerFilterEvaluator.NeedsCandles(rules);
+        for (int index = 0; index < requested.Count; index++)
+        {
+            string path = rejectUnregistered ? McpResultHandleStore.SymbolsFromResultIdArgument : $"{SymbolsArgument}[{index}]";
+            string canonical = SymbolResolver.Canonical(requested[index], path);
+            if (known.Contains(canonical))
+            {
+                evaluated.Add(canonical);
+                continue;
+            }
+
+            if (!allowUnregistered && rejectUnregistered)
+            {
+                throw new ToolException(
+                    ToolErrorCodes.SymbolNotFound,
+                    $"Symbol '{canonical}' is not registered.",
+                    McpResultHandleStore.SymbolsFromResultIdArgument,
+                    "Pass allowUnregistered: true to evaluate unregistered symbols from a result handle, or call sa_list_tickers.");
+            }
+
+            if (allowUnregistered && !unregistered.Contains(canonical))
+            {
+                // When a rule reads the bars anyway, the evaluator reads and keeps them here, so the symbol is not read a second time.
+                bool hasBars = rulesReadBars
+                    ? await evaluator.HasStoredBarsAsync(canonical, cancellationToken).ConfigureAwait(false)
+                    : await _symbols.HasStoredBarsAsync(canonical, cancellationToken).ConfigureAwait(false);
+                if (!hasBars)
+                {
+                    throw SymbolResolver.NotStored(canonical, path);
+                }
+
+                evaluated.Add(canonical);
+            }
+
+            unregistered.Add(canonical);
+        }
+
+        if (unregistered.Count > 0)
+        {
+            warnings.Add(allowUnregistered
+                ? SymbolResolver.OffListWarning(unregistered)
+                : $"{unregistered.Count} symbol(s) are not registered and were left out: {SymbolResolver.NameList(unregistered)}.");
+        }
+
+        return new Universe(kind, requested.Count, unregistered.Count, evaluated.ToList(), null);
     }
 
     private ToolException LimitExceeded(int count, string parameter) => new(

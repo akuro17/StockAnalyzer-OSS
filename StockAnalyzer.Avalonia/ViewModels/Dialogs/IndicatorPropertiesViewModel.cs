@@ -14,6 +14,7 @@ using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Interfaces;
 using StockAnalyzer.Avalonia.Models;
+using StockAnalyzer.Core.Models.Rendering;
 
 namespace StockAnalyzer.Avalonia.ViewModels.Dialogs;
 
@@ -29,6 +30,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
     private readonly IDispatcherService _dispatcherService;
     private bool _isDisposed;
     private bool _isRefreshingReferenceOptions;
+    private readonly SeriesStyleEditorAdapter _seriesStyleEditor = new();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowPriceTypeAndSourceIndicator))]
@@ -37,6 +39,9 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
     [NotifyPropertyChangedFor(nameof(ShowTimeframe))]
     [NotifyPropertyChangedFor(nameof(IsTimeframeEnabled))]
     [NotifyPropertyChangedFor(nameof(TimeframeToolTip))]
+    [NotifyPropertyChangedFor(nameof(ShowSeriesStyleAndVisibilityControls))]
+    [NotifyPropertyChangedFor(nameof(EditingMainSeriesVisible))]
+    [NotifyPropertyChangedFor(nameof(EditingMainRenderPrimitive))]
     private CoreIndicatorSettings _editingSettings;
 
     [ObservableProperty]
@@ -198,6 +203,66 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
     public bool ShowDotSize => StockAnalyzer.Core.Models.Indicators.Chart.BlockChartOverlayTypes.Contains(EditingSettings?.TypeEnum);
     public bool ShowUpDownColors => EditingSettings?.TypeEnum != IndicatorType.GranvilleLaw;
 
+    /// <summary>
+    /// Selectable single-series primitive modes shared with the main Indicator Settings dialog.
+    /// </summary>
+    public IReadOnlyList<SeriesPrimitiveType> SelectableRenderPrimitives => _seriesStyleEditor.SelectableRenderPrimitives;
+
+    /// <summary>
+    /// Whether the edited indicator supports per-series visibility toggling and render-style selection.
+    /// </summary>
+    public bool ShowSeriesStyleAndVisibilityControls =>
+        EditingSettings != null &&
+        SeriesRenderStyleCatalog.SupportsRenderStyleSelection(EditingSettings.TypeEnum);
+
+    /// <summary>
+    /// Per-series row adapters bound in the single-indicator properties dialog.
+    /// </summary>
+    public ObservableCollection<ActiveSeriesStyleRow> ActiveSeriesStyleRows => _seriesStyleEditor.SeriesStyleRows;
+
+    /// <summary>
+    /// Visibility toggle for single-series indicators (<c>SeriesColors.Count == 0</c>).
+    /// </summary>
+    public bool EditingMainSeriesVisible
+    {
+        get => _seriesStyleEditor.MainSeriesVisible;
+        set
+        {
+            bool prev = _seriesStyleEditor.MainSeriesVisible;
+            _seriesStyleEditor.MainSeriesVisible = value;
+            if (prev != _seriesStyleEditor.MainSeriesVisible)
+            {
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Render primitive selector for single-series indicators (<c>SeriesColors.Count == 0</c>),
+    /// normalizing back to <c>null</c> when the default style is re-selected.
+    /// </summary>
+    public SeriesPrimitiveType EditingMainRenderPrimitive
+    {
+        get => _seriesStyleEditor.MainRenderPrimitive;
+        set
+        {
+            var prevOverride = EditingSettings?.MainRenderPrimitive;
+            var prevEffective = _seriesStyleEditor.MainRenderPrimitive;
+            _seriesStyleEditor.MainRenderPrimitive = value;
+            if (EditingSettings?.MainRenderPrimitive != prevOverride || _seriesStyleEditor.MainRenderPrimitive != prevEffective)
+            {
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    partial void OnEditingSettingsChanged(CoreIndicatorSettings value)
+    {
+        _seriesStyleEditor.Attach(value, () => OnPropertyChanged(nameof(EditingMainRenderPrimitive)));
+        OnPropertyChanged(nameof(EditingMainSeriesVisible));
+        OnPropertyChanged(nameof(EditingMainRenderPrimitive));
+    }
+
     public bool ShowSignals => EditingSettings != null &&
         (EditingSettings.SeriesColors.Any(c => c.TargetSeries.Contains("Signals")) ||
          EditingSettings.TypeEnum == IndicatorType.MACD ||
@@ -268,6 +333,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
         // Only mathematical parameter changes will increment it from 0.
         _editingSettings.MathematicalVersion = 0;
 
+        _seriesStyleEditor.Attach(_editingSettings, () => OnPropertyChanged(nameof(EditingMainRenderPrimitive)));
         BuildReferenceOptions(_allIndicators);
     }
 
@@ -454,6 +520,7 @@ public partial class IndicatorPropertiesViewModel : ObservableObject, IDisposabl
         if (_isDisposed) return;
         _isDisposed = true;
 
+        _seriesStyleEditor.Dispose();
         _messenger.UnregisterAll(this);
         GC.SuppressFinalize(this);
     }

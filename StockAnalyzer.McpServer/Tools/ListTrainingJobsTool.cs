@@ -35,6 +35,8 @@ internal sealed class ListTrainingJobsTool : IMcpTool
 
     public bool IsExecution => true;
 
+    public string? CompactUsageHint => "Pass a smaller limit.";
+
     public string? ExampleArgumentsJson => "{}";
 
     public string InputSchemaJson => ToolSchema.Object()

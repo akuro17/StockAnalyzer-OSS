@@ -607,4 +607,133 @@ public class AnalysisPipelineServiceTests
         Assert.True(viaClose["B"].IsSuccessful);
         Assert.Equal(viaClose["B"].MainValues, viaChikou["A"].MainValues);
     }
+
+    [Fact]
+    public void CalculateIndicators_PerEdgeOutputSeriesNames_AllowSingleUpstreamToFeedDistinctSeries()
+    {
+        var service = new AnalysisPipelineService(pythonService: null, indicatorFactory: IndicatorFactory.Default);
+
+        var candles = new List<CoreCandleData>();
+        var startDate = DateTime.Today.AddDays(-120);
+        for (int i = 0; i < 120; i++)
+        {
+            decimal close = 100m + (decimal)Math.Sin(i * 0.25) * 10m + i * 0.2m;
+            candles.Add(new CoreCandleData(startDate.AddDays(i), close, close + 1m, close - 1m, close, 1000L));
+        }
+
+        var macd = new CoreIndicatorSettings
+        {
+            Id = "Macd1",
+            IsEnabled = true,
+            TypeEnum = IndicatorType.MACD,
+            ParameterObject = new CoreMacdParameter(),
+            OutputSeriesName = IndicatorResult.MainSeriesName,
+        };
+        var smaSignal = new CoreIndicatorSettings
+        {
+            Id = "SmaSignal",
+            IsEnabled = true,
+            TypeEnum = IndicatorType.SMA,
+            ParameterObject = new CoreSmaParameter { Period = 5 },
+            SourceIndicatorId = "Macd1",
+            SourceOutputSeriesName = "Signal",
+        };
+        var smaHist = new CoreIndicatorSettings
+        {
+            Id = "SmaHist",
+            IsEnabled = true,
+            TypeEnum = IndicatorType.SMA,
+            ParameterObject = new CoreSmaParameter { Period = 5 },
+            SourceIndicatorId = "Macd1",
+            SourceOutputSeriesName = "Histogram",
+        };
+        var smaDyn = new CoreIndicatorSettings
+        {
+            Id = "SmaDyn",
+            IsEnabled = true,
+            TypeEnum = IndicatorType.SMA,
+            ParameterObject = new CoreSmaParameter { Period = 5 },
+            SourceIndicatorId = "Macd1",
+            SourceOutputSeriesName = "Signal",
+            DynamicPeriodIndicatorId = "Macd1",
+            DynamicPeriodOutputSeriesName = "Histogram",
+        };
+
+        var results = service.CalculateIndicators(candles, new[] { macd, smaSignal, smaHist, smaDyn });
+
+        Assert.Equal(IndicatorResult.MainSeriesName, macd.OutputSeriesName);
+        Assert.True(results["SmaSignal"].IsSuccessful);
+        Assert.True(results["SmaHist"].IsSuccessful);
+        Assert.True(results["SmaDyn"].IsSuccessful);
+        Assert.NotEqual(results["SmaSignal"].MainValues, results["SmaHist"].MainValues);
+
+        // Compare against explicit separate upstream OutputSeriesName settings to verify numerical equivalence.
+        var macdSigRef = new CoreIndicatorSettings
+        {
+            Id = "MacdSigRef",
+            IsEnabled = true,
+            TypeEnum = IndicatorType.MACD,
+            ParameterObject = new CoreMacdParameter(),
+            OutputSeriesName = "Signal",
+        };
+        var smaSigFallback = new CoreIndicatorSettings
+        {
+            Id = "SmaSigFallback",
+            IsEnabled = true,
+            TypeEnum = IndicatorType.SMA,
+            ParameterObject = new CoreSmaParameter { Period = 5 },
+            SourceIndicatorId = "MacdSigRef",
+        };
+        var fallbackResults = service.CalculateIndicators(candles, new[] { macdSigRef, smaSigFallback });
+        Assert.Equal(fallbackResults["SmaSigFallback"].MainValues, results["SmaSignal"].MainValues);
+    }
+
+    [Fact]
+    public void DynamicPeriodChikouViaPerEdgeOutputSeriesName_IsStillBlockedByCausalityGuard()
+    {
+        var service = new AnalysisPipelineService(pythonService: null, indicatorFactory: IndicatorFactory.Default);
+
+        int count = 120;
+        var candles = new List<CoreCandleData>();
+        var startDate = DateTime.Today;
+        for (int i = 0; i < count; i++)
+        {
+            decimal close = 100m + (decimal)Math.Sin(i * 0.3) * 8m + i * 0.1m;
+            candles.Add(new CoreCandleData(startDate.AddDays(i), close, close + 1m, close - 1m, close, 1000L));
+        }
+
+        // Upstream stays on default Main/TenkanSen while edge explicitly requests ChikouSpan.
+        var ichimoku = new CoreIndicatorSettings
+        {
+            Id = "Ichi",
+            IsEnabled = true,
+            TypeEnum = IndicatorType.Ichimoku,
+            ParameterObject = new CoreIchimokuParameter(),
+        };
+        var consumer = new CoreIndicatorSettings
+        {
+            Id = "A",
+            IsEnabled = true,
+            TypeEnum = IndicatorType.SMA,
+            ParameterObject = new CoreSmaParameter { Period = 10 },
+            DynamicPeriodIndicatorId = "Ichi",
+            DynamicPeriodOutputSeriesName = StockAnalyzer.Core.Models.Indicators.Trend.CoreIchimokuIndicator.ChikouSpanSeriesName,
+        };
+        var closeDriver = new CoreIndicatorSettings { Id = "CloseDriver", IsEnabled = true, TypeEnum = IndicatorType.Price, PriceSource = PriceType.Close };
+        var closeConsumer = new CoreIndicatorSettings
+        {
+            Id = "B",
+            IsEnabled = true,
+            TypeEnum = IndicatorType.SMA,
+            ParameterObject = new CoreSmaParameter { Period = 10 },
+            DynamicPeriodIndicatorId = "CloseDriver",
+        };
+
+        var viaChikou = service.CalculateIndicators(candles, new[] { ichimoku, consumer });
+        var viaClose = service.CalculateIndicators(candles, new[] { closeDriver, closeConsumer });
+
+        Assert.True(viaChikou["A"].IsSuccessful);
+        Assert.True(viaClose["B"].IsSuccessful);
+        Assert.Equal(viaClose["B"].MainValues, viaChikou["A"].MainValues);
+    }
 }

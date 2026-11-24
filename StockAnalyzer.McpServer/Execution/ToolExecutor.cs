@@ -28,6 +28,7 @@ internal sealed class ToolExecutor
     private readonly ErrorMessageSanitizer _sanitizer;
     private readonly LogSink _log;
     private readonly int _readOnlySlots;
+    private readonly SemaphoreSlim _arrivalGate = new(1, 1);
     private readonly SemaphoreSlim _readOnlyTurn;
     private readonly SemaphoreSlim _heavyTurn = new(McpLimitsContract.MaxConcurrentToolCalls, McpLimitsContract.MaxConcurrentToolCalls);
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _inFlight = new(StringComparer.Ordinal);
@@ -145,9 +146,12 @@ internal sealed class ToolExecutor
 
             // A tool that does not use the turn (a bounded wait for other participants) runs beside the other calls and never holds the turn they wait for.
             TurnHold hold = TurnHold.None;
+            bool effectiveIsHeavy = effectiveTool.Tool is IDynamicExecutionProfileTool dynamicTool
+                ? dynamicTool.ResolveEffectiveIsHeavy(effectiveArgs)
+                : effectiveTool.Tool.IsHeavy;
             if (effectiveTool.Tool.UsesExecutionTurn)
             {
-                bool exclusive = effectiveTool.Tool.IsHeavy || effectiveTool.Tool.IsExecution;
+                bool exclusive = effectiveIsHeavy || effectiveTool.Tool.IsExecution;
                 (TurnResult result, TurnHold acquired) = await AcquireTurnAsync(exclusive, callCancellation.Token).ConfigureAwait(false);
                 if (result == TurnResult.Cancelled)
                 {
@@ -162,7 +166,7 @@ internal sealed class ToolExecutor
                 hold = acquired;
             }
 
-            return await RunAsync(effectiveTool, effectiveArgs, callCancellation, hold, outcome, isProxiedCall).ConfigureAwait(false);
+            return await RunAsync(effectiveTool, effectiveArgs, callCancellation, hold, outcome, isProxiedCall, effectiveIsHeavy).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (callCancellation.IsCancellationRequested)
         {
@@ -278,11 +282,19 @@ internal sealed class ToolExecutor
         }
 
         int wanted = exclusive ? _readOnlySlots : 1;
+        bool gateHeld = false;
         bool exclusiveHeld = false;
         int slotsHeld = 0;
         bool succeeded = false;
         try
         {
+            if (!await _arrivalGate.WaitAsync(Remaining(), cancellationToken).ConfigureAwait(false))
+            {
+                return (TurnResult.Busy, TurnHold.None);
+            }
+
+            gateHeld = true;
+
             if (exclusive)
             {
                 if (!await _heavyTurn.WaitAsync(Remaining(), cancellationToken).ConfigureAwait(false))
@@ -324,6 +336,11 @@ internal sealed class ToolExecutor
                     _heavyTurn.Release();
                 }
             }
+
+            if (gateHeld)
+            {
+                _arrivalGate.Release();
+            }
         }
     }
 
@@ -342,9 +359,9 @@ internal sealed class ToolExecutor
         }
     }
 
-    private async Task<string?> RunAsync(RegisteredTool registered, JsonElement arguments, CancellationTokenSource callCancellation, TurnHold hold, CallOutcome outcome, bool isProxiedCall)
+    private async Task<string?> RunAsync(RegisteredTool registered, JsonElement arguments, CancellationTokenSource callCancellation, TurnHold hold, CallOutcome outcome, bool isProxiedCall, bool effectiveIsHeavy)
     {
-        int timeoutSeconds = registered.Tool.IsHeavy ? _limits.HeavyToolTimeoutSeconds : _limits.ToolTimeoutSeconds;
+        int timeoutSeconds = effectiveIsHeavy ? _limits.HeavyToolTimeoutSeconds : _limits.ToolTimeoutSeconds;
         var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
         var execution = CancellationTokenSource.CreateLinkedTokenSource(callCancellation.Token, timeout.Token);
 

@@ -56,6 +56,10 @@ internal sealed class AnalyzeMarketStructureTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
+    public string? CompactUsageHint => "Pass a smaller outputTailCount.";
+
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"zigzagThresholdPercent\":5.0,\"outputTailCount\":50}";
 

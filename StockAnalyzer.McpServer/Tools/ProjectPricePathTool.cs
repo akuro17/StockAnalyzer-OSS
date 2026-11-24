@@ -71,6 +71,10 @@ internal sealed class ProjectPricePathTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
+    public string? CompactUsageHint => "Pass decimalPlaces: 4 or a smaller horizonBars.";
+
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"method\":\"Arima\",\"horizonBars\":20}";
 

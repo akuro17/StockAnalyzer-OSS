@@ -297,13 +297,13 @@ internal sealed class GetActiveWorkspaceTool : IMcpTool
         if (!string.IsNullOrEmpty(settings.SourceIndicatorId))
         {
             writer.WriteString("sourceIndicatorId", settings.SourceIndicatorId);
-            WriteUpstreamSeries(writer, "sourceOutputSeriesName", settings.SourceIndicatorId, workspaceById, registeredById);
+            WriteUpstreamSeries(writer, "sourceOutputSeriesName", settings.SourceOutputSeriesName, settings.SourceIndicatorId, workspaceById, registeredById);
         }
 
         if (!string.IsNullOrEmpty(settings.DynamicPeriodIndicatorId))
         {
             writer.WriteString("dynamicPeriodIndicatorId", settings.DynamicPeriodIndicatorId);
-            WriteUpstreamSeries(writer, "dynamicPeriodOutputSeriesName", settings.DynamicPeriodIndicatorId, workspaceById, registeredById);
+            WriteUpstreamSeries(writer, "dynamicPeriodOutputSeriesName", settings.DynamicPeriodOutputSeriesName, settings.DynamicPeriodIndicatorId, workspaceById, registeredById);
         }
 
         writer.WriteEndObject();
@@ -327,16 +327,24 @@ internal sealed class GetActiveWorkspaceTool : IMcpTool
     }
 
     /// <summary>
-    /// The series of the upstream indicator that the application reads: the one that indicator has selected (<c>OutputSeriesName</c>), as the analysis pipeline does. The application's
-    /// "Main" is its main series, which a request names by leaving the argument out (sa_calculate_indicators names series by their output names, such as RSI or Signal).
+    /// The series of the upstream indicator that the application reads: the per-edge series (<c>SourceOutputSeriesName</c> / <c>DynamicPeriodOutputSeriesName</c>) when specified,
+    /// falling back to the upstream indicator's selected <c>OutputSeriesName</c> as <see cref="AnalysisPipelineService"/> does. The application's "Main" is its main series, which a request
+    /// names by leaving the argument out (sa_calculate_indicators names series by their output names, such as RSI or Signal).
     /// </summary>
     private static void WriteUpstreamSeries(
-        Utf8JsonWriter writer, string name, string upstreamId, Dictionary<string, CoreIndicatorSettings> workspaceById, Dictionary<string, CoreIndicatorSettings> registeredById)
+        Utf8JsonWriter writer,
+        string name,
+        string? edgeOutputSeriesName,
+        string upstreamId,
+        Dictionary<string, CoreIndicatorSettings> workspaceById,
+        Dictionary<string, CoreIndicatorSettings> registeredById)
     {
-        CoreIndicatorSettings? upstream = workspaceById.GetValueOrDefault(upstreamId) ?? registeredById.GetValueOrDefault(upstreamId);
-        if (upstream is not null && !string.IsNullOrEmpty(upstream.OutputSeriesName) && !string.Equals(upstream.OutputSeriesName, IndicatorResult.MainSeriesName, StringComparison.Ordinal))
+        string? selected = !string.IsNullOrEmpty(edgeOutputSeriesName)
+            ? edgeOutputSeriesName
+            : (workspaceById.GetValueOrDefault(upstreamId) ?? registeredById.GetValueOrDefault(upstreamId))?.OutputSeriesName;
+        if (!string.IsNullOrEmpty(selected) && !string.Equals(selected, IndicatorResult.MainSeriesName, StringComparison.Ordinal))
         {
-            writer.WriteString(name, upstream.OutputSeriesName);
+            writer.WriteString(name, selected);
         }
     }
 

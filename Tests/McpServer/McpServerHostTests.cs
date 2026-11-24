@@ -352,7 +352,7 @@ public sealed class McpServerHostTests
             using var tools = JsonDocument.Parse((await stdout.ReadLineAsync(cancellation.Token))!);
             Assert.Equal(2, tools.RootElement.GetProperty("id").GetInt32());
             Assert.Equal(
-                new[] { "sa_analyze_cycles", "sa_analyze_market_structure", "sa_analyze_portfolio_risk", "sa_build_template", "sa_calculate_chart_series", "sa_calculate_cross_asset_stats", "sa_calculate_drawing_values", "sa_calculate_indicators", "sa_calculate_indicators_batch", "sa_calculate_market_breadth", "sa_calculate_relative_performance", "sa_calculate_reverse_watch", "sa_calculate_volume_profile", "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_detect_candle_patterns", "sa_detect_chart_patterns", "sa_detect_divergences", "sa_evaluate_expressions", "sa_extract_signal_events", "sa_filter_tickers", "sa_find_support_resistance", "sa_get_active_workspace", "sa_get_candles", "sa_get_capabilities", "sa_get_chart_drawings", "sa_get_model_explanation", "sa_get_portfolio_summary", "sa_get_seasonality", "sa_get_settings", "sa_get_symbol_coverage", "sa_get_template_detail", "sa_get_ticker_metadata", "sa_list_models", "sa_list_templates", "sa_list_ticker_groups", "sa_list_tickers", "sa_list_upcoming_catalysts", "sa_optimize_backtest", "sa_project_price_path", "sa_render_chart_image", "sa_run_backtest", "sa_run_portfolio_backtest", "sa_run_screener", "sa_run_walk_forward_analysis", "sa_search_notes", "sa_validate_condition_tree" },
+                new[] { "sa_analyze_cycles", "sa_analyze_market_structure", "sa_analyze_portfolio_risk", "sa_build_template", "sa_calculate_chart_series", "sa_calculate_cross_asset_stats", "sa_calculate_drawing_values", "sa_calculate_indicators", "sa_calculate_indicators_batch", "sa_calculate_market_breadth", "sa_calculate_relative_performance", "sa_calculate_reverse_watch", "sa_calculate_volume_profile", "sa_check_portfolio_rl_preflight", "sa_check_rl_playback_preflight", "sa_detect_candle_patterns", "sa_detect_chart_patterns", "sa_detect_divergences", "sa_evaluate_expressions", "sa_extract_signal_events", "sa_filter_tickers", "sa_find_support_resistance", "sa_get_active_workspace", "sa_get_candles", "sa_get_capabilities", "sa_get_chart_drawings", "sa_get_model_explanation", "sa_get_portfolio_summary", "sa_get_seasonality", "sa_get_settings", "sa_get_symbol_coverage", "sa_get_template_detail", "sa_get_ticker_metadata", "sa_list_models", "sa_list_result_handles", "sa_list_templates", "sa_list_ticker_groups", "sa_list_tickers", "sa_list_upcoming_catalysts", "sa_optimize_backtest", "sa_project_price_path", "sa_render_chart_image", "sa_run_backtest", "sa_run_portfolio_backtest", "sa_run_screener", "sa_run_walk_forward_analysis", "sa_search_notes", "sa_validate_condition_tree" },
                 tools.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToArray());
 
             await stdin.WriteLineAsync(ToolsCall);
@@ -518,5 +518,43 @@ public sealed class McpServerHostTests
         string own = Path.Combine(TestRepositoryRoot.Find(), "StockAnalyzer.McpServer", "bin", configuration, "net8.0", AssemblyFile);
         Assert.True(File.Exists(own), "McpServer build output not found; build the solution first.");
         return own;
+    }
+
+    [Fact]
+    public async Task RequestLineReader_StripsLeadingUtf8BomOnFirstLineOnly()
+    {
+        byte[] bom = { 0xEF, 0xBB, 0xBF };
+        byte[] firstLine = Encoding.UTF8.GetBytes(McpTestSupport.InitializeMessage + "\n");
+        byte[] secondLine = Encoding.UTF8.GetBytes(ToolsList + "\n");
+        var input = new MemoryStream();
+        input.Write(bom);
+        input.Write(firstLine);
+        input.Write(secondLine);
+        input.Position = 0;
+
+        var output = new MemoryStream();
+        int exitCode = await McpServerHost.RunAsync(
+            input, output, McpTestSupport.CreateDispatcher(Array.Empty<IMcpTool>()), 1 << 20, new LogSink(new StringWriter()), CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        string[] responses = Encoding.UTF8.GetString(output.ToArray()).TrimEnd('\n').Split('\n');
+        Assert.Equal(2, responses.Length);
+        using JsonDocument init = JsonDocument.Parse(responses[0]);
+        Assert.True(init.RootElement.TryGetProperty("result", out _));
+        using JsonDocument list = JsonDocument.Parse(responses[1]);
+        Assert.True(list.RootElement.TryGetProperty("result", out _));
+
+        // Standalone BOM-only first line is skipped as whitespace; BOM on line 2 is not stripped and produces ParseError.
+        var secondBomInput = new MemoryStream();
+        secondBomInput.Write(bom);
+        secondBomInput.Write(Encoding.UTF8.GetBytes("\n"));
+        secondBomInput.Write(bom);
+        secondBomInput.Write(firstLine);
+        secondBomInput.Position = 0;
+        var reader = new RequestLineReader(secondBomInput, 1 << 20);
+        RequestLine? line1 = await reader.ReadAsync(CancellationToken.None);
+        RequestLine? line2 = await reader.ReadAsync(CancellationToken.None);
+        Assert.Equal(string.Empty, line1?.Text);
+        Assert.StartsWith("\uFEFF", line2?.Text);
     }
 }

@@ -1154,43 +1154,10 @@ public partial class MainWindowViewModel : ViewModelBase,
                     }
                     else
                     {
-                        // VISUAL-ONLY CHANGE: Update properties in-place, skip CalculateIndicatorsAsync entirely.
-                        // Direct RenderTrigger++ for zero-latency redraw.
-                        var src = message.Value;
-                        existing.Color = src.Color;
-                        existing.Thickness = src.Thickness;
-                        existing.DotSize = src.DotSize;
-                        existing.Style = src.Style;
-                        existing.IsEnabled = src.IsEnabled;
-                        existing.IsOverlay = src.IsOverlay;
-                        existing.UseUpDownColors = src.UseUpDownColors;
-                        existing.UpColor = src.UpColor;
-                        existing.DownColor = src.DownColor;
-                        existing.OverlayPanelId = src.OverlayPanelId;
-                        existing.ShowCrossMarkers = src.ShowCrossMarkers;
-                        existing.ShowAxisLabel = src.ShowAxisLabel;
-
-                        // Copy series colors - NON-DESTRUCTIVE SYNC (FR-18-02)
-                        foreach (var srcColor in src.SeriesColors)
-                        {
-                            var targetColor = existing.SeriesColors.FirstOrDefault(c => c.Name == srcColor.Name);
-                            if (targetColor != null)
-                            {
-                                targetColor.Color = srcColor.Color;
-                                // Synchronize other properties if added in the future (e.g., Thickness)
-                            }
-                            else
-                            {
-                                existing.SeriesColors.Add(srcColor.Duplicate());
-                            }
-                        }
-
-                        // Remove orphaned colors
-                        var orphans = existing.SeriesColors.Where(c => !src.SeriesColors.Any(s => s.Name == c.Name)).ToList();
-                        foreach (var o in orphans) existing.SeriesColors.Remove(o);
-
-                        // Directly trigger redraw without going through CalculateIndicatorsAsync
-                        ChartViewModel.RenderTrigger++;
+                        // VISUAL-ONLY CHANGE: Delegate to ChartViewModel.ApplySingleIndicator so field sync,
+                        // identifier-matched SeriesColors update, and RenderReason (DataChanged vs VisualChanged)
+                        // remain strictly single-sourced.
+                        ChartViewModel.ApplySingleIndicator(message.Value);
                     }
                 }
                 else

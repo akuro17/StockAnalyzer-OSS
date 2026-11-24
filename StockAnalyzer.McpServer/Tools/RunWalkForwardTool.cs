@@ -60,6 +60,8 @@ internal sealed class RunWalkForwardTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDate;
+
     public string? CompactUsageHint => "Pass compactReport: true or fewer windows.";
 
     public string? ExampleArgumentsJson =>

@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using StockAnalyzer.Core.Models.Confluence;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Rendering;
 
 namespace StockAnalyzer.Core.Services.Analysis;
 
@@ -11,7 +12,7 @@ namespace StockAnalyzer.Core.Services.Analysis;
 /// higher-frame calculation are bound to its own bars and are therefore not carried (<see cref="CustomData"/> and <see cref="SignalProvider"/> are null).
 /// Series labels are read from the calculated result so the legend text is the indicator's own.
 /// </summary>
-public sealed class TimeframeAlignedIndicatorResult : IIndicatorResult
+public sealed class TimeframeAlignedIndicatorResult : IIndicatorResult, IPrimitiveAwareIndicatorResult
 {
     private readonly IIndicatorResult _source;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<decimal?>> _series;
@@ -33,6 +34,10 @@ public sealed class TimeframeAlignedIndicatorResult : IIndicatorResult
     public IEnumerable<string> SeriesNames => _names;
     public IReadOnlyList<string> SeriesNamesList => _names;
     public IReadOnlyDictionary<string, string> SeriesLabels => _source.SeriesLabels;
+    public IReadOnlyList<SeriesPrimitiveDescriptor> PrimitiveDescriptors =>
+        _source is IPrimitiveAwareIndicatorResult aware
+            ? aware.PrimitiveDescriptors
+            : System.Array.Empty<SeriesPrimitiveDescriptor>();
     public object? CustomData => null;
     public IConfluenceSignalProvider? SignalProvider => null;
 

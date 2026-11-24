@@ -53,6 +53,8 @@ internal sealed class RunOnnxPredictionTool : IMcpTool
 
     public bool IsExecution => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForAsOfDate;
+
     public string? ExampleArgumentsJson => "{\"modelId\":\"active\",\"symbol\":\"7203-T\",\"count\":10}";
 
     public string InputSchemaJson => ToolSchema.Object()

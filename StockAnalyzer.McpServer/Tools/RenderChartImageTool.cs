@@ -94,14 +94,13 @@ internal sealed class RenderChartImageTool : IMcpImageTool
 
     public string? CompactUsageHint => "Pass includeBarCoordinates: false, smaller width/height, or a smaller barCount.";
 
-    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        ["indicators"] = $"This tool takes overlays (price-scale indicators) and oscillators (one panel each), not 'indicators'.",
-        ["derived"] = "Derived series are not drawn. " + CalculatorHint,
-        ["completeBarsOnly"] = "This tool draws the stored bars as they are. " + CalculatorHint,
-        ["outputTailCount"] = $"This tool draws the last {BarCountArgument} bars.",
-        ["asOfDate"] = $"This tool names the last-bar date '{EndDateArgument}'.",
-    };
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints { get; } = DateArgumentHints.Merge(
+        DateArgumentHints.ForEndDate,
+        ("indicators", "This tool takes overlays (price-scale indicators) and oscillators (one panel each), not 'indicators'."),
+        ("derived", "Derived series are not drawn. " + CalculatorHint),
+        ("completeBarsOnly", "This tool draws the stored bars as they are. " + CalculatorHint),
+        ("outputTailCount", $"This tool draws the last {BarCountArgument} bars."),
+        ("asOfDate", $"This tool names the last-bar date '{EndDateArgument}'."));
 
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"barCount\":120,\"overlays\":[{\"id\":\"sma25\",\"type\":\"SMA\",\"parameters\":{\"Period\":25}}],\"oscillators\":[{\"id\":\"rsi14\",\"type\":\"RSI\",\"parameters\":{\"Period\":14}}]}";

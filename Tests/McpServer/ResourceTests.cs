@@ -363,4 +363,39 @@ public sealed class ResourceTests : IDisposable
             Assert.Equal(JsonRpcErrorCodes.ResourceNotFound, ErrorCode(blocked));
         }
     }
+
+    [Fact]
+    public async Task ResourcesRead_CancellationNotificationStopsInFlightReadAndReturnsNull()
+    {
+        using var started = new SemaphoreSlim(0);
+        bool observedCancellation = false;
+        McpMessageDispatcher dispatcher = await InitializedWithAsync(new McpResource(
+            "stockanalyzer://slow/item",
+            "Slow item",
+            "Blocks until cancelled.",
+            McpResourceRegistry.JsonMimeType,
+            async ct =>
+            {
+                started.Release();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    observedCancellation = true;
+                    throw;
+                }
+
+                return "{}";
+            }));
+
+        Task<string?> pendingRead = dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":77,"method":"resources/read","params":{"uri":"stockanalyzer://slow/item"}}""", CancellationToken.None);
+        Assert.True(await started.WaitAsync(TimeSpan.FromSeconds(10)));
+
+        await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":77}}""", CancellationToken.None);
+
+        Assert.Null(await pendingRead);
+        Assert.True(observedCancellation);
+    }
 }

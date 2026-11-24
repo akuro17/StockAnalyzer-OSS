@@ -53,6 +53,8 @@ internal sealed class CheckPortfolioRlPreflightTool : IMcpTool
 
     public bool IsExecution => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDateExclusive;
+
     public string? ExampleArgumentsJson => "{\"symbols\":[\"7203-T\",\"6758-T\",\"9984-T\"],\"mode\":\"Standard\"}";
 
     public string InputSchemaJson => ToolSchema.Object()

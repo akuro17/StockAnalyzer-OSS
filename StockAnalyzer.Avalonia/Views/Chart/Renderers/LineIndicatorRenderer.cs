@@ -35,6 +35,7 @@ public class LineIndicatorRenderer : IDisposable
         if (values == null || values.Count == 0) return;
 
         _paint.StrokeWidth = (float)setting.Thickness;
+        _paint.PathEffect = setting.Style.ToSkPathEffect();
 
         SKColor mainColor = overrideColor ?? new SKColor(setting.Color.R, setting.Color.G, setting.Color.B, setting.Color.A);
 

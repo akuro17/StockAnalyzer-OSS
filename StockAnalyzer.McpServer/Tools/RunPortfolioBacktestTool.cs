@@ -75,6 +75,8 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDate;
+
     public string? CompactUsageHint => "Pass compactReport: true, maxReturnedTradesPerSymbol: 0, or omit includeEquityCurve.";
 
     public string? ExampleArgumentsJson =>
@@ -104,7 +106,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
         // 1. Argument validation: Allocation & Concurrent Positions
-        if (arguments.TryGetProperty(MaxConcurrentPositionsArgument, out _))
+        if (ToolArgs.HasNonNullProperty(arguments, MaxConcurrentPositionsArgument, out _))
         {
             throw new ToolException(
                 ToolErrorCodes.InvalidArgument,
@@ -218,9 +220,9 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         var validSnapshots = new List<(int Index, BacktestRunSnapshot Snapshot)>();
         var invalidBarViolations = new List<string>();
         var sleeveHighestCloses = new List<decimal>(symbolCount);
-        string universeArgument = arguments.TryGetProperty(SymbolsArgument, out _)
+        string universeArgument = ToolArgs.HasNonNullProperty(arguments, SymbolsArgument, out _)
             ? SymbolsArgument
-            : arguments.TryGetProperty(GroupIdArgument, out _)
+            : ToolArgs.HasNonNullProperty(arguments, GroupIdArgument, out _)
                 ? GroupIdArgument
                 : McpResultHandleStore.SymbolsFromResultIdArgument;
 

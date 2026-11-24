@@ -49,6 +49,10 @@ internal sealed class CalculateReverseWatchTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
+    public string? CompactUsageHint => "Pass a smaller outputTailCount.";
+
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"period\":25,\"outputTailCount\":200}";
 
     public string InputSchemaJson => ToolSchema.Object()

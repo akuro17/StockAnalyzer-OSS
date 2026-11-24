@@ -487,6 +487,83 @@ public sealed class DiscussionAttachAnalysisTests : IDisposable
         Assert.Equal("9984.T", fetchedStruct.GetProperty("provenance").GetProperty("symbol").GetString());
     }
 
+    private sealed class WeightedTool : IMcpTool
+    {
+        private readonly Func<CancellationToken, Task<string>> _run;
+
+        public WeightedTool(string name, bool isHeavy, Func<CancellationToken, Task<string>> run)
+        {
+            Name = name;
+            IsHeavy = isHeavy;
+            _run = run;
+        }
+
+        public string Name { get; }
+        public string Description => "Test weighted tool.";
+        public bool IsHeavy { get; }
+        public bool IsReadOnly => true;
+        public string InputSchemaJson => ToolSchema.Object().Build();
+        public Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken) => _run(cancellationToken);
+    }
+
+    [Fact]
+    public async Task AttachAnalysis_InheritsInnerToolHeavyProfile_ForTurnConcurrency()
+    {
+        var lightEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var siblingEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseLight = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var innerLight = new WeightedTool("sa_light_inner", isHeavy: false, async _ =>
+        {
+            lightEntered.TrySetResult();
+            await releaseLight.Task;
+            return "{}";
+        });
+        var siblingLight = new WeightedTool("sa_sibling_light", isHeavy: false, async _ =>
+        {
+            siblingEntered.TrySetResult();
+            await releaseLight.Task;
+            return "{}";
+        });
+
+        var heavyEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseHeavy = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var innerHeavy = new WeightedTool("sa_heavy_inner", isHeavy: true, async _ =>
+        {
+            heavyEntered.TrySetResult();
+            await releaseHeavy.Task;
+            return "{}";
+        });
+
+        Rig rig = await StartAsync(new IMcpTool[] { innerLight, siblingLight, innerHeavy });
+        (string id, string alice, _) = await OpenAsync(rig);
+
+        // 1. Light inner tool -> sa_discussion_attach_analysis does NOT hold exclusive turn, so sibling light tool runs concurrently.
+        Task<JsonDocument> attachLightTask = CallAsync(rig.Dispatcher, "sa_discussion_attach_analysis", Attach(id, alice, "sa_light_inner"));
+        await lightEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Task<JsonDocument> siblingTask = CallAsync(rig.Dispatcher, "sa_sibling_light", "{}");
+        await siblingEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        releaseLight.TrySetResult();
+        using JsonDocument attachLightResp = await attachLightTask;
+        using JsonDocument siblingResp = await siblingTask;
+        Assert.False(McpTestSupport.IsError(attachLightResp), McpTestSupport.Result(attachLightResp).GetRawText());
+        Assert.False(McpTestSupport.IsError(siblingResp), McpTestSupport.Result(siblingResp).GetRawText());
+
+        // 2. Heavy inner tool -> sa_discussion_attach_analysis acquires exclusive turn, so concurrent sibling hits SERVER_BUSY (QueueWaitSeconds = 0).
+        Task<JsonDocument> attachHeavyTask = CallAsync(rig.Dispatcher, "sa_discussion_attach_analysis", Attach(id, alice, "sa_heavy_inner"));
+        await heavyEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using JsonDocument busySibling = await CallAsync(rig.Dispatcher, "sa_sibling_light", "{}");
+        Assert.True(McpTestSupport.IsError(busySibling));
+        Assert.Equal(ToolErrorCodes.ServerBusy, McpTestSupport.ErrorCodeOf(busySibling));
+
+        releaseHeavy.TrySetResult();
+        using JsonDocument attachHeavyResp = await attachHeavyTask;
+        Assert.False(McpTestSupport.IsError(attachHeavyResp), McpTestSupport.Result(attachHeavyResp).GetRawText());
+    }
+
     [Fact]
     public async Task InvalidAnalysisIntentFailsFastWithInvalidArgument()
     {

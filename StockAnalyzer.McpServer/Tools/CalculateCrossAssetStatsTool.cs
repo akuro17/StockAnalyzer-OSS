@@ -58,6 +58,10 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
+    public string? CompactUsageHint => "Pass decimalPlaces: 4, includeCovariance: false, includeDistributionStats: false, or paginate with resultOffset/resultLimit.";
+
     public string? ExampleArgumentsJson =>
         "{\"symbols\":[\"MSFT\",\"7203-T\"],\"timeFrame\":\"D1\",\"benchmark\":\"MSFT\",\"returnBasis\":\"SimpleReturn\"}";
 
@@ -80,7 +84,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        TimeFrame timeFrame = arguments.TryGetProperty(TimeFrameArgument, out _)
+        TimeFrame timeFrame = ToolArgs.HasNonNullProperty(arguments, TimeFrameArgument, out _)
             ? ToolArgs.SupportedTimeFrame(arguments, TimeFrameArgument)
             : TimeFrame.D1;
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.DefaultCandleCount, _limits.MaxCandlesPerRequest);
@@ -100,7 +104,7 @@ internal sealed class CalculateCrossAssetStatsTool : IMcpTool
 
         // 1. Resolve Benchmark Symbol shape (if any) first per sa_ai_integration_0007
         string? canonicalBenchmark = null;
-        if (arguments.TryGetProperty(BenchmarkArgument, out _))
+        if (ToolArgs.HasNonNullProperty(arguments, BenchmarkArgument, out _))
         {
             string benchmarkRaw = ToolArgs.String(arguments, BenchmarkArgument) ?? string.Empty;
             canonicalBenchmark = SymbolResolver.Canonical(benchmarkRaw, BenchmarkArgument);

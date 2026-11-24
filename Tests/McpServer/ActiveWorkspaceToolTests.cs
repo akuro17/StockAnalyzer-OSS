@@ -450,4 +450,26 @@ public sealed class ActiveWorkspaceToolTests : IDisposable
         Assert.Equal(-32603, read.RootElement.GetProperty("error").GetProperty("code").GetInt32());
         Assert.False(read.RootElement.TryGetProperty("result", out _));
     }
+
+    [Fact]
+    public async Task PerEdgeOutputSeriesNames_OverrideUpstreamOutputSeriesNameInWorkspaceRequest()
+    {
+        CoreIndicatorSettings macd = Indicator(IndicatorType.MACD);
+        macd.OutputSeriesName = IndicatorResult.MainSeriesName;
+        CoreIndicatorSettings consumer = Indicator(IndicatorType.SMA, shape: p => Set(p, "Period", 5));
+        consumer.SourceIndicatorId = macd.Id;
+        consumer.SourceOutputSeriesName = "Signal";
+        consumer.DynamicPeriodIndicatorId = macd.Id;
+        consumer.DynamicPeriodOutputSeriesName = "Histogram";
+
+        await SaveWorkspaceAsync("Daily", macd, consumer);
+        McpMessageDispatcher dispatcher = await StartAsync();
+
+        using JsonDocument response = await CallAsync(dispatcher, "sa_get_active_workspace");
+        JsonElement result = McpTestSupport.Structured(response);
+        JsonElement entry = RequestEntry(result, consumer.Id);
+
+        Assert.Equal("Signal", entry.GetProperty("sourceOutputSeriesName").GetString());
+        Assert.Equal("Histogram", entry.GetProperty("dynamicPeriodOutputSeriesName").GetString());
+    }
 }

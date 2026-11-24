@@ -78,6 +78,8 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"tool\":\"FibonacciRetracement\",\"anchorMode\":\"RangeExtremes\",\"anchorBars\":120}";
 
@@ -125,14 +127,14 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"{AnchorModeArgument} must be one of: {string.Join(", ", AnchorModes)}.", AnchorModeArgument);
         }
 
-        bool hasAnchorBars = arguments.TryGetProperty(AnchorBarsArgument, out _);
+        bool hasAnchorBars = ToolArgs.HasNonNullProperty(arguments, AnchorBarsArgument, out _);
         bool hasPoints = arguments.TryGetProperty(PointsArgument, out _);
-        bool hasPriceField = arguments.TryGetProperty(PriceFieldArgument, out _);
+        bool hasPriceField = ToolArgs.HasNonNullProperty(arguments, PriceFieldArgument, out _);
         string? topPriceField = ReadPriceField(arguments, PriceFieldArgument);
 
-        bool hasPivotArguments = arguments.TryGetProperty(PivotLeftArgument, out _)
-            || arguments.TryGetProperty(PivotRightArgument, out _)
-            || arguments.TryGetProperty(PivotPreferenceArgument, out _);
+        bool hasPivotArguments = ToolArgs.HasNonNullProperty(arguments, PivotLeftArgument, out _)
+            || ToolArgs.HasNonNullProperty(arguments, PivotRightArgument, out _)
+            || ToolArgs.HasNonNullProperty(arguments, PivotPreferenceArgument, out _);
         if (hasPivotArguments && anchorMode != AutoPivotsMode)
         {
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"{PivotLeftArgument}, {PivotRightArgument} and {PivotPreferenceArgument} are only used with {AutoPivotsMode}.", AnchorModeArgument);
@@ -516,7 +518,7 @@ internal sealed class CalculateDrawingValuesTool : IMcpTool
             }
 
             decimal? price = null;
-            if (item.TryGetProperty(PointPriceKey, out JsonElement priceElement))
+            if (ToolArgs.HasNonNullProperty(item, PointPriceKey, out JsonElement priceElement))
             {
                 if (priceElement.ValueKind != JsonValueKind.Number || !priceElement.TryGetDecimal(out decimal parsed))
                 {

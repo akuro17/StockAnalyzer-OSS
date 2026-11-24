@@ -18,6 +18,7 @@ using StockAnalyzer.Core.Models.Drawing;
 
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Parameters;
+using StockAnalyzer.Core.Models.Rendering;
 using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Services;
 using StockAnalyzer.Core.Services.Notes;
@@ -690,7 +691,7 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
         await DialogService.ShowIndicatorPropertiesDialogAsync(indicator, ApplySingleIndicator, Indicators);
     }
 
-    private void ApplySingleIndicator(CoreIndicatorSettings changedIndicator)
+    internal void ApplySingleIndicator(CoreIndicatorSettings changedIndicator)
     {
         if (changedIndicator == null) throw new ArgumentNullException(nameof(changedIndicator));
         if (Indicators == null) return;
@@ -720,23 +721,116 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
             }
             else
             {
+                string? mainZeroSeries = IndicatorResult.MainSeriesName;
+                bool prevOverlay = existing.IsOverlay;
+                bool nextOverlay = changedIndicator.IsOverlay;
+                bool rangeMembershipChanged =
+                    existing.IsEnabled != changedIndicator.IsEnabled ||
+                    prevOverlay != nextOverlay ||
+                    !string.Equals(existing.OverlayPanelId, changedIndicator.OverlayPanelId, StringComparison.Ordinal) ||
+                    existing.IsMainSeriesVisible != changedIndicator.IsMainSeriesVisible ||
+                    SeriesRenderStyleCatalog.RequiresZeroBaselineInYRange(existing, mainZeroSeries, PriceScaleType.Linear) !=
+                    SeriesRenderStyleCatalog.RequiresZeroBaselineInYRange(changedIndicator, mainZeroSeries, PriceScaleType.Linear);
+
                 existing.Color = changedIndicator.Color;
                 existing.Thickness = changedIndicator.Thickness;
+                existing.DotSize = changedIndicator.DotSize;
                 existing.Style = changedIndicator.Style;
                 existing.IsEnabled = changedIndicator.IsEnabled;
                 existing.IsOverlay = changedIndicator.IsOverlay;
                 existing.OverlayPanelId = changedIndicator.OverlayPanelId;
+                existing.UseUpDownColors = changedIndicator.UseUpDownColors;
+                existing.UpColor = changedIndicator.UpColor;
+                existing.DownColor = changedIndicator.DownColor;
+                existing.ShowCrossMarkers = changedIndicator.ShowCrossMarkers;
+                existing.ShowAxisLabel = changedIndicator.ShowAxisLabel;
+                existing.IsMainSeriesVisible = changedIndicator.IsMainSeriesVisible;
+                existing.MainRenderPrimitive = changedIndicator.MainRenderPrimitive;
 
                 if (existing.SeriesColors != null && changedIndicator.SeriesColors != null)
                 {
-                    for (int i = 0; i < existing.SeriesColors.Count && i < changedIndicator.SeriesColors.Count; i++)
+                    foreach (var src in changedIndicator.SeriesColors)
                     {
-                        existing.SeriesColors[i].Color = changedIndicator.SeriesColors[i].Color;
+                        var dst = FindMatchingSeriesColor(existing.TypeEnum, existing.SeriesColors, src);
+                        if (dst != null)
+                        {
+                            string probeSeries = dst.TargetSeries is { Count: > 0 } ? dst.TargetSeries[0] : (src.TargetSeries is { Count: > 0 } ? src.TargetSeries[0] : dst.Name);
+                            bool prevRequiresZero = !prevOverlay && SeriesRenderStyleCatalog.IsZeroBaselinePrimitive(
+                                (dst.RenderPrimitive is { } dstP && SeriesRenderStyleCatalog.IsSelectablePrimitive(dstP))
+                                    ? dstP
+                                    : SeriesRenderStyleCatalog.ResolveDefaultPrimitive(existing, probeSeries),
+                                existing.IncludeZeroBaseline);
+                            bool nextRequiresZero = !nextOverlay && SeriesRenderStyleCatalog.IsZeroBaselinePrimitive(
+                                (src.RenderPrimitive is { } srcP && SeriesRenderStyleCatalog.IsSelectablePrimitive(srcP))
+                                    ? srcP
+                                    : SeriesRenderStyleCatalog.ResolveDefaultPrimitive(changedIndicator, probeSeries),
+                                changedIndicator.IncludeZeroBaseline);
+
+                            if (dst.IsVisible != src.IsVisible || prevRequiresZero != nextRequiresZero)
+                            {
+                                rangeMembershipChanged = true;
+                            }
+
+                            dst.Color = src.Color;
+                            dst.IsVisible = src.IsVisible;
+                            dst.RenderPrimitive = src.RenderPrimitive;
+                        }
+                        else
+                        {
+                            existing.SeriesColors.Add(src.Duplicate());
+                            rangeMembershipChanged = true;
+                        }
+                    }
+
+                    for (int i = existing.SeriesColors.Count - 1; i >= 0; i--)
+                    {
+                        if (FindMatchingSeriesColor(existing.TypeEnum, changedIndicator.SeriesColors, existing.SeriesColors[i]) == null)
+                        {
+                            existing.SeriesColors.RemoveAt(i);
+                            rangeMembershipChanged = true;
+                        }
                     }
                 }
-                RequestRender(RenderReason.VisualChanged);
+                RequestRender(rangeMembershipChanged ? RenderReason.DataChanged : RenderReason.VisualChanged);
             }
         }
+    }
+
+    private static SeriesColorConfig? FindMatchingSeriesColor(
+        IndicatorType? indicatorType,
+        IEnumerable<SeriesColorConfig> candidates,
+        SeriesColorConfig target)
+    {
+        if (!string.IsNullOrEmpty(target.Name))
+        {
+            foreach (var c in candidates)
+            {
+                if (!string.IsNullOrEmpty(c.Name) && string.Equals(c.Name, target.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return c;
+                }
+            }
+        }
+
+        if (target.TargetSeries is { Count: > 0 })
+        {
+            foreach (var c in candidates)
+            {
+                if (c.TargetSeries == null || c.TargetSeries.Count == 0) continue;
+                for (int i = 0; i < target.TargetSeries.Count; i++)
+                {
+                    for (int j = 0; j < c.TargetSeries.Count; j++)
+                    {
+                        if (SeriesRenderStyleCatalog.AreSeriesNamesEquivalent(indicatorType, c.TargetSeries[j], target.TargetSeries[i]))
+                        {
+                            return c;
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     public void Dispose()

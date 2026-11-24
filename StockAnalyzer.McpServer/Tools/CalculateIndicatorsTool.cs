@@ -83,10 +83,7 @@ internal sealed class CalculateIndicatorsTool : IMcpTool
 
     public string? CompactUsageHint => "Pass includeSeries: false with summary: true, decimalPlaces: 4, or a smaller outputTailCount / lookbackBars.";
 
-    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        [AsOfDateArgument] = $"This tool names the last-bar date '{EndDateArgument}' (sa_run_screener uses '{AsOfDateArgument}').",
-    };
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
 
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"indicators\":[{\"id\":\"sma25\",\"type\":\"SMA\",\"parameters\":{\"Period\":25}}],\"outputTailCount\":200}";
 

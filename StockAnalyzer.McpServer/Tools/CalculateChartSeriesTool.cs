@@ -104,6 +104,8 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
     public string? CompactUsageHint => "Pass compactRows: true, decimalPlaces: 4, or a smaller outputTailCount.";
 
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"chartType\":\"HeikinAshi\",\"outputTailCount\":200}";
@@ -456,11 +458,11 @@ internal sealed class CalculateChartSeriesTool : IMcpTool
     }
 
     private static bool HasProperty(JsonElement arguments, string name) =>
-        arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out _);
+        ToolArgs.HasNonNullProperty(arguments, name, out _);
 
     private static decimal GetDecimalValue(JsonElement arguments, string name)
     {
-        if (arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out JsonElement prop))
+        if (ToolArgs.HasNonNullProperty(arguments, name, out JsonElement prop))
         {
             if (prop.ValueKind == JsonValueKind.Number && prop.TryGetDecimal(out decimal val))
             {

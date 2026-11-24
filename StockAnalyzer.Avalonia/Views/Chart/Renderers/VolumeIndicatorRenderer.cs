@@ -10,9 +10,14 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// <summary>
 /// Renders standard volume based on candle open/close.
 /// </summary>
-public class VolumeIndicatorRenderer
+public class VolumeIndicatorRenderer : IDisposable
 {
     private readonly SKPaint _paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
+
+    public void Dispose()
+    {
+        _paint.Dispose();
+    }
     public void Render(SKCanvas canvas, Rect chartArea,
         IReadOnlyList<decimal?> values,
         CoreIndicatorSettings setting,

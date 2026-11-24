@@ -73,7 +73,7 @@ internal sealed class ValidateConditionTreeTool : IMcpTool
                     "Use conditionTree when kind is screener.");
             }
 
-            if (arguments.TryGetProperty("timeFrame", out _))
+            if (ToolArgs.HasNonNullProperty(arguments, "timeFrame", out _))
             {
                 throw new ToolException(
                     ToolErrorCodes.InvalidArgument,
@@ -153,7 +153,7 @@ internal sealed class ValidateConditionTreeTool : IMcpTool
             }
 
             TimeFrame timeFrame = TimeFrame.D1;
-            if (arguments.TryGetProperty("timeFrame", out JsonElement tfProp))
+            if (ToolArgs.HasNonNullProperty(arguments, "timeFrame", out JsonElement tfProp))
             {
                 string tfName = tfProp.GetString()!;
                 if (!Enum.TryParse(tfName, out TimeFrame parsedTf) || !ReadOnlyGatewayContract.SupportedBacktestTimeFrames.Contains(parsedTf))

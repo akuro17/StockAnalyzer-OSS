@@ -4,9 +4,10 @@ using Avalonia;
 using SkiaSharp;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Indicators.Trend;
+using StockAnalyzer.Core.Models.Rendering;
 using StockAnalyzer.Core.Theme;
-using System.Linq;
 
 namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 
@@ -38,61 +39,148 @@ public class IchimokuRenderer : IDisposable
         ICoordinateTransform? transform,
         IChartRenderConfig config)
     {
+        Render(
+            canvas, chartArea, series, setting, minVal, maxVal,
+            visibleCandles, offset, startIndex, candles, interval, transform, config,
+            overrideHost: null, snapshot: null, result: null, xOffset: 0f, isSubWindowContext: false);
+    }
+
+    internal void Render(SKCanvas canvas, Rect chartArea,
+        Dictionary<string, IReadOnlyList<decimal?>> series,
+        CoreIndicatorSettings setting,
+        decimal minVal, decimal maxVal,
+        int visibleCandles, int offset, int startIndex,
+        IReadOnlyList<CoreCandleData> candles,
+        TimeSpan interval,
+        ICoordinateTransform? transform,
+        IChartRenderConfig config,
+        IndicatorRenderer? overrideHost,
+        ChartDataSnapshot? snapshot,
+        IIndicatorResult? result,
+        float xOffset,
+        bool isSubWindowContext)
+    {
         // Force Offset 0 for Ichimoku (Data is already shifted by Logic)
         offset = 0;
 
         decimal range = maxVal - minVal;
         if (range == 0) range = 1;
 
-        // Render Cloud (Senkou Span A vs B)
-        if (series.TryGetValue(CoreIchimokuIndicator.SenkouSpanASeriesName, out var spanA) && series.TryGetValue(CoreIchimokuIndicator.SenkouSpanBSeriesName, out var spanB))
+        // Render Cloud (Senkou Span A vs B) only when both span lines are visible
+        if (SeriesRenderStyleCatalog.IsSeriesVisible(setting, CoreIchimokuIndicator.SenkouSpanASeriesName) &&
+            SeriesRenderStyleCatalog.IsSeriesVisible(setting, CoreIchimokuIndicator.SenkouSpanBSeriesName) &&
+            series.TryGetValue(CoreIchimokuIndicator.SenkouSpanASeriesName, out var spanA) &&
+            series.TryGetValue(CoreIchimokuIndicator.SenkouSpanBSeriesName, out var spanB))
         {
             RenderCloud(canvas, chartArea, minVal, range, spanA, spanB, setting, visibleCandles, offset, startIndex, candles, interval, transform);
         }
 
-
-        foreach (var kvp in series)
+        if (result != null)
         {
-            string seriesName = kvp.Key;
-            var values = kvp.Value;
-            if (values == null) continue;
-
-            // Determine Series Color
-            SKColor seriesColor = SKColors.Gray;
-            bool colorFound = false;
-
-            // Map the renderer's dictionary key to the configuration's target series name
-            string configTargetSeries = seriesName;
-            // (Every other series key is already its own target name.)
-            if (seriesName == CoreIchimokuIndicator.TenkanSenSeriesName || seriesName == "Main") configTargetSeries = "Main";
-
-            // 1. Try SeriesColors config
-            var colorConfig = setting.SeriesColors?.FirstOrDefault(c => c.TargetSeries.Contains(configTargetSeries));
-            if (colorConfig != null)
+            var names = result.SeriesNamesList;
+            for (int i = 0; i < names.Count; i++)
             {
-                seriesColor = colorConfig.Color.ToSkColor();
-                colorFound = true;
+                var seriesName = names[i];
+                if (series.TryGetValue(seriesName, out var values) && values != null)
+                {
+                    RenderIchimokuSeries(
+                        canvas, chartArea, seriesName, values, setting, minVal, maxVal,
+                        visibleCandles, offset, candles, interval, transform, config,
+                        overrideHost, snapshot, result, xOffset, isSubWindowContext);
+                }
             }
-
-            // Fallback logic from IndicatorRenderer
-            if (!colorFound)
-            {
-                seriesColor = setting.Color.ToSkColor();
-            }
-
-            // FIX: If color is transparent (Alpha=0), force default colors for Ichimoku
-            // We use configTargetSeries for a more robust match
-            if (seriesColor.Alpha == 0)
-            {
-                var theme = config.ThemeManager.CurrentTheme;
-                if (configTargetSeries == "Main") seriesColor = theme.IchimokuTenkan.ToSkColor();
-                else if (configTargetSeries == CoreIchimokuIndicator.KijunSenSeriesName) seriesColor = theme.IchimokuKijun.ToSkColor();
-                else if (configTargetSeries == CoreIchimokuIndicator.ChikouSpanSeriesName) seriesColor = theme.IchimokuChikou.ToSkColor();
-                else if (configTargetSeries == CoreIchimokuIndicator.SenkouSpanASeriesName || configTargetSeries == CoreIchimokuIndicator.SenkouSpanBSeriesName) seriesColor = theme.IchimokuSenkou.ToSkColor();
-            }
-
-            _lineRenderer.Render(canvas, chartArea, values, setting, minVal, maxVal, visibleCandles, offset, config.VisibleStartIndex, candles, interval, transform, seriesColor);
         }
+        else
+        {
+            foreach (var kvp in series)
+            {
+                if (kvp.Value == null) continue;
+                RenderIchimokuSeries(
+                    canvas, chartArea, kvp.Key, kvp.Value, setting, minVal, maxVal,
+                    visibleCandles, offset, candles, interval, transform, config,
+                    overrideHost, snapshot, result: null, xOffset, isSubWindowContext);
+            }
+        }
+    }
+
+    private void RenderIchimokuSeries(
+        SKCanvas canvas,
+        Rect chartArea,
+        string seriesName,
+        IReadOnlyList<decimal?> values,
+        CoreIndicatorSettings setting,
+        decimal minVal,
+        decimal maxVal,
+        int visibleCandles,
+        int offset,
+        IReadOnlyList<CoreCandleData> candles,
+        TimeSpan interval,
+        ICoordinateTransform? transform,
+        IChartRenderConfig config,
+        IndicatorRenderer? overrideHost,
+        ChartDataSnapshot? snapshot,
+        IIndicatorResult? result,
+        float xOffset,
+        bool isSubWindowContext)
+    {
+        if (!SeriesRenderStyleCatalog.IsSeriesVisible(setting, seriesName))
+        {
+            return;
+        }
+
+        // Determine Series Color
+        SKColor seriesColor = SKColors.Gray;
+        bool colorFound = false;
+
+        // 1. Try SeriesColors config via SSoT alias-aware catalog without allocation
+        var colorConfig = SeriesRenderStyleCatalog.FindSeriesConfig(setting, seriesName);
+        if (colorConfig != null)
+        {
+            seriesColor = colorConfig.Color.ToSkColor();
+            colorFound = true;
+        }
+
+        // Fallback logic from IndicatorRenderer
+        if (!colorFound)
+        {
+            seriesColor = setting.Color.ToSkColor();
+        }
+
+        // FIX: If color is transparent (Alpha=0), force default colors for Ichimoku
+        if (seriesColor.Alpha == 0)
+        {
+            var theme = config.ThemeManager.CurrentTheme;
+            var canonicalName = SeriesRenderStyleCatalog.NormalizeSeriesName(setting.TypeEnum, seriesName);
+            if (string.Equals(canonicalName, IndicatorResult.MainSeriesName, StringComparison.OrdinalIgnoreCase))
+            {
+                seriesColor = theme.IchimokuTenkan.ToSkColor();
+            }
+            else if (string.Equals(seriesName, CoreIchimokuIndicator.KijunSenSeriesName, StringComparison.OrdinalIgnoreCase))
+            {
+                seriesColor = theme.IchimokuKijun.ToSkColor();
+            }
+            else if (string.Equals(seriesName, CoreIchimokuIndicator.ChikouSpanSeriesName, StringComparison.OrdinalIgnoreCase))
+            {
+                seriesColor = theme.IchimokuChikou.ToSkColor();
+            }
+            else if (string.Equals(seriesName, CoreIchimokuIndicator.SenkouSpanASeriesName, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(seriesName, CoreIchimokuIndicator.SenkouSpanBSeriesName, StringComparison.OrdinalIgnoreCase))
+            {
+                seriesColor = theme.IchimokuSenkou.ToSkColor();
+            }
+        }
+
+        var explicitPrimitive = SeriesRenderStyleCatalog.ResolveExplicitPrimitive(setting, seriesName);
+        if (explicitPrimitive.HasValue && overrideHost != null && snapshot != null && result != null && transform != null)
+        {
+            overrideHost.RenderSynthesizedSeries(
+                canvas, chartArea, snapshot, result, setting, config, transform,
+                seriesName, values, seriesColor, explicitPrimitive.Value,
+                minVal, maxVal, visibleCandles, offset, interval, xOffset, isSubWindowContext);
+            return;
+        }
+
+        _lineRenderer.Render(canvas, chartArea, values, setting, minVal, maxVal, visibleCandles, offset, config.VisibleStartIndex, candles, interval, transform, seriesColor);
     }
 
     private void RenderCloud(SKCanvas canvas, Rect chartArea, decimal minVal, decimal range,

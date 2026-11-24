@@ -62,6 +62,10 @@ internal sealed class CalculateRelativePerformanceTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
+    public string? CompactUsageHint => "Pass decimalPlaces: 4, a smaller outputTailCount, or fewer comparisonSymbols.";
+
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"comparisonSymbols\":[\"6758-T\"],\"mode\":\"Performance\",\"outputTailCount\":120}";
 
     public string InputSchemaJson => ToolSchema.Object()

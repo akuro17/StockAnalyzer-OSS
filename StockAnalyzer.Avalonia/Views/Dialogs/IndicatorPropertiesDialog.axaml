@@ -6,6 +6,8 @@
         xmlns:controls="clr-namespace:StockAnalyzer.Avalonia.Views.Controls;assembly=StockAnalyzer.Avalonia"
         xmlns:converters="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
         xmlns:models="clr-namespace:StockAnalyzer.Core.Models;assembly=StockAnalyzer.Core"
+        xmlns:rendering="clr-namespace:StockAnalyzer.Core.Models.Rendering;assembly=StockAnalyzer.Core"
+        xmlns:lc="clr-namespace:StockAnalyzer.Core.Constants;assembly=StockAnalyzer.Core"
         xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
@@ -21,6 +23,7 @@
 
     <Window.Resources>
         <converters:IndicatorColorToAvaloniaColorConverter x:Key="ColorConverter"/>
+        <Thickness x:Key="InlineControlLeftMargin">6,0,0,0</Thickness>
         <StreamGeometry x:Key="SettingsSvgIconData">m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm112-260q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Z</StreamGeometry>
     </Window.Resources>
 
@@ -185,15 +188,47 @@
                         <StackPanel Spacing="10" 
                                     IsVisible="{Binding EditingSettings.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsEqualToZero}}">
                             
-                            <DockPanel>
-                                <TextBlock Text="{l:Localize Label_MainColor}" 
-                                           Width="150" 
-                                           VerticalAlignment="Center" 
+                            <Grid ColumnDefinitions="150, Auto, Auto, *">
+                                <TextBlock Grid.Column="0"
+                                           Text="{l:Localize Label_MainColor}"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
                                            Foreground="{DynamicResource Brush.Text.Primary}"/>
-                                <ColorPicker Color="{Binding EditingSettings.Color, Converter={StaticResource ColorConverter}, Mode=TwoWay}" 
-                                             ColorSpectrumShape="Box" Height="30" Width="200"
-                                             HorizontalAlignment="Right"/>
-                            </DockPanel>
+                                <CheckBox Grid.Column="1"
+                                          Name="MainSeriesVisibleCheckBox"
+                                          IsChecked="{Binding EditingMainSeriesVisible, Mode=TwoWay}"
+                                          IsVisible="{Binding ShowSeriesStyleAndVisibilityControls}"
+                                          ToolTip.Tip="{l:Localize Tooltip_SeriesVisible}"
+                                          MinWidth="0"
+                                          Padding="0"
+                                          Margin="{StaticResource InlineControlLeftMargin}"
+                                          VerticalAlignment="Center"/>
+                                <ComboBox Grid.Column="2"
+                                          Name="MainSeriesRenderStyleComboBox"
+                                          ItemsSource="{Binding SelectableRenderPrimitives}"
+                                          SelectedItem="{Binding EditingMainRenderPrimitive, Mode=TwoWay}"
+                                          IsVisible="{Binding ShowSeriesStyleAndVisibilityControls}"
+                                          ToolTip.Tip="{l:Localize Tooltip_SeriesRenderStyle}"
+                                          Width="{x:Static lc:LayoutConstants.IndicatorFormInlineComboWidth}"
+                                          Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                          Margin="{StaticResource InlineControlLeftMargin}"
+                                          VerticalAlignment="Center">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="rendering:SeriesPrimitiveType">
+                                            <TextBlock Text="{Binding ., Converter={x:Static converters:EnumToLocalizedDisplayNameConverter.Instance}}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <ColorPicker Grid.Column="3"
+                                             Name="MainSeriesColorPicker"
+                                             Color="{Binding EditingSettings.Color, Converter={StaticResource ColorConverter}, Mode=TwoWay}"
+                                             ColorSpectrumShape="Box"
+                                             Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                             MinWidth="{x:Static lc:LayoutConstants.IndicatorFormColorPickerMinWidth}"
+                                             HorizontalAlignment="Stretch"
+                                             Margin="{StaticResource InlineControlLeftMargin}"/>
+                            </Grid>
                             
                             <CheckBox Content="{l:Localize Check_UseUpDownColors}" 
                                       IsChecked="{Binding EditingSettings.UseUpDownColors, Mode=TwoWay}"
@@ -255,20 +290,50 @@
                         </StackPanel>
 
                         <!-- Multi-Series Color Settings -->
-                        <ItemsControl ItemsSource="{Binding EditingSettings.SeriesColors}"
+                        <ItemsControl Name="SeriesColorSettingsItemsControl"
+                                      ItemsSource="{Binding ActiveSeriesStyleRows}"
                                       IsVisible="{Binding EditingSettings.SeriesColors.Count, Converter={x:Static converters:NumericalConverters.IsGreaterThanZero}}">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <DockPanel Margin="0,5">
-                                        <TextBlock Text="{Binding DisplayName}" 
-                                                   Width="150" 
-                                                   VerticalAlignment="Center" 
+                                <DataTemplate x:DataType="vm:ActiveSeriesStyleRow">
+                                    <Grid Name="MultiSeriesRowGrid" ColumnDefinitions="150, Auto, Auto, *" Margin="0,5">
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding DisplayName}"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
                                                    Foreground="{DynamicResource Brush.Text.Primary}"/>
+                                        <CheckBox Grid.Column="1"
+                                                  IsChecked="{Binding IsVisible, Mode=TwoWay}"
+                                                  IsVisible="{Binding ShowStyleControls}"
+                                                  ToolTip.Tip="{l:Localize Tooltip_SeriesVisible}"
+                                                  MinWidth="0"
+                                                  Padding="0"
+                                                  Margin="{StaticResource InlineControlLeftMargin}"
+                                                  VerticalAlignment="Center"/>
+                                        <ComboBox Grid.Column="2"
+                                                  ItemsSource="{Binding SelectableRenderPrimitives}"
+                                                  SelectedItem="{Binding EffectivePrimitive, Mode=TwoWay}"
+                                                  IsVisible="{Binding ShowStyleControls}"
+                                                  ToolTip.Tip="{l:Localize Tooltip_SeriesRenderStyle}"
+                                                  Width="{x:Static lc:LayoutConstants.IndicatorFormInlineComboWidth}"
+                                                  Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                  Margin="{StaticResource InlineControlLeftMargin}"
+                                                  VerticalAlignment="Center">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate x:DataType="rendering:SeriesPrimitiveType">
+                                                    <TextBlock Text="{Binding ., Converter={x:Static converters:EnumToLocalizedDisplayNameConverter.Instance}}"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
                                         <!-- Note: SeriesColorConfig doesn't have Thickness yet -->
-                                        <ColorPicker Color="{Binding Color, Converter={StaticResource ColorConverter}, Mode=TwoWay}" 
-                                                     ColorSpectrumShape="Box" Height="30" Width="200"
-                                                     HorizontalAlignment="Right"/>
-                                    </DockPanel>
+                                        <ColorPicker Grid.Column="3"
+                                                     Color="{Binding Color, Converter={StaticResource ColorConverter}, Mode=TwoWay}"
+                                                     ColorSpectrumShape="Box"
+                                                     Height="{x:Static lc:LayoutConstants.IndicatorFormControlHeight}"
+                                                     MinWidth="{x:Static lc:LayoutConstants.IndicatorFormColorPickerMinWidth}"
+                                                     HorizontalAlignment="Stretch"
+                                                     Margin="{StaticResource InlineControlLeftMargin}"/>
+                                    </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

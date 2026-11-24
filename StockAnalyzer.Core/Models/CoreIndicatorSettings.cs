@@ -2,6 +2,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.ObjectModel;
 
 using StockAnalyzer.Core.Models.Confluence;
+using StockAnalyzer.Core.Models.Rendering;
 
 namespace StockAnalyzer.Core.Models;
 
@@ -59,11 +60,27 @@ public partial class CoreIndicatorSettings : ObservableObject
     partial void OnSourceIndicatorIdChanged(string? value) => MathematicalVersion++;
 
     /// <summary>
+    /// Optional per-edge output series name read from <see cref="SourceIndicatorId"/>.
+    /// When null or empty, <see cref="Services.Analysis.AnalysisPipelineService"/> falls back to the upstream setting's <see cref="OutputSeriesName"/>.
+    /// </summary>
+    [ObservableProperty]
+    private string? _sourceOutputSeriesName;
+    partial void OnSourceOutputSeriesNameChanged(string? value) => MathematicalVersion++;
+
+    /// <summary>
     /// Optional upstream indicator ID whose output series is used as dynamic periods/cycles for this indicator (Adaptive Modulation).
     /// </summary>
     [ObservableProperty]
     private string? _dynamicPeriodIndicatorId;
     partial void OnDynamicPeriodIndicatorIdChanged(string? value) => MathematicalVersion++;
+
+    /// <summary>
+    /// Optional per-edge output series name read from <see cref="DynamicPeriodIndicatorId"/>.
+    /// When null or empty, <see cref="Services.Analysis.AnalysisPipelineService"/> falls back to the upstream setting's <see cref="OutputSeriesName"/>.
+    /// </summary>
+    [ObservableProperty]
+    private string? _dynamicPeriodOutputSeriesName;
+    partial void OnDynamicPeriodOutputSeriesNameChanged(string? value) => MathematicalVersion++;
 
     /// <summary>
     /// The time frame the indicator is calculated on (Same as Chart / Weekly / Monthly). Persisted as an integer; a workspace saved before this
@@ -153,6 +170,19 @@ public partial class CoreIndicatorSettings : ObservableObject
     private double _dotSize = IndicatorDefaultConstants.BlockChartOverlayDefaultDotSize;
     [ObservableProperty]
     private CoreLineStyle _style = CoreLineStyle.Solid;
+
+    /// <summary>
+    /// Whether the primary series is visible when <see cref="SeriesColors"/> is empty (visual-only).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isMainSeriesVisible = true;
+
+    /// <summary>
+    /// Optional rendering primitive override for single-series indicators when <see cref="SeriesColors"/> is empty (visual-only).
+    /// Null resolves to the indicator's legacy default style.
+    /// </summary>
+    [ObservableProperty]
+    private SeriesPrimitiveType? _mainRenderPrimitive;
 
     [ObservableProperty]
     private int _offset = 0;

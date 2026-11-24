@@ -3408,5 +3408,20 @@
   "Enum_ChartRoundingMode_Round": "四捨五入",
   "Enum_AutoFallbackMode_Percentage": "パーセンテージ",
   "Enum_AutoFallbackMode_Fixed": "固定値",
-  "Tooltip_TimeframeDisabledChained": "この指標が他の指標（親指標・動的期間ドライバー）を使用している、または他の指標から使用されている間は無効化されます（連鎖はチャート自身の足で計算されます）"
+  "Tooltip_TimeframeDisabledChained": "この指標が他の指標（親指標・動的期間ドライバー）を使用している、または他の指標から使用されている間は無効化されます（連鎖はチャート自身の足で計算されます）",
+  "Tooltip_SeriesVisible": "このラインの表示オン・オフを切り替え",
+  "Tooltip_SeriesRenderStyle": "描画方式を選択",
+  "Enum_SeriesPrimitiveType_Line": "ライン（実線）",
+  "Enum_SeriesPrimitiveType_DashedLine": "破線",
+  "Enum_SeriesPrimitiveType_Dot": "ドット（点）",
+  "Enum_SeriesPrimitiveType_Histogram": "ヒストグラム",
+  "Enum_SeriesPrimitiveType_StepLine": "ステップライン",
+  "Enum_SeriesPrimitiveType_HorizontalSegment": "水平セグメント",
+  "Enum_SeriesPrimitiveType_Spline": "スプライン",
+  "Enum_SeriesPrimitiveType_Area": "エリア",
+  "Enum_SeriesPrimitiveType_PositiveNegativeArea": "正負エリア",
+  "Enum_SeriesPrimitiveType_MarkerSymbol": "マーカー",
+  "Enum_SeriesPrimitiveType_ColorStrip": "カラーストリップ",
+  "Enum_SeriesPrimitiveType_DynamicStyling": "動的スタイル",
+  "Enum_SeriesPrimitiveType_Lollipop": "ロリポップ"
 }

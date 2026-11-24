@@ -96,7 +96,7 @@ internal sealed class TemplateStructureBuilder
             throw new ToolException(ToolErrorCodes.InvalidArgument, "'conditionTree' is required when templateType is 'screener'.", "conditionTree");
         }
 
-        TimeFrame timeFrame = arguments.TryGetProperty("timeFrame", out _)
+        TimeFrame timeFrame = ToolArgs.HasNonNullProperty(arguments, "timeFrame", out _)
             ? ToolArgs.SupportedTimeFrame(arguments, "timeFrame")
             : TimeFrame.D1;
 
@@ -232,7 +232,7 @@ internal sealed class TemplateStructureBuilder
             throw new ToolException(ToolErrorCodes.InvalidArgument, "'conditionTree' is for templateType 'screener'; give 'conditions' for 'backtestCondition'.", "conditionTree");
         }
 
-        TimeFrame timeFrame = arguments.TryGetProperty("timeFrame", out _)
+        TimeFrame timeFrame = ToolArgs.HasNonNullProperty(arguments, "timeFrame", out _)
             ? ToolArgs.SupportedTimeFrame(arguments, "timeFrame")
             : TimeFrame.D1;
 

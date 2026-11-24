@@ -47,6 +47,8 @@ internal sealed class AnalyzePortfolioRiskTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public string? CompactUsageHint => "Pass decimalPlaces: 4.";
+
     public string? ExampleArgumentsJson => "{\"baseCurrency\":\"JPY\",\"lookbackBars\":250,\"confidenceLevel\":0.95}";
 
     public string InputSchemaJson => ToolSchema.Object()

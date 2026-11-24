@@ -7,6 +7,7 @@ using StockAnalyzer.Avalonia.Models;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Indicators.Chart;
+using StockAnalyzer.Core.Models.Rendering;
 using StockAnalyzer.Core.Utilities;
 using StockAnalyzer.Avalonia.Views.Chart.Renderers;
 
@@ -375,32 +376,48 @@ public sealed class ChartDataSnapshot
                 if (settingsMap.TryGetValue(kvp.Key, out var setting) && setting.IsOverlay && setting.IsEnabled
                     && !BlockChartOverlayTypes.IsHiddenOn(chartType, setting.TypeEnum))
                 {
-                    foreach (var seriesName in slicedResult.SeriesNames)
+                    if (slicedResult is IPrimitiveAwareIndicatorResult { PrimitiveDescriptors.Count: > 0 } aware)
                     {
-                        // Skip non-price series from scaling logic
-                        if (seriesName == "IsUpTrend") continue;
-                        if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
-                        if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
-
-                        var values = slicedResult.GetSeries(seriesName);
-                        if (values == null) continue;
-
-                        // WebAI Fix: Only consider indices that have actual candles to prevent scaling bugs
-                        // from future/padding data in indicators.
-                        int limit = Math.Min(values.Count, Candles.Count);
-                        for (int i = 0; i < limit; i++)
+                        bool hasOverlayVal = minPrice <= maxPrice;
+                        SeriesPrimitiveValueRangeHelper.AccumulateRange(
+                            slicedResult,
+                            aware.PrimitiveDescriptors,
+                            setting,
+                            Candles.Count,
+                            priceScale,
+                            ref minPrice,
+                            ref maxPrice,
+                            ref hasOverlayVal);
+                    }
+                    else
+                    {
+                        foreach (var seriesName in slicedResult.SeriesNames)
                         {
-                            var v = values[i];
-                            if (v.HasValue)
+                            // Skip non-price series from scaling logic
+                            if (seriesName == "IsUpTrend") continue;
+                            if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
+                            if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
+
+                            var values = slicedResult.GetSeries(seriesName);
+                            if (values == null) continue;
+
+                            // WebAI Fix: Only consider indices that have actual candles to prevent scaling bugs
+                            // from future/padding data in indicators.
+                            int limit = Math.Min(values.Count, Candles.Count);
+                            for (int i = 0; i < limit; i++)
                             {
-                                if (v.Value > maxPrice) maxPrice = v.Value;
-                                if (priceScale == PriceScaleType.Log)
+                                var v = values[i];
+                                if (v.HasValue)
                                 {
-                                    if (v.Value > 0m && v.Value < minPrice) minPrice = v.Value;
-                                }
-                                else
-                                {
-                                    if (v.Value < minPrice) minPrice = v.Value;
+                                    if (v.Value > maxPrice) maxPrice = v.Value;
+                                    if (priceScale == PriceScaleType.Log)
+                                    {
+                                        if (v.Value > 0m && v.Value < minPrice) minPrice = v.Value;
+                                    }
+                                    else
+                                    {
+                                        if (v.Value < minPrice) minPrice = v.Value;
+                                    }
                                 }
                             }
                         }
@@ -411,7 +428,7 @@ public sealed class ChartDataSnapshot
         IndicatorResults = indResults;
         IndicatorValues = indValues; // Backward compatibility
 
-        IndicatorSettings = indicatorSettings?.ToList().AsReadOnly() ?? new List<CoreIndicatorSettings>().AsReadOnly();
+        IndicatorSettings = SnapshotSettingsList(indicatorSettings);
 
         // Calculate Scale
         if (overrideMinPrice.HasValue && overrideMaxPrice.HasValue)
@@ -670,32 +687,48 @@ public sealed class ChartDataSnapshot
                 if (settingsMap.TryGetValue(kvp.Key, out var setting) && setting.IsOverlay && setting.IsEnabled
                     && !BlockChartOverlayTypes.IsHiddenOn(chartType, setting.TypeEnum))
                 {
-                    foreach (var seriesName in slicedResult.SeriesNames)
+                    if (slicedResult is IPrimitiveAwareIndicatorResult { PrimitiveDescriptors.Count: > 0 } aware)
                     {
-                        // Skip non-price series from scaling logic
-                        if (seriesName == "IsUpTrend") continue;
-                        if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
-                        if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
-
-                        var values = slicedResult.GetSeries(seriesName);
-                        if (values == null) continue;
-
-                        // WebAI Fix: Only consider indices that have actual candles to prevent scaling bugs
-                        // from future/padding data in indicators.
-                        int limit = Math.Min(values.Count, actualSliceCount);
-                        for (int i = 0; i < limit; i++)
+                        bool hasOverlayVal = minPrice <= maxPrice;
+                        SeriesPrimitiveValueRangeHelper.AccumulateRange(
+                            slicedResult,
+                            aware.PrimitiveDescriptors,
+                            setting,
+                            actualSliceCount,
+                            priceScale,
+                            ref minPrice,
+                            ref maxPrice,
+                            ref hasOverlayVal);
+                    }
+                    else
+                    {
+                        foreach (var seriesName in slicedResult.SeriesNames)
                         {
-                            var v = values[i];
-                            if (v.HasValue)
+                            // Skip non-price series from scaling logic
+                            if (seriesName == "IsUpTrend") continue;
+                            if (PanelValueRangeCalculator.IsSignalSeries(seriesName)) continue;
+                            if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
+
+                            var values = slicedResult.GetSeries(seriesName);
+                            if (values == null) continue;
+
+                            // WebAI Fix: Only consider indices that have actual candles to prevent scaling bugs
+                            // from future/padding data in indicators.
+                            int limit = Math.Min(values.Count, actualSliceCount);
+                            for (int i = 0; i < limit; i++)
                             {
-                                if (v.Value > maxPrice) maxPrice = v.Value;
-                                if (priceScale == PriceScaleType.Log)
+                                var v = values[i];
+                                if (v.HasValue)
                                 {
-                                    if (v.Value > 0m && v.Value < minPrice) minPrice = v.Value;
-                                }
-                                else
-                                {
-                                    if (v.Value < minPrice) minPrice = v.Value;
+                                    if (v.Value > maxPrice) maxPrice = v.Value;
+                                    if (priceScale == PriceScaleType.Log)
+                                    {
+                                        if (v.Value > 0m && v.Value < minPrice) minPrice = v.Value;
+                                    }
+                                    else
+                                    {
+                                        if (v.Value < minPrice) minPrice = v.Value;
+                                    }
                                 }
                             }
                         }
@@ -706,7 +739,7 @@ public sealed class ChartDataSnapshot
         IndicatorResults = indResults;
         IndicatorValues = indValues;
 
-        IndicatorSettings = indicatorSettings?.ToList().AsReadOnly() ?? new List<CoreIndicatorSettings>().AsReadOnly();
+        IndicatorSettings = SnapshotSettingsList(indicatorSettings);
 
         // Phase 4: Include Ghost Projections (MultiWave Targets) in Price Range
         if (multiWaveSignals != null)
@@ -821,6 +854,25 @@ public sealed class ChartDataSnapshot
         var range = MaxPrice - MinPrice;
         PriceRange = range == 0 ? 1m : range;
         MaxVolume = maxVolume == 0 ? 1L : maxVolume;
+    }
+
+    private static IReadOnlyList<CoreIndicatorSettings> SnapshotSettingsList(IEnumerable<CoreIndicatorSettings>? indicatorSettings)
+    {
+        if (indicatorSettings == null)
+        {
+            return new List<CoreIndicatorSettings>().AsReadOnly();
+        }
+
+        var copied = new List<CoreIndicatorSettings>();
+        foreach (var setting in indicatorSettings)
+        {
+            if (setting != null)
+            {
+                copied.Add(setting.Snapshot());
+            }
+        }
+
+        return copied.AsReadOnly();
     }
 
     /// <summary>

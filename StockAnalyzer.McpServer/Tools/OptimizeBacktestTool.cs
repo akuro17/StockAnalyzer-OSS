@@ -65,6 +65,8 @@ internal sealed class OptimizeBacktestTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDate;
+
     public string? CompactUsageHint => "Pass compactReport: true or a smaller topK.";
 
     public string? ExampleArgumentsJson =>

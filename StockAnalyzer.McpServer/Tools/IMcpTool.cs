@@ -61,3 +61,12 @@ internal interface IMcpTool
 
     Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Implemented by proxy/composite tools whose heavy vs. light concurrency profile depends on call arguments (for example,
+/// the delegated tool name in <c>sa_discussion_attach_analysis</c>).
+/// </summary>
+internal interface IDynamicExecutionProfileTool
+{
+    bool ResolveEffectiveIsHeavy(JsonElement arguments);
+}

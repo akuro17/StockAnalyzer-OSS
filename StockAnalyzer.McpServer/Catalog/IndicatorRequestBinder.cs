@@ -94,7 +94,7 @@ internal sealed class IndicatorRequestBinder
 
     private static (TimeFrame? Written, TimeFrame? Own) ReadTimeFrame(JsonElement item, TimeFrame callFrame, string path)
     {
-        if (!item.TryGetProperty(TimeFrameKey, out JsonElement element))
+        if (!ToolArgs.HasNonNullProperty(item, TimeFrameKey, out JsonElement element))
         {
             return (null, null);
         }
@@ -114,5 +114,5 @@ internal sealed class IndicatorRequestBinder
     }
 
     private static string? Optional(JsonElement item, string name)
-        => item.TryGetProperty(name, out JsonElement value) ? value.GetString() : null;
+        => ToolArgs.String(item, name);
 }

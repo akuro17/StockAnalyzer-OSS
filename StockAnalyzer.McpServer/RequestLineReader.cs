@@ -20,6 +20,7 @@ internal sealed class RequestLineReader
     private readonly ArrayBufferWriter<byte> _line = new();
     private int _start;
     private int _end;
+    private bool _isFirstLine = true;
 
     public RequestLineReader(Stream stream, int maxLineBytes)
     {
@@ -70,6 +71,8 @@ internal sealed class RequestLineReader
 
     private RequestLine Take(bool tooLong)
     {
+        bool isFirst = _isFirstLine;
+        _isFirstLine = false;
         if (tooLong)
         {
             _line.Clear();
@@ -77,6 +80,11 @@ internal sealed class RequestLineReader
         }
 
         ReadOnlySpan<byte> span = _line.WrittenSpan;
+        if (isFirst && span.Length >= 3 && span[0] == 0xEF && span[1] == 0xBB && span[2] == 0xBF)
+        {
+            span = span[3..];
+        }
+
         if (span.Length > 0 && span[^1] == (byte)'\r')
         {
             span = span[..^1];

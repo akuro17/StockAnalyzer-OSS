@@ -41,6 +41,8 @@ internal sealed class StartPortfolioRlTrainingTool : IMcpTool
 
     public bool IsExecution => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDateExclusive;
+
     public string? ExampleArgumentsJson => "{\"symbols\":[\"7203-T\",\"6758-T\"]}";
 
     public string InputSchemaJson => ToolSchema.Object()

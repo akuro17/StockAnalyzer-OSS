@@ -48,6 +48,8 @@ internal sealed class DetectCandlePatternsTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"windowBars\":5,\"requireTrendContext\":true}";
 

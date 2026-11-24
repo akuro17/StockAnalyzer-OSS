@@ -35,6 +35,10 @@ internal sealed class ListUpcomingCatalystsTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForFromToDate;
+
+    public string? CompactUsageHint => "Pass a smaller limit or horizonDays.";
+
     public string? ExampleArgumentsJson => "{\"horizonDays\":30}";
 
     public string InputSchemaJson => ToolSchema.Object()

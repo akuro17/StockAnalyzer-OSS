@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
@@ -37,6 +38,7 @@ internal sealed class McpMessageDispatcher
     private readonly McpResourceRegistry? _resources;
     private readonly ClientIdentity? _identity;
     private readonly McpPromptRegistry? _prompts;
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _inFlightResources = new(StringComparer.Ordinal);
     private bool _initialized;
 
     /// <param name="resources">The resources to serve; null serves none (the capability is then not declared and resources/* are unknown methods).</param>
@@ -127,7 +129,7 @@ internal sealed class McpMessageDispatcher
 
         try
         {
-            if (parameters.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Object))
+            if (parameters.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.Object))
             {
                 throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, "Params must be an object.");
             }
@@ -170,7 +172,18 @@ internal sealed class McpMessageDispatcher
             && parameters.TryGetProperty("requestId", out JsonElement requestId)
             && requestId.ValueKind is JsonValueKind.String or JsonValueKind.Number)
         {
-            _executor.Cancel(requestId.GetRawText());
+            string key = requestId.GetRawText();
+            _executor.Cancel(key);
+            if (_inFlightResources.TryGetValue(key, out CancellationTokenSource? resourceCancellation))
+            {
+                try
+                {
+                    resourceCancellation.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+            }
         }
     }
 
@@ -247,11 +260,7 @@ internal sealed class McpMessageDispatcher
 
     private Action<Utf8JsonWriter> ListTools(JsonElement parameters)
     {
-        // There is no pagination, so no cursor can be valid.
-        if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("cursor", out _))
-        {
-            throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, "Invalid cursor.");
-        }
+        RejectCursor(parameters);
 
         return writer =>
         {
@@ -287,8 +296,11 @@ internal sealed class McpMessageDispatcher
 
     private static void RejectCursor(JsonElement parameters)
     {
-        // There is no pagination, so no cursor can be valid.
-        if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("cursor", out _))
+        // Pagination is not used; null or empty-string cursor is treated as omitted, and any other cursor value is rejected.
+        if (parameters.ValueKind == JsonValueKind.Object
+            && parameters.TryGetProperty("cursor", out JsonElement cursor)
+            && cursor.ValueKind != JsonValueKind.Null
+            && !(cursor.ValueKind == JsonValueKind.String && cursor.GetString()!.Length == 0))
         {
             throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, "Invalid cursor.");
         }
@@ -359,9 +371,12 @@ internal sealed class McpMessageDispatcher
 
     private async Task<string?> ReadResourceAsync(JsonElement id, McpResource resource, CancellationToken cancellationToken)
     {
+        string requestKey = id.GetRawText();
+        using var callCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        bool registered = _inFlightResources.TryAdd(requestKey, callCancellation);
         try
         {
-            string text = await resource.ReadAsync(cancellationToken).ConfigureAwait(false);
+            string text = await resource.ReadAsync(callCancellation.Token).ConfigureAwait(false);
             return Result(id, writer =>
             {
                 writer.WriteStartObject();
@@ -379,14 +394,21 @@ internal sealed class McpMessageDispatcher
         {
             return Error(id, error.Code, error.Message);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (callCancellation.IsCancellationRequested)
         {
-            return null; // shutdown: the client is gone, nothing is answered
+            return null; // client cancelled or shutdown: nothing is answered
         }
         catch (Exception error)
         {
             _log.Error($"Unhandled error in '{ResourcesReadMethod}': {error}");
             return Error(id, JsonRpcErrorCodes.InternalError, InternalErrorMessage);
+        }
+        finally
+        {
+            if (registered)
+            {
+                _inFlightResources.TryRemove(requestKey, out _);
+            }
         }
     }
 
@@ -495,7 +517,7 @@ internal sealed class McpMessageDispatcher
         }
 
         JsonElement arguments = default;
-        if (parameters.TryGetProperty("arguments", out arguments) && arguments.ValueKind != JsonValueKind.Object)
+        if (parameters.TryGetProperty("arguments", out arguments) && arguments.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null))
         {
             throw new JsonRpcException(JsonRpcErrorCodes.InvalidParams, "Tool arguments must be an object.");
         }

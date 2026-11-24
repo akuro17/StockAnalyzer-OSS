@@ -130,6 +130,7 @@ public sealed class McpToolSweepTests : IDisposable
     {
         ("sa_list_tickers", """{"limit":5,"includeMetadataSummary":true}"""),
         ("sa_list_ticker_groups", "{}"),
+        ("sa_list_result_handles", "{}"),
         ("sa_filter_tickers", """{"symbols":["MSFT","7203.T"],"rules":[{"field":"Close","operator":">","value":"1"}],"includeFields":["Close","Sector"]}"""),
         ("sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1","count":5}"""),
         ("sa_get_ticker_metadata", """{"symbols":["MSFT","7203.T"]}"""),

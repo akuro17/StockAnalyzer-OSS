@@ -46,18 +46,18 @@ public sealed class DotChartRenderer : IChartRenderer, IDisposable
     /// <summary>
     /// Spacing margin factor to avoid adjacent dot collision (derived from diameter &lt; w with 10% safety margin: (1 - 0.10) / 2 = 0.45).
     /// </summary>
-    private const float SpacingMarginFactor = 0.45f;
+    private const float SpacingMarginFactor = ChartPrimitiveMath.DotSpacingMarginFactor;
 
     /// <summary>
     /// Minimum effective rendering radius, aligned with the system/UI minimum DotBaseRadius (0.5).
     /// </summary>
-    private const float MinEffectiveRadius = 0.5f;
+    private const float MinEffectiveRadius = ChartPrimitiveMath.DotMinEffectiveRadius;
 
     /// <summary>
     /// Scaling factor for Diamond shape (sqrt(pi / 2) ~ 1.2533) to equalize visual area (perceptual weight) with Circle.
     /// Area(Diamond) = 2 * (r * 1.2533)^2 = 3.1416 * r^2 = Area(Circle).
     /// </summary>
-    private const float DiamondScaleFactor = 1.2533f;
+    private const float DiamondScaleFactor = ChartPrimitiveMath.DotDiamondScaleFactor;
 
     /// <summary>
     /// Bars of Heikin-Ashi history replayed before the first visible bar. The seed error of the recursion halves every bar,

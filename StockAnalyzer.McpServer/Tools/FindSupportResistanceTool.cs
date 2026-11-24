@@ -53,6 +53,8 @@ internal sealed class FindSupportResistanceTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"mode\":\"StructuralPivots\",\"maxLevels\":10}";
 

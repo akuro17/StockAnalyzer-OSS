@@ -219,4 +219,46 @@ public sealed class ToolExecutorReaderWriterTests
         release.Release();
         await McpTestSupport.WaitUntilAsync(() => SucceedsAsync(dispatcher, "sa_heavy", 4).GetAwaiter().GetResult());
     }
+
+    [Fact]
+    public async Task QueuedHeavyCallIsNotStarvedByContinuouslyArrivingLightCalls()
+    {
+        var light1 = new Held();
+        var heavy = new Held();
+        var lightQueued = new Held();
+        var probe = new FreeTurnProbe();
+        McpMessageDispatcher dispatcher = await McpTestSupport.InitializedAsync(
+            new IMcpTool[] { light1.Tool("sa_light_1"), heavy.Tool("sa_heavy", heavy: true), lightQueued.Tool("sa_light_queued") }.Concat(probe.Tools),
+            new McpLimits { QueueWaitSeconds = 10, MaxConcurrentReadOnlyCalls = 2 });
+
+        // 1. Light call 1 holds 1 of 2 read-only slots.
+        Task<JsonDocument?> callLight1 = McpTestSupport.CallAsync(dispatcher, "sa_light_1", id: 1);
+        await light1.Started.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // 2. Heavy call enters _arrivalGate and waits for light1 to finish.
+        Task<JsonDocument?> callHeavy = McpTestSupport.CallAsync(dispatcher, "sa_heavy", id: 2);
+        await Task.Delay(150);
+        Assert.False(heavy.IsStarted);
+
+        // 3. Subsequent light calls arrive while heavy is waiting; they must queue behind heavy on _arrivalGate.
+        Task<JsonDocument?> callLight2 = McpTestSupport.CallAsync(dispatcher, "sa_light_queued", id: 3);
+        Task<JsonDocument?> callLight3 = McpTestSupport.CallAsync(dispatcher, "sa_light_queued", id: 4);
+        await Task.Delay(150);
+        Assert.False(lightQueued.IsStarted);
+
+        // 4. Releasing light1 lets heavy acquire the exclusive turn BEFORE light2/light3 run.
+        light1.Release();
+        await heavy.Started.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.False(lightQueued.IsStarted);
+
+        heavy.Release();
+        await lightQueued.Started.WaitAsync(TimeSpan.FromSeconds(10));
+        lightQueued.Release();
+
+        (await callLight1)!.Dispose();
+        (await callHeavy)!.Dispose();
+        (await callLight2)!.Dispose();
+        (await callLight3)!.Dispose();
+        await probe.AssertEveryTurnIsFreeAsync(dispatcher, firstId: 20);
+    }
 }

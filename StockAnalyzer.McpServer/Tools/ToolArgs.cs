@@ -8,15 +8,27 @@ namespace StockAnalyzer.McpServer.Tools;
 /// <summary>Typed reads of arguments that the schema check has already shown to have the right JSON type.</summary>
 internal static class ToolArgs
 {
+    /// <summary>Returns true when <paramref name="arguments"/> is a JSON object containing a non-null property named <paramref name="name"/>.</summary>
+    public static bool HasNonNullProperty(JsonElement arguments, string name, out JsonElement value)
+    {
+        if (arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out value) && value.ValueKind != JsonValueKind.Null)
+        {
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
     public static string? String(JsonElement arguments, string name)
-        => arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out JsonElement value) ? value.GetString() : null;
+        => HasNonNullProperty(arguments, name, out JsonElement value) ? value.GetString() : null;
 
     public static long? Integer(JsonElement arguments, string name)
-        => arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out JsonElement value) ? value.GetInt64() : null;
+        => HasNonNullProperty(arguments, name, out JsonElement value) ? value.GetInt64() : null;
 
     public static double? Number(JsonElement arguments, string name)
     {
-        if (arguments.ValueKind != JsonValueKind.Object || !arguments.TryGetProperty(name, out JsonElement value))
+        if (!HasNonNullProperty(arguments, name, out JsonElement value))
         {
             return null;
         }
@@ -35,10 +47,10 @@ internal static class ToolArgs
     }
 
     public static bool? Boolean(JsonElement arguments, string name)
-        => arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out JsonElement value) ? value.GetBoolean() : null;
+        => HasNonNullProperty(arguments, name, out JsonElement value) ? value.GetBoolean() : null;
 
     public static IReadOnlyList<string>? StringArray(JsonElement arguments, string name)
-        => arguments.ValueKind == JsonValueKind.Object && arguments.TryGetProperty(name, out JsonElement value)
+        => HasNonNullProperty(arguments, name, out JsonElement value)
             ? value.EnumerateArray().Select(item => item.GetString()!).ToList()
             : null;
 

@@ -30,6 +30,8 @@ internal sealed class StartRlTrainingTool : IMcpTool
 
     public bool IsExecution => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDateExclusive;
+
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\"}";
 
     public string InputSchemaJson => ToolSchema.Object()

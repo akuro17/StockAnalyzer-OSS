@@ -34,6 +34,8 @@ internal sealed class StartTrainingTool : IMcpTool
 
     public bool IsExecution => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDate;
+
     public string? ExampleArgumentsJson => "{\"symbols\":[\"7203-T\"],\"framework\":\"LightGbm\",\"architecture\":\"LightGbmStandard\",\"windowSize\":30,\"horizon\":5}";
 
     public string InputSchemaJson => ToolSchema.Object()

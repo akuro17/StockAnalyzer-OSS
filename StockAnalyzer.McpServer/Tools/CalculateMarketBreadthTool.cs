@@ -64,6 +64,10 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
 
     public bool IsHeavy => true;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
+    public string? CompactUsageHint => "Pass a smaller outputTailCount or restrict include series.";
+
     public string? ExampleArgumentsJson =>
         "{\"symbols\":[\"MSFT\",\"AAPL\"],\"timeFrame\":\"D1\",\"outputTailCount\":50}";
 
@@ -87,7 +91,7 @@ internal sealed class CalculateMarketBreadthTool : IMcpTool
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        TimeFrame timeFrame = arguments.TryGetProperty(TimeFrameArgument, out _)
+        TimeFrame timeFrame = ToolArgs.HasNonNullProperty(arguments, TimeFrameArgument, out _)
             ? ToolArgs.SupportedTimeFrame(arguments, TimeFrameArgument)
             : TimeFrame.D1;
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.DefaultCandleCount, _limits.MaxCandlesPerRequest);

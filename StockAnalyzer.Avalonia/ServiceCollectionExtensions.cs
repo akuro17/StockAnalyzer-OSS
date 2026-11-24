@@ -375,7 +375,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Core.Strategies.IChartStrategy, Core.Strategies.PointAndFigureChartStrategy>();
         services.AddSingleton<Core.Strategies.IChartStrategyFactory, Core.Strategies.ChartStrategyFactory>();
 
-        services.AddSingleton<Views.Chart.Renderers.IndicatorRenderer>();
+        services.AddTransient<Views.Chart.Renderers.IndicatorRenderer>();
 
         // Facades
         services.AddSingleton<Core.Interfaces.ICoreServicesFacade, Core.Services.CoreServicesFacade>();

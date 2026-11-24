@@ -21,7 +21,7 @@
 |                               |                                                |  |
 |                               v                                                v  |
 |                     [McpResourceRegistry]                             [McpToolRegistry]  |
-|                     - catalog/indicators                              - 47 Read-Only Tools |
+|                     - catalog/indicators                              - 48 Read-Only Tools |
 |                     - catalog/screener                                - 9 Execution Tools  |
 |                     - settings/current                                  (--enable-execution) |
 |                     - workspace/active                                - 9 Discussion Tools |
@@ -69,18 +69,18 @@ CLI tokens are case-sensitive and parsed strictly from left to right.
 
 #### 2.2.1 `--toolset` Profiles & Role-Based Launch Templates
 
-`McpToolsetCatalog` partitions the 47 read-only tools into 7 non-overlapping domain profiles (`all` selects all 47). Execution tools (`--enable-execution`) and discussion tools (`--enable-discussion`) remain governed by their own flags. Note: the legacy 16-tool `technical` profile was split into `technical` (6 core tools) and `technical-extended` (10 specialized tools); existing setups specifying `--toolset technical` (or upgrading with the GUI `Technical` profile enabled) should also select `technical-extended` if those 10 tools are required.
+`McpToolsetCatalog` partitions the 48 read-only tools into 7 non-overlapping domain profiles (`all` selects all 48). Execution tools (`--enable-execution`) and discussion tools (`--enable-discussion`) remain governed by their own flags. Note: the legacy 16-tool `technical` profile was split into `technical` (6 core tools) and `technical-extended` (10 specialized tools); existing setups specifying `--toolset technical` (or upgrading with the GUI `Technical` profile enabled) should also select `technical-extended` if those 10 tools are required.
 
 | Profile | Read-Only Tools | Typical Role |
 |---|---:|---|
-| `core` | 10 | Tickers, groups, filter rules, candles, metadata, coverage, capabilities, settings, active workspace, expression calculator |
+| `core` | 11 | Tickers, groups, filter rules, result handles (`sa_list_result_handles`), candles, metadata, coverage, capabilities, settings, active workspace, expression calculator |
 | `technical` | 6 | Core technical diagnosis: `sa_calculate_indicators`, `sa_analyze_market_structure`, `sa_find_support_resistance`, `sa_detect_candle_patterns`, `sa_detect_divergences`, `sa_render_chart_image` |
 | `technical-extended` | 10 | Specialized & batch technical tools: `sa_calculate_indicators_batch`, `sa_calculate_chart_series`, `sa_calculate_reverse_watch`, `sa_calculate_volume_profile`, `sa_calculate_drawing_values`, `sa_get_chart_drawings`, `sa_detect_chart_patterns`, `sa_analyze_cycles`, `sa_project_price_path`, `sa_get_seasonality` |
 | `screener` | 5 | Screener scan, saved templates (`sa_list_templates`, `sa_get_template_detail`, `sa_build_template`), condition validator |
 | `backtest` | 5 | Single-symbol backtest, grid optimizer, walk-forward analysis, portfolio backtest, signal event extractor |
 | `portfolio` | 7 | Portfolio summary, portfolio VaR/CVaR risk, notes search, upcoming catalysts, relative performance, cross-asset stats, market breadth |
 | `ml` | 4 | Portfolio RL / RL playback preflight checks, registered model list, Shapley/PDP explanation |
-| `all` | 47 | All read-only tools (default when `--toolset` is omitted) |
+| `all` | 48 | All read-only tools (default when `--toolset` is omitted) |
 
 **Standard Recommended Token-Saving Configuration (<1K initial `tools/list` tokens)**:
 
@@ -335,7 +335,7 @@ Starting with protocol enhancement, `tools/list` conditionally advertises `outpu
 
 ---
 
-## 6. Read-Only Tools Reference (47 Tools)
+## 6. Read-Only Tools Reference (48 Tools)
 
 All read-only tools are marked read-only and non-destructive in `tools/list`. Ticker symbols can be single symbols (e.g. `7203-T`, `AAPL`) or custom formula symbols (+, -, /; * rejected; e.g. `7203-T / 7267-T`, `AAPL + MSFT`). For formula symbols, constituent symbols are resolved against available registered tickers (or stored daily bars if `allowUnregistered` is true). Formula symbols are supported across data, indicator, and backtest tools, and prohibited on ML/RL training tools that require physical Parquet files. Every `timeFrame` schema lists all time-frame names, but only `D1`, `W1` and `MN1` are accepted (`UNSUPPORTED_TIMEFRAME` otherwise). The date that ends a calculation is `endDate` for tools that return a series over a window and `asOfDate` for tools that evaluate one bar per symbol or predict (`sa_run_screener`, `sa_run_onnx_prediction`, `sa_get_rl_playback`); there is no alias, and the other spelling is `INVALID_ARGUMENT` (for `sa_calculate_indicators` with `asOfDate` and `sa_run_screener` with `endDate` the hint names the right argument). With a date a symbol is read as it was known on that date (the daily series is cut before `W1` and `MN1` bars are built); a date removes look-ahead only, not survivorship bias: the universe is today's ticker list. Heavy tools run under `HeavyToolTimeoutSeconds` (default 180 s), the others under `ToolTimeoutSeconds` (default 60 s).
 
@@ -518,8 +518,11 @@ Evaluates a condition tree against the latest bar of a symbol universe, with the
 |---|---|---|---|---|---|---|
 | `conditionTree` | `object` | No | `null` | - | - | Condition tree: a group `{operator: And\|Or, children}` or one comparison `{left, comparison, right}`; `comparison` may also be `CrossesAbove`, `CrossesBelow`, `Rising` or `Falling` (see Expanded comparisons). Exactly one of `conditionTree` and `templateId`. |
 | `templateId` | `string` | No | `null` | - | - | Saved screener template id from `sa_list_templates`. |
-| `symbols` | `string[]` | No | `null` | MinItems: `1`, MaxItems: `MaxScreenerSymbols` | - | Specific universe. Mutually exclusive with `groupId`. |
-| `groupId` | `string` | No | `null` | - | - | Workspace group GUID. Mutually exclusive with `symbols`. |
+| `symbols` | `string[]` | No | `null` | MinItems: `1`, MaxItems: `MaxScreenerSymbols` | - | Specific universe. Mutually exclusive with `groupId` and `symbolsFromResultId`. |
+| `groupId` | `string` | No | `null` | - | - | Workspace group GUID. Mutually exclusive with `symbols` and `symbolsFromResultId`. |
+| `symbolsFromResultId` | `string` | No | `null` | - | - | Handle id from `sa_run_screener` or `sa_filter_tickers` (`storeResult: true`). Mutually exclusive with `symbols` and `groupId`. |
+| `resultOffset` | `integer` | No | `0` | Min: `0` | - | 0-based start index within `symbolsFromResultId`. |
+| `resultLimit` | `integer` | No | `null` | Min: `1`, Max: `MaxScreenerSymbols` | - | Maximum symbols to read from `symbolsFromResultId`. |
 | `timeFrame` | `string` | No | `D1` | - | `D1`, `W1`, `MN1` | Bar duration of the whole scan, or of every side that names no `timeFrame` once a side does (see Per-side time frame); a `W1` or `MN1` bar is built from the stored daily bars. Other frames are `UNSUPPORTED_TIMEFRAME`. |
 | `completeBarsOnly` | `boolean` | No | `true` | - | - | `W1` and `MN1` only (ignored for `D1`). `true`: when the latest period has not ended, the previous complete period is evaluated; `false`: the partial period is evaluated and named in the result. |
 | `asOfDate` | `string` | No | latest stored bar | `yyyy-MM-dd` | - | Evaluation date (inclusive). Applies to every path (`conditionTree`, `templateId`, `groupId`) and to the comparison symbols, `includeMatchedValues` and `sortBy`. With it a column that is not read from the bars is `INVALID_ARGUMENT` (see Boundary Conditions). |
@@ -527,7 +530,7 @@ Evaluates a condition tree against the latest bar of a symbol universe, with the
 | `sortDirection` | `string` | No | `Descending` | - | `Descending`, `Ascending` | Needs `sortBy` (`INVALID_ARGUMENT` at `sortDirection` without it). |
 | `includeMatchedValues` | `boolean` | No | `false` | - | - | Returns the values each comparison read, per returned symbol. |
 | `maxReturnedMatches` | `integer` | No | `MaxReturnedMatches` | Min: `1`, Max: `MaxReturnedMatches` | - | Maximum matched symbols returned. |
-| `allowUnregistered` | `boolean` | No | `false` | - | - | Accepts explicit `symbols` and `ComparisonSymbol` values that are not in the ticker list but have stored daily bars; they are named in `warnings`. Not for `groupId`. |
+| `allowUnregistered` | `boolean` | No | `false` | - | - | Accepts `symbols`, `symbolsFromResultId`, and `ComparisonSymbol` values that are not in the ticker list but have stored daily bars; they are named in `warnings`. Not for `groupId` or all-tickers mode. Rejecting an unregistered handle symbol reports `param: "symbolsFromResultId"`. |
 | `storeResult` | `boolean` | No | `false` | - | - | Stores all matched symbols (prior to `maxReturnedMatches` truncation or `includeMatchedSymbols` omission) in the runtime LRU handle store and adds `resultId` (e.g. `"res_0001"`) after `truncated` for downstream tools via `symbolsFromResultId`. |
 | `includeMatchedSymbols` | `boolean` | No | `true` | - | - | Includes `matchedSymbols` (and `ranking`) in the response. `false` requires `storeResult: true` (`INVALID_ARGUMENT` otherwise) and cannot be combined with `includeMatchedValues: true`. |
 
@@ -733,8 +736,11 @@ Filters tickers with rules sent in the call (the Tickers-tab rule filter, withou
 
 | Argument | Type | Req | Default | Bounds | Allowed Values | Description |
 |---|---|---|---|---|---|---|
-| `symbols` | `string[]` | No | `null` | MinItems: `1`, MaxItems: `MaxFilterEvaluationSymbols` | - | Symbols to filter. Mutually exclusive with `groupId`. Omit both to filter every registered symbol. |
-| `groupId` | `string` | No | `null` | - | - | GUID of a saved workspace group from `sa_list_ticker_groups`; its members are the universe. |
+| `symbols` | `string[]` | No | `null` | MinItems: `1`, MaxItems: `MaxFilterEvaluationSymbols` | - | Symbols to filter. Mutually exclusive with `groupId` and `symbolsFromResultId`. Omit all three to filter every registered symbol. |
+| `groupId` | `string` | No | `null` | - | - | GUID of a saved workspace group from `sa_list_ticker_groups`; its members are the universe. Excludes `symbols` and `symbolsFromResultId`. |
+| `symbolsFromResultId` | `string` | No | `null` | - | - | Handle id from `sa_run_screener` or `sa_filter_tickers` (`storeResult: true`). Excludes `symbols` and `groupId`. |
+| `resultOffset` | `integer` | No | `0` | Min: `0` | - | 0-based start index within `symbolsFromResultId`. |
+| `resultLimit` | `integer` | No | `null` | Min: `1`, Max: `MaxFilterEvaluationSymbols` | - | Maximum symbols to read from `symbolsFromResultId`. |
 | `rules` | `object[]` | No | `[]` | MaxItems: `MaxInlineFilterRules` | - | Rules, all must hold (AND). |
 | `rules[].field` | `string` | Yes | - | - | Tickers-tab column name or alias | Unknown field is `INVALID_ARGUMENT`. |
 | `rules[].operator` | `string` | Yes | - | - | per field kind, see below | Case-insensitive. |
@@ -744,7 +750,7 @@ Filters tickers with rules sent in the call (the Tickers-tab rule filter, withou
 | `includeFields` | `string[]` | No | `[]` | at most the number of known column names and aliases | known column names or aliases | Columns added to each returned match (`null` when not available). |
 | `offset` | `integer` | No | `0` | Min: `0` | - | Matches to skip. |
 | `limit` | `integer` | No | `100` | Min: `1`, Max: `MaxTickersPerPage` | - | Page size. |
-| `allowUnregistered` | `boolean` | No | `false` | - | - | Evaluates listed `symbols` that are not in the ticker list but have stored daily bars (named in `warnings`). A listed symbol with no stored bar is `SYMBOL_NOT_FOUND`. Not for `groupId` or the whole-list universe. |
+| `allowUnregistered` | `boolean` | No | `false` | - | - | Evaluates `symbols` and `symbolsFromResultId` entries that are not in the ticker list but have stored daily bars (named in `warnings`). A symbol with no stored bar is `SYMBOL_NOT_FOUND` (unregistered handle symbols fail with `param: "symbolsFromResultId"`). Not for `groupId` or the whole-list universe. |
 | `storeResult` | `boolean` | No | `false` | - | - | Stores all matching symbols (prior to `offset`/`limit` paging or `includeMatches` omission) in the runtime LRU handle store and adds `resultId` after `hasMore` for downstream tools via `symbolsFromResultId`. |
 | `includeMatches` | `boolean` | No | `true` | - | - | Includes `matches` in the response. `false` requires `storeResult: true` (`INVALID_ARGUMENT` otherwise) and cannot be combined with `includeFields`. |
 
@@ -1525,7 +1531,7 @@ Returns the chart set-up the user last **saved** (Data/Config/default_workspace.
 - **Heavy**: `false`
 - **Arguments**: none.
 - **Time frame**: the saved `Daily`, `Weekly` and `Monthly` map to `D1`, `W1` and `MN1`; any other saved time frame gives `timeFrame` null, `request` null and a note.
-- **Request**: the enabled indicators the catalogue can calculate (`isCalculable`), as entries of `indicators` (`id`, `type`, `parameters` limited to the names the catalogue lists, `priceSource`, `timeFrame?` (below), and `sourceIndicatorId` / `dynamicPeriodIndicatorId` with `sourceOutputSeriesName` / `dynamicPeriodOutputSeriesName`). An indicator that reads another brings it along, upstream first: first a workspace indicator, otherwise a registered source indicator (`source_indicators.json`) or dynamic period driver (`dynamic_period_drivers.json`). The series named is the one the upstream indicator has selected (`OutputSeriesName`, as the analysis pipeline reads it); the application's `Main` is the main series and is left out. An indicator whose input cannot be found or calculated is left out with a note. More entries than `MaxIndicatorsPerCall`, no symbol or no supported time frame: `request` is null.
+- **Request**: the enabled indicators the catalogue can calculate (`isCalculable`), as entries of `indicators` (`id`, `type`, `parameters` limited to the names the catalogue lists, `priceSource`, `timeFrame?` (below), and `sourceIndicatorId` / `dynamicPeriodIndicatorId` with `sourceOutputSeriesName` / `dynamicPeriodOutputSeriesName`). An indicator that reads another brings it along, upstream first: first a workspace indicator, otherwise a registered source indicator (`source_indicators.json`) or dynamic period driver (`dynamic_period_drivers.json`). The series named uses the per-edge `SourceOutputSeriesName` / `DynamicPeriodOutputSeriesName` when specified, falling back to the upstream indicator's `OutputSeriesName` (as `AnalysisPipelineService` reads it); `Main` is the main series and is left out. An indicator whose input cannot be found or calculated is left out with a note. More entries than `MaxIndicatorsPerCall`, no symbol or no supported time frame: `request` is null.
 - **Indicator time frame**: an entry carries its own `timeFrame` (`W1` or `MN1`) only when the indicator's `Timeframe` setting (Weekly, Monthly) applies to it (`IndicatorTimeframePolicy.SupportsIndicatorTimeframe`), it neither reads nor is read by another indicator of the request, and the application calculates it on that frame (`IndicatorTimeframePlan.Classify` gives `Aligned`, which is `W1` or `MN1` on a `D1` workspace only). Same as Chart, a frame equal to the workspace's, and a chained indicator write no `timeFrame`: the request then calculates it on the call's bars, as the application does. An indicator the application refuses on the workspace frame (`IndicatorTimeframePlan.IsRefused`: a Monthly indicator on a Weekly workspace, a Weekly indicator on a Monthly workspace, a Pivot whose `SourcePeriod` is finer than the workspace) is left out of `request` with a note that carries the application's text and stays in `activeIndicators`, so the request is never rejected as a whole (`UNSUPPORTED_TIMEFRAME`) and never shows a value the chart does not draw (owner decision Q-2 = A). A request with only such indicators is null. Pivot Points are never given a `timeFrame`: their own source period is already in `parameters.SourcePeriod` (`PreviousBar`, `Week`, `Month`). `activeIndicators` lists no `timeFrame`. The values of such an indicator come from the stored bars of its frame (up to `MaxCandlesPerRequest`) and can differ slightly from the chart's for a recursive indicator (EMA, RSI, MACD, OBV), which the chart calculates on its loaded window plus warm-up; see Indicator time frame of `sa_calculate_indicators`.
 - **Return Fields**: `workspaceFound`, `name`, `savedAt`, `symbol`, `savedTimeFrame`, `timeFrame`, `maxCandleCount`, `chartType`, `activeIndicators[{id, type, displayName, isEnabled, isCalculable, parameters, priceSource, sourceIndicatorId?, sourceOutputSeriesName?, dynamicPeriodIndicatorId?, dynamicPeriodOutputSeriesName?}]`, `request{symbol, timeFrame, indicators[]}` or null (an entry of `indicators` as in Request, with `timeFrame?`), `notes[]`. No saved workspace: `workspaceFound` false.
 - **Error Codes**: `DATA_UNAVAILABLE` (the workspace file is being replaced, or a registered indicator file is damaged; nothing is quarantined or rewritten), `EXECUTION_TIMEOUT`, `SERVER_BUSY`.
@@ -1654,6 +1660,20 @@ expression_inner = ternary ;
   - Example 1 (Vector 45): `{"variables":{"close":2950,"atr":48.5},"expressions":[{"name":"stop","expression":"close - 2 * atr"}]}` -> `{"calculatorVersion":8,"arithmetic":"System.Decimal","transcendentalArithmetic":"IEEE-754 binary64 narrowed via ToDecimalOrNull (|x| < 7.9e27)","variables":[{"name":"close","value":2950},{"name":"atr","value":48.5}],"results":[{"name":"stop","expression":"close - 2 * atr","status":"Ok","value":2853}],"okCount":1,"errorCount":0}`
   - Example 2 (Vector 46): `{"variables":{"high":3120,"low":2680},"expressions":[{"name":"fib618","expression":"high - (high - low) * 0.618"}]}` -> `{"calculatorVersion":8,"arithmetic":"System.Decimal","transcendentalArithmetic":"IEEE-754 binary64 narrowed via ToDecimalOrNull (|x| < 7.9e27)","variables":[{"name":"high","value":3120},{"name":"low","value":2680}],"results":[{"name":"fib618","expression":"high - (high - low) * 0.618","status":"Ok","value":2848.08}],"okCount":1,"errorCount":0}`
 - **Tool Error Codes**: `INVALID_ARGUMENT` (schema, negative `decimalPlaces`, invalid/reserved/duplicate name, non-decimal scalar/array variable, empty expression), `LIMIT_EXCEEDED` (`expressions` > `MaxCalculatorExpressions`, combined `variables` + `arrayVariables` > `MaxCalculatorVariables`, individual array > 512, total input `arrayVariables` elements > 2048 or batch arena > 4096, `decimalPlaces` > 10, `expression` > 512 chars), `EXECUTION_TIMEOUT`, `SERVER_BUSY`.
+
+### 6.48 `sa_list_result_handles`
+Lists active in-memory symbol result handles (max 16) created by `sa_run_screener` or `sa_filter_tickers` (`storeResult: true`), ordered most-recently-used first without altering LRU order or extending expiration.
+
+- **Heavy**: `false` (`ToolTimeoutSeconds`)
+- **Arguments**:
+
+| Argument | Type | Req | Default | Bounds | Allowed Values | Description |
+|---|---|---|---|---|---|---|
+| `previewCount` | `integer` | No | `5` | Min: `0`, Max: `20` | - | Leading symbols to preview per handle. Pass `0` to omit `previewSymbols`. |
+
+- **Boundary Conditions**: Reading handles does not mutate LRU ordering. Universe-filter tools (`sa_run_screener`, `sa_filter_tickers`) accept an empty (0-symbol) handle at `resultOffset: 0` and return 0 matches cleanly (`resultOffset > 0` throws `INVALID_ARGUMENT` at `resultOffset`), whereas detail/analysis tools (such as `sa_calculate_indicators_batch`) require at least 1 symbol (`INVALID_ARGUMENT`). `OutputSchemaJson` remains `null`.
+- **Return Fields**: `maxHandles` (`16`), `activeCount`, `handles[{resultId, sourceTool, symbolCount, previewSymbols[]}]`.
+- **Error Codes**: `INVALID_ARGUMENT`, `LIMIT_EXCEEDED`.
 
 ---
 

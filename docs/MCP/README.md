@@ -53,6 +53,7 @@ Detailed per-tool reference specifications extracted from `StockAnalyzer.McpServ
 | `sa_invoke_action` | Meta-Tool (`--progressive-discovery`, non-read-only modes) | [tools/sa_invoke_action.md](tools/sa_invoke_action.md) | Invokes a state-changing or execution active StockAnalyzer tool discovered via sa_search_tools using the target tool's exact execution lock, timeout, and output contract. |
 | `sa_invoke_tool` | Meta-Tool (`--progressive-discovery`) | [tools/sa_invoke_tool.md](tools/sa_invoke_tool.md) | Invokes a read-only active StockAnalyzer tool discovered via sa_search_tools using the target tool's exact execution lock, timeout, and output contract. |
 | `sa_list_models` | Read-Only | [tools/sa_list_models.md](tools/sa_list_models.md) | Lists registered supervised and reinforcement learning model generations, sorted by creation date descending. |
+| `sa_list_result_handles` | Read-Only | [tools/sa_list_result_handles.md](tools/sa_list_result_handles.md) | Lists active in-memory symbol result handles (max 16) created by storeResult: true, ordered most-recently-used first. |
 | `sa_list_templates` | Read-Only | [tools/sa_list_templates.md](tools/sa_list_templates.md) | Lists the templates the user saved in StockAnalyzer, favourites first and then by name. |
 | `sa_list_ticker_groups` | Read-Only | [tools/sa_list_ticker_groups.md](tools/sa_list_ticker_groups.md) | Lists ticker groups (All Tickers, watchlists, portfolios, custom categories, list folders, and Tickers-tab filters) from the saved workspace. |
 | `sa_list_tickers` | Read-Only | [tools/sa_list_tickers.md](tools/sa_list_tickers.md) | Lists the registered ticker symbols (All Tickers), sorted by symbol (ordinal, ascending). |
@@ -88,12 +89,12 @@ StockAnalyzer.McpServer --progressive-discovery --response-format text-only --co
 
 ## Role-Based Toolset Profiles (`--toolset`)
 
-To restrict exposed read-only tools directly without progressive discovery, pass comma-separated profiles from `all`, `core` (10), `technical` (6), `technical-extended` (10), `screener` (5), `backtest` (5), `portfolio` (7), and `ml` (4) via `--toolset`:
+To restrict exposed read-only tools directly without progressive discovery, pass comma-separated profiles from `all`, `core` (11), `technical` (6), `technical-extended` (10), `screener` (5), `backtest` (5), `portfolio` (7), and `ml` (4) via `--toolset`:
 
 - **Direct Toolset Preset (~10K `tools/list` tokens, no discovery proxy)**: `StockAnalyzer.McpServer --toolset core,technical --response-format text-only --compact-defaults` (with `AiIntegration:MaxResponseTokens = 24576`; one-click direct preset also available in **Settings > McpServer**)
-- **Minimal Data & Calculator**: `StockAnalyzer.McpServer --toolset core` (10 tools)
-- **Core Technical Diagnosis**: `StockAnalyzer.McpServer --toolset core,technical` (16 tools; add `technical-extended` for batch, converted series, drawings, patterns, cycles, seasonality, and projections)
-- **Screener & Backtest Research**: `StockAnalyzer.McpServer --toolset core,screener,backtest` (20 tools)
+- **Minimal Data & Calculator**: `StockAnalyzer.McpServer --toolset core` (11 tools)
+- **Core Technical Diagnosis**: `StockAnalyzer.McpServer --toolset core,technical` (17 tools; add `technical-extended` for batch, converted series, drawings, patterns, cycles, seasonality, and projections)
+- **Screener & Backtest Research**: `StockAnalyzer.McpServer --toolset core,screener,backtest` (21 tools)
 - **Portfolio & Catalysts + Text-Only + Compact Defaults**: `StockAnalyzer.McpServer --toolset core,portfolio --response-format text-only --compact-defaults`
 - **ML/RL Inspection + Sandboxed Execution**: `StockAnalyzer.McpServer --toolset core,ml --enable-execution`
 - **Standard Progressive Discovery (<1K `tools/list` tokens across all permitted tools)**: `StockAnalyzer.McpServer --progressive-discovery --response-format text-only --compact-defaults` (combines with `--toolset`, `--enable-execution`, and `--enable-discussion`)

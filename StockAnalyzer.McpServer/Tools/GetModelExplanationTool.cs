@@ -58,6 +58,8 @@ internal sealed class GetModelExplanationTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForAsOfDate;
+
     public string? ExampleArgumentsJson => "{\"modelId\":\"active\",\"symbol\":\"7203-T\"}";
 
     public string InputSchemaJson => ToolSchema.Object()

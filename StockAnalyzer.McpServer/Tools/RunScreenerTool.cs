@@ -96,25 +96,27 @@ internal sealed class RunScreenerTool : IMcpTool
 
     public bool IsHeavy => true;
 
-    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints { get; } = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        [EndDateArgument] = $"This tool names the evaluation date '{AsOfDateArgument}' (sa_calculate_indicators uses '{EndDateArgument}').",
-    };
+    public string? CompactUsageHint => "Pass includeMatchedSymbols: false with storeResult: true, includeMatchedValues: false, or a smaller maxReturnedMatches.";
+
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForAsOfDate;
 
     public string? ExampleArgumentsJson => "{\"timeFrame\":\"D1\",\"conditionTree\":{\"left\":{\"price\":\"Close\"},\"comparison\":\"GreaterThan\",\"right\":{\"indicator\":\"SMA\",\"parameters\":{\"Period\":10},\"timeFrame\":\"W1\"}},\"maxReturnedMatches\":50}";
 
     public string InputSchemaJson => ToolSchema.Object()
         .FreeObject(ConditionArgument, "The condition tree (see the tool description). Give this or templateId.")
         .String(TemplateArgument, "Id of a saved Screener template (from sa_list_templates). Give this or conditionTree.")
-        .StringArray(SymbolsArgument, $"Symbols to screen (at most {_limits.MaxScreenerSymbols}); omit to screen every available symbol. Mutually exclusive with groupId.", minItems: 1)
-        .String(GroupIdArgument, "Guid of a saved ticker group (from sa_list_ticker_groups) to screen. Mutually exclusive with symbols.")
+        .StringArray(SymbolsArgument, $"Symbols to screen (max {_limits.MaxScreenerSymbols}); omit to screen all. Excludes {GroupIdArgument}, {McpResultHandleStore.SymbolsFromResultIdArgument}.", minItems: 1)
+        .String(GroupIdArgument, $"Workspace ticker group guid. Excludes {SymbolsArgument}, {McpResultHandleStore.SymbolsFromResultIdArgument}.")
+        .String(McpResultHandleStore.SymbolsFromResultIdArgument, $"Handle from sa_run_screener/sa_filter_tickers ({McpResultHandleStore.StoreResultArgument}). Excludes {SymbolsArgument}, {GroupIdArgument}.")
+        .Integer(McpResultHandleStore.ResultOffsetArgument, $"0-based offset in {McpResultHandleStore.SymbolsFromResultIdArgument}. Default 0.", defaultValue: 0, minimum: 0)
+        .Integer(McpResultHandleStore.ResultLimitArgument, $"Max symbols from {McpResultHandleStore.SymbolsFromResultIdArgument} (1..{_limits.MaxScreenerSymbols}).", minimum: 1, maximum: _limits.MaxScreenerSymbols)
         .String(TimeFrameArgument, $"Time frame of the bars of every side that names no timeFrame of its own. Supported: {ToolArgs.SupportedTimeFrameNames}. Default {ScreenerTimeFrame}.", allowedValues: Enum.GetNames<TimeFrame>())
         .Boolean(PartialBarOutput.CompleteBarsOnlyArgument, "W1 and MN1 only (ignored for D1): true (default) evaluates the last complete period when the latest one has not ended; false evaluates the partial period and says so (partialLastBar).")
         .FreeObject(SortByArgument, "Rank the matched symbols by one side: {indicator|price|column: name, parameters?, outputSeriesName?, offset?} (the same side object as in conditionTree; not criteria or a text column).")
         .String(SortDirectionArgument, $"{SortDescending} (default: larger value first) or {SortAscending}. Needs sortBy.", allowedValues: new[] { SortDescending, SortAscending })
         .String(AsOfDateArgument, $"Evaluation date ({ToolJson.DateFormat}, inclusive): each symbol is evaluated on its last bar on or before it. Default: the latest stored bar. Columns other than those read from the bars are refused with it.")
         .Boolean(ValuesArgument, "Add the values each comparison read, per returned symbol. Default false.")
-        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept symbols that are not in the ticker list but have stored daily bars. Default false.")
+        .Boolean(SymbolResolver.AllowUnregisteredArgument, "Accept symbols that are not in the ticker list but have stored daily bars. Applies to symbols and symbolsFromResultId (groupId and all-tickers modes evaluate registered symbols only). Default false.")
         .Integer(MaxMatchesArgument, $"Most matched symbols to return. Default and maximum {_limits.MaxReturnedMatches}.", defaultValue: _limits.MaxReturnedMatches, minimum: 1, maximum: _limits.MaxReturnedMatches)
         .Boolean(McpResultHandleStore.StoreResultArgument, $"Store all matched symbols in memory and return {McpResultHandleStore.ResultIdKey} for downstream tools. Default false.")
         .Boolean(IncludeMatchedSymbolsArgument, $"Include matchedSymbols (and ranking) in the response. Default true; false requires {McpResultHandleStore.StoreResultArgument} true and cannot be combined with {ValuesArgument}.")
@@ -122,7 +124,7 @@ internal sealed class RunScreenerTool : IMcpTool
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        TimeFrame timeFrame = arguments.TryGetProperty(TimeFrameArgument, out _) ? ToolArgs.SupportedTimeFrame(arguments, TimeFrameArgument) : ScreenerTimeFrame;
+        TimeFrame timeFrame = ToolArgs.HasNonNullProperty(arguments, TimeFrameArgument, out _) ? ToolArgs.SupportedTimeFrame(arguments, TimeFrameArgument) : ScreenerTimeFrame;
         DateOnly? asOf = ToolArgs.Date(arguments, AsOfDateArgument);
         bool isPeriodFrame = TimeFrameAggregator.IsPeriodFrame(timeFrame);
         bool completeBarsOnly = ToolArgs.Boolean(arguments, PartialBarOutput.CompleteBarsOnlyArgument) ?? ScreenerBarSelection.DefaultCompleteBarsOnly;
@@ -135,7 +137,7 @@ internal sealed class RunScreenerTool : IMcpTool
         var sideSelection = new ScreenerBarSelection(asOf, completeBarsOnly);
         bool sortNamesFrame = arguments.TryGetProperty(SortByArgument, out JsonElement sortProbe)
             && sortProbe.ValueKind == JsonValueKind.Object
-            && sortProbe.TryGetProperty(ScreenerConditionBinder.SideTimeFrameKey, out _);
+            && ToolArgs.HasNonNullProperty(sortProbe, ScreenerConditionBinder.SideTimeFrameKey, out _);
         bool sideFrames;
         Func<IReadOnlyList<string>, IScreenerEvaluationContext?, Task<ScreenerSideFramesResult>>? runSideFrames = null;
         bool hasTree = arguments.TryGetProperty(ConditionArgument, out JsonElement tree);
@@ -149,9 +151,18 @@ internal sealed class RunScreenerTool : IMcpTool
                 "Use sa_list_templates to find a template id, or write a conditionTree.");
         }
 
-        bool hasSymbols = arguments.TryGetProperty(SymbolsArgument, out _);
+        bool hasSymbols = ToolArgs.HasNonNullProperty(arguments, SymbolsArgument, out _);
         string? groupIdText = ToolArgs.String(arguments, GroupIdArgument);
         bool hasGroupId = groupIdText is not null;
+        string? resultIdText = ToolArgs.String(arguments, McpResultHandleStore.SymbolsFromResultIdArgument);
+        if (resultIdText is not null && (hasSymbols || hasGroupId))
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"Give at most one of {SymbolsArgument}, {GroupIdArgument}, or {McpResultHandleStore.SymbolsFromResultIdArgument}.",
+                McpResultHandleStore.SymbolsFromResultIdArgument);
+        }
+
         if (hasSymbols && hasGroupId)
         {
             throw new ToolException(
@@ -159,6 +170,8 @@ internal sealed class RunScreenerTool : IMcpTool
                 "Give at most one of symbols or groupId.",
                 GroupIdArgument);
         }
+
+        (int sliceOffset, int? sliceLimit) = McpResultHandleStore.ReadSliceArguments(arguments, resultIdText, 1, _limits.MaxScreenerSymbols);
 
         int maxMatches = ToolArgs.PositiveWithin(arguments, MaxMatchesArgument, _limits.MaxReturnedMatches, _limits.MaxReturnedMatches);
         bool includeValues = ToolArgs.Boolean(arguments, ValuesArgument) ?? false;
@@ -294,12 +307,12 @@ internal sealed class RunScreenerTool : IMcpTool
             sortComparisonSymbols = await _comparisonSymbols.ResolveAsync(sortSide.ComparisonSymbols, SortByArgument, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
             descending = !string.Equals(ToolArgs.String(arguments, SortDirectionArgument), SortAscending, StringComparison.Ordinal);
         }
-        else if (arguments.TryGetProperty(SortDirectionArgument, out _))
+        else if (ToolArgs.HasNonNullProperty(arguments, SortDirectionArgument, out _))
         {
             throw new ToolException(ToolErrorCodes.InvalidArgument, "sortDirection needs sortBy.", SortDirectionArgument, "Give sortBy, or omit sortDirection.");
         }
 
-        (List<string> universe, bool isCustom, string? resolvedGroupId) = await ResolveUniverseAsync(arguments, allowUnregistered, warnings, cancellationToken).ConfigureAwait(false);
+        (List<string> universe, bool isCustom, string? resolvedGroupId) = await ResolveUniverseAsync(arguments, allowUnregistered, sliceOffset, sliceLimit, warnings, cancellationToken).ConfigureAwait(false);
         if (asOf is not null && resolvedGroupId is not null)
         {
             warnings.Add("The members of the group are those of today (a group defined by filter rules is resolved on today's stored data), not those on asOfDate.");
@@ -523,11 +536,20 @@ internal sealed class RunScreenerTool : IMcpTool
         return template;
     }
 
-    private async Task<(List<string> Symbols, bool IsCustom, string? GroupId)> ResolveUniverseAsync(JsonElement arguments, bool allowUnregistered, List<string> warnings, CancellationToken cancellationToken)
+    private async Task<(List<string> Symbols, bool IsCustom, string? GroupId)> ResolveUniverseAsync(
+        JsonElement arguments, bool allowUnregistered, int sliceOffset, int? sliceLimit, List<string> warnings, CancellationToken cancellationToken)
     {
         IReadOnlyList<string> available = await _gateway.GetAvailableTickersAsync(cancellationToken).ConfigureAwait(false);
         IReadOnlyList<string>? requested = ToolArgs.StringArray(arguments, SymbolsArgument);
         string? groupIdRaw = ToolArgs.String(arguments, GroupIdArgument)?.Trim();
+        string? resultIdRaw = ToolArgs.String(arguments, McpResultHandleStore.SymbolsFromResultIdArgument);
+
+        if (resultIdRaw is not null)
+        {
+            IReadOnlyList<string> handleSymbols = _resultHandles.ResolveSymbolsSlice(resultIdRaw, minCount: 0, maxCount: _limits.MaxScreenerSymbols, sliceOffset, sliceLimit);
+            List<string> resolved = await ValidateScreenedSymbolsAsync(handleSymbols, available, allowUnregistered, isResultHandle: true, warnings, cancellationToken).ConfigureAwait(false);
+            return (resolved, true, null);
+        }
 
         if (requested is not null)
         {
@@ -540,36 +562,8 @@ internal sealed class RunScreenerTool : IMcpTool
                     "Send fewer symbols, or omit symbols to screen every available symbol.");
             }
 
-            var known = new HashSet<string>(available, StringComparer.OrdinalIgnoreCase);
-            var universe = new SortedSet<string>(StringComparer.Ordinal);
-            var offList = new SortedSet<string>(StringComparer.Ordinal);
-            for (int index = 0; index < requested.Count; index++)
-            {
-                string path = $"{SymbolsArgument}[{index}]";
-                string canonical = SymbolResolver.Canonical(requested[index], path);
-                if (!known.Contains(canonical))
-                {
-                    if (!allowUnregistered)
-                    {
-                        throw new ToolException(ToolErrorCodes.SymbolNotFound, $"Symbol '{canonical}' is not available.", path, "Call sa_list_tickers to see the available symbols.");
-                    }
-
-                    if (!offList.Contains(canonical))
-                    {
-                        await _symbols.RequireStoredBarsAsync(canonical, path, cancellationToken).ConfigureAwait(false);
-                        offList.Add(canonical);
-                    }
-                }
-
-                universe.Add(canonical);
-            }
-
-            if (offList.Count > 0)
-            {
-                warnings.Add(SymbolResolver.OffListWarning(offList));
-            }
-
-            return (universe.ToList(), true, null);
+            List<string> resolved = await ValidateScreenedSymbolsAsync(requested, available, allowUnregistered, isResultHandle: false, warnings, cancellationToken).ConfigureAwait(false);
+            return (resolved, true, null);
         }
 
         if (groupIdRaw is not null)
@@ -589,6 +583,46 @@ internal sealed class RunScreenerTool : IMcpTool
         }
 
         return (available.OrderBy(symbol => symbol, StringComparer.Ordinal).ToList(), false, null);
+    }
+
+    private async Task<List<string>> ValidateScreenedSymbolsAsync(
+        IReadOnlyList<string> requested,
+        IReadOnlyList<string> available,
+        bool allowUnregistered,
+        bool isResultHandle,
+        List<string> warnings,
+        CancellationToken cancellationToken)
+    {
+        var known = new HashSet<string>(available, StringComparer.OrdinalIgnoreCase);
+        var universe = new SortedSet<string>(StringComparer.Ordinal);
+        var offList = new SortedSet<string>(StringComparer.Ordinal);
+        for (int index = 0; index < requested.Count; index++)
+        {
+            string path = isResultHandle ? McpResultHandleStore.SymbolsFromResultIdArgument : $"{SymbolsArgument}[{index}]";
+            string canonical = SymbolResolver.Canonical(requested[index], path);
+            if (!known.Contains(canonical))
+            {
+                if (!allowUnregistered)
+                {
+                    throw new ToolException(ToolErrorCodes.SymbolNotFound, $"Symbol '{canonical}' is not available.", path, "Call sa_list_tickers to see the available symbols.");
+                }
+
+                if (!offList.Contains(canonical))
+                {
+                    await _symbols.RequireStoredBarsAsync(canonical, path, cancellationToken).ConfigureAwait(false);
+                    offList.Add(canonical);
+                }
+            }
+
+            universe.Add(canonical);
+        }
+
+        if (offList.Count > 0)
+        {
+            warnings.Add(SymbolResolver.OffListWarning(offList));
+        }
+
+        return universe.ToList();
     }
 
     private static IReadOnlyList<StockAnalyzer.Core.Models.Analysis.UniverseBreadthKey> CollectUniverseBreadthKeys(

@@ -10,9 +10,14 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// <summary>
 /// Renders Parabolic SAR as dots.
 /// </summary>
-public class ParabolicSarRenderer
+public class ParabolicSarRenderer : IDisposable
 {
     private readonly SKPaint _paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = true };
+
+    public void Dispose()
+    {
+        _paint.Dispose();
+    }
     public void Render(SKCanvas canvas, Rect chartArea,
         IReadOnlyList<decimal?> values,
         IReadOnlyList<decimal?> trendStates,

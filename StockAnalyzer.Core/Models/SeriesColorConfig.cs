@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using StockAnalyzer.Core.Models.Rendering;
 
 namespace StockAnalyzer.Core.Models;
 
@@ -30,6 +31,19 @@ public partial class SeriesColorConfig : ObservableObject
     /// </summary>
     public List<string> TargetSeries { get; set; } = new();
 
+    /// <summary>
+    /// Whether the series matching this configuration is visible on the chart (visual-only).
+    /// </summary>
+    [ObservableProperty]
+    private bool _isVisible = true;
+
+    /// <summary>
+    /// Optional per-series rendering primitive override (visual-only).
+    /// Null resolves to the indicator or series legacy default.
+    /// </summary>
+    [ObservableProperty]
+    private SeriesPrimitiveType? _renderPrimitive;
+
     public SeriesColorConfig Duplicate()
     {
         return new SeriesColorConfig
@@ -37,7 +51,9 @@ public partial class SeriesColorConfig : ObservableObject
             Name = Name,
             DisplayName = DisplayName,
             Color = Color, // Struct copy
-            TargetSeries = new List<string>(TargetSeries)
+            TargetSeries = TargetSeries != null ? new List<string>(TargetSeries) : new List<string>(),
+            IsVisible = IsVisible,
+            RenderPrimitive = RenderPrimitive
         };
     }
 }

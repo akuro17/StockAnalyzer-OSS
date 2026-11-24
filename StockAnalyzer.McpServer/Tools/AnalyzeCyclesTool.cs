@@ -48,6 +48,8 @@ internal sealed class AnalyzeCyclesTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
     public string? ExampleArgumentsJson =>
         "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"topBins\":10}";
 
@@ -75,7 +77,7 @@ internal sealed class AnalyzeCyclesTool : IMcpTool
         int lookback = ToolArgs.PositiveWithin(arguments, LookbackArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest);
         int topBins = ToolArgs.PositiveWithin(arguments, TopBinsArgument, DefaultTopBins, _limits.MaxCycleBins);
 
-        int? rangeBars = arguments.TryGetProperty(RangeBarsArgument, out _)
+        int? rangeBars = ToolArgs.HasNonNullProperty(arguments, RangeBarsArgument, out _)
             ? ToolArgs.PositiveWithin(arguments, RangeBarsArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest)
             : null;
         if (rangeBars.HasValue)

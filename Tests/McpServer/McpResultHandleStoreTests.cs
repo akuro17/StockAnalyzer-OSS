@@ -419,4 +419,128 @@ public sealed class McpResultHandleStoreTests : IDisposable
         Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(offsetWithoutHandle));
         Assert.Equal(McpResultHandleStore.ResultOffsetArgument, McpTestSupport.Structured(offsetWithoutHandle).GetProperty("param").GetString());
     }
+
+    [Fact]
+    public async Task ListResultHandles_ListsMruOrderWithoutMutatingLruOrder()
+    {
+        McpMessageDispatcher dispatcher = await StartAsync();
+
+        // Create two handles: h1 via sa_filter_tickers, h2 via sa_run_screener.
+        using JsonDocument r1 = await CallAsync(dispatcher, "sa_filter_tickers", """{"symbols":["AAPL","GOOGL","MSFT"],"storeResult":true,"includeMatches":false}""");
+        string h1 = Ok(r1).GetProperty("resultId").GetString()!;
+
+        string cond = """{"left":{"price":"Close"},"comparison":"GreaterThan","right":0}""";
+        using JsonDocument r2 = await CallAsync(dispatcher, "sa_run_screener", $$"""{"symbols":["MSFT","AAPL"],"conditionTree":{{cond}},"storeResult":true,"includeMatchedSymbols":false}""");
+        string h2 = Ok(r2).GetProperty("resultId").GetString()!;
+
+        // Preview order is MRU first (h2 then h1), and calling sa_list_result_handles twice must keep the same order.
+        using JsonDocument list1 = await CallAsync(dispatcher, "sa_list_result_handles", """{"previewCount":1}""");
+        JsonElement l1 = Ok(list1);
+        Assert.Equal(McpResultHandleStore.MaxHandles, l1.GetProperty("maxHandles").GetInt32());
+        Assert.Equal(2, l1.GetProperty("activeCount").GetInt32());
+        JsonElement handles1 = l1.GetProperty("handles");
+        Assert.Equal(h2, handles1[0].GetProperty("resultId").GetString());
+        Assert.Equal("sa_run_screener", handles1[0].GetProperty("sourceTool").GetString());
+        Assert.Equal(2, handles1[0].GetProperty("symbolCount").GetInt32());
+        Assert.Equal(new[] { "AAPL" }, handles1[0].GetProperty("previewSymbols").EnumerateArray().Select(e => e.GetString()!).ToArray());
+        Assert.Equal(h1, handles1[1].GetProperty("resultId").GetString());
+        Assert.Equal("sa_filter_tickers", handles1[1].GetProperty("sourceTool").GetString());
+        Assert.Equal(3, handles1[1].GetProperty("symbolCount").GetInt32());
+
+        // Consuming h1 promotes h1 ahead of h2; previewCount: 0 omits previewSymbols entries.
+        using JsonDocument meta = await CallAsync(dispatcher, "sa_get_ticker_metadata", $$"""{"symbolsFromResultId":"{{h1}}"}""");
+        Ok(meta);
+
+        using JsonDocument list2 = await CallAsync(dispatcher, "sa_list_result_handles", """{"previewCount":0}""");
+        JsonElement handles2 = Ok(list2).GetProperty("handles");
+        Assert.Equal(h1, handles2[0].GetProperty("resultId").GetString());
+        Assert.Empty(handles2[0].GetProperty("previewSymbols").EnumerateArray());
+        Assert.Equal(h2, handles2[1].GetProperty("resultId").GetString());
+    }
+
+    [Fact]
+    public async Task ChainedScreenerAndFilterTickers_SupportHandlesEmptyBoundsAndAllowUnregisteredAttribution()
+    {
+        // Seed one unregistered symbol (present on disk as parquet, not in registered tickers metadata).
+        decimal[] unreg = Enumerable.Range(0, Days).Select(i => 120m + i * 0.4m).ToArray();
+        StockAnalyzer.Core.Tests.TestHelpers.ParquetFixtureBuilder.SeedDailyOhlcvFromCloses(_fixture.DailyDirectory, "UNREG", unreg);
+
+        McpMessageDispatcher dispatcher = await StartAsync();
+
+        // 1. Bidirectional chaining: filter -> screener -> filter
+        using JsonDocument f1 = await CallAsync(dispatcher, "sa_filter_tickers", """{"symbols":["AAPL","GOOGL","MSFT"],"storeResult":true}""");
+        string hFilter1 = Ok(f1).GetProperty("resultId").GetString()!;
+
+        string condPos = """{"left":{"price":"Close"},"comparison":"GreaterThan","right":150}""";
+        using JsonDocument s1 = await CallAsync(dispatcher, "sa_run_screener", $$"""{"symbolsFromResultId":"{{hFilter1}}","conditionTree":{{condPos}},"storeResult":true}""");
+        JsonElement s1Body = Ok(s1);
+        Assert.Equal(2, s1Body.GetProperty("matchedSymbolCount").GetInt32()); // GOOGL, MSFT (> 150)
+        string hScreener1 = s1Body.GetProperty("resultId").GetString()!;
+
+        using JsonDocument f2 = await CallAsync(dispatcher, "sa_filter_tickers", $$"""{"symbolsFromResultId":"{{hScreener1}}","resultOffset":1,"resultLimit":1,"storeResult":true}""");
+        JsonElement f2Body = Ok(f2);
+        Assert.Equal("resultHandle", f2Body.GetProperty("universe").GetProperty("kind").GetString());
+        Assert.Equal(1, f2Body.GetProperty("totalMatchCount").GetInt32());
+        Assert.Equal("MSFT", f2Body.GetProperty("matches")[0].GetProperty("symbol").GetString());
+
+        // 2. Mutual exclusion on both universe-filter tools reports param: "symbolsFromResultId"
+        foreach ((string tool, string body) in new[]
+        {
+            ("sa_run_screener", $$"""{"symbols":["AAPL"],"symbolsFromResultId":"{{hFilter1}}","conditionTree":{{condPos}}}"""),
+            ("sa_run_screener", $$"""{"groupId":"all","symbolsFromResultId":"{{hFilter1}}","conditionTree":{{condPos}}}"""),
+            ("sa_filter_tickers", $$"""{"symbols":["AAPL"],"symbolsFromResultId":"{{hFilter1}}"}"""),
+            ("sa_filter_tickers", $$"""{"groupId":"all","symbolsFromResultId":"{{hFilter1}}"}"""),
+        })
+        {
+            using JsonDocument conflict = await CallAsync(dispatcher, tool, body);
+            Assert.True(McpTestSupport.IsError(conflict));
+            Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(conflict));
+            Assert.Equal(McpResultHandleStore.SymbolsFromResultIdArgument, McpTestSupport.Structured(conflict).GetProperty("param").GetString());
+        }
+
+        // 3. Empty handle contract: universe filters return 0 cleanly at offset 0, reject offset > 0, detail tools reject empty handles
+        string condNone = """{"left":{"price":"Close"},"comparison":"GreaterThan","right":999999}""";
+        using JsonDocument emptyProducer = await CallAsync(dispatcher, "sa_run_screener", $$"""{"symbols":["AAPL"],"conditionTree":{{condNone}},"storeResult":true}""");
+        string emptyId = Ok(emptyProducer).GetProperty("resultId").GetString()!;
+
+        using JsonDocument emptyScreenerOk = await CallAsync(dispatcher, "sa_run_screener", $$"""{"symbolsFromResultId":"{{emptyId}}","resultOffset":0,"conditionTree":{{condPos}}}""");
+        Assert.Equal(0, Ok(emptyScreenerOk).GetProperty("matchedSymbolCount").GetInt32());
+
+        using JsonDocument emptyFilterOk = await CallAsync(dispatcher, "sa_filter_tickers", $$"""{"symbolsFromResultId":"{{emptyId}}"}""");
+        Assert.Equal(0, Ok(emptyFilterOk).GetProperty("totalMatchCount").GetInt32());
+
+        using JsonDocument emptyScreenerBadOffset = await CallAsync(dispatcher, "sa_run_screener", $$"""{"symbolsFromResultId":"{{emptyId}}","resultOffset":1,"conditionTree":{{condPos}}}""");
+        Assert.True(McpTestSupport.IsError(emptyScreenerBadOffset));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(emptyScreenerBadOffset));
+        Assert.Equal(McpResultHandleStore.ResultOffsetArgument, McpTestSupport.Structured(emptyScreenerBadOffset).GetProperty("param").GetString());
+
+        using JsonDocument emptyFilterBadOffset = await CallAsync(dispatcher, "sa_filter_tickers", $$"""{"symbolsFromResultId":"{{emptyId}}","resultOffset":1}""");
+        Assert.True(McpTestSupport.IsError(emptyFilterBadOffset));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(emptyFilterBadOffset));
+        Assert.Equal(McpResultHandleStore.ResultOffsetArgument, McpTestSupport.Structured(emptyFilterBadOffset).GetProperty("param").GetString());
+
+        using JsonDocument emptyBatch = await CallAsync(dispatcher, "sa_calculate_indicators_batch", $$$"""{"symbolsFromResultId":"{{{emptyId}}}","timeFrame":"D1","indicators":[{"id":"s","type":"SMA","parameters":{"Period":5}}]}""");
+        Assert.True(McpTestSupport.IsError(emptyBatch));
+        Assert.Equal(ToolErrorCodes.InvalidArgument, McpTestSupport.ErrorCodeOf(emptyBatch));
+
+        // 4. allowUnregistered applies to symbolsFromResultId and attributes rejections to "symbolsFromResultId"
+        using JsonDocument unregProducer = await CallAsync(dispatcher, "sa_filter_tickers", """{"symbols":["UNREG","MSFT"],"allowUnregistered":true,"storeResult":true}""");
+        string unregHandleId = Ok(unregProducer).GetProperty("resultId").GetString()!;
+
+        using JsonDocument filterRejectsUnreg = await CallAsync(dispatcher, "sa_filter_tickers", $$"""{"symbolsFromResultId":"{{unregHandleId}}"}""");
+        Assert.True(McpTestSupport.IsError(filterRejectsUnreg));
+        Assert.Equal(ToolErrorCodes.SymbolNotFound, McpTestSupport.ErrorCodeOf(filterRejectsUnreg));
+        Assert.Equal(McpResultHandleStore.SymbolsFromResultIdArgument, McpTestSupport.Structured(filterRejectsUnreg).GetProperty("param").GetString());
+
+        using JsonDocument screenerRejectsUnreg = await CallAsync(dispatcher, "sa_run_screener", $$"""{"symbolsFromResultId":"{{unregHandleId}}","conditionTree":{{condPos}}}""");
+        Assert.True(McpTestSupport.IsError(screenerRejectsUnreg));
+        Assert.Equal(ToolErrorCodes.SymbolNotFound, McpTestSupport.ErrorCodeOf(screenerRejectsUnreg));
+        Assert.Equal(McpResultHandleStore.SymbolsFromResultIdArgument, McpTestSupport.Structured(screenerRejectsUnreg).GetProperty("param").GetString());
+
+        using JsonDocument filterAllowsUnreg = await CallAsync(dispatcher, "sa_filter_tickers", $$"""{"symbolsFromResultId":"{{unregHandleId}}","allowUnregistered":true}""");
+        Assert.Equal(2, Ok(filterAllowsUnreg).GetProperty("totalMatchCount").GetInt32());
+
+        using JsonDocument screenerAllowsUnreg = await CallAsync(dispatcher, "sa_run_screener", $$"""{"symbolsFromResultId":"{{unregHandleId}}","allowUnregistered":true,"conditionTree":{{condPos}}}""");
+        Assert.Equal(2, Ok(screenerAllowsUnreg).GetProperty("matchedSymbolCount").GetInt32());
+    }
 }

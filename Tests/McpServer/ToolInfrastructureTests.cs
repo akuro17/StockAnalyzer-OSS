@@ -2,10 +2,12 @@ using System.IO;
 using System.Text.Json;
 using StockAnalyzer.Core.ReadOnly;
 using StockAnalyzer.McpServer;
+using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.Execution;
 using StockAnalyzer.McpServer.Limits;
 using StockAnalyzer.McpServer.Protocol;
 using StockAnalyzer.McpServer.Tools;
+using StockAnalyzer.TestSupport;
 
 namespace StockAnalyzer.Tests.McpServer;
 
@@ -689,5 +691,195 @@ public sealed class ToolInfrastructureTests
         Assert.Equal(ToolErrorCodes.DataUnavailable, errObj.GetProperty("code").GetString());
         Assert.Equal("Stored data is temporarily unreadable.", errObj.GetProperty("message").GetString());
         Assert.Equal("Retry in a moment.", errObj.GetProperty("hint").GetString());
+    }
+
+    [Fact]
+    public void OptionalScalarNullsAreOmitted_WhileRequiredScalarArrayElementAndObjectArrayNullsAreRejected()
+    {
+        string nestedSchema = ToolSchema.Object()
+            .String("symbol", "s", required: true)
+            .String("frame", "f", allowedValues: new[] { "D1", "W1" })
+            .Integer("count", "c")
+            .Number("ratio", "r")
+            .Boolean("flag", "b")
+            .StringArray("symbols", "list", minItems: 1)
+            .FreeObject("freeObj", "free object")
+            .NestedObject("nested", "nested obj", ToolSchema.Object()
+                .String("req", "r", required: true)
+                .String("optStr", "os")
+                .Integer("optInt", "oi")
+                .Boolean("optBool", "ob"))
+            .Build();
+
+        // Optional scalars set to null (both top-level and nested) are accepted identically to omitted.
+        ToolArgumentValidator.Validate(
+            Parse(nestedSchema),
+            Parse("""{"symbol":"MSFT","frame":null,"count":null,"ratio":null,"flag":null,"nested":{"req":"ok","optStr":null,"optInt":null,"optBool":null}}"""));
+
+        // Required scalar null, array element null, optional array null, and optional object null MUST still throw INVALID_ARGUMENT.
+        foreach ((string json, string expectedParam) in new[]
+        {
+            ("""{"symbol":null}""", "symbol"),
+            ("""{"symbol":"MSFT","symbols":["AAPL",null]}""", "symbols[1]"),
+            ("""{"symbol":"MSFT","symbols":null}""", "symbols"),
+            ("""{"symbol":"MSFT","freeObj":null}""", "freeObj"),
+            ("""{"symbol":"MSFT","nested":null}""", "nested"),
+            ("""{"symbol":"MSFT","nested":{"req":null}}""", "nested.req"),
+        })
+        {
+            ToolException err = Assert.Throws<ToolException>(() => ToolArgumentValidator.Validate(Parse(nestedSchema), Parse(json)));
+            Assert.Equal(ToolErrorCodes.InvalidArgument, err.Code);
+            Assert.Equal(expectedParam, err.Parameter);
+        }
+
+        // Nested unknown argument propagates unknownArgumentHint.
+        ToolException nestedUnknown = Assert.Throws<ToolException>(() =>
+            ToolArgumentValidator.Validate(
+                Parse(nestedSchema),
+                Parse("""{"symbol":"MSFT","nested":{"req":"ok","bogus":1}}"""),
+                unknownArgumentHint: ToolArgumentValidator.ProgressiveUnknownArgumentHint));
+        Assert.Equal("nested.bogus", nestedUnknown.Parameter);
+        Assert.Equal(ToolArgumentValidator.ProgressiveUnknownArgumentHint, nestedUnknown.Hint);
+    }
+
+    [Fact]
+    public async Task ToolsCall_AcceptsArgumentsNull_AndOptionalScalarNullsThroughDispatcher()
+    {
+        var tool = Tool(
+            "sa_optional_nulls",
+            (args, _) =>
+            {
+                bool hasFrame = ToolArgs.HasNonNullProperty(args, "frame", out JsonElement _);
+                string? opt = ToolArgs.String(args, "opt");
+                long? count = ToolArgs.Integer(args, "count");
+                bool? flag = ToolArgs.Boolean(args, "flag");
+                return Task.FromResult($$"""{"hasFrame":{{hasFrame.ToString().ToLowerInvariant()}},"optNull":{{(opt is null).ToString().ToLowerInvariant()}},"countNull":{{(count is null).ToString().ToLowerInvariant()}},"flagNull":{{(flag is null).ToString().ToLowerInvariant()}}}""");
+            },
+            ToolSchema.Object()
+                .String("frame", "f")
+                .String("opt", "o")
+                .Integer("count", "c")
+                .Boolean("flag", "b")
+                .Build());
+        var dispatcher = await McpTestSupport.InitializedAsync(new[] { tool });
+
+        using JsonDocument nullArgsCall = JsonDocument.Parse((await dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"sa_optional_nulls","arguments":null}}""", CancellationToken.None))!);
+        Assert.False(McpTestSupport.IsError(nullArgsCall));
+        JsonElement nullArgsBody = McpTestSupport.Structured(nullArgsCall);
+        Assert.False(nullArgsBody.GetProperty("hasFrame").GetBoolean());
+        Assert.True(nullArgsBody.GetProperty("optNull").GetBoolean());
+
+        using JsonDocument nullScalarsCall = (await McpTestSupport.CallAsync(dispatcher, "sa_optional_nulls", """{"frame":null,"opt":null,"count":null,"flag":null}""", id: 2))!;
+        Assert.False(McpTestSupport.IsError(nullScalarsCall));
+        JsonElement nullScalarsBody = McpTestSupport.Structured(nullScalarsCall);
+        Assert.False(nullScalarsBody.GetProperty("hasFrame").GetBoolean());
+        Assert.True(nullScalarsBody.GetProperty("optNull").GetBoolean());
+        Assert.True(nullScalarsBody.GetProperty("countNull").GetBoolean());
+        Assert.True(nullScalarsBody.GetProperty("flagNull").GetBoolean());
+    }
+
+    [Fact]
+    public void RealRegistry_MisnamedArgumentHintsAndCompactUsageHints_SatisfyContracts()
+    {
+        string emptyRoot = Path.Combine(Path.GetTempPath(), "SaMcpHintsContract-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            using McpServerRuntime runtime = McpServerComposition.Create(
+                McpTestSupport.EmptyDataConfiguration(emptyRoot),
+                new LogSink(new StringWriter(), quiet: true),
+                enableExecution: true,
+                enableDiscussion: true);
+
+            string[] compressionArgs =
+            {
+                "decimalPlaces", "compactRows", "compactReport", "fields", "outputTailCount",
+                "summary", "limit", "maxReturnedTrades", "maxReturnedEvents", "maxReturnedMatches", "rankingLimit",
+            };
+
+            foreach (RegisteredTool registered in runtime.Tools.Tools)
+            {
+                IMcpTool tool = registered.Tool;
+                var propNames = registered.Schema.GetProperty("properties").EnumerateObject()
+                    .Select(p => p.Name)
+                    .ToHashSet(StringComparer.Ordinal);
+
+                // 1. Disjointness: MisnamedArgumentHints must never collide with the tool's own schema properties.
+                if (tool.MisnamedArgumentHints is { } hints)
+                {
+                    foreach (string key in hints.Keys)
+                    {
+                        Assert.False(propNames.Contains(key), $"Tool '{tool.Name}' has MisnamedArgumentHints key '{key}' colliding with its own InputSchemaJson.");
+                    }
+                }
+
+                // 2. Date hints accuracy: startDate+endDate vs endDate-only vs asOfDate vs fromDate.
+                bool hasStartDate = propNames.Contains("startDate");
+                bool hasEndDate = propNames.Contains("endDate");
+                bool hasEndDateExclusive = propNames.Contains("endDateExclusive");
+                bool hasAsOfDate = propNames.Contains("asOfDate");
+                bool hasFromDate = propNames.Contains("fromDate");
+
+                if (hasStartDate && hasEndDate)
+                {
+                    Assert.NotNull(tool.MisnamedArgumentHints);
+                    Assert.True(tool.MisnamedArgumentHints!.ContainsKey("fromDate"), $"{tool.Name} missing fromDate hint.");
+                    Assert.True(tool.MisnamedArgumentHints.ContainsKey("asOfDate"), $"{tool.Name} missing asOfDate hint.");
+                    Assert.True(tool.MisnamedArgumentHints.ContainsKey("toDate"), $"{tool.Name} missing toDate hint.");
+                }
+                else if (hasStartDate && hasEndDateExclusive)
+                {
+                    Assert.NotNull(tool.MisnamedArgumentHints);
+                    Assert.True(tool.MisnamedArgumentHints!.ContainsKey("fromDate"), $"{tool.Name} missing fromDate hint.");
+                    Assert.True(tool.MisnamedArgumentHints.ContainsKey("endDate"), $"{tool.Name} missing endDate hint.");
+                    Assert.True(tool.MisnamedArgumentHints.ContainsKey("asOfDate"), $"{tool.Name} missing asOfDate hint.");
+                    Assert.True(tool.MisnamedArgumentHints.ContainsKey("toDate"), $"{tool.Name} missing toDate hint.");
+                }
+                else if (hasEndDate && !hasAsOfDate)
+                {
+                    Assert.NotNull(tool.MisnamedArgumentHints);
+                    Assert.True(tool.MisnamedArgumentHints!.ContainsKey("asOfDate"), $"{tool.Name} missing asOfDate hint.");
+                    Assert.True(tool.MisnamedArgumentHints.ContainsKey("toDate"), $"{tool.Name} missing toDate hint.");
+                    Assert.False(tool.MisnamedArgumentHints.ContainsKey("fromDate"), $"{tool.Name} (endDate-only) must not misguide fromDate to startDate.");
+                }
+                else if (hasAsOfDate && !hasEndDate)
+                {
+                    Assert.NotNull(tool.MisnamedArgumentHints);
+                    Assert.True(tool.MisnamedArgumentHints!.ContainsKey("endDate"), $"{tool.Name} missing endDate hint.");
+                    if (!string.Equals(tool.Name, "sa_filter_tickers", StringComparison.Ordinal))
+                    {
+                        Assert.True(tool.MisnamedArgumentHints.ContainsKey("toDate"), $"{tool.Name} missing toDate hint.");
+                    }
+                }
+                else if (hasFromDate)
+                {
+                    Assert.NotNull(tool.MisnamedArgumentHints);
+                    Assert.True(tool.MisnamedArgumentHints!.ContainsKey("startDate"), $"{tool.Name} missing startDate hint.");
+                    Assert.True(tool.MisnamedArgumentHints.ContainsKey("endDate"), $"{tool.Name} missing endDate hint.");
+                    Assert.True(tool.MisnamedArgumentHints.ContainsKey("asOfDate"), $"{tool.Name} missing asOfDate hint.");
+                }
+
+                // 3. CompactUsageHint coverage for every tool exposing compression/limiting arguments.
+                if (compressionArgs.Any(propNames.Contains))
+                {
+                    Assert.False(string.IsNullOrWhiteSpace(tool.CompactUsageHint), $"Tool '{tool.Name}' exposes compression/limit parameters but has no CompactUsageHint.");
+                    Assert.True(tool.CompactUsageHint!.Length <= 160, $"Tool '{tool.Name}' CompactUsageHint exceeds 160 chars ({tool.CompactUsageHint.Length}).");
+                    Assert.All(tool.CompactUsageHint, ch => Assert.True(char.IsAscii(ch), $"Non-ASCII char in CompactUsageHint of {tool.Name}"));
+                }
+            }
+
+            // 4. Existing custom hints on RenderChartImageTool remain intact.
+            Assert.True(runtime.Tools.TryGet("sa_render_chart_image", out RegisteredTool? chartTool));
+            foreach (string expectedKey in new[] { "indicators", "derived", "completeBarsOnly", "outputTailCount", "asOfDate", "toDate" })
+            {
+                Assert.True(chartTool!.Tool.MisnamedArgumentHints!.ContainsKey(expectedKey), $"sa_render_chart_image missing hint '{expectedKey}'.");
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(emptyRoot))
+            {
+                Directory.Delete(emptyRoot, recursive: true);
+            }
+        }
     }
 }

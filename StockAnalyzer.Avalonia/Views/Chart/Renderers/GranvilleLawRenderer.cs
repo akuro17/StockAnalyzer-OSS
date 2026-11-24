@@ -15,7 +15,7 @@ namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 /// - Main Chart Labels (B1-B4, S1-S4) above/below candles.
 /// - Sub-window Heatmap Bar at the bottom of the indicator's panel.
 /// </summary>
-public sealed class GranvilleLawRenderer
+public sealed class GranvilleLawRenderer : IDisposable
 {
     /// <summary>Highest signal strength per side: signals are +1..+4 (buy) and -1..-4 (sell).</summary>
     private const int SignalStrengthCount = 4;
@@ -83,6 +83,14 @@ public sealed class GranvilleLawRenderer
         // however AppTheme colors usually have some alpha already.
         _buyHeatmapPaint = new SKPaint { Color = new SKColor(IndicatorDefaultConstants.GranvilleBuy1Color.R, IndicatorDefaultConstants.GranvilleBuy1Color.G, IndicatorDefaultConstants.GranvilleBuy1Color.B, IndicatorDefaultConstants.GranvilleBuy1Color.A), IsAntialias = false };
         _sellHeatmapPaint = new SKPaint { Color = new SKColor(IndicatorDefaultConstants.GranvilleSell1Color.R, IndicatorDefaultConstants.GranvilleSell1Color.G, IndicatorDefaultConstants.GranvilleSell1Color.B, IndicatorDefaultConstants.GranvilleSell1Color.A), IsAntialias = false };
+    }
+
+    public void Dispose()
+    {
+        _buyLabelPaint.Dispose();
+        _sellLabelPaint.Dispose();
+        _buyHeatmapPaint.Dispose();
+        _sellHeatmapPaint.Dispose();
     }
 
     public void Render(

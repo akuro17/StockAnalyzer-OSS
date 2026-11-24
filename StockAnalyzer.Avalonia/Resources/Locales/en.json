@@ -3408,5 +3408,20 @@
   "Enum_ChartRoundingMode_Round": "Round (Midpoint)",
   "Enum_AutoFallbackMode_Percentage": "Percentage",
   "Enum_AutoFallbackMode_Fixed": "Fixed Value",
-  "Tooltip_TimeframeDisabledChained": "Disabled while this indicator uses, or is used by, another indicator (Base Indicator or Dynamic Period Driver): a chain is always calculated on the chart's own bars."
+  "Tooltip_TimeframeDisabledChained": "Disabled while this indicator uses, or is used by, another indicator (Base Indicator or Dynamic Period Driver): a chain is always calculated on the chart's own bars.",
+  "Tooltip_SeriesVisible": "Show/hide this series on chart",
+  "Tooltip_SeriesRenderStyle": "Select rendering style for this series",
+  "Enum_SeriesPrimitiveType_Line": "Line",
+  "Enum_SeriesPrimitiveType_DashedLine": "Dashed Line",
+  "Enum_SeriesPrimitiveType_Dot": "Dot (Points)",
+  "Enum_SeriesPrimitiveType_Histogram": "Histogram",
+  "Enum_SeriesPrimitiveType_StepLine": "Step Line",
+  "Enum_SeriesPrimitiveType_HorizontalSegment": "Horizontal Segment",
+  "Enum_SeriesPrimitiveType_Spline": "Spline",
+  "Enum_SeriesPrimitiveType_Area": "Area",
+  "Enum_SeriesPrimitiveType_PositiveNegativeArea": "Positive/Negative Area",
+  "Enum_SeriesPrimitiveType_MarkerSymbol": "Marker Symbol",
+  "Enum_SeriesPrimitiveType_ColorStrip": "Color Strip",
+  "Enum_SeriesPrimitiveType_DynamicStyling": "Dynamic Styling",
+  "Enum_SeriesPrimitiveType_Lollipop": "Lollipop"
 }

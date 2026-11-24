@@ -63,9 +63,8 @@ internal sealed class RequestedIndicator
 
 /// <summary>
 /// Validates and wires indicator-on-indicator references before the pipeline runs (the pipeline's own circular fallback is not
-/// relied on): every reference names an indicator of the same call, source and dynamic-period edges form no cycle, the series asked
-/// of an upstream indicator exists, and one upstream indicator is asked for one series only (the pipeline reads an upstream
-/// indicator's series through that indicator's own output-series setting). Also computes which output series look ahead.
+/// relied on): every reference names an indicator of the same call, source and dynamic-period edges form no cycle, and the series asked
+/// of an upstream indicator exists (stored per edge on the downstream indicator). Also computes which output series look ahead.
 /// </summary>
 internal sealed class IndicatorChainPlan
 {
@@ -81,22 +80,16 @@ internal sealed class IndicatorChainPlan
     public void Apply(IReadOnlyList<RequestedIndicator> requests)
     {
         var byId = requests.ToDictionary(r => r.Id, StringComparer.Ordinal);
-        var asked = new Dictionary<string, (string Series, string Path)>(StringComparer.Ordinal);
-        var edges = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        var edges = new Dictionary<string, List<(string UpstreamId, string ArgumentKey)>>(StringComparer.Ordinal);
 
         foreach (RequestedIndicator request in requests)
         {
-            edges[request.Id] = new List<string>();
-            Reference(request, request.SourceId, request.SourceSeries, RequestedIndicator.SourceKey, "sourceOutputSeriesName", byId, asked, edges, isSource: true);
-            Reference(request, request.DynamicId, request.DynamicSeries, RequestedIndicator.DynamicKey, "dynamicPeriodOutputSeriesName", byId, asked, edges, isSource: false);
+            edges[request.Id] = new List<(string UpstreamId, string ArgumentKey)>();
+            Reference(request, request.SourceId, request.SourceSeries, RequestedIndicator.SourceKey, "sourceOutputSeriesName", byId, edges, isSource: true);
+            Reference(request, request.DynamicId, request.DynamicSeries, RequestedIndicator.DynamicKey, "dynamicPeriodOutputSeriesName", byId, edges, isSource: false);
         }
 
         RejectCycles(requests, byId, edges);
-
-        foreach ((string upstreamId, (string series, _)) in asked)
-        {
-            byId[upstreamId].Settings.OutputSeriesName = series;
-        }
     }
 
     /// <summary>
@@ -184,9 +177,15 @@ internal sealed class IndicatorChainPlan
 
         RequestedIndicator upstream = byId[upstreamId];
         IReadOnlyList<string> flagged = NonCausalSeries(upstream, byId, memo);
-        return series is null
-            ? flagged.Count > 0 && flagged.Count == upstream.Entry.OutputSeriesNames.Count
-            : flagged.Contains(CanonicalSeries(upstream, series), StringComparer.Ordinal);
+        if (series is not null)
+        {
+            return flagged.Contains(CanonicalSeries(upstream, series), StringComparer.Ordinal);
+        }
+
+        string? mainSeries = MainSeriesDisplayName(upstream);
+        return mainSeries is not null
+            ? flagged.Contains(mainSeries, StringComparer.Ordinal)
+            : flagged.Count > 0 && flagged.Count == upstream.Entry.OutputSeriesNames.Count;
     }
 
     private void Reference(
@@ -196,8 +195,7 @@ internal sealed class IndicatorChainPlan
         string idArgument,
         string seriesArgument,
         Dictionary<string, RequestedIndicator> byId,
-        Dictionary<string, (string Series, string Path)> asked,
-        Dictionary<string, List<string>> edges,
+        Dictionary<string, List<(string UpstreamId, string ArgumentKey)>> edges,
         bool isSource)
     {
         string idPath = $"{request.Path}.{idArgument}";
@@ -243,24 +241,16 @@ internal sealed class IndicatorChainPlan
             normalized = IndicatorOutputSeriesResolver.Normalize(Enum.Parse<IndicatorType>(upstream.Entry.Type), canonical, upstream.Settings.PriceSource, _factory);
         }
 
-        if (asked.TryGetValue(upstream.Id, out (string Series, string Path) earlier) && !string.Equals(earlier.Series, normalized, StringComparison.Ordinal))
-        {
-            throw new ToolException(
-                ToolErrorCodes.InvalidArgument,
-                $"Indicator '{upstream.Id}' is asked for different output series by several indicators ('{earlier.Series}' and '{normalized}'); one series per upstream indicator is supported.",
-                series is null ? idPath : seriesPath,
-                "Request the same series everywhere, or add the upstream indicator twice under different ids.");
-        }
-
-        asked[upstream.Id] = (normalized, series is null ? idPath : seriesPath);
-        edges[request.Id].Add(upstream.Id);
+        edges[request.Id].Add((upstream.Id, idArgument));
         if (isSource)
         {
             request.Settings.SourceIndicatorId = upstream.Settings.Id;
+            request.Settings.SourceOutputSeriesName = normalized;
         }
         else
         {
             request.Settings.DynamicPeriodIndicatorId = upstream.Settings.Id;
+            request.Settings.DynamicPeriodOutputSeriesName = normalized;
         }
     }
 
@@ -279,32 +269,38 @@ internal sealed class IndicatorChainPlan
             $"Output series of {upstream.Entry.Type}: {string.Join(", ", upstream.Entry.OutputSeriesNames)}.");
     }
 
-    private static void RejectCycles(IReadOnlyList<RequestedIndicator> requests, Dictionary<string, RequestedIndicator> byId, Dictionary<string, List<string>> edges)
+    private static void RejectCycles(
+        IReadOnlyList<RequestedIndicator> requests,
+        Dictionary<string, RequestedIndicator> byId,
+        Dictionary<string, List<(string UpstreamId, string ArgumentKey)>> edges)
     {
         var state = new Dictionary<string, int>(StringComparer.Ordinal); // 1 = on the current path, 2 = done
         foreach (RequestedIndicator request in requests)
         {
-            Visit(request.Id);
+            if (!state.ContainsKey(request.Id))
+            {
+                Visit(request.Id);
+            }
         }
 
         void Visit(string id)
         {
-            if (state.TryGetValue(id, out int s))
+            state[id] = 1;
+            foreach ((string upstream, string argKey) in edges[id])
             {
-                if (s == 1)
+                if (state.TryGetValue(upstream, out int s))
                 {
-                    throw new ToolException(
-                        ToolErrorCodes.InvalidArgument,
-                        $"Indicator '{id}' takes part in a circular reference.",
-                        $"{byId[id].Path}.sourceIndicatorId");
+                    if (s == 1)
+                    {
+                        throw new ToolException(
+                            ToolErrorCodes.InvalidArgument,
+                            $"Indicator '{upstream}' takes part in a circular reference.",
+                            $"{byId[id].Path}.{argKey}");
+                    }
+
+                    continue;
                 }
 
-                return;
-            }
-
-            state[id] = 1;
-            foreach (string upstream in edges[id])
-            {
                 Visit(upstream);
             }
 

@@ -17,7 +17,7 @@ namespace StockAnalyzer.McpServer.Tools.Discussion;
 /// A consequence for the command log: one entry is recorded for this call (the executor's), none for the inner tool.
 /// </para>
 /// </summary>
-internal sealed class DiscussionAttachAnalysisTool : IMcpTool
+internal sealed class DiscussionAttachAnalysisTool : IMcpTool, IDynamicExecutionProfileTool
 {
     private static readonly JsonElement EmptyArguments = JsonDocument.Parse("{}").RootElement;
 
@@ -51,6 +51,32 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool
     public bool IsHeavy => true;
 
     public bool IsReadOnly => false;
+
+    public bool ResolveEffectiveIsHeavy(JsonElement arguments)
+    {
+        if (arguments.ValueKind == JsonValueKind.Object
+            && ToolArgs.HasNonNullProperty(arguments, "tool", out JsonElement toolEl)
+            && toolEl.ValueKind == JsonValueKind.String)
+        {
+            string? toolName = toolEl.GetString()?.Trim();
+            if (!string.IsNullOrEmpty(toolName)
+                && _registry().TryGetCallable(toolName, out RegisteredTool? inner)
+                && IsAllowed(inner))
+            {
+                if (inner.Tool is IDynamicExecutionProfileTool dynamicInner)
+                {
+                    JsonElement innerArgs = arguments.TryGetProperty("arguments", out JsonElement given) && given.ValueKind == JsonValueKind.Object
+                        ? given
+                        : EmptyArguments;
+                    return dynamicInner.ResolveEffectiveIsHeavy(innerArgs);
+                }
+
+                return inner.Tool.IsHeavy;
+            }
+        }
+
+        return IsHeavy;
+    }
 
     public string? ExampleArgumentsJson =>
         "{\"sessionId\":\"Sabcdef\",\"participantToken\":\"abcdef.AAAAAAAAAAAAAAAAAAAAAA\",\"tool\":\"sa_calculate_indicators\",\"arguments\":{\"symbol\":\"7203.T\"},\"analysisIntent\":\"TrendDetection\",\"note\":\"daily RSI\"}";

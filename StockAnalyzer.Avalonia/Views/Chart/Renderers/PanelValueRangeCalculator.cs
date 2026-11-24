@@ -4,6 +4,7 @@ using System.Linq;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Rendering;
 
 namespace StockAnalyzer.Avalonia.Views.Chart.Renderers;
 
@@ -37,26 +38,45 @@ public static class PanelValueRangeCalculator
             decimal minVal = decimal.MaxValue;
             decimal maxVal = decimal.MinValue;
             bool hasValue = false;
+            bool includeZeroForSynthesized = false;
 
-            foreach (var seriesName in result.SeriesNames)
+            if (result is IPrimitiveAwareIndicatorResult { PrimitiveDescriptors.Count: > 0 } aware)
             {
-                if (IsSignalSeries(seriesName)) continue;
-
-                // Series that are computed and served (screener / export) but intentionally not
-                // charted -- their degree/bar scale must not pollute the charted series' auto-range.
-                // Single source of truth: IndicatorChartSuppression (shared with IndicatorRenderer).
-                if (IndicatorChartSuppression.IsSuppressed(setting.TypeEnum, seriesName, setting.ParameterObject)) continue;
-
-                var seriesValues = result.GetSeries(seriesName);
-                if (seriesValues == null) continue;
-
-                foreach (var v in seriesValues)
+                SeriesPrimitiveValueRangeHelper.AccumulateRange(
+                    result,
+                    aware.PrimitiveDescriptors,
+                    setting,
+                    int.MaxValue,
+                    snapshot.PriceScale,
+                    ref minVal,
+                    ref maxVal,
+                    ref hasValue);
+            }
+            else
+            {
+                foreach (var seriesName in result.SeriesNames)
                 {
-                    if (v.HasValue)
+                    // Series that are computed and served (screener / export) but intentionally not
+                    // charted, hidden by user visibility toggle, or rendered as ColorStrip
+                    // must not pollute the charted series' auto-range.
+                    if (SeriesRenderStyleCatalog.ShouldExcludeFromYRange(setting, seriesName)) continue;
+
+                    if (SeriesRenderStyleCatalog.RequiresZeroBaselineInYRange(setting, seriesName, snapshot.PriceScale))
                     {
-                        if (v.Value < minVal) minVal = v.Value;
-                        if (v.Value > maxVal) maxVal = v.Value;
-                        hasValue = true;
+                        includeZeroForSynthesized = true;
+                    }
+
+                    var seriesValues = result.GetSeries(seriesName);
+                    if (seriesValues == null) continue;
+
+                    foreach (var v in seriesValues)
+                    {
+                        if (v.HasValue)
+                        {
+                            if (v.Value < minVal) minVal = v.Value;
+                            if (v.Value > maxVal) maxVal = v.Value;
+                            hasValue = true;
+                        }
                     }
                 }
             }
@@ -66,11 +86,15 @@ public static class PanelValueRangeCalculator
                 return (0m, 1m);
             }
 
-            // Zero-baseline oscillator handling: include 0 in the scale if configured
+            // Zero-baseline oscillator handling: include 0 in the scale if configured or required by synthesized anchor
             if (setting.IncludeZeroBaseline)
             {
                 if (minVal > 0m) minVal = 0m;
                 if (maxVal < 0m) maxVal = 0m;
+            }
+            else if (includeZeroForSynthesized && minVal <= 0m && maxVal < 0m)
+            {
+                maxVal = 0m;
             }
 
             decimal buffer = (maxVal - minVal) * BufferRatio;

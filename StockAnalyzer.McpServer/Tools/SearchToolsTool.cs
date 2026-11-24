@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Text.Json;
 using StockAnalyzer.McpServer.Catalog;
 using StockAnalyzer.McpServer.CommandLine;
@@ -101,6 +102,16 @@ internal sealed class SearchToolsTool : IMcpTool
         int defaultLimit = includeSchema
             ? (rawToolNames is not null ? MaxRequestedTools : DefaultSchemaResults)
             : DefaultSummaryResults;
+        long? requestedLimit = ToolArgs.Integer(arguments, "limit");
+        if (includeSchema && rawToolNames is null && requestedLimit is > MaxSchemaResults and <= MaxSummaryResults)
+        {
+            throw new ToolException(
+                ToolErrorCodes.LimitExceeded,
+                $"Argument 'limit' ({requestedLimit.Value}) exceeds the schema-search limit {MaxSchemaResults}.",
+                "limit",
+                $"When includeSchema is true without toolNames, use limit <= {MaxSchemaResults} (or pass toolNames for up to {MaxRequestedTools}, or set includeSchema: false for up to {MaxSummaryResults}).");
+        }
+
         int limit = ToolArgs.PositiveWithin(arguments, "limit", defaultLimit, maxLimit);
 
         McpToolRegistry registry = _registry();
@@ -327,7 +338,12 @@ internal sealed class SearchToolsTool : IMcpTool
             return 100;
         }
 
-        if (ContainsFolded(toolName, token))
+        if (HasAliasMatch(toolName, token))
+        {
+            return 50;
+        }
+
+        if (ContainsTokenMatch(toolName, token))
         {
             return 40;
         }
@@ -339,18 +355,71 @@ internal sealed class SearchToolsTool : IMcpTool
 
         foreach (string property in propertyNames)
         {
-            if (ContainsFolded(property, token))
+            if (ContainsTokenMatch(property, token))
             {
                 return 15;
             }
         }
 
-        if (ContainsFolded(summary, token))
+        if (ContainsTokenMatch(summary, token))
         {
             return 10;
         }
 
-        return ContainsFolded(description, token) ? 5 : 0;
+        return ContainsTokenMatch(description, token) ? 5 : 0;
+    }
+
+    private static bool HasAliasMatch(string toolName, string token)
+    {
+        if (!McpToolSearchAliases.ByToolName.TryGetValue(toolName, out FrozenSet<string>? aliases))
+        {
+            return false;
+        }
+
+        return aliases.Contains(token) || aliases.Contains(NormalizeSeparators(token));
+    }
+
+    private static bool ContainsTokenMatch(string haystack, string needle)
+    {
+        if (needle.Length >= 4)
+        {
+            return ContainsFolded(haystack, needle);
+        }
+
+        if (EqualsFolded(haystack, needle))
+        {
+            return true;
+        }
+
+        ReadOnlySpan<char> span = haystack.AsSpan();
+        ReadOnlySpan<char> needleSpan = needle.AsSpan();
+        int start = -1;
+        for (int i = 0; i <= span.Length; i++)
+        {
+            bool atEnd = i == span.Length;
+            bool isWordChar = !atEnd && char.IsAsciiLetterOrDigit(span[i]);
+            bool isAcronymSplit = !atEnd && start >= 0 && i > start
+                && char.IsAsciiLetterUpper(span[i - 1]) && char.IsAsciiLetterUpper(span[i])
+                && i + 1 < span.Length && char.IsAsciiLetterLower(span[i + 1]);
+            bool isCamelSplit = !atEnd && start >= 0 && i > start
+                && ((char.IsAsciiLetterLower(span[i - 1]) && char.IsAsciiLetterUpper(span[i])) || isAcronymSplit);
+
+            if (start >= 0 && (atEnd || !isWordChar || isCamelSplit))
+            {
+                if (span[start..i].Equals(needleSpan, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                start = isWordChar ? i : -1;
+            }
+            else if (start < 0 && isWordChar)
+            {
+                start = i;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeSeparators(string value) => value.Replace('-', '_');

@@ -84,6 +84,8 @@ internal sealed class ExtractSignalEventsTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDate;
+
     public string? CompactUsageHint => "Pass compactRows: true, includeBooleanSeries: false, or a smaller maxEvents.";
 
     public string? ExampleArgumentsJson =>

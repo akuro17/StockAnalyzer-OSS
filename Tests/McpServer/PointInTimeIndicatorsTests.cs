@@ -242,7 +242,7 @@ public sealed class PointInTimeIndicatorsTests : IDisposable
     [Fact]
     public async Task AnotherToolWithoutHintsKeepsTheGenericUnknownArgumentHint()
     {
-        using JsonDocument response = await _truth.CallToolRawAsync("sa_get_candles", """{"symbol":"MSFT","timeFrame":"D1","asOfDate":"2024-12-18"}""");
+        using JsonDocument response = await _truth.CallToolRawAsync("sa_list_tickers", """{"asOfDate":"2024-12-18"}""");
 
         Assert.True(McpTestSupport.IsError(response));
         JsonElement error = McpTestSupport.Structured(response);

@@ -45,6 +45,8 @@ internal sealed class GetCandlesTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForStartAndEndDate;
+
     public string? CompactUsageHint => "Pass compactRows: true, decimalPlaces: 4, or a smaller count / narrower startDate-endDate window.";
 
     public string? ExampleArgumentsJson => "{\"symbol\":\"7203-T\",\"timeFrame\":\"D1\",\"count\":200}";

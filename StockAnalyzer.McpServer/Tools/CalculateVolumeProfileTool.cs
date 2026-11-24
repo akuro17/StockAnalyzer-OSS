@@ -72,6 +72,8 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
 
     public bool IsHeavy => false;
 
+    public IReadOnlyDictionary<string, string>? MisnamedArgumentHints => DateArgumentHints.ForEndDate;
+
     public string? CompactUsageHint => "Pass compactRows: true (or includeBins: false), decimalPlaces: 4, or a smaller binCount.";
 
     public string? ExampleArgumentsJson =>
@@ -139,7 +141,7 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
             throw new ToolException(ToolErrorCodes.InvalidArgument, $"{ValueAreaPercentArgument} must be > 0.0 and <= 1.0.", ValueAreaPercentArgument);
         }
 
-        int? rangeBars = arguments.TryGetProperty(RangeBarsArgument, out _)
+        int? rangeBars = ToolArgs.HasNonNullProperty(arguments, RangeBarsArgument, out _)
             ? ToolArgs.PositiveWithin(arguments, RangeBarsArgument, _limits.MaxCandlesPerRequest, _limits.MaxCandlesPerRequest)
             : null;
         if (rangeBars.HasValue && rangeBars.Value < 1)
@@ -151,7 +153,7 @@ internal sealed class CalculateVolumeProfileTool : IMcpTool
         // over-large limit is not refused a second time for the missing includeRanking; (2) only then the range, exactly as binCount (below 1 INVALID_ARGUMENT, above the
         // maximum LIMIT_EXCEEDED). A limit inside the range that exceeds the number of ranked bins is not an error: all ranked bins are returned.
         bool includeRanking = ToolArgs.Boolean(arguments, IncludeRankingArgument) ?? false;
-        bool rankingLimitGiven = arguments.TryGetProperty(RankingLimitArgument, out _);
+        bool rankingLimitGiven = ToolArgs.HasNonNullProperty(arguments, RankingLimitArgument, out _);
         if (rankingLimitGiven && !includeRanking)
         {
             throw new ToolException(
