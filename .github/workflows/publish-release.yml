@@ -147,26 +147,56 @@ jobs:
         NOTES_FILE="${RUNNER_TEMP}/release_notes.md"
         PREV_TAG=$(git describe --tags --abbrev=0 --match "v*" "${TAG_NAME}^" 2>/dev/null || echo "")
 
+        # Method 2: Extract concise highlights from CHANGELOG.md
+        CHANGELOG_NOTES=""
+        if [ -n "${PREV_TAG}" ]; then
+          CHANGELOG_NOTES=$(git diff -U0 "${PREV_TAG}..${TAG_NAME}" -- CHANGELOG.md \
+            | grep -E '^\+[^+]' \
+            | sed 's/^+//' \
+            | grep -Ev '^(# Changelog|All notable changes|The format is based on|## \[Unreleased\]|---\s*$|$)' \
+            | sed 's/^### /#### /' || true)
+        elif [ -f CHANGELOG.md ]; then
+          CHANGELOG_NOTES=$(awk '/^## \[/{if (found) exit; found=1; next} found && !/^---$/{print}' CHANGELOG.md \
+            | sed 's/^### /#### /' || true)
+        fi
+
+        # Method 1: Extract structured commit details from OSS commit bodies, falling back to subjects
+        COMMIT_DETAILS=""
+        if [ -n "${PREV_TAG}" ]; then
+          COMMIT_DETAILS=$(git log "${PREV_TAG}..${TAG_NAME}" --no-merges --pretty=format:"%b" \
+            | awk 'NF{blank=0; print; next} !blank{blank=1; print}' || true)
+          if [ -z "$(echo "${COMMIT_DETAILS}" | tr -d '[:space:]')" ]; then
+            COMMIT_DETAILS=$(git log "${PREV_TAG}..${TAG_NAME}" --pretty=format:"- %s (%h)" --no-merges || true)
+          fi
+        else
+          COMMIT_DETAILS=$(git log "${TAG_NAME}" -n 20 --no-merges --pretty=format:"%b" \
+            | awk 'NF{blank=0; print; next} !blank{blank=1; print}' || true)
+          if [ -z "$(echo "${COMMIT_DETAILS}" | tr -d '[:space:]')" ]; then
+            COMMIT_DETAILS=$(git log "${TAG_NAME}" -n 20 --pretty=format:"- %s (%h)" --no-merges || true)
+          fi
+        fi
+
         {
           echo "Official release for StockAnalyzer OSS version ${TAG_NAME}."
           echo ""
           echo "## What's Changed"
+          if [ -n "$(echo "${CHANGELOG_NOTES}" | tr -d '[:space:]')" ]; then
+            echo ""
+            echo "### Release Highlights"
+            echo "${CHANGELOG_NOTES}"
+          fi
+          echo ""
+          echo "### Commit Details"
+          if [ -n "$(echo "${COMMIT_DETAILS}" | tr -d '[:space:]')" ]; then
+            echo "${COMMIT_DETAILS}"
+          elif [ -n "${PREV_TAG}" ]; then
+            echo "- No commit differences found since ${PREV_TAG}."
+          else
+            echo "- Initial release."
+          fi
           if [ -n "${PREV_TAG}" ]; then
-            CHANGES=$(git log "${PREV_TAG}..${TAG_NAME}" --pretty=format:"- %s (%h)" --no-merges)
-            if [ -n "${CHANGES}" ]; then
-              echo "${CHANGES}"
-            else
-              echo "- No commit differences found since ${PREV_TAG}."
-            fi
             echo ""
             echo "**Full Changelog**: https://github.com/${REPO}/compare/${PREV_TAG}...${TAG_NAME}"
-          else
-            CHANGES=$(git log "${TAG_NAME}" -n 50 --pretty=format:"- %s (%h)" --no-merges)
-            if [ -n "${CHANGES}" ]; then
-              echo "${CHANGES}"
-            else
-              echo "- Initial release."
-            fi
           fi
         } > "${NOTES_FILE}"
 
