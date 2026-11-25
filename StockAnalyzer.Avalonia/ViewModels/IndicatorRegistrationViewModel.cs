@@ -314,19 +314,9 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     private int _rightOffset;
 
     private const decimal DefaultRightNumericValue = 50m;
-    private bool _criteriaDefaultsApplied;
-    private bool _isSettingNumericDefault;
 
     [ObservableProperty]
     private decimal _rightNumericValue = DefaultRightNumericValue;
-
-    partial void OnRightNumericValueChanged(decimal value)
-    {
-        if (!_isSettingNumericDefault)
-        {
-            _criteriaDefaultsApplied = false;
-        }
-    }
 
     // ===== Registered Entries =====
 
@@ -570,14 +560,8 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
             NavGroups.Add(new ScreenerGroupDisplayItem { IsHeader = false, Group = g, CustomDisplayName = ResolveGroupDisplayName(g) });
         }
 
-        // 4. Chart Patterns (Criteria) Category Section
-        NavGroups.Add(new ScreenerGroupDisplayItem { IsHeader = true, HeaderTitle = _localizationService.GetString("IndicatorRegistration_NavHeader_ChartPatterns") });
-        foreach (var g in defaultGroups.Where(g => g.CategoryType == "Criteria"))
-        {
-            NavGroups.Add(new ScreenerGroupDisplayItem { IsHeader = false, Group = g, CustomDisplayName = ResolveGroupDisplayName(g) });
-        }
-
-        // 5. Divider and Templates (placed directly under Wave Theory in Chart Patterns)
+        // 3. Custom Columns Category Section (Criteria section retired in V2-12)
+        // 4. Divider and Templates
         NavGroups.Add(new ScreenerGroupDisplayItem { IsDivider = true });
         NavGroups.Add(new ScreenerGroupDisplayItem
         {
@@ -597,9 +581,10 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
     private void BuildCatalog()
     {
         _allCatalogItems.Clear();
-        _allCatalogItems.AddRange(_offersTwoSymbolIndicatorsOfTheScreener
+        var items = _offersTwoSymbolIndicatorsOfTheScreener
             ? _catalogProvider.GetCatalogItemsForScreener(_indicatorFactory)
-            : _catalogProvider.GetCatalogItems(_indicatorFactory));
+            : _catalogProvider.GetCatalogItems(_indicatorFactory);
+        _allCatalogItems.AddRange(items.Where(item => item.CategoryType != ScreenerItemCategoryType.Criteria));
         ApplyFilters();
     }
 
@@ -617,7 +602,7 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
         {
             if (isAllFilters)
             {
-                // Comprehensively include all items in catalog (Indicators, Columns, Criteria)
+                // Comprehensively include all active items in catalog (Indicators and Columns; Criteria is retired from registration UI)
                 filtered = _allCatalogItems.AsEnumerable();
             }
             else
@@ -661,7 +646,12 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
         {
             results = filtered
                 .OrderBy(i => ScreenerGroupNames.GetGroupSortOrder(i.GroupName))
-                .ThenBy(i => GetPatternPairSortKey(i.ShortName), StringComparer.OrdinalIgnoreCase)
+                .ThenBy(
+                    i => GetPatternPairSortKey(
+                        string.Equals(i.GroupName, ScreenerGroupNames.CandlestickPatterns, StringComparison.OrdinalIgnoreCase)
+                            ? i.DisplayName
+                            : i.ShortName),
+                    StringComparer.OrdinalIgnoreCase)
                 .ThenBy(i => i.ShortName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(i => i.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -845,33 +835,6 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
                     SetRightModeNumeric();
                 }
             }
-
-            if (catalogItem.CategoryType == ScreenerItemCategoryType.Criteria)
-            {
-                _isSettingNumericDefault = true;
-                try
-                {
-                    RightNumericValue = 0m;
-                    _criteriaDefaultsApplied = true;
-                }
-                finally
-                {
-                    _isSettingNumericDefault = false;
-                }
-            }
-            else if (_criteriaDefaultsApplied)
-            {
-                _isSettingNumericDefault = true;
-                try
-                {
-                    RightNumericValue = DefaultRightNumericValue;
-                    _criteriaDefaultsApplied = false;
-                }
-                finally
-                {
-                    _isSettingNumericDefault = false;
-                }
-            }
         }
         else
         {
@@ -960,7 +923,7 @@ public partial class IndicatorRegistrationViewModel : ViewModelBase, IDisposable
             TimeFrame = timeFrame,
             Offset = offset,
             CategoryType = category,
-            CustomDisplayName = (category == ScreenerItemCategoryType.Column || category == ScreenerItemCategoryType.Criteria || catalogItem?.IndicatorType == IndicatorType.Price)
+            CustomDisplayName = (category == ScreenerItemCategoryType.Column || catalogItem?.IndicatorType == IndicatorType.Price)
                 ? (catalogItem?.DisplayName ?? catalogItem?.ShortName ?? string.Empty)
                 : string.Empty
         };

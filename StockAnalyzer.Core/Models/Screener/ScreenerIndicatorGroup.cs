@@ -1,11 +1,13 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Core.Models.Indicators.PatternFlags;
 
 namespace StockAnalyzer.Core.Models.Screener;
 
 /// <summary>
 /// Defines a named group of indicators / columns for the Screener registration tab.
-/// Organized by Indicator Manager groups, Column Customization groups, and Criteria groups.
+/// Organized by Indicator Manager groups and Column Customization groups.
 /// </summary>
 public class ScreenerIndicatorGroup
 {
@@ -15,7 +17,7 @@ public class ScreenerIndicatorGroup
     public string Name { get; }
 
     /// <summary>
-    /// Category / section type ("Indicator", "Column", "Criteria").
+    /// Category / section type ("Indicator", "Column").
     /// </summary>
     public string CategoryType { get; }
 
@@ -39,7 +41,7 @@ public class ScreenerIndicatorGroup
 
     /// <summary>
     /// Gets all predefined indicator and column groups for the screener.
-    /// Combines Indicator Manager groups, Column Customization groups, and Criteria groups with zero duplicate indicator assignments.
+    /// Combines Indicator Manager groups and Column Customization groups with zero duplicate indicator assignments.
     /// </summary>
     public static IReadOnlyList<ScreenerIndicatorGroup> GetDefaultGroups()
     {
@@ -166,20 +168,30 @@ public class ScreenerIndicatorGroup
                 IndicatorType.MarketStructureShift, IndicatorType.VolumeProfileLevels
             }, "Indicator", "ScreenerGroup_Chart"),
 
+            // === Chart Pattern Flag Indicator Groups (6 categories backed by SSoT PatternFlagIndicatorCatalog, MP V2-11) ===
+            CreatePatternFlagGroup(CoreIndicatorCategory.PatternRecognition, ScreenerGroupNames.PatternRecognition, "ScreenerGroup_PatternRecognition"),
+            CreatePatternFlagGroup(CoreIndicatorCategory.MarketStructure, ScreenerGroupNames.MarketStructure, "ScreenerGroup_MarketStructure"),
+            CreatePatternFlagGroup(CoreIndicatorCategory.Harmonic, ScreenerGroupNames.Harmonic, "ScreenerGroup_Harmonic"),
+            CreatePatternFlagGroup(CoreIndicatorCategory.TradingRules, ScreenerGroupNames.TradingRules, "ScreenerGroup_TradingRules"),
+            CreatePatternFlagGroup(CoreIndicatorCategory.WaveTheory, ScreenerGroupNames.WaveTheory, "ScreenerGroup_WaveTheory"),
+            CreatePatternFlagGroup(CoreIndicatorCategory.CandlestickPatterns, ScreenerGroupNames.CandlestickPatterns, "ScreenerGroup_CandlestickPatterns"),
+
             // === Column Customization Groups ===
             new("Basic", System.Array.Empty<IndicatorType>(), "Column", "ScreenerGroup_Basic"),
             new("Price/Volume", System.Array.Empty<IndicatorType>(), "Column", "ScreenerGroup_PriceVolume"),
             new("Valuation", System.Array.Empty<IndicatorType>(), "Column", "ScreenerGroup_Valuation"),
             new("Profitability", System.Array.Empty<IndicatorType>(), "Column", "ScreenerGroup_Profitability"),
-            new("Financial Health", System.Array.Empty<IndicatorType>(), "Column", "ScreenerGroup_FinancialHealth"),
-
-            // === Criteria-specific groups ===
-            new("Candlestick Patterns", System.Array.Empty<IndicatorType>(), "Criteria", "ScreenerGroup_CandlestickPatterns"),
-            new("Pattern Recognition", System.Array.Empty<IndicatorType>(), "Criteria", "ScreenerGroup_PatternRecognition"),
-            new("Market Structure", System.Array.Empty<IndicatorType>(), "Criteria", "ScreenerGroup_MarketStructure"),
-            new("Harmonic", System.Array.Empty<IndicatorType>(), "Criteria", "ScreenerGroup_Harmonic"),
-            new("Trading Rules", System.Array.Empty<IndicatorType>(), "Criteria", "ScreenerGroup_TradingRules"),
-            new("Wave Theory", System.Array.Empty<IndicatorType>(), "Criteria", "ScreenerGroup_WaveTheory"),
+            new("Financial Health", System.Array.Empty<IndicatorType>(), "Column", "ScreenerGroup_FinancialHealth")
         };
     }
+
+    private static ScreenerIndicatorGroup CreatePatternFlagGroup(CoreIndicatorCategory category, string groupName, string localizationKey)
+        => new(
+            groupName,
+            PatternFlagIndicatorCatalog.Rows
+                .Where(row => row.Category == category)
+                .Select(row => row.Type)
+                .ToArray(),
+            "Indicator",
+            localizationKey);
 }

@@ -5,6 +5,7 @@ namespace StockAnalyzer.Core.Models;
 /// <summary>
 /// Immutable OHLCV candle data structure.
 /// This is the canonical CandleData for cross-project use.
+/// Must remain an unmanaged value type (no reference fields) because pooled arrays (<c>ArrayPool&lt;CandleData&gt;.Shared</c>) are returned with <c>clearArray: false</c>.
 /// </summary>
 public readonly record struct CandleData(
     DateTime Timestamp,

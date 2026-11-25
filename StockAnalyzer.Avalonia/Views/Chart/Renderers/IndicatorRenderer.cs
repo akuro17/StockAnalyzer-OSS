@@ -570,8 +570,6 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
                         var values = result.GetSeries(seriesName);
                         if (values == null || values.Count == 0) continue;
 
-                        int count = Math.Min(values.Count, snapshot.Candles!.Count);
-
                         // Determine series color
                         SKColor seriesColor;
                         var colorConfig = SeriesRenderStyleCatalog.FindSeriesConfig(setting, seriesName);
@@ -589,26 +587,34 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
                             continue;
                         }
 
-                        bool isHistogram = seriesName.Contains("Histogram", StringComparison.OrdinalIgnoreCase);
+                        bool isHistogram = IsDefaultHistogram(setting, seriesName);
 
                         if (isHistogram)
                         {
-                            // Histogram rendering for sub-window (e.g. MACD Histogram)
+                            // Histogram rendering for sub-window (e.g. MACD Histogram, PatternFlag) matching HistogramRenderer color/offset rules
                             float zeroY = panelTop + panelHeight * (float)((maxVal - 0m) / subRange);
+                            SKColor upColor = setting.UpColor.ToSkColor();
+                            SKColor downColor = setting.DownColor.ToSkColor();
+                            bool useUpDownColors = setting.UseUpDownColors || setting.TypeEnum == IndicatorType.MACD;
+                            int barCount = snapshot.Candles!.Count;
+                            float barWidth = MathF.Max(1f, columnWidth * 0.8f);
 
-                            var theme = config.ThemeManager.CurrentTheme;
-                            for (int i = 0; i < count; i++)
+                            for (int i = 0; i < barCount; i++)
                             {
-                                var val = values[i];
-                                if (!val.HasValue) continue;
+                                int valueIndex = i - setting.Offset;
+                                if (valueIndex < 0 || valueIndex >= values.Count) continue;
+
+                                var val = values[valueIndex];
+                                if (!val.HasValue || val.Value == 0m) continue;
 
                                 double logicalIdx = snapshot.GetLogicalXIndex(i, config);
                                 float x = (float)mainTransform.GetXFromIndex(logicalIdx) + (float)targetRect.Left;
                                 float y = panelTop + panelHeight * (float)((maxVal - val.Value) / subRange);
-                                float barWidth = MathF.Max(1f, columnWidth * 0.6f);
                                 float barX = x + (columnWidth - barWidth) / 2f;
 
-                                _subHistPaint.Color = val.Value >= 0 ? theme.Bullish.ToSkColor() : theme.Bearish.ToSkColor();
+                                _subHistPaint.Color = useUpDownColors
+                                    ? (val.Value >= 0m ? upColor : downColor)
+                                    : seriesColor;
                                 canvas.DrawRect(barX, Math.Min(y, zeroY), barWidth, Math.Abs(y - zeroY), _subHistPaint);
                             }
                         }
@@ -620,10 +626,18 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
 
                             _subPath.Reset();
                             bool isFirst = true;
+                            int barCount = snapshot.Candles!.Count;
 
-                            for (int i = 0; i < count; i++)
+                            for (int i = 0; i < barCount; i++)
                             {
-                                var val = values[i];
+                                int valueIndex = i - setting.Offset;
+                                if (valueIndex < 0 || valueIndex >= values.Count)
+                                {
+                                    isFirst = true;
+                                    continue;
+                                }
+
+                                var val = values[valueIndex];
                                 if (!val.HasValue)
                                 {
                                     isFirst = true;
@@ -767,8 +781,8 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
                         continue;
                     }
 
-                    // Determine style based on series name
-                    if (seriesName.Contains("Histogram", StringComparison.OrdinalIgnoreCase))
+                    // Determine style based on series name or SSoT default primitive (e.g. PatternFlag)
+                    if (IsDefaultHistogram(setting, seriesName))
                     {
                         _histogramRenderer.Render(canvas, targetRect, values, setting, minVal, maxVal, visibleCandles, offset, config.VisibleStartIndex, snapshot.Candles!, interval, transform, seriesColor, xOffset);
                     }
@@ -836,7 +850,14 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
                 // ... already done above.
 
                 int legacyVisibleCandles = snapshot.VisibleCandleCount > 0 ? snapshot.VisibleCandleCount : snapshot.Candles!.Count;
-                _lineRenderer.Render(canvas, targetRect, values, setting, minVal, maxVal, legacyVisibleCandles, offset, config.VisibleStartIndex, snapshot.Candles!, interval, transform, null, xOffset);
+                if (SeriesRenderStyleCatalog.ResolveEffectivePrimitive(setting, IndicatorResult.MainSeriesName) == SeriesPrimitiveType.Histogram)
+                {
+                    _histogramRenderer.Render(canvas, targetRect, values, setting, minVal, maxVal, legacyVisibleCandles, offset, config.VisibleStartIndex, snapshot.Candles!, interval, transform, null, xOffset);
+                }
+                else
+                {
+                    _lineRenderer.Render(canvas, targetRect, values, setting, minVal, maxVal, legacyVisibleCandles, offset, config.VisibleStartIndex, snapshot.Candles!, interval, transform, null, xOffset);
+                }
             }
         }
         catch (Exception ex)
@@ -844,6 +865,10 @@ public sealed class IndicatorRenderer : IChartRenderer, IDisposable
             System.Diagnostics.Debug.WriteLine($"[IndicatorRenderer] RenderIndicator failed: {ex}");
         }
     }
+
+    private static bool IsDefaultHistogram(CoreIndicatorSettings setting, string? seriesName)
+        => (!string.IsNullOrEmpty(seriesName) && seriesName.Contains("Histogram", StringComparison.OrdinalIgnoreCase))
+           || SeriesRenderStyleCatalog.ResolveDefaultPrimitive(setting, seriesName) == SeriesPrimitiveType.Histogram;
 
     private DateTime GetCandleTime(int index, IReadOnlyList<CoreCandleData> candles, TimeSpan interval)
     {

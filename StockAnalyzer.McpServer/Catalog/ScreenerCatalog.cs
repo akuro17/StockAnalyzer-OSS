@@ -10,7 +10,7 @@ using StockAnalyzer.Core.Services.Screener;
 namespace StockAnalyzer.McpServer.Catalog;
 
 /// <summary>One name a Screener condition can read besides an indicator: a price, a column of the ticker table, or a pattern.</summary>
-internal sealed record ScreenerCatalogName(string Name, string Group, string Description, bool IsText);
+internal sealed record ScreenerCatalogName(string Name, string Group, string Description, bool IsText, string? SuggestedIndicator = null);
 
 /// <summary>
 /// The Columns, Criteria (patterns) and price sources a Screener condition can use, taken from the application's own
@@ -42,7 +42,7 @@ internal sealed class ScreenerCatalog
         .Where(item => !_items.Value.Evaluable.Contains(item.ShortName)).Select(item => item.ShortName).ToList();
 
     /// <summary>Patterns and rules (candlestick, chart, harmonic, wave, market structure) in catalogue order; each one is true or false at a bar.</summary>
-    public IReadOnlyList<ScreenerCatalogName> Criteria => _items.Value.CriteriaItems.Select(item => ToName(item, false)).ToList();
+    public IReadOnlyList<ScreenerCatalogName> Criteria => _items.Value.CriteriaItems.Select(ToCriteriaName).ToList();
 
     /// <summary>The price sources, in the order of the Screener tab.</summary>
     public IReadOnlyList<ScreenerCatalogName> Prices => _items.Value.PriceItems.Select(item => ToName(item, false)).ToList();
@@ -90,6 +90,14 @@ internal sealed class ScreenerCatalog
 
     private static ScreenerCatalogName ToName(ScreenerCatalogItem item, bool isText)
         => new(item.ShortName, item.GroupName, item.DisplayName, isText);
+
+    private static ScreenerCatalogName ToCriteriaName(ScreenerCatalogItem item)
+    {
+        string? suggested = LegacyCriteriaNameMap.TryResolve(item.ShortName, out IndicatorType indicator)
+            ? indicator.ToString()
+            : null;
+        return new(item.ShortName, item.GroupName, item.DisplayName, IsText: false, SuggestedIndicator: suggested);
+    }
 
     private sealed class Items
     {

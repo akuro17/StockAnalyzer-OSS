@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using StockAnalyzer.Core.Models.Indicators.PatternFlags;
 
 namespace StockAnalyzer.Core.Models.Training;
 
@@ -56,7 +57,8 @@ public static class FeatureChannelNormalizationDefaults
     public static ChannelNormalization ForPrice() => ChannelNormalization.WindowMinMax;
 
     public static ChannelNormalization ForIndicator(IndicatorType type) =>
-        UnitStable.Contains(type) ? ChannelNormalization.None
+        // A chart-pattern flag is a 0m / 1m (or -1m / +1m) series: bounded, so a window z-score would turn the rare 1m into an outlier. The set of flag types is the catalog table (one definition).
+        UnitStable.Contains(type) || PatternFlagIndicatorCatalog.Contains(type) ? ChannelNormalization.None
         : PriceNative.Contains(type) ? ChannelNormalization.WindowMinMax
         : ChannelNormalization.WindowZScore;
 }

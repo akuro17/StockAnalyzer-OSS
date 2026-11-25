@@ -919,4 +919,23 @@ public static class IndicatorDefaultConstants
     public const double BlockChartOverlayDotSizeStep = 0.5;
     /// <summary>The IsUpTrend helper series holds 1 (up) or 0 (down); a value at or above this threshold is drawn with the up colour.</summary>
     public const decimal BlockChartOverlayUpTrendThreshold = 0.5m;
+
+    // === Chart-pattern flag indicators (plan ChartPatterns56): 0m / 1m flag in a sub-window with a fixed Y range ===
+    /// <summary>Lower end of the fixed Y range of a flag sub-window (a flag is 0m or 1m; unit: flag value).</summary>
+    public const decimal PatternFlagMinValue = 0m;
+    /// <summary>Upper end of the fixed Y range of a flag sub-window: headroom above the 1m flag so a bar does not touch the panel ceiling.</summary>
+    public const decimal PatternFlagMaxValue = 1.2m;
+    /// <summary>Lower end of the fixed Y range of a bidirectional flag sub-window: the bearish series is plotted at -1m (plan ChartPatterns56 v2, integration spec 4.2); symmetric to <see cref="PatternFlagMaxValue"/>.</summary>
+    public const decimal PatternFlagBidirectionalMinValue = -PatternFlagMaxValue;
+    /// <summary>Colours by role (decision U-4 A: an existing named constant is reused where one exists). Bullish and bearish equal the MACD histogram colours.</summary>
+    public static readonly IndicatorColor PatternFlagBullishColor = MacdHistogramUpColor;
+    public static readonly IndicatorColor PatternFlagBearishColor = MacdHistogramDownColor;
+    public static readonly IndicatorColor PatternFlagNeutralColor = new(255, 120, 144, 156);       // Blue Grey #78909C
+    public static readonly IndicatorColor PatternRecognitionFlagColor = new(255, 66, 165, 245);   // Blue #42A5F5
+    public static readonly IndicatorColor MarketStructureFlagColor = Purple;                       // #AB47BC
+    public static readonly IndicatorColor HarmonicFlagColor = new(255, 255, 167, 38);              // Orange #FFA726
+    public static readonly IndicatorColor WaveTheoryFlagColor = new(255, 41, 182, 246);            // Light Blue #29B6F6
+    public static readonly IndicatorColor PatternFlagGranvilleBuy3Color = new(255, 102, 187, 106); // Green #66BB6A
+    public static readonly IndicatorColor PatternFlagGranvilleSell3Color = new(255, 255, 112, 67); // Deep Orange #FF7043
+    public static readonly IndicatorColor PatternFlagGranvilleSell4Color = new(255, 236, 64, 122); // Pink #EC407A
 }

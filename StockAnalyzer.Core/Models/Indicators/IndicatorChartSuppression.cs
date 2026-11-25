@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using StockAnalyzer.Core.Models.Indicators.Advanced;
 using StockAnalyzer.Core.Models.Indicators.MovingAverages;
+using StockAnalyzer.Core.Models.Indicators.PatternFlags;
 using StockAnalyzer.Core.Models.Indicators.Oscillators;
 using StockAnalyzer.Core.Models.Indicators.Statistics;
 using StockAnalyzer.Core.Models.Indicators.Trend;
@@ -264,6 +265,12 @@ public static class IndicatorChartSuppression
             return true;
         }
 
+        // Helper series of the bidirectional chart-pattern flag indicators (Main and Direction; the two named side series are the visible ones); the one definition is the catalog table.
+        if (PatternFlagIndicatorCatalog.IsHelperSeries(t, seriesName))
+        {
+            return true;
+        }
+
         return ParameterDependentSuppressedSeries.TryGetValue(t, out ParameterDependentSuppression rule)
                && string.Equals(rule.SeriesName, seriesName, StringComparison.Ordinal)
                && rule.IsHidden(parameters);
@@ -275,6 +282,7 @@ public static class IndicatorChartSuppression
     /// </summary>
     public static bool IsDataWindowSuppressed(IndicatorType? type, string seriesName) =>
         type is { } t
-        && SuppressedDataWindowSeries.TryGetValue(t, out IReadOnlySet<string>? set)
-        && set.Contains(seriesName);
+        && ((SuppressedDataWindowSeries.TryGetValue(t, out IReadOnlySet<string>? set) && set.Contains(seriesName))
+            // The Main and Direction series of a bidirectional chart-pattern flag are for the Screener and the Backtest; the data window shows the two named side series (one row each).
+            || PatternFlagIndicatorCatalog.IsHelperSeries(t, seriesName));
 }

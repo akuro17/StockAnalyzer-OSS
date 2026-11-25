@@ -116,7 +116,20 @@ public class ScreenerDefaultParameterCacheParityTests
     //   Changed type: ThreeLineBreakSignal (5 lines, 5 variants each; the line count stays 1090). Marked [Obsolete] and de-registered from IndicatorFactory, so its lines changed from "0" to "null".
     //   Old -> new hash: 6C58ECD5DC1E8B6A5B597420303579E2A46575E00B6AEA0F9DD0E2AE27018DC6 -> 3657C9EBEC9F6B81AFA500F155B639C95DB4FC298C05986B1D94904AFBA403C8.
     //   Every earlier pin stays reproducible (OnlyTheLinesOfThreeLineBreakSignalMovedSinceTheSeventeenthPin puts ThreeLineBreakSignal back to "0" via ChangedLineOldValues and hashes to the seventeenth pin).
-    private const string PinnedFingerprint = "3657C9EBEC9F6B81AFA500F155B639C95DB4FC298C05986B1D94904AFBA403C8";
+        // NINETEENTH re-pin, 2026-11-25 (chart patterns plan ChartPatterns56; purely additive under the standing rule of lessons_webai_expansion_20261114_0001). Runs 2 and 3 of the plan were
+        // never committed, so their two intermediate pins were collapsed (plan run V2-2) into this one: the baseline is the eighteenth pin.
+    //   Added types: the 56 chart pattern flag types of the catalog (43 candlesticks, 3 formations, 3 market structure, 3 harmonics, + 4 wave/rule types ElliottWaveImpulse/ElliottWaveCorrective/GranvilleBuySignal/GranvilleSellSignal in V2-7;
+    //   280 lines, 5 variants each; 1090 -> 1370 lines; prior V2-5 pin over 49 types was 2B97E15BB77E319F792E69FCE132C5F9A57C4DBBF2477ACF0C7DAAAB71AC1588, V2-6 pin over 52 types was 473AFE8CE1D8595F68071BD00998F6E83C5C3DF6858F463407E1B1B2E9BD60BB). Later runs of the plan add more types to
+    //   ChartPatternFlagTypes and re-pin the same way.
+    //   Old -> new hash: 3657C9EBEC9F6B81AFA500F155B639C95DB4FC298C05986B1D94904AFBA403C8 -> F56C4015BEA47988CC82B9F1751135082C98D98AC142D5C451F4D103F08365EC (the values of Main are those of the first implementation;
+    //   the v2 engines change them run by run and re-pin).
+    //   No existing line changed: removing the flag types returns the eighteenth pin (ValuesOfTheTypesBeforeTheChartPatternFlagsAreUnchanged, OnlyTheLinesOfTheChartPatternFlagsAreNewSinceTheEighteenthPin). Every value of
+    //   the flag types equals a standalone calculation (TheChartPatternFlagTypesGiveTheValueOfAStandaloneCalculation_WithAndWithoutAPeriod). Every earlier proof starts from BuildReportBeforeChartPatterns().
+    // TWENTIETH re-pin, 2026-11-26 (U-W10: MarketStructureLlLh appended; purely additive, 5 lines added, 1370 -> 1375):
+    //   Old -> new hash: F56C4015BEA47988CC82B9F1751135082C98D98AC142D5C451F4D103F08365EC -> AFAFC7693ED96023C4FE5F145E10015861A4E9A1BE6DEA4E2126F66F63C3A2E0.
+    private const string PinnedFingerprint = "AFAFC7693ED96023C4FE5F145E10015861A4E9A1BE6DEA4E2126F66F63C3A2E0";
+    /// <summary>The pin before the chart pattern flag types were added (the eighteenth re-pin).</summary>
+    private const string FingerprintBeforeChartPatternFlags = "3657C9EBEC9F6B81AFA500F155B639C95DB4FC298C05986B1D94904AFBA403C8";
     /// <summary>The pin before ThreeLineBreakSignal was de-registered from IndicatorFactory (the seventeenth re-pin).</summary>
     private const string FingerprintBeforeThreeLineBreakSignalDeregistration = "6C58ECD5DC1E8B6A5B597420303579E2A46575E00B6AEA0F9DD0E2AE27018DC6";
     /// <summary>The pin before the block chart overlays registered Renko, PointAndFigure, Kagi and ThreeLineBreak (the sixteenth re-pin); reproduced by <see cref="BuildReportBeforeBlockChartOverlays"/>.</summary>
@@ -139,6 +152,26 @@ public class ScreenerDefaultParameterCacheParityTests
 
     /// <summary>The fingerprint of the report without the lines of the types added by plan 03 (the pin before them).</summary>
     private const string FingerprintBeforePlanThree = "A5D5430A03AB40446FE8EB92DAA52262574C3F8A5D49B73F14B3BA4DCA14C7FE";
+
+    /// <summary>
+    /// The chart pattern flag types of the catalog (plan ChartPatterns56): the single list of the flag types in this test. Their lines did not exist before the nineteenth re-pin. A run of the plan that adds
+    /// flag types appends their names here and re-pins; nothing else in this file names a flag type.
+    /// </summary>
+    private static readonly string[] ChartPatternFlagTypes =
+    {
+        "CandleBullishMarubozu", "CandleBearishMarubozu", "CandleHammer", "CandleInvertedHammer", "CandleHangingMan", "CandleShootingStar", "CandleCrossDoji", "CandleDragonflyDoji", "CandleGravestoneDoji", "CandleBullishEngulfing", "CandleBearishEngulfing", "CandleBullishHarami", "CandleBearishHarami", "CandlePiercingLine", "CandleDarkCloudCover", "CandleHomingPigeon", "CandleBullishKicking", "CandleBearishKicking", "CandleMorningStar", "CandleEveningStar", "CandleThreeWhiteSoldiers", "CandleThreeBlackCrows", "CandleBullishSideBySideWhiteLines", "CandleBearishSideBySideWhiteLines", "CandleBullishAbandonedBaby", "CandleBearishAbandonedBaby", "CandleAdvanceBlock", "CandleDeliberation", "CandleStickSandwich", "CandleBullishTasukiGap", "CandleBearishTasukiGap", "CandleBullishGapThreeMethods", "CandleBearishGapThreeMethods", "CandleIdenticalThreeCrows", "CandleBullishThreeLineStrike", "CandleBearishThreeLineStrike", "CandleConcealingBabySwallow", "CandleRisingThreeMethods", "CandleFallingThreeMethods", "CandleMatHold", "CandleLadderBottom", "CandleBullishBreakaway", "CandleBearishBreakaway",
+        "PatternHeadAndShoulders", "PatternDoubleTopBottom", "PatternFlag", "MarketStructureBos", "MarketStructureChoch", "MarketStructureHhHl", "MarketStructureLlLh",
+        "HarmonicGartley", "HarmonicButterfly", "HarmonicBat",
+        "GranvilleBuySignal", "GranvilleSellSignal", "ElliottWaveImpulse", "ElliottWaveCorrective"
+    };
+
+    /// <summary>The current report without the lines of the chart pattern flag types: every earlier pin and proof starts from it, so it is the report as it was before the nineteenth re-pin.</summary>
+    private static string BuildReportBeforeChartPatterns()
+    {
+        var removed = ChartPatternFlagTypes.ToHashSet();
+        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
+        return string.Join("\n", lines) + "\n";
+    }
 
     private static readonly string[] PlanThreeTypes = { "ChandelierExit", "T3", "McGinleyDynamic", "TSI", "StochRSI", "KVO", "VolumeProfileLevels" };
 
@@ -207,7 +240,7 @@ public class ScreenerDefaultParameterCacheParityTests
     private static string HashWithoutRemovedTypes(bool resetFormerPlaceholders, params string[][] removedTypes)
     {
         var removed = removedTypes.SelectMany(types => types).ToHashSet();
-        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+        var lines = BuildReportBeforeChartPatterns().Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Where(line => !removed.Contains(line.Split('|')[0]))
             .Select(line =>
             {
@@ -680,7 +713,7 @@ public class ScreenerDefaultParameterCacheParityTests
 
     private static string BuildReportBeforeThreeLineBreakSignalDeregistration()
     {
-        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
+        var lines = BuildReportBeforeChartPatterns().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
         {
             string[] parts = line.Split('|');
             return parts[0] == "ThreeLineBreakSignal" ? $"{parts[0]}|{parts[1]}|0" : line;
@@ -705,7 +738,7 @@ public class ScreenerDefaultParameterCacheParityTests
     [Fact]
     public void OnlyTheLinesOfThreeLineBreakSignalMovedSinceTheSeventeenthPin()
     {
-        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] current = BuildReportBeforeChartPatterns().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         string[] before = BuildReportBeforeThreeLineBreakSignalDeregistration().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(before.Length, current.Length);
 
@@ -774,6 +807,61 @@ public class ScreenerDefaultParameterCacheParityTests
             decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles);
 
             Assert.Equal(standalone, screener);
+        }
+    }
+
+    /// <summary>The eighteenth whole-report pin is reproduced when the lines of the chart pattern flag types are removed.</summary>
+    [Fact]
+    public void ValuesOfTheTypesBeforeTheChartPatternFlagsAreUnchanged()
+    {
+        Assert.Equal(FingerprintBeforeChartPatternFlags, Fingerprint(BuildReportBeforeChartPatterns()));
+    }
+
+    /// <summary>Proof of the nineteenth re-pin: the current report has exactly the lines of the flag types (5 variants each) more than at the eighteenth pin, and no other line moved.</summary>
+    [Fact]
+    public void OnlyTheLinesOfTheChartPatternFlagsAreNewSinceTheEighteenthPin()
+    {
+        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] before = BuildReportBeforeChartPatterns().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var added = current.Where(line => ChartPatternFlagTypes.Contains(line.Split('|')[0])).ToArray();
+
+        Assert.Equal(ChartPatternFlagTypes.Length * VariantsPerType, added.Length);
+        Assert.Equal(before.Length + added.Length, current.Length);
+        Assert.Equal(before, current.Where(line => !ChartPatternFlagTypes.Contains(line.Split('|')[0])));
+    }
+
+    /// <summary>The list of this test is the catalog: every flag type of the catalog is in it and nothing else (a new flag type without a re-pin is caught here).</summary>
+    [Fact]
+    public void TheFlagTypeListOfThisTestIsTheCatalog()
+    {
+        Assert.Equal(
+            StockAnalyzer.Core.Models.Indicators.PatternFlags.PatternFlagIndicatorCatalog.Rows.Select(r => r.Type.ToString()).OrderBy(n => n, StringComparer.Ordinal),
+            ChartPatternFlagTypes.OrderBy(n => n, StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// Re-pin condition 2: the line of every chart pattern flag type equals a standalone calculation (the default parameters). The flags have no Period setting, so a Period key from the
+    /// screener is ignored and every variant gives the value of the default settings.
+    /// </summary>
+    [Fact]
+    public void TheChartPatternFlagTypesGiveTheValueOfAStandaloneCalculation_WithAndWithoutAPeriod()
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        foreach (string name in ChartPatternFlagTypes)
+        {
+            IndicatorType type = Enum.Parse<IndicatorType>(name);
+            decimal? standalone = StockAnalyzer.Core.Models.Indicators.IndicatorFactory.CreateStatic(type, DefaultCoreIndicatorSettings.GetDefault().Single(s => s.TypeEnum == type).ParameterObject)!.Calculate(candles).MainValues[^1];
+            Assert.True(standalone is 0m or 1m, $"{name}: the last bar of a flag is 0 or 1, got {standalone}");
+
+            foreach (int? period in new int?[] { null, 7, 9, 25 })
+            {
+                var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+                decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles);
+
+                Assert.Equal(standalone, screener);
+            }
         }
     }
 

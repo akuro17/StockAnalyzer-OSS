@@ -386,6 +386,7 @@ internal sealed class RunScreenerTool : IMcpTool
 
         // The old path reports one frame for the whole scan; the side-frame path reports each weekly or monthly frame a side reads.
         bool writeCompleteBarsOnly = sideFrames ? framesResult!.Frames.Count > 0 : isPeriodFrame;
+        List<(string Name, string SuggestedIndicator)> legacyCriteria = CollectLegacyCriteria(leaves);
 
         return ToolJson.Build(writer =>
         {
@@ -498,6 +499,20 @@ internal sealed class RunScreenerTool : IMcpTool
                 foreach (string warning in warnings)
                 {
                     writer.WriteStringValue(warning);
+                }
+
+                writer.WriteEndArray();
+            }
+
+            if (legacyCriteria.Count > 0)
+            {
+                writer.WriteStartArray("legacyCriteria");
+                foreach ((string criteriaName, string suggestedIndicator) in legacyCriteria)
+                {
+                    writer.WriteStartObject();
+                    writer.WriteString("name", criteriaName);
+                    writer.WriteString("suggestedIndicator", suggestedIndicator);
+                    writer.WriteEndObject();
                 }
 
                 writer.WriteEndArray();
@@ -986,5 +1001,38 @@ internal sealed class RunScreenerTool : IMcpTool
         {
             writer.WriteNull(name);
         }
+    }
+
+    private static List<(string Name, string SuggestedIndicator)> CollectLegacyCriteria(IReadOnlyList<ScreenerLeaf> leaves)
+    {
+        var items = new List<(string Name, string SuggestedIndicator)>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void CollectSide(ScreenerIndicatorSideConfig side)
+        {
+            if (side.CategoryType != ScreenerItemCategoryType.Criteria)
+            {
+                return;
+            }
+
+            string? name = side.ResolveCriteriaName();
+            if (name is not null
+                && LegacyCriteriaNameMap.TryResolve(name, out IndicatorType suggested)
+                && seen.Add(name))
+            {
+                items.Add((name, suggested.ToString()));
+            }
+        }
+
+        foreach (ScreenerLeaf leaf in leaves)
+        {
+            CollectSide(leaf.Entry.LeftHand);
+            if (leaf.Entry.TargetMode == RightHandTargetMode.Indicator)
+            {
+                CollectSide(leaf.Entry.RightHand);
+            }
+        }
+
+        return items;
     }
 }

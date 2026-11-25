@@ -42,12 +42,13 @@ public class ScatterMetricRegistrationViewModelTests
             {
                 "Active", "Divider", "AllFilters",
                 "Header", "Group:Price", "Group:Trend", "Group:Oscillator", "Group:Volume", "Group:Volatility", "Group:Math", "Group:Chart",
+                "Group:Pattern Recognition", "Group:Market Structure", "Group:Harmonic", "Group:Trading Rules", "Group:Wave Theory", "Group:Candlestick Patterns",
                 "Header", "Group:Basic", "Group:Price/Volume", "Group:Valuation", "Group:Profitability", "Group:Financial Health",
             }, kinds);
             Assert.Equal("ScatterMetric_Nav_Active", nav[0].Title);
             Assert.Equal("Nav_AllFilters", nav[2].Title);
             Assert.Equal("IndicatorRegistration_NavHeader_Indicators", nav[3].Title);
-            Assert.Equal("IndicatorRegistration_NavHeader_Columns", nav[11].Title);
+            Assert.Equal("IndicatorRegistration_NavHeader_Columns", nav[17].Title);
             Assert.All(nav.Where(n => n.Kind == ScatterMetricNavKind.Group), n => Assert.StartsWith("ScreenerGroup_", n.Title));
             Assert.DoesNotContain(nav, n => n.Group?.CategoryType == "Criteria");
         }

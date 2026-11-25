@@ -96,13 +96,23 @@ internal sealed class ScreenerConditionBinder
     /// </summary>
     public BoundSortSide BindSortSide(JsonElement side, string path)
     {
-        if (side.ValueKind == JsonValueKind.Object && side.TryGetProperty("criteria", out _))
+        if (side.ValueKind == JsonValueKind.Object && side.TryGetProperty("criteria", out JsonElement criteriaElement))
         {
+            string? criteriaName = criteriaElement.ValueKind == JsonValueKind.String ? criteriaElement.GetString()?.Trim() : null;
+            if (!string.IsNullOrEmpty(criteriaName))
+            {
+                criteriaName = _screenerCatalog.FindCriteria(criteriaName)?.ShortName ?? criteriaName;
+            }
+
+            string hint = LegacyCriteriaNameMap.TryResolve(criteriaName, out IndicatorType suggested)
+                ? $"Use conditionTree with indicator: \"{suggested}\" to filter symbols; for sortBy, use a numeric indicator, a price, a numeric column, or a directional/rule series (e.g. Direction or RuleCode)."
+                : "Sort by an indicator, a price or a numeric column.";
+
             throw new ToolException(
                 ToolErrorCodes.InvalidArgument,
                 "A criteria side is 1 or 0 (pattern present or not) and cannot rank symbols.",
                 $"{path}.criteria",
-                "Sort by an indicator, a price or a numeric column.");
+                hint);
         }
 
         var state = new State();

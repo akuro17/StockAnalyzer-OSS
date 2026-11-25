@@ -22,6 +22,9 @@ public static class IndicatorSeriesNames
     /// <summary>The name of the signal series of GranvilleLaw (a value the data window shows).</summary>
     public const string GranvilleSignals = "Signals";
 
+    /// <summary>The second output of the chart-pattern flag indicators that have a direction: -1m bearish, 0m none, +1m bullish. A helper series (not charted, see IndicatorChartSuppression).</summary>
+    public const string PatternDirection = "Direction";
+
     private static readonly string[] DirectionalSignalSeries = { "BullishSignals", "BearishSignals", "BuySignals", "SellSignals" };
 
     /// <summary>True for the four buy/sell/bullish/bearish signal series; the data window and the chart information line leave them out.</summary>

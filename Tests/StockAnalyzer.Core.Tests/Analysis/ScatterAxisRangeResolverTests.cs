@@ -94,8 +94,8 @@ public class ScatterAxisRangeResolverTests
     [Fact]
     public void TheOutputsOutsideTheirRange_GetAnAutomaticAxis()
     {
-        // 12 + JarqueBera.JBStatistic + LjungBoxQ.QStatistic (statistical functions plan R3; both leave their fixed 0..1 p-value axis on the audit series, see the audit tests below).
-        Assert.Equal(14, ScatterAxisRangeResolver.OutputsOutsideTheirRange.Count);
+        // 12 + JarqueBera.JBStatistic + LjungBoxQ.QStatistic + GranvilleBuySignal.RuleCode + GranvilleSellSignal.RuleCode (discrete rule codes [0,4] / [-4,0] outside fixed [0,1.2]).
+        Assert.Equal(16, ScatterAxisRangeResolver.OutputsOutsideTheirRange.Count);
         foreach ((IndicatorType type, string output) in ScatterAxisRangeResolver.OutputsOutsideTheirRange)
         {
             var metric = ScatterMetricTestKit.Indicator(type, 0, output);

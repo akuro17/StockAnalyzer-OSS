@@ -350,6 +350,11 @@ internal sealed class GetCapabilitiesTool : IMcpTool
                 writer.WriteBoolean("isText", true);
             }
 
+            if (item.SuggestedIndicator is not null)
+            {
+                writer.WriteString("suggestedIndicator", item.SuggestedIndicator);
+            }
+
             writer.WriteEndObject();
         }
 

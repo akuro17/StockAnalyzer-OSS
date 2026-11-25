@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Indicators.PatternFlags;
 using StockAnalyzer.Core.Models.Parameters;
 using StockAnalyzer.Core.Models.Screener;
 using StockAnalyzer.Core.Models.ScreeningConditions;
@@ -22,7 +23,7 @@ public static class ScreenerHistoryRequirements
     /// Bars a Criteria pattern (candle pattern, harmonic, Elliott, market structure, ...) is evaluated on: the window ending at the target bar.
     /// An algorithm constant of the pattern detectors, not a user tunable. Granville's law uses <c>GranvilleLawCondition.RequiredCandleCount()</c> instead.
     /// </summary>
-    public const int CriteriaWindowBars = 100;
+    public const int CriteriaWindowBars = ChartConstants.PatternDetectionWindowBars;
 
     /// <summary>
     /// The window (bars ending at the evaluated bar) the Criteria named <paramref name="criteriaName"/> is evaluated on: Granville's law needs its own
@@ -69,7 +70,8 @@ public static class ScreenerHistoryRequirements
         int required = (maxPeriod * IndicatorDefaultConstants.EmaConvergenceMultiplier) + maxOffset + HistoryMarginBars;
 
         // A Criteria needs its whole window behind the bar it evaluates, whatever the margin above is (Granville's window is longer than the margin).
-        return Math.Max(DefaultStandardCandleCount, Math.Max(required, GetMaxCriteriaReach(condition)));
+        // Flag indicators also use GetMinimumBars directly (R-29) so high-offset or long-period conditions always cover N_min + offset without 5x inflation.
+        return Math.Max(DefaultStandardCandleCount, Math.Max(required, Math.Max(GetMaxCriteriaReach(condition), GetMaxFlagReach(condition))));
     }
 
     /// <summary>
@@ -331,6 +333,33 @@ public static class ScreenerHistoryRequirements
             ? side.Offset + GetCriteriaWindowBars(side.ResolveCriteriaName() ?? string.Empty)
             : 0;
 
+    private static int GetMaxFlagReach(IScreeningCondition condition)
+    {
+        if (condition is ScreenerIndicatorEntry entry)
+        {
+            int left = GetFlagReach(entry.LeftHand);
+            int right = entry.TargetMode == RightHandTargetMode.Indicator ? GetFlagReach(entry.RightHand) : 0;
+            return Math.Max(left, right);
+        }
+
+        if (condition is BundledSignalCondition bundle && bundle.Conditions != null)
+        {
+            return bundle.Conditions.Select(GetMaxFlagReach).DefaultIfEmpty(0).Max();
+        }
+
+        if (condition is ScreenerConditionTreeCondition treeCondition)
+        {
+            return EnumerateEntries(treeCondition.Root).Select(GetMaxFlagReach).DefaultIfEmpty(0).Max();
+        }
+
+        return 0;
+    }
+
+    private static int GetFlagReach(ScreenerIndicatorSideConfig? side)
+        => side != null && side.CategoryType == ScreenerItemCategoryType.Indicator && PatternFlagIndicatorCatalog.Contains(side.IndicatorType)
+            ? GetMinimumBars(side.IndicatorType, side.Parameters, side.Offset)
+            : 0;
+
     private static int GetMaxOffset(IScreeningCondition condition)
     {
         if (condition is ScreenerIndicatorEntry entry)
@@ -377,11 +406,25 @@ public static class ScreenerHistoryRequirements
 
     /// <summary>
     /// Gets the minimum bars required for a single indicator configuration.
+    /// Pattern flag types (plan R-29) take an additive early branch returning <c>max(N_min, PatternFlagWarmupBars) + offset</c>
+    /// so <c>WarmupBars = 500</c> is never multiplied by <c>EmaConvergenceMultiplier</c>.
     /// </summary>
     public static int GetMinimumBars(IndicatorType type, IReadOnlyDictionary<string, object>? parameters = null, int offset = 0)
     {
+        if (PatternFlagIndicatorCatalog.TryGet(type, out PatternFlagSpec? flagSpec))
+        {
+            return ComputeFlagMinimumBars(flagSpec, parameters) + Math.Max(0, offset);
+        }
+
         int warmup = ResolveIndicatorWarmupBars(type, parameters);
         return (warmup * IndicatorDefaultConstants.EmaConvergenceMultiplier) + offset + HistoryMarginBars;
+    }
+
+    private static int ComputeFlagMinimumBars(PatternFlagSpec flagSpec, IReadOnlyDictionary<string, object>? parameters)
+    {
+        CoreIndicatorParameterBase parameterObject = flagSpec.CreateDefaultParameter();
+        ScreenerValueExtractor.TryApplyParametersBestEffort(parameterObject, parameters);
+        return Math.Max(flagSpec.MinBars, Math.Max(parameterObject.GetRequiredWarmupBars(), PatternFlagParameterLimits.WarmupBars));
     }
 
     /// <summary>

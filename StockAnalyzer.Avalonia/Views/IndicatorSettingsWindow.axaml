@@ -832,7 +832,7 @@
                                         </ListBox.Styles>
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
-                                                <TextBlock Text="{Binding}"
+                                                <TextBlock Text="{Binding Converter={x:Static converters:EnumToLocalizedDisplayNameConverter.Instance}}"
                                                            Foreground="{DynamicResource Brush.Text.Primary}"
                                                            VerticalAlignment="Center"/>
                                             </DataTemplate>

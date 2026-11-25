@@ -217,6 +217,48 @@ public class ParameterViewBuilderTests
         Assert.Equal(140, enumCombo!.Width);
         Assert.Equal(Enum.GetValues<VwapResetPeriod>().Cast<object>().ToList(), enumCombo.ItemsSource!.Cast<object>().ToList());
     }
+
+    [AvaloniaFact]
+    public void Build_WithInlineBoolParameters_DoesNotDuplicateLabelInCheckBoxContent()
+    {
+        var builder = new ParameterViewBuilder();
+        var parameter = CoreCandlePatternParameter.CreateFor(StockAnalyzer.Core.Models.IndicatorType.CandleHammer);
+
+        var control = builder.Build(parameter, Array.Empty<string>(), ParameterFormLayout.InlineLabel);
+        var stackPanel = Assert.IsType<StackPanel>(control);
+
+        var checkBoxRows = stackPanel.Children
+            .OfType<Border>()
+            .Select(b => b.Child as Grid)
+            .Where(g => g != null && g.Children.Count >= 2 && Grid.GetColumn((Control)g.Children[1]) == 1 && g.Children[1] is CheckBox)
+            .ToList();
+
+        Assert.NotEmpty(checkBoxRows);
+        foreach (var rowGrid in checkBoxRows)
+        {
+            var labelCell = Assert.IsType<Border>(rowGrid!.Children[0]);
+            var label = Assert.IsType<TextBlock>(labelCell.Child);
+            var checkBox = Assert.IsType<CheckBox>(rowGrid.Children[1]);
+
+            Assert.False(string.IsNullOrWhiteSpace(label.Text));
+            Assert.Null(checkBox.Content);
+            Assert.Equal(label.Text, global::Avalonia.Automation.AutomationProperties.GetName(checkBox));
+        }
+    }
+
+    [AvaloniaFact]
+    public void Build_WithTwoColumnFieldsBoolParameter_RetainsLabelInCheckBoxContent()
+    {
+        var builder = new ParameterViewBuilder();
+        var parameter = new CoreStructureTrendParameter();
+
+        var control = builder.Build(parameter, Array.Empty<string>(), ParameterFormLayout.TwoColumnFields);
+        var panel = Assert.IsType<StockAnalyzer.Avalonia.Views.Controls.ResponsiveFormPanel>(control);
+
+        var checkBox = Assert.Single(panel.Children.OfType<CheckBox>());
+        var content = checkBox.Content?.ToString();
+        Assert.False(string.IsNullOrWhiteSpace(content));
+    }
 }
 
 

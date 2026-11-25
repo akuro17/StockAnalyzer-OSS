@@ -42,7 +42,12 @@ public class DefaultCoreIndicatorSettingsTests
         // + 1 VarianceRatio (disabled by default, added 2026-11-17, statistical functions plan R6).
         // + 3 QuantileBands + TheilSenRegression + CornishFisherVaR (disabled by default, added 2026-11-17, statistical functions plan R7).
         // + 4 Renko + PointAndFigure + Kagi + ThreeLineBreak (disabled by default, added 2026-11-20, block chart overlays plan T4).
-        Assert.Equal(129, defaults.Count);
+        // + 43 candlestick pattern flags CandleBullishMarubozu ... CandleBearishBreakaway (disabled by default, added 2026-11-25, chart patterns plan ChartPatterns56 run 2; rows of PatternFlagIndicatorCatalog).
+        // + 6 PatternHeadAndShoulders + PatternDoubleTopBottom + PatternFlag + MarketStructureBos + MarketStructureChoch + MarketStructureHhHl (disabled by default, added 2026-11-25, chart patterns plan run 3).
+        // + 3 HarmonicGartley + HarmonicButterfly + HarmonicBat (disabled by default, added 2026-11-25, chart patterns plan run V2-6).
+        // + 4 GranvilleBuySignal + GranvilleSellSignal + ElliottWaveImpulse + ElliottWaveCorrective (disabled by default, added 2026-11-25, chart patterns plan run V2-7).
+        // + 1 MarketStructureLlLh (disabled by default, added 2026-11-26, U-W10 bearish mirror of MarketStructureHhHl).
+        Assert.Equal(186, defaults.Count);
     }
 
     [Fact]

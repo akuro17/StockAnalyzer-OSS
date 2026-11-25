@@ -18,7 +18,7 @@ namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 public class IndicatorRegistrationViewModelTemplatesTests
 {
     [Fact]
-    public void NavGroups_WaveTheory_IsFollowedByDividerAndTemplates()
+    public void NavGroups_LastGroup_IsFollowedByDividerAndTemplates()
     {
         // Arrange
         var vm = new IndicatorRegistrationViewModel();
@@ -28,18 +28,21 @@ public class IndicatorRegistrationViewModelTemplatesTests
         int waveTheoryIndex = navGroups.FindIndex(g =>
             !g.IsHeader && !g.IsDivider && !g.IsTemplates &&
             string.Equals(g.Group?.Name, "Wave Theory", StringComparison.OrdinalIgnoreCase));
+        int lastGroupIndex = navGroups.FindLastIndex(g => !g.IsHeader && !g.IsDivider && !g.IsTemplates);
 
         // Assert
-        Assert.True(waveTheoryIndex >= 0, "Wave Theory group must exist in NavGroups.");
-        Assert.True(waveTheoryIndex + 2 < navGroups.Count, "Wave Theory must be followed by at least two items (Divider and Templates).");
+        Assert.True(waveTheoryIndex >= 0, "Wave Theory indicator group must exist in NavGroups.");
+        Assert.True(lastGroupIndex >= 0, "At least one category group must exist in NavGroups.");
+        Assert.True(lastGroupIndex + 2 < navGroups.Count, "Last group must be followed by Divider and Templates.");
 
-        var dividerItem = navGroups[waveTheoryIndex + 1];
-        Assert.True(dividerItem.IsDivider, "Item directly after Wave Theory must be a Divider.");
+        var dividerItem = navGroups[lastGroupIndex + 1];
+        Assert.True(dividerItem.IsDivider, "Item directly after the last group must be a Divider.");
         Assert.False(dividerItem.CanSelect, "Divider item must not be selectable.");
 
-        var templatesItem = navGroups[waveTheoryIndex + 2];
+        var templatesItem = navGroups[lastGroupIndex + 2];
         Assert.True(templatesItem.IsTemplates, "Item directly after Divider must be Templates.");
         Assert.True(templatesItem.CanSelect, "Templates item must be selectable.");
+        Assert.Equal(navGroups.Count - 1, lastGroupIndex + 2);
     }
 
     [Fact]

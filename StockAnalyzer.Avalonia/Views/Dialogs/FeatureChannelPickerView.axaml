@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:dialogs="using:StockAnalyzer.Avalonia.ViewModels.Dialogs"
              xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+             xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
              xmlns:controls="clr-namespace:StockAnalyzer.Avalonia.Views.Controls;assembly=StockAnalyzer.Avalonia"
              xmlns:c="using:StockAnalyzer.Avalonia.Common"
              xmlns:templates="using:StockAnalyzer.Core.Models.Templates"
@@ -96,7 +97,13 @@
                              ItemsSource="{Binding Categories}"
                              SelectedItem="{Binding SelectedCategory, Mode=TwoWay}"
                              Background="Transparent" BorderThickness="0"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={x:Static conv:EnumToLocalizedDisplayNameConverter.Instance}}"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
 
                     <Border Height="1" Background="{DynamicResource Brush.Border.Primary}" Margin="4,6"/>
 

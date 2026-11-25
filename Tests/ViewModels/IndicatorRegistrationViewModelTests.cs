@@ -144,10 +144,11 @@ public class IndicatorRegistrationViewModelTests
 
         vm.SelectedGroupItem = candlestickGroup;
 
-        var names = vm.FilteredIndicators.Select(i => i.ShortName).ToList();
+        var names = vm.FilteredIndicators.Select(i => i.DisplayName).ToList();
         int bearishIndex = names.IndexOf(bearishName);
         int bullishIndex = names.IndexOf(bullishName);
 
+        Assert.All(vm.FilteredIndicators, i => Assert.Equal(ScreenerItemCategoryType.Indicator, i.CategoryType));
         Assert.True(bearishIndex >= 0, $"'{bearishName}' not found in Candlestick Patterns catalog.");
         Assert.True(bullishIndex >= 0, $"'{bullishName}' not found in Candlestick Patterns catalog.");
         Assert.Equal(bearishIndex + 1, bullishIndex);
@@ -162,7 +163,7 @@ public class IndicatorRegistrationViewModelTests
 
         vm.SelectedGroupItem = candlestickGroup;
 
-        var names = vm.FilteredIndicators.Select(i => i.ShortName).ToList();
+        var names = vm.FilteredIndicators.Select(i => i.DisplayName).ToList();
 
         // Verify strict leading character milestone ordering (A -> B -> C -> D -> E -> F -> G -> H -> I -> L -> M -> P -> R -> S -> T)
         int idxAdvance = names.IndexOf("Advance Block");                         // A
@@ -311,52 +312,67 @@ public class IndicatorRegistrationViewModelTests
     }
 
     [Fact]
-    public void CriteriaLeftBinding_SetsRightNumericValueToZero_AndAllowsPatternMatchToSatisfy()
+    public void NavGroups_ExcludesLegacyCriteriaSection_AndContainsPatternIndicatorGroups()
     {
         var vm = new IndicatorRegistrationViewModel();
-        var criteriaItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Criteria);
 
-        vm.SelectedIndicator = criteriaItem;
+        Assert.DoesNotContain(vm.NavGroups, g => string.Equals(g.Group?.CategoryType, "Criteria", System.StringComparison.OrdinalIgnoreCase));
 
-        Assert.Equal(0m, vm.RightNumericValue);
-        Assert.Equal(ComparisonOperator.GreaterThan, vm.SelectedComparisonOperator);
+        string[] expectedGroups =
+        {
+            ScreenerGroupNames.PatternRecognition,
+            ScreenerGroupNames.MarketStructure,
+            ScreenerGroupNames.Harmonic,
+            ScreenerGroupNames.TradingRules,
+            ScreenerGroupNames.WaveTheory,
+            ScreenerGroupNames.CandlestickPatterns,
+        };
+
+        foreach (string groupName in expectedGroups)
+        {
+            Assert.Contains(
+                vm.NavGroups,
+                g => !g.IsHeader && g.Group?.CategoryType == "Indicator" && string.Equals(g.Group.Name, groupName, System.StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    [Fact]
+    public void AllFilters_And_GroupBrowse_ExcludeCriteria_AndIncludePatternFlags()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+        var allFilters = vm.NavGroups.First(g => !g.IsHeader && g.Group?.Name == "All Filters");
+        vm.SelectedGroupItem = allFilters;
+
+        Assert.DoesNotContain(vm.FilteredIndicators, i => i.CategoryType == ScreenerItemCategoryType.Criteria);
+        Assert.Contains(vm.FilteredIndicators, i => i.CategoryType == ScreenerItemCategoryType.Indicator && i.IndicatorType == IndicatorType.CandleHammer);
+        Assert.Contains(vm.FilteredIndicators, i => i.CategoryType == ScreenerItemCategoryType.Indicator && i.IndicatorType == IndicatorType.PatternHeadAndShoulders);
+
+        var candlesGroup = vm.NavGroups.First(g =>
+            !g.IsHeader && g.Group?.CategoryType == "Indicator" && g.Group.Name == ScreenerGroupNames.CandlestickPatterns);
+        vm.SelectedGroupItem = candlesGroup;
+
+        Assert.Equal(43, vm.FilteredIndicators.Count);
+        Assert.All(vm.FilteredIndicators, i => Assert.Equal(ScreenerItemCategoryType.Indicator, i.CategoryType));
+    }
+
+    [Fact]
+    public void PatternFlagIndicator_LeftBinding_UsesDefaultNumericValue_AndRegistersIndicatorEntry()
+    {
+        var vm = new IndicatorRegistrationViewModel();
+        var allFilters = vm.NavGroups.First(g => !g.IsHeader && g.Group?.Name == "All Filters");
+        vm.SelectedGroupItem = allFilters;
+
+        var patternItem = vm.FilteredIndicators.Single(i => i.CategoryType == ScreenerItemCategoryType.Indicator && i.IndicatorType == IndicatorType.PatternHeadAndShoulders);
+        vm.SelectedIndicator = patternItem;
+
+        Assert.Equal(50m, vm.RightNumericValue);
+        Assert.True(vm.RegisterIndicatorCommand.CanExecute(null));
 
         vm.RegisterIndicatorCommand.Execute(null);
         var entry = vm.RegisteredEntries[^1];
 
-        Assert.Equal(0m, entry.RightNumericValue);
-        Assert.Equal(ComparisonOperator.GreaterThan, entry.Operator);
-    }
-
-    [Fact]
-    public void NonCriteriaAfterCriteria_RestoresDefaultRightNumericValue()
-    {
-        var vm = new IndicatorRegistrationViewModel();
-        var criteriaItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Criteria);
-        var indicatorItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Indicator);
-
-        vm.SelectedIndicator = criteriaItem;
-        Assert.Equal(0m, vm.RightNumericValue);
-
-        vm.SelectedIndicator = indicatorItem;
-        Assert.Equal(50m, vm.RightNumericValue);
-    }
-
-    [Fact]
-    public void ManualChangeToRightNumericValue_PreservedWhenSwitchingToNonCriteria()
-    {
-        var vm = new IndicatorRegistrationViewModel();
-        var criteriaItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Criteria);
-        var indicatorItem = vm.FilteredIndicators.First(i => i.CategoryType == ScreenerItemCategoryType.Indicator);
-
-        vm.SelectedIndicator = criteriaItem;
-        Assert.Equal(0m, vm.RightNumericValue);
-
-        // User edits value manually
-        vm.RightNumericValue = 10m;
-
-        // Switch to non-criteria: manual value must NOT be overwritten
-        vm.SelectedIndicator = indicatorItem;
-        Assert.Equal(10m, vm.RightNumericValue);
+        Assert.Equal(ScreenerItemCategoryType.Indicator, entry.CategoryType);
+        Assert.Equal(IndicatorType.PatternHeadAndShoulders, entry.LeftHand.IndicatorType);
+        Assert.Equal(50m, entry.RightNumericValue);
     }
 }

@@ -321,6 +321,12 @@ public static class ChartConstants
     /// <summary>Default maximum number of bars elapsed since pattern confirmation for screener detection recency filtering.</summary>
     public const int DefaultPatternMaxBarsSinceConfirmation = 5;
 
+    /// <summary>
+    /// Bars of the window that ends at the evaluated bar and is handed to the chart-pattern detectors (candlestick context, formations, harmonic, Elliott, market structure).
+    /// An algorithm constant of the detectors (unit: bars), not a user tunable: the Screener Criteria, the chart-pattern flag indicators and the Screener history sizing all read this one value.
+    /// </summary>
+    public const int PatternDetectionWindowBars = 100;
+
     /// <summary>Default minimum window length (bars) of DTW chart-pattern detection (fallback of the PatternRecognition:MinWindow setting).</summary>
     public const int PatternRecognitionDefaultMinWindow = 20;
 

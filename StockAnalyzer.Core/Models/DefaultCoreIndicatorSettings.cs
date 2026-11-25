@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Indicators.Advanced;
 using StockAnalyzer.Core.Models.Indicators.Chart;
 using StockAnalyzer.Core.Models.Indicators.Oscillators;
+using StockAnalyzer.Core.Models.Indicators.PatternFlags;
 using StockAnalyzer.Core.Models.Indicators.Statistics;
 using StockAnalyzer.Core.Models.Indicators.Trend;
 using StockAnalyzer.Core.Models.Indicators.Volume;
@@ -49,7 +51,7 @@ public static class DefaultCoreIndicatorSettings
 
     public static List<CoreIndicatorSettings> GetDefault()
     {
-        return new List<CoreIndicatorSettings>
+        var defaults = new List<CoreIndicatorSettings>
         {
             new CoreIndicatorSettings
             {
@@ -2034,6 +2036,58 @@ public static class DefaultCoreIndicatorSettings
                 }
             }
         };
+
+        // The chart-pattern flag indicators: one entry per row of the catalog table (IndicatorRegistrationCatalog reads only static defaults).
+        foreach (PatternFlagSpec spec in PatternFlagIndicatorCatalog.Rows)
+        {
+            defaults.Add(CreatePatternFlag(spec));
+        }
+
+        return defaults;
+    }
+
+    /// <summary>
+    /// The default setting of a chart-pattern flag indicator (decision S-6): a disabled sub-window histogram of the flag with a fixed Y range: 0m..1.2m, or -1.2m..+1.2m for a bidirectional type (plan ChartPatterns56 v2).
+    /// A bidirectional type has one colour entry per visible side series (bullish green, bearish red; <c>Main</c> and <c>Direction</c> are hidden helpers). The render primitive is NOT stored here: a null
+    /// <see cref="CoreIndicatorSettings.MainRenderPrimitive"/> resolves to Histogram through <c>SeriesRenderStyleCatalog.ResolveDefaultPrimitive</c>, so "restore default" in the style editor returns to the histogram.
+    /// </summary>
+    public static CoreIndicatorSettings CreatePatternFlag(PatternFlagSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(spec);
+
+        var settings = new CoreIndicatorSettings
+        {
+            TypeEnum = spec.Type,
+            Category = spec.Category,
+            IsEnabled = false,
+            ParameterObject = spec.CreateDefaultParameter(),
+            Color = spec.Color,
+            Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+            Style = CoreLineStyle.Solid,
+            IsOverlay = false,
+            MinValue = spec.YMin,
+            MaxValue = spec.YMax
+        };
+
+        if (spec.HasDirection)
+        {
+            settings.SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+            {
+                new SeriesColorConfig { Name = spec.BullishSeries!, DisplayName = spec.BullishSeries!, Color = IndicatorDefaultConstants.PatternFlagBullishColor, TargetSeries = new List<string> { spec.BullishSeries! } },
+                new SeriesColorConfig { Name = spec.BearishSeries!, DisplayName = spec.BearishSeries!, Color = IndicatorDefaultConstants.PatternFlagBearishColor, TargetSeries = new List<string> { spec.BearishSeries! } },
+            };
+        }
+        else if (spec.HasRules)
+        {
+            settings.SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>();
+            for (int i = 0; i < spec.RuleSeries!.Length; i++)
+            {
+                string ruleName = spec.RuleSeries[i];
+                settings.SeriesColors.Add(new SeriesColorConfig { Name = ruleName, DisplayName = ruleName, Color = spec.RuleColors![i], TargetSeries = new List<string> { ruleName } });
+            }
+        }
+
+        return settings;
     }
 
     /// <summary>
@@ -2115,6 +2169,17 @@ public static class DefaultCoreIndicatorSettings
         {
             indicator.MinValue = null;
             indicator.MaxValue = null;
+        }
+
+        // A bidirectional chart-pattern flag drew its 0m..1.2m range before the bearish side series (-1m) existed. An instance whose range is EXACTLY that old default is widened to the current default
+        // (the set of types is the catalog rows with a direction); a range the user set is never touched (plan R-30).
+        if (indicator.TypeEnum is { } flagType
+            && PatternFlagIndicatorCatalog.TryGet(flagType, out PatternFlagSpec flagSpec)
+            && flagSpec.HasDirection
+            && indicator.MinValue == IndicatorDefaultConstants.PatternFlagMinValue
+            && indicator.MaxValue == IndicatorDefaultConstants.PatternFlagMaxValue)
+        {
+            indicator.MinValue = flagSpec.YMin;
         }
 
         // Backfill a fixed Y-axis range (e.g. IFFT Instantaneous Phase's SineWave/LeadSine

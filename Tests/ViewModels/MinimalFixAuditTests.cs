@@ -77,7 +77,7 @@ public class MinimalFixAuditTests
     }
 
     [Fact]
-    public void IndicatorRegistrationViewModel_CanBindAndRegister_ColumnAndCriteriaItems()
+    public void IndicatorRegistrationViewModel_CanBindAndRegister_ColumnAndPatternIndicatorItems()
     {
         var vm = new IndicatorRegistrationViewModel();
 
@@ -101,23 +101,26 @@ public class MinimalFixAuditTests
         vm.RegisterIndicatorCommand.Execute(null);
         Assert.Equal(initialCount + 1, vm.RegisteredEntries.Count);
 
-        // 2. Test Criteria item (IndicatorType is null)
-        var criteriaItem = new ScreenerCatalogItem
+        // 2. Test pattern-flag Indicator item replacing retired Criteria UI
+        var patternIndicatorItem = new ScreenerCatalogItem
         {
-            CategoryType = ScreenerItemCategoryType.Criteria,
-            GroupName = "Pattern Recognition",
-            ShortName = "Head and Shoulders",
-            DisplayName = "Head & Shoulders Pattern"
+            CategoryType = ScreenerItemCategoryType.Indicator,
+            GroupName = ScreenerGroupNames.PatternRecognition,
+            IndicatorType = IndicatorType.PatternHeadAndShoulders,
+            ShortName = nameof(IndicatorType.PatternHeadAndShoulders),
+            DisplayName = "Head and Shoulders"
         };
 
-        vm.SelectedIndicator = criteriaItem;
+        vm.SelectedIndicator = patternIndicatorItem;
 
         Assert.NotNull(vm.LeftSelectedIndicator);
-        Assert.Equal("Head & Shoulders Pattern", vm.LeftSelectedIndicator.DisplayName);
+        Assert.Equal("Head and Shoulders", vm.LeftSelectedIndicator.DisplayName);
         Assert.True(vm.RegisterIndicatorCommand.CanExecute(null));
 
         vm.RegisterIndicatorCommand.Execute(null);
         Assert.Equal(initialCount + 2, vm.RegisteredEntries.Count);
+        Assert.Equal(ScreenerItemCategoryType.Indicator, vm.RegisteredEntries[^1].CategoryType);
+        Assert.Equal(IndicatorType.PatternHeadAndShoulders, vm.RegisteredEntries[^1].LeftHand.IndicatorType);
     }
 
     [Fact]
@@ -185,8 +188,9 @@ public class MinimalFixAuditTests
         // 2. Select "All Filters"
         vm.SelectedGroupItem = firstItem;
 
-        // 3. Verify FilteredIndicators contains catalog items across all categories
+        // 3. Verify FilteredIndicators contains Indicators and Columns across categories, but excludes retired Criteria
         Assert.True(vm.FilteredIndicators.Count > 100);
+        Assert.DoesNotContain(vm.FilteredIndicators, i => i.CategoryType == ScreenerItemCategoryType.Criteria);
 
         // 4. Verify catalog list is strictly sorted alphabetically by DisplayName
         var displayNames = vm.FilteredIndicators.Select(i => i.DisplayName).ToList();

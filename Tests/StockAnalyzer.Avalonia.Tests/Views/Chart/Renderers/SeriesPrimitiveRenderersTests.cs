@@ -2797,4 +2797,147 @@ public sealed class SeriesPrimitiveRenderersTests
         var px = bmp.GetPixel((int)MathF.Floor(BarX(tr, 5)), (int)MathF.Floor(PriceY(tr, 60m)));
         Assert.Equal(upperColor.ToSkColor(), px);
     }
+
+    [Fact]
+    public void PatternFlag_SubWindow_RendersDefaultHistogram_NotLine_AndSkipsZeroBars()
+    {
+        var setting = DefaultCoreIndicatorSettings.CreatePatternFlag(
+            StockAnalyzer.Core.Models.Indicators.PatternFlags.PatternFlagIndicatorCatalog.Get(IndicatorType.CandleHammer));
+        setting.Id = "pattern_hammer_hist";
+        setting.IsEnabled = true;
+
+        var values = new decimal?[CandleCount];
+        for (int i = 0; i < CandleCount; i++) values[i] = i == 10 ? 1m : 0m;
+        var series = new Dictionary<string, IReadOnlyList<decimal?>> { [IndicatorResult.MainSeriesName] = values };
+
+        var tr = MakeTransform(0m, 1.2m, CandleCount);
+        using var histBmp = RenderIndicatorViaIndicatorRenderer(
+            setting,
+            series,
+            minY: 0m,
+            maxY: 1.2m,
+            isSubWindowContext: true);
+
+        int bx10 = (int)MathF.Floor(BarX(tr, 10));
+        int midY = (int)MathF.Floor(PriceY(tr, 0.5m));
+        Assert.Equal(setting.Color.ToSkColor(), histBmp.GetPixel(bx10, midY));
+
+        // Zero bar at index 3 must remain untouched (no zero-baseline bar or connecting line)
+        int bx3 = (int)MathF.Floor(BarX(tr, 3));
+        Assert.Equal(SKColors.Black, histBmp.GetPixel(bx3, (int)MathF.Floor(PriceY(tr, 0m))));
+        Assert.Equal(SKColors.Black, histBmp.GetPixel(bx3, midY));
+
+        // Explicit Line override differs from default Histogram
+        var lineSetting = setting.Snapshot();
+        lineSetting.MainRenderPrimitive = SeriesPrimitiveType.Line;
+        using var lineBmp = RenderIndicatorViaIndicatorRenderer(
+            lineSetting,
+            series,
+            minY: 0m,
+            maxY: 1.2m,
+            isSubWindowContext: true);
+
+        Assert.Equal(SKColors.Black, lineBmp.GetPixel(bx10, midY));
+    }
+
+    [Fact]
+    public void PatternFlag_Bidirectional_StandardAndIndexSubWindow_UseSeriesColorsAsHistogram()
+    {
+        var setting = DefaultCoreIndicatorSettings.CreatePatternFlag(
+            StockAnalyzer.Core.Models.Indicators.PatternFlags.PatternFlagIndicatorCatalog.Get(IndicatorType.MarketStructureBos));
+        setting.Id = "pattern_bos_hist";
+        setting.IsEnabled = true;
+
+        var bull = new decimal?[CandleCount];
+        var bear = new decimal?[CandleCount];
+        var main = new decimal?[CandleCount];
+        var dir = new decimal?[CandleCount];
+        for (int i = 0; i < CandleCount; i++)
+        {
+            bull[i] = i == 5 ? 1m : 0m;
+            bear[i] = i == 12 ? -1m : 0m;
+            main[i] = (i == 5 || i == 12) ? 1m : 0m;
+            dir[i] = i == 5 ? 1m : (i == 12 ? -1m : 0m);
+        }
+
+        var series = new Dictionary<string, IReadOnlyList<decimal?>>
+        {
+            [IndicatorResult.MainSeriesName] = main,
+            [IndicatorSeriesNames.PatternDirection] = dir,
+            ["BullishBos"] = bull,
+            ["BearishBos"] = bear,
+        };
+
+        var tr = MakeTransform(-1.2m, 1.2m, CandleCount);
+        using var bmp = RenderIndicatorViaIndicatorRenderer(
+            setting,
+            series,
+            minY: -1.2m,
+            maxY: 1.2m,
+            isSubWindowContext: true);
+
+        Assert.Equal(IndicatorDefaultConstants.PatternFlagBullishColor.ToSkColor(),
+            bmp.GetPixel((int)MathF.Floor(BarX(tr, 5)), (int)MathF.Floor(PriceY(tr, 0.5m))));
+        Assert.Equal(IndicatorDefaultConstants.PatternFlagBearishColor.ToSkColor(),
+            bmp.GetPixel((int)MathF.Floor(BarX(tr, 12)), (int)MathF.Floor(PriceY(tr, -0.5m))));
+        Assert.Equal(SKColors.Black,
+            bmp.GetPixel((int)MathF.Floor(BarX(tr, 2)), (int)MathF.Floor(PriceY(tr, 0m))));
+
+        // Index-based sub-window path (e.g. Renko)
+        var candles = MakeCandles(CandleCount);
+        var indexTr = new GenericCoordinateTransform(ChartAxisMode.Index, Width, Height);
+        indexTr.SetIndexRange(0, CandleCount);
+        indexTr.SetPriceRange(-1.2m, 1.2m);
+        var indexCfg = MakeConfig(indexTr, candleCount: CandleCount, chartType: ChartType.Renko);
+        var result = IndicatorResult.Success(series);
+        var snap = new ChartDataSnapshot(
+            candles: candles,
+            indicatorResults: new Dictionary<string, IIndicatorResult> { { setting.Id, result } },
+            indicatorSettings: new[] { setting },
+            startIndex: 0,
+            count: CandleCount,
+            visibleCandleCount: CandleCount,
+            chartType: ChartType.Renko);
+
+        using var idxBmp = new SKBitmap(Width, Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+        using (var canvas = new SKCanvas(idxBmp))
+        {
+            canvas.Clear(SKColors.Black);
+            using var renderer = new IndicatorRenderer();
+            renderer.RenderIndicator(canvas, Area, snap, setting, indexCfg, isSubWindowContext: true);
+        }
+
+        double colWidth = indexTr.ScaleX;
+        int idx5X = (int)MathF.Floor((float)indexTr.GetXFromIndex(5) + (float)Area.Left + (float)colWidth * 0.5f);
+        int idx12X = (int)MathF.Floor((float)indexTr.GetXFromIndex(12) + (float)Area.Left + (float)colWidth * 0.5f);
+        float zeroY = (float)Area.Top + (float)Area.Height * (float)((1.2m - 0m) / 2.4m);
+        float posHalfY = (float)Area.Top + (float)Area.Height * (float)((1.2m - 0.5m) / 2.4m);
+        float negHalfY = (float)Area.Top + (float)Area.Height * (float)((1.2m - (-0.5m)) / 2.4m);
+
+        Assert.Equal(IndicatorDefaultConstants.PatternFlagBullishColor.ToSkColor(), idxBmp.GetPixel(idx5X, (int)MathF.Floor(posHalfY)));
+        Assert.Equal(IndicatorDefaultConstants.PatternFlagBearishColor.ToSkColor(), idxBmp.GetPixel(idx12X, (int)MathF.Floor(negHalfY)));
+        Assert.Equal(SKColors.Black, idxBmp.GetPixel((int)MathF.Floor((float)indexTr.GetXFromIndex(2) + (float)Area.Left + (float)colWidth * 0.5f), (int)MathF.Floor(zeroY)));
+
+        // Index-based sub-window with UseUpDownColors = true and Offset = 1 uses setting.UpColor/DownColor and shifts bars right by 1
+        var customUp = new IndicatorColor(255, 10, 220, 90);
+        var customDown = new IndicatorColor(255, 240, 40, 60);
+        var shiftedSetting = setting.Snapshot();
+        shiftedSetting.UseUpDownColors = true;
+        shiftedSetting.UpColor = customUp;
+        shiftedSetting.DownColor = customDown;
+        shiftedSetting.Offset = 1;
+
+        using var shiftedIdxBmp = new SKBitmap(Width, Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+        using (var shiftedCanvas = new SKCanvas(shiftedIdxBmp))
+        {
+            shiftedCanvas.Clear(SKColors.Black);
+            using var renderer = new IndicatorRenderer();
+            renderer.RenderIndicator(shiftedCanvas, Area, snap, shiftedSetting, indexCfg, isSubWindowContext: true);
+        }
+
+        int idx6X = (int)MathF.Floor((float)indexTr.GetXFromIndex(6) + (float)Area.Left + (float)colWidth * 0.5f);
+        int idx13X = (int)MathF.Floor((float)indexTr.GetXFromIndex(13) + (float)Area.Left + (float)colWidth * 0.5f);
+        Assert.Equal(customUp.ToSkColor(), shiftedIdxBmp.GetPixel(idx6X, (int)MathF.Floor(posHalfY)));
+        Assert.Equal(customDown.ToSkColor(), shiftedIdxBmp.GetPixel(idx13X, (int)MathF.Floor(negHalfY)));
+    }
 }

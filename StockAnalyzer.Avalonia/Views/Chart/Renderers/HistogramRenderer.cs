@@ -67,7 +67,7 @@ public class HistogramRenderer : IDisposable
             if (valueIndex < 0 || valueIndex >= values.Count) continue;
 
             decimal? val = values[valueIndex];
-            if (!val.HasValue) continue;
+            if (!val.HasValue || val.Value == 0m) continue;
 
             float x;
             if (transform is GenericCoordinateTransform gct && gct.Mode == ChartAxisMode.Index)

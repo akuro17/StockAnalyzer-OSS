@@ -87,29 +87,62 @@ public class ScreenerValueExtractor : IScreenerValueExtractor
         return parameterObject;
     }
 
-    private static void ApplyParametersToObject(
+    internal static void ApplyParametersToObject(
         CoreIndicatorParameterBase parameterObject,
         IReadOnlyDictionary<string, object> parameters)
     {
         var paramType = parameterObject.GetType();
         foreach (var kvp in parameters)
         {
-            var prop = GetParameterProperty(paramType, kvp.Key);
-            if (prop != null && prop.CanWrite && kvp.Value != null)
-            {
-                object? rawValue = UnwrapJsonElement(kvp.Value, prop.PropertyType);
-                if (rawValue == null)
-                {
-                    continue;
-                }
+            ApplySingleParameter(paramType, parameterObject, kvp.Key, kvp.Value);
+        }
+    }
 
-                object converted = prop.PropertyType.IsEnum
-                    ? (rawValue is string enumText
-                        ? Enum.Parse(prop.PropertyType, enumText, ignoreCase: true)
-                        : Enum.ToObject(prop.PropertyType, Convert.ToInt32(rawValue)))
-                    : Convert.ChangeType(rawValue, prop.PropertyType);
-                prop.SetValue(parameterObject, converted);
+    /// <summary>Best-effort parameter application for history sizing: invalid or out-of-type entries are skipped safely.</summary>
+    internal static void TryApplyParametersBestEffort(
+        CoreIndicatorParameterBase parameterObject,
+        IReadOnlyDictionary<string, object>? parameters)
+    {
+        if (parameters == null || parameters.Count == 0)
+        {
+            return;
+        }
+
+        var paramType = parameterObject.GetType();
+        foreach (var kvp in parameters)
+        {
+            try
+            {
+                ApplySingleParameter(paramType, parameterObject, kvp.Key, kvp.Value);
             }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Ignored during conservative history-length estimation.
+            }
+        }
+    }
+
+    private static void ApplySingleParameter(
+        Type paramType,
+        CoreIndicatorParameterBase parameterObject,
+        string key,
+        object? value)
+    {
+        var prop = GetParameterProperty(paramType, key);
+        if (prop != null && prop.CanWrite && value != null)
+        {
+            object? rawValue = UnwrapJsonElement(value, prop.PropertyType);
+            if (rawValue == null)
+            {
+                return;
+            }
+
+            object converted = prop.PropertyType.IsEnum
+                ? (rawValue is string enumText
+                    ? Enum.Parse(prop.PropertyType, enumText, ignoreCase: true)
+                    : Enum.ToObject(prop.PropertyType, Convert.ToInt32(rawValue)))
+                : Convert.ChangeType(rawValue, prop.PropertyType);
+            prop.SetValue(parameterObject, converted);
         }
     }
 

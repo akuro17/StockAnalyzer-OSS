@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using StockAnalyzer.Core.Models.Indicators;
 using StockAnalyzer.Core.Models.Indicators.Chart;
+using StockAnalyzer.Core.Models.Indicators.PatternFlags;
 using StockAnalyzer.Core.Models.Indicators.Trend;
 
 namespace StockAnalyzer.Core.Models.Rendering;
@@ -227,6 +228,12 @@ public static class SeriesRenderStyleCatalog
         if (setting?.TypeEnum == IndicatorType.ParabolicSAR)
         {
             return SeriesPrimitiveType.Dot;
+        }
+
+        // A chart-pattern flag is a 0m/1m histogram by default (decision U-2 B): the type set is the catalog table, so "restore default" returns to the histogram.
+        if (setting?.TypeEnum is { } flagType && PatternFlagIndicatorCatalog.Contains(flagType))
+        {
+            return SeriesPrimitiveType.Histogram;
         }
 
         if (setting != null)

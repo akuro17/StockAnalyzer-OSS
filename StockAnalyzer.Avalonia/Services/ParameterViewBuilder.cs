@@ -273,10 +273,14 @@ public class ParameterViewBuilder
         {
             var checkBox = new CheckBox
             {
-                Content = displayLabel,
                 Margin = new Thickness(12, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center
             };
+            global::Avalonia.Automation.AutomationProperties.SetName(checkBox, displayLabel);
+            if (descAttribute != null || rawName != displayLabel)
+            {
+                ToolTip.SetTip(checkBox, descAttribute?.Description ?? rawName);
+            }
 
             var binding = new Binding(prop.Name)
             {

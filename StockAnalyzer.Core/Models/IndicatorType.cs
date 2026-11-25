@@ -368,7 +368,73 @@ public enum IndicatorType
     // Statistical functions plan, run R7: robust price bands and lines of a window of prices, and the Cornish-Fisher Value at Risk of a window of returns (append-only).
     [Description("Quantile Bands")] QuantileBands,
     [Description("Theil-Sen Regression")] TheilSenRegression,
-    [Description("Cornish-Fisher VaR")] CornishFisherVaR
+    [Description("Cornish-Fisher VaR")] CornishFisherVaR,
+
+    // Chart patterns plan (ChartPatterns56), run 2: the 43 candlestick pattern flags (append-only; the member name is persisted, the description is a UI label that continues the
+    // Screener "Chart Patterns" criteria short name). One pattern = one 0/1 flag series; the pattern of each type is in PatternFlags.Candles.CandlePatternFlagTable.
+    [Description("Bullish Marubozu")] CandleBullishMarubozu,
+    [Description("Bearish Marubozu")] CandleBearishMarubozu,
+    [Description("Hammer / Bullish Umbrella")] CandleHammer,
+    [Description("Inverted Hammer")] CandleInvertedHammer,
+    [Description("Hanging Man / Bearish Umbrella")] CandleHangingMan,
+    [Description("Shooting Star")] CandleShootingStar,
+    [Description("Doji / Cross Doji")] CandleCrossDoji,
+    [Description("Dragonfly Doji")] CandleDragonflyDoji,
+    [Description("Gravestone Doji")] CandleGravestoneDoji,
+    [Description("Bullish Engulfing")] CandleBullishEngulfing,
+    [Description("Bearish Engulfing")] CandleBearishEngulfing,
+    [Description("Bullish Harami")] CandleBullishHarami,
+    [Description("Bearish Harami")] CandleBearishHarami,
+    [Description("Piercing Line")] CandlePiercingLine,
+    [Description("Dark Cloud Cover")] CandleDarkCloudCover,
+    [Description("Homing Pigeon")] CandleHomingPigeon,
+    [Description("Bullish Kicking")] CandleBullishKicking,
+    [Description("Bearish Kicking")] CandleBearishKicking,
+    [Description("Morning Star")] CandleMorningStar,
+    [Description("Evening Star")] CandleEveningStar,
+    [Description("Three White Soldiers")] CandleThreeWhiteSoldiers,
+    [Description("Three Black Crows")] CandleThreeBlackCrows,
+    [Description("Bullish Side-by-Side White Lines")] CandleBullishSideBySideWhiteLines,
+    [Description("Bearish Side-by-Side White Lines")] CandleBearishSideBySideWhiteLines,
+    [Description("Bullish Abandoned Baby")] CandleBullishAbandonedBaby,
+    [Description("Bearish Abandoned Baby")] CandleBearishAbandonedBaby,
+    [Description("Advance Block")] CandleAdvanceBlock,
+    [Description("Deliberation")] CandleDeliberation,
+    [Description("Stick Sandwich")] CandleStickSandwich,
+    [Description("Bullish Tasuki Gap")] CandleBullishTasukiGap,
+    [Description("Bearish Tasuki Gap")] CandleBearishTasukiGap,
+    [Description("Bullish Gap Three Methods")] CandleBullishGapThreeMethods,
+    [Description("Bearish Gap Three Methods")] CandleBearishGapThreeMethods,
+    [Description("Identical Three Crows")] CandleIdenticalThreeCrows,
+    [Description("Bullish Three-Line Strike")] CandleBullishThreeLineStrike,
+    [Description("Bearish Three-Line Strike")] CandleBearishThreeLineStrike,
+    [Description("Concealing Baby Swallow")] CandleConcealingBabySwallow,
+    [Description("Rising Three Methods")] CandleRisingThreeMethods,
+    [Description("Falling Three Methods")] CandleFallingThreeMethods,
+    [Description("Mat Hold")] CandleMatHold,
+    [Description("Ladder Bottom")] CandleLadderBottom,
+    [Description("Bullish Breakaway")] CandleBullishBreakaway,
+    [Description("Bearish Breakaway")] CandleBearishBreakaway,
+
+    // Chart patterns plan (ChartPatterns56), run 3: formation and market structure flags (append-only; descriptions continue the Screener "Chart Patterns" criteria short names).
+    [Description("Head and Shoulders")] PatternHeadAndShoulders,
+    [Description("Double Top / Bottom")] PatternDoubleTopBottom,
+    [Description("Bullish / Bearish Flag")] PatternFlag,
+    [Description("Break of Structure (BOS)")] MarketStructureBos,
+    [Description("Change of Character (CHoCH)")] MarketStructureChoch,
+    [Description("Higher High / Higher Low")] MarketStructureHhHl,
+
+    // Chart patterns plan (ChartPatterns56), run V2-6: harmonic flags (append-only; descriptions continue the Screener "Chart Patterns" criteria short names).
+    [Description("Gartley Pattern")] HarmonicGartley,
+    [Description("Butterfly Pattern")] HarmonicButterfly,
+    [Description("Bat Pattern")] HarmonicBat,
+    [Description("Granville's Law Buy Signal")] GranvilleBuySignal,
+    [Description("Granville's Law Sell Signal")] GranvilleSellSignal,
+    [Description("Elliott Wave Impulse 1-5")] ElliottWaveImpulse,
+    [Description("Elliott Wave Corrective ABC")] ElliottWaveCorrective,
+
+    // WebAi remediation plan (U-W10): bearish market structure trend mirror (append-only; preserves all existing ordinals).
+    [Description("Lower Low / Lower High")] MarketStructureLlLh
 }
 
 public static class IndicatorTypeExtensions

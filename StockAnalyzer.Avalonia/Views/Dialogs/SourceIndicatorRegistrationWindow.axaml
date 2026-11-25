@@ -5,6 +5,7 @@
         xmlns:models="clr-namespace:StockAnalyzer.Core.Models;assembly=StockAnalyzer.Core"
         xmlns:vm="clr-namespace:StockAnalyzer.Avalonia.ViewModels.Dialogs;assembly=StockAnalyzer.Avalonia"
         xmlns:l="clr-namespace:StockAnalyzer.Avalonia.Markup;assembly=StockAnalyzer.Avalonia"
+        xmlns:conv="clr-namespace:StockAnalyzer.Avalonia.Converters;assembly=StockAnalyzer.Avalonia"
         xmlns:controls="clr-namespace:StockAnalyzer.Avalonia.Views.Controls;assembly=StockAnalyzer.Avalonia"
         xmlns:behaviors="using:StockAnalyzer.Avalonia.Behaviors"
         xmlns:c="using:StockAnalyzer.Avalonia.Common"
@@ -113,7 +114,7 @@
                                 </ListBox.Styles>
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding}"
+                                        <TextBlock Text="{Binding Converter={x:Static conv:EnumToLocalizedDisplayNameConverter.Instance}}"
                                                    Foreground="{DynamicResource Brush.Text.Primary}"
                                                    VerticalAlignment="Center"/>
                                     </DataTemplate>
