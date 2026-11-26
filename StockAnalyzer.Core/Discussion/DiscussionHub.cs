@@ -893,6 +893,17 @@ public sealed class DiscussionHub : IDisposable
             content = $"{participant.Handle} ({participant.DisplayName}) {EventPassed}";
             contentBytes = DiscussionText.Utf8Bytes(content);
         }
+        else if (request.Content is null && interpretation is not null)
+        {
+            // Interpretation-only message: the content is absent (an explicit empty or blank content is still refused below), so the structured
+            // interpretation is the whole message and alone is bounded by the message size limit.
+            content = string.Empty;
+            contentBytes = 0;
+            if (interpretationBytes > _settings.MaxMessageBytes)
+            {
+                throw Limit("interpretation", $"interpretation is larger than {_settings.MaxMessageBytes} bytes.");
+            }
+        }
         else
         {
             string? posted = request.Content;
@@ -1021,7 +1032,8 @@ public sealed class DiscussionHub : IDisposable
         long afterSequence = 0,
         int? limit = null,
         int waitSeconds = 0,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        DiscussionReadOptions? options = null)
     {
         CheckToken(participantToken);
         if (afterSequence < 0)
@@ -1040,6 +1052,34 @@ public sealed class DiscussionHub : IDisposable
             throw Limit("waitSeconds", $"waitSeconds must be 0 to {_settings.MaxWaitSeconds}.");
         }
 
+        if (options is { IsActive: true })
+        {
+            if (options.Tail is { } tail)
+            {
+                if (tail < 1 || tail > _settings.MaxReadLimit)
+                {
+                    throw Limit("tail", $"tail must be 1 to {_settings.MaxReadLimit}.");
+                }
+
+                if (afterSequence > 0)
+                {
+                    throw Invalid("afterSequence", "tail cannot be combined with afterSequence.");
+                }
+
+                if (limit is not null)
+                {
+                    throw Invalid("limit", "tail replaces limit; send only one of them.");
+                }
+
+                if (waitSeconds > 0)
+                {
+                    throw Invalid("waitSeconds", "tail cannot be combined with waitSeconds.");
+                }
+            }
+
+            return await ReadFilteredAsync(sessionId, participantToken!, afterSequence, effectiveLimit, waitSeconds, options, cancellationToken).ConfigureAwait(false);
+        }
+
         TaskCompletionSource<bool>? waiter = null;
         Session? waitedSession = null;
         DiscussionReadResult? immediate = WithSession<DiscussionReadResult?>(sessionId, op =>
@@ -1050,33 +1090,7 @@ public sealed class DiscussionHub : IDisposable
             DiscussionReadResult result = Collect(op, participant, afterSequence, effectiveLimit, timedOut: false);
             if (result.Messages.Count == 0 && waitSeconds > 0 && !op.Session.Closed)
             {
-                for (int i = op.Session.Waiters.Count - 1; i >= 0; i--)
-                {
-                    if (string.Equals(op.Session.Waiters[i].ParticipantHandle, participant.Handle, StringComparison.Ordinal))
-                    {
-                        op.Session.Waiters[i].Signal.TrySetResult(false);
-                        op.Session.Waiters.RemoveAt(i);
-                    }
-                }
-
-                if (op.Session.Waiters.Count >= DiscussionLimits.MaxWaitersPerSession)
-                {
-                    throw Limit("waiters", $"There are already {DiscussionLimits.MaxWaitersPerSession} concurrent waiting readers in this discussion.", "Retry with waitSeconds=0 or wait for active readers to complete.");
-                }
-
-                int totalWaiters = 0;
-                foreach (Session s in _sessions.Values)
-                {
-                    totalWaiters += s.Waiters.Count;
-                }
-
-                if (totalWaiters >= DiscussionLimits.MaxTotalWaiters)
-                {
-                    throw Limit("waiters", $"The hub reached its limit of {DiscussionLimits.MaxTotalWaiters} concurrent waiting readers across all discussions.", "Retry with waitSeconds=0 or wait for active readers to complete.");
-                }
-
-                waiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                op.Session.Waiters.Add(new WaiterEntry(participant.Handle, waiter));
+                waiter = RegisterWaiterLocked(op, participant);
                 waitedSession = op.Session;
                 return null;
             }
@@ -1099,17 +1113,7 @@ public sealed class DiscussionHub : IDisposable
         }
         finally
         {
-            lock (waitedSession!.Sync)
-            {
-                for (int i = waitedSession.Waiters.Count - 1; i >= 0; i--)
-                {
-                    if (ReferenceEquals(waitedSession.Waiters[i].Signal, waiter))
-                    {
-                        waitedSession.Waiters.RemoveAt(i);
-                        break;
-                    }
-                }
-            }
+            RemoveWaiter(waitedSession!, waiter!);
         }
 
         // One more evaluation: the session may have changed, closed or been removed meanwhile.
@@ -1134,22 +1138,7 @@ public sealed class DiscussionHub : IDisposable
             int count = (int)Math.Min(limit, last - afterSequence);
             for (int index = start; index < start + count; index++)
             {
-                MessageRecord record = session.Messages[index];
-                string? displayName = record.Handle is null ? null : session.Participants.First(p => p.Handle == record.Handle).DisplayName;
-                bool hasInterpretation = record.Interpretation is not null;
-                bool hasStructured = hasInterpretation || record.ContextIds.Length > 0 || record.Kind == DiscussionMessageKind.Analysis;
-                messages.Add(new DiscussionReadMessage(
-                    record.Sequence,
-                    record.Handle,
-                    displayName,
-                    record.Kind,
-                    record.Content,
-                    record.ReplyToSequence,
-                    record.ContextIds,
-                    record.CreatedAt,
-                    hasStructured,
-                    hasInterpretation,
-                    record.Interpretation));
+                messages.Add(ToReadMessage(session, session.Messages[index]));
             }
         }
 
@@ -1157,6 +1146,216 @@ public sealed class DiscussionHub : IDisposable
         participant.LastReadSequence = Math.Max(participant.LastReadSequence, Math.Min(next, last));
         return new DiscussionReadResult(messages, next, last, next < last, timedOut, Header(session, op.Now));
     }
+
+    /// <summary>
+    /// Registers the calling reader as a waiting reader of the session (the session lock is held): the reader's own earlier waiters are released, and the
+    /// per-session and hub-wide limits of waiting readers apply.
+    /// </summary>
+    private TaskCompletionSource<bool> RegisterWaiterLocked(Op op, Participant participant)
+    {
+        for (int i = op.Session.Waiters.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(op.Session.Waiters[i].ParticipantHandle, participant.Handle, StringComparison.Ordinal))
+            {
+                op.Session.Waiters[i].Signal.TrySetResult(false);
+                op.Session.Waiters.RemoveAt(i);
+            }
+        }
+
+        if (op.Session.Waiters.Count >= DiscussionLimits.MaxWaitersPerSession)
+        {
+            throw Limit(DiscussionNames.WaitersParameter, $"There are already {DiscussionLimits.MaxWaitersPerSession} concurrent waiting readers in this discussion.", "Retry with waitSeconds=0 or wait for active readers to complete.");
+        }
+
+        int totalWaiters = 0;
+        foreach (Session s in _sessions.Values)
+        {
+            totalWaiters += s.Waiters.Count;
+        }
+
+        if (totalWaiters >= DiscussionLimits.MaxTotalWaiters)
+        {
+            throw Limit(DiscussionNames.WaitersParameter, $"The hub reached its limit of {DiscussionLimits.MaxTotalWaiters} concurrent waiting readers across all discussions.", "Retry with waitSeconds=0 or wait for active readers to complete.");
+        }
+
+        var waiter = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        op.Session.Waiters.Add(new WaiterEntry(participant.Handle, waiter));
+        return waiter;
+    }
+
+    /// <summary>Takes the waiter out of the session again (a woken waiter was already removed by the wake).</summary>
+    private static void RemoveWaiter(Session session, TaskCompletionSource<bool> waiter)
+    {
+        lock (session.Sync)
+        {
+            for (int i = session.Waiters.Count - 1; i >= 0; i--)
+            {
+                if (ReferenceEquals(session.Waiters[i].Signal, waiter))
+                {
+                    session.Waiters.RemoveAt(i);
+                    break;
+                }
+            }
+        }
+    }
+
+    private static DiscussionReadMessage ToReadMessage(Session session, MessageRecord record)
+    {
+        string? displayName = record.Handle is null ? null : session.Participants.First(p => p.Handle == record.Handle).DisplayName;
+        bool hasInterpretation = record.Interpretation is not null;
+        bool hasStructured = hasInterpretation || record.ContextIds.Length > 0 || record.Kind == DiscussionMessageKind.Analysis;
+        return new DiscussionReadMessage(
+            record.Sequence,
+            record.Handle,
+            displayName,
+            record.Kind,
+            record.Content,
+            record.ReplyToSequence,
+            record.ContextIds,
+            record.CreatedAt,
+            hasStructured,
+            hasInterpretation,
+            record.Interpretation);
+    }
+
+    /// <summary>
+    /// A read with <see cref="DiscussionReadOptions"/> (events left out, or the newest messages). It repeats the wait until a message that passes the filter arrives, the
+    /// discussion closes or the time is over: a server event that the filter removes must not end a wait with nothing to show. The deadline is fixed once, before the first look.
+    /// </summary>
+    private async Task<DiscussionReadResult> ReadFilteredAsync(
+        string? sessionId,
+        string participantToken,
+        long afterSequence,
+        int limit,
+        int waitSeconds,
+        DiscussionReadOptions options,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset deadline = _time.GetUtcNow().AddSeconds(waitSeconds);
+        bool firstLook = true;
+        while (true)
+        {
+            TaskCompletionSource<bool>? waiter = null;
+            Session? waitedSession = null;
+            TimeSpan remaining = TimeSpan.Zero;
+            bool firstLookNow = firstLook;
+            DiscussionReadResult? done = WithSession<DiscussionReadResult?>(sessionId, op =>
+            {
+                Participant participant = Resolve(op.Session, participantToken, allowLeft: true);
+                EvaluateFloorTimeout(op.Session, op.Now, op.Wake);
+                Touch(op.Session, participant, op.Now);
+                DiscussionReadResult result = CollectFiltered(op, participant, afterSequence, limit, options, timedOut: false);
+                if (result.Messages.Count > 0 || waitSeconds == 0 || op.Session.Closed)
+                {
+                    return result;
+                }
+
+                remaining = deadline - op.Now;
+                if (remaining <= TimeSpan.Zero)
+                {
+                    return result with { TimedOut = true };
+                }
+
+                try
+                {
+                    waiter = RegisterWaiterLocked(op, participant);
+                }
+                catch (DiscussionException error) when (!firstLookNow && error.Code == DiscussionErrorCodes.LimitExceeded && error.Parameter == DiscussionNames.WaitersParameter)
+                {
+                    // Refused only after the reader had already waited: it is told that nothing arrived and asks again.
+                    return result with { TimedOut = true };
+                }
+
+                waitedSession = op.Session;
+                return null;
+            });
+            if (done is not null)
+            {
+                return done;
+            }
+
+            bool elapsed = false;
+            bool superseded = false;
+            try
+            {
+                // A wake signals true; false means the reader's own newer wait took this one over (see RegisterWaiterLocked).
+                superseded = !await waiter!.Task.WaitAsync(remaining, _time, cancellationToken).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                elapsed = true;
+            }
+            finally
+            {
+                RemoveWaiter(waitedSession!, waiter!);
+            }
+
+            if (elapsed || superseded)
+            {
+                // A superseded wait ends with one last look, like a read without options: waiting again would wake the newer wait in turn.
+                bool timedOutWhenEmpty = elapsed;
+                return WithSession(sessionId, op =>
+                {
+                    Participant participant = Resolve(op.Session, participantToken, allowLeft: true);
+                    EvaluateFloorTimeout(op.Session, op.Now, op.Wake);
+                    Touch(op.Session, participant, op.Now);
+                    DiscussionReadResult result = CollectFiltered(op, participant, afterSequence, limit, options, timedOut: false);
+                    return timedOutWhenEmpty && result.Messages.Count == 0 ? result with { TimedOut = true } : result;
+                });
+            }
+
+            firstLook = false;
+        }
+    }
+
+    /// <summary>
+    /// The messages of a read with <see cref="DiscussionReadOptions"/>. Forward: scans after <paramref name="afterSequence"/> until <paramref name="limit"/> messages pass the filter;
+    /// the cursor is the last sequence LOOKED AT, so a run of removed events is skipped for good and the next call makes progress. Tail: the newest messages that pass, in ascending order.
+    /// </summary>
+    private DiscussionReadResult CollectFiltered(Op op, Participant participant, long afterSequence, int limit, DiscussionReadOptions options, bool timedOut)
+    {
+        Session session = op.Session;
+        long last = session.LastSequence;
+        var messages = new List<DiscussionReadMessage>();
+        long next;
+        if (options.Tail is { } tail)
+        {
+            for (int index = session.Messages.Count - 1; index >= 0 && messages.Count < tail; index--)
+            {
+                MessageRecord record = session.Messages[index];
+                if (PassesFilter(record, options))
+                {
+                    messages.Add(ToReadMessage(session, record));
+                }
+            }
+
+            messages.Reverse();
+            next = last;
+        }
+        else
+        {
+            next = afterSequence;
+            for (int index = (int)Math.Min(afterSequence, last); index < session.Messages.Count; index++)
+            {
+                MessageRecord record = session.Messages[index];
+                next = record.Sequence;
+                if (PassesFilter(record, options))
+                {
+                    messages.Add(ToReadMessage(session, record));
+                    if (messages.Count == limit)
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        participant.LastReadSequence = Math.Max(participant.LastReadSequence, Math.Min(next, last));
+        return new DiscussionReadResult(messages, next, last, next < last, timedOut, Header(session, op.Now));
+    }
+
+    private static bool PassesFilter(MessageRecord record, DiscussionReadOptions options)
+        => !options.ExcludeEvents || record.Kind != DiscussionMessageKind.Event;
 
     // ---- analysis snapshots (hub side of spec 5.10) -----------------------------------------------------------------------------------
 
@@ -1348,11 +1547,16 @@ public sealed class DiscussionHub : IDisposable
     // ---- status -----------------------------------------------------------------------------------------------------------------------
 
     /// <summary>The discussions (or one), the newest audit entries and the clock. Needs no token and does not count as activity.</summary>
-    public DiscussionStatusResult Status(string? sessionId = null, int auditTail = 0)
+    public DiscussionStatusResult Status(string? sessionId = null, int auditTail = 0, bool includeContexts = false)
     {
         if (auditTail < 0 || auditTail > DiscussionLimits.StatusTailMax)
         {
             throw Limit("auditTail", $"auditTail must be 0 to {DiscussionLimits.StatusTailMax}.");
+        }
+
+        if (includeContexts && sessionId is null)
+        {
+            throw Invalid("includeContexts", "includeContexts requires sessionId.");
         }
 
         var wake = new List<TaskCompletionSource<bool>>();
@@ -1363,6 +1567,7 @@ public sealed class DiscussionHub : IDisposable
                 ThrowIfDisposed();
                 DateTimeOffset now = _time.GetUtcNow();
                 var headers = new List<DiscussionSessionHeader>();
+                IReadOnlyList<DiscussionContextInfo>? contexts = null;
                 if (sessionId is not null)
                 {
                     if (!_sessions.TryGetValue(sessionId, out Session? one))
@@ -1381,6 +1586,12 @@ public sealed class DiscussionHub : IDisposable
                         EvaluateFloorTimeout(one, now, wake);
 
                         headers.Add(Header(one, now));
+                        if (includeContexts)
+                        {
+                            contexts = one.Contexts
+                                .Select(c => new DiscussionContextInfo(c.Id, c.Tool, c.AttachedBy, c.AnalysisIntent, c.ResultBytes, c.Sha256, c.Sequence, c.CreatedAt))
+                                .ToList();
+                        }
                     }
                 }
                 else
@@ -1399,7 +1610,7 @@ public sealed class DiscussionHub : IDisposable
                     }
                 }
 
-                return new DiscussionStatusResult(Epoch, headers, _audit.Tail(auditTail), now);
+                return new DiscussionStatusResult(Epoch, headers, _audit.Tail(auditTail), now, contexts);
             }
         }
         finally

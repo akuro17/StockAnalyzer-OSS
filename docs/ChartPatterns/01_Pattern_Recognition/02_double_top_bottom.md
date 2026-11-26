@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Thomas Bulkowski, *Encyclopedia of Chart Patterns* (Eve & Adam statistical criteria)
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Double Top / Double Bottom](../../ChartPatterns_Images/01_Pattern_Recognition/02_double_top_bottom.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A two-point reversal pattern formed at the end of a clear prior trend (high zone / low zone), consisting of two comparable peaks (M-Top) or troughs (W-Bottom) separated by an intermediate neckline of sufficient depth, completed upon a closing breakout through the neckline.
 

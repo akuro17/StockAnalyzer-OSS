@@ -13,6 +13,7 @@ using Avalonia.VisualTree;
 using StockAnalyzer.Avalonia.Drawing;
 using StockAnalyzer.Avalonia.Services;
 using StockAnalyzer.Avalonia.Views.Dialogs;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Drawing;
 using Xunit;
@@ -40,6 +41,7 @@ public class DrawingSettingsDialogTests
         registry.Register(new NurbsConicShapeSettingsPanelDefinition());
         registry.Register(new NurbsWeightedCurveSettingsPanelDefinition());
         registry.Register(new FixedRangeVolumeProfileSettingsPanelDefinition());
+        registry.Register(new DistributionRangeSettingsPanelDefinition());
         registry.Register(new AnchoredVwapSettingsPanelDefinition());
         registry.Register(new BarPatternSettingsPanelDefinition());
         registry.Register(new GeometricPatternSettingsPanelDefinition());
@@ -2912,6 +2914,67 @@ public class DrawingSettingsDialogTests
             Assert.Contains("Gradient End Alpha", labels);
             Assert.DoesNotContain("Move Axis Mode", labels);
             Assert.DoesNotContain("Panel Index", labels);
+        }
+        finally
+        {
+            dialog.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void DrawingSettingsDialog_ActivatesDistributionRangePanel_AndEnforcesConstraints()
+    {
+        var t1 = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var t2 = new DateTime(2026, 1, 30, 0, 0, 0, DateTimeKind.Utc);
+        using var dist = new DistributionRangeObject(new ChartPoint(t1, 100m), new ChartPoint(t2, 120m))
+        {
+            DataMode = DistributionDataMode.LogReturn,
+            ReferenceDistribution = ReferenceDistributionType.StudentT,
+            OverrideStudentTDegreesOfFreedom = false,
+            StudentTDegreesOfFreedom = 6.5m
+        };
+
+        var dialog = new DrawingSettingsDialog(dist, CreateRegistry());
+        try
+        {
+            dialog.Show();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            var distPanel = dialog.FindControl<StackPanel>("DistributionRangePanel");
+            var dataModeCombo = dialog.FindControl<ComboBox>("DistDataModeCombo");
+            var priceSourceCombo = dialog.FindControl<ComboBox>("DistPriceSourceCombo");
+            var horizontalItem = dialog.FindControl<ComboBoxItem>("DistHorizontalProfileItem");
+            var hintText = dialog.FindControl<TextBlock>("DistDisplayStyleHintText");
+            var overrideCheck = dialog.FindControl<CheckBox>("DistOverrideStudentTCheck");
+            var studentTSpin = dialog.FindControl<NumericUpDown>("DistStudentTDfSpin");
+            var okButton = dialog.FindControl<Button>("OkButton");
+
+            Assert.NotNull(distPanel);
+            Assert.True(distPanel!.IsVisible);
+            Assert.False(priceSourceCombo!.IsEnabled);
+            Assert.False(horizontalItem!.IsEnabled);
+            Assert.True(hintText!.IsVisible);
+            Assert.True(overrideCheck!.IsEnabled);
+            Assert.False(studentTSpin!.IsEnabled);
+
+            overrideCheck.IsChecked = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(studentTSpin.IsEnabled);
+
+            dataModeCombo!.SelectedIndex = (int)DistributionDataMode.Price;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(priceSourceCombo.IsEnabled);
+            Assert.True(horizontalItem.IsEnabled);
+            Assert.False(hintText.IsVisible);
+
+            studentTSpin.Value = 12.5m;
+            okButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(DistributionDataMode.Price, dist.DataMode);
+            Assert.True(dist.OverrideStudentTDegreesOfFreedom);
+            Assert.Equal(12.5m, dist.StudentTDegreesOfFreedom);
         }
         finally
         {

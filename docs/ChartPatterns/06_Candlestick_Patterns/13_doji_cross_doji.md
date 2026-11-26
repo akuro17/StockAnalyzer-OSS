@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Sakata Five Methods / Steve Nison, *Japanese Candlestick Charting Techniques* / Thomas Bulkowski, *Encyclopedia of Candlestick Charts*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Doji / Cross Doji](../../ChartPatterns_Images/06_Candlestick_Patterns/13_doji_cross_doji.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Price Zone and Prior Trend Definition (Role: Uptrend or Downtrend Extreme Zone (Reversal Alert))
 - **Prior Trend (Required)**: To filter out meaningless mid-range Dojis, a clear trend must exist at bar $e = t - k$: $|C_e - C_{e-10}| \ge 1.5 \cdot \text{ATR}_{\text{ctx}}(e, 14)$.
 - **Price Zone (Extreme Zone)**: Must occur in either the top zone ($\text{Pos}(H_t, t, 20) \ge 1 - \text{PriceZoneThreshold}$) or bottom zone ($\text{Pos}(L_t, t, 20) \le \text{PriceZoneThreshold}$); linked to `CoreCandlePatternParameter.CreateFor(IndicatorType.CandleCrossDoji)` default `PriceZoneThreshold = 0.20m` (top $\ge 0.80$ / bottom $\le 0.20$).

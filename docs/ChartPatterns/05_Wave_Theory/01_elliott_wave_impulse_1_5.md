@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Ralph Nelson Elliott / Frost & Prechter, *Elliott Wave Principle*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Elliott Wave Impulse 1-5](../../ChartPatterns_Images/05_Wave_Theory/01_elliott_wave_impulse_1_5.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A wave-theory indicator detecting 5-wave impulsive structures (6 confirmed pivots) conforming to Elliott's 3 cardinal rules (Wave 2 never retraces beyond Wave 1 origin; Wave 3 is never the shortest impulse wave; Wave 4 never overlaps Wave 1 territory) and Fibonacci proportionality guidelines.
 

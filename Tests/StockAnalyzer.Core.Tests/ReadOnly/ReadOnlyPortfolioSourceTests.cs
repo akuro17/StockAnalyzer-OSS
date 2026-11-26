@@ -91,6 +91,30 @@ public sealed class ReadOnlyPortfolioSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task APartlyExitedPosition_HasTheSameAverageCostHereAsInTheApplication()
+    {
+        // The application rebuilds with PortfolioAccountingDefaults.CostBasis; this source must give the same positions for the same history (Run G).
+        var history = new List<Transaction>
+        {
+            new(Day1, TransactionType.Deposit, null, 0m, 0m, 1_000_000m),
+            new(Day1.AddDays(1), TransactionType.Long, "MSFT", 10m, 100m, 0m),
+            new(Day1.AddDays(2), TransactionType.Long, "MSFT", 10m, 200m, 0m),
+            new(Day1.AddDays(3), TransactionType.ExitLong, "MSFT", 10m, 250m, 0m),
+        };
+        using (var repository = new UserPortfolioRepository(_root))
+        {
+            await repository.SavePortfolioAsync(new PortfolioManager().RebuildPortfolio(0m, history));
+        }
+        Portfolio application = new PortfolioManager().RebuildPortfolio(0m, history, PortfolioAccountingDefaults.CostBasis);
+        var source = new FileReadOnlyPortfolioSource(PortfolioDirectory, _database);
+
+        PortfolioReadResult result = await source.LoadAsync();
+
+        Assert.Equal(application.Positions["MSFT"], result.Portfolio.Positions["MSFT"]);
+        Assert.Equal(200m, result.Portfolio.Positions["MSFT"].AverageCostPerUnit); // the open lot, not the legacy 150
+    }
+
+    [Fact]
     public async Task ASaveInProgress_IsDataUnavailable_AndTheMarkerIsLeftAlone()
     {
         await SaveAsync();

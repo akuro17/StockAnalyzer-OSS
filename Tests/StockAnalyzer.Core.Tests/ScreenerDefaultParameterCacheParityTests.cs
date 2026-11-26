@@ -127,7 +127,12 @@ public class ScreenerDefaultParameterCacheParityTests
     //   the flag types equals a standalone calculation (TheChartPatternFlagTypesGiveTheValueOfAStandaloneCalculation_WithAndWithoutAPeriod). Every earlier proof starts from BuildReportBeforeChartPatterns().
     // TWENTIETH re-pin, 2026-11-26 (U-W10: MarketStructureLlLh appended; purely additive, 5 lines added, 1370 -> 1375):
     //   Old -> new hash: F56C4015BEA47988CC82B9F1751135082C98D98AC142D5C451F4D103F08365EC -> AFAFC7693ED96023C4FE5F145E10015861A4E9A1BE6DEA4E2126F66F63C3A2E0.
-    private const string PinnedFingerprint = "AFAFC7693ED96023C4FE5F145E10015861A4E9A1BE6DEA4E2126F66F63C3A2E0";
+    // TWENTY-FIRST re-pin, 2026-11-26 (SA-SPEC-SKEW-KURT-DIST-001: Skewness and Kurtosis appended; purely additive under lessons_webai_expansion_20261114_0001, 10 lines added, 1375 -> 1385):
+    //   Old -> new hash: AFAFC7693ED96023C4FE5F145E10015861A4E9A1BE6DEA4E2126F66F63C3A2E0 -> 1A60C19210E78AB323A0F627F73634DB1945AE26E79D9143BA9643BF498C17CC.
+    //   No existing line changed: removing Skewness and Kurtosis returns the twentieth pin identically (ValuesOfTheTypesBeforeSplitMomentsAreUnchanged).
+    private const string PinnedFingerprint = "1A60C19210E78AB323A0F627F73634DB1945AE26E79D9143BA9643BF498C17CC";
+    /// <summary>The twentieth pin before Skewness and Kurtosis were appended.</summary>
+    private const string FingerprintBeforeSplitMoments = "AFAFC7693ED96023C4FE5F145E10015861A4E9A1BE6DEA4E2126F66F63C3A2E0";
     /// <summary>The pin before the chart pattern flag types were added (the eighteenth re-pin).</summary>
     private const string FingerprintBeforeChartPatternFlags = "3657C9EBEC9F6B81AFA500F155B639C95DB4FC298C05986B1D94904AFBA403C8";
     /// <summary>The pin before ThreeLineBreakSignal was de-registered from IndicatorFactory (the seventeenth re-pin).</summary>
@@ -165,10 +170,19 @@ public class ScreenerDefaultParameterCacheParityTests
         "GranvilleBuySignal", "GranvilleSellSignal", "ElliottWaveImpulse", "ElliottWaveCorrective"
     };
 
-    /// <summary>The current report without the lines of the chart pattern flag types: every earlier pin and proof starts from it, so it is the report as it was before the nineteenth re-pin.</summary>
+    private static readonly string[] SplitStatisticalMomentTypes = { "Skewness", "Kurtosis" };
+
+    private static string BuildReportBeforeSplitMoments()
+    {
+        var removed = SplitStatisticalMomentTypes.ToHashSet();
+        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
+        return string.Join("\n", lines) + "\n";
+    }
+
+    /// <summary>The current report without the lines of the chart pattern flag types or the later split moment indicators: every earlier pin and proof starts from it, so it is the report as it was before the nineteenth re-pin.</summary>
     private static string BuildReportBeforeChartPatterns()
     {
-        var removed = ChartPatternFlagTypes.ToHashSet();
+        var removed = ChartPatternFlagTypes.Concat(SplitStatisticalMomentTypes).ToHashSet();
         var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
         return string.Join("\n", lines) + "\n";
     }
@@ -817,17 +831,29 @@ public class ScreenerDefaultParameterCacheParityTests
         Assert.Equal(FingerprintBeforeChartPatternFlags, Fingerprint(BuildReportBeforeChartPatterns()));
     }
 
-    /// <summary>Proof of the nineteenth re-pin: the current report has exactly the lines of the flag types (5 variants each) more than at the eighteenth pin, and no other line moved.</summary>
+    /// <summary>Proof of the nineteenth re-pin: the report before split moments has exactly the lines of the flag types (5 variants each) more than at the eighteenth pin, and no other line moved.</summary>
     [Fact]
     public void OnlyTheLinesOfTheChartPatternFlagsAreNewSinceTheEighteenthPin()
     {
-        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] current = BuildReportBeforeSplitMoments().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         string[] before = BuildReportBeforeChartPatterns().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var added = current.Where(line => ChartPatternFlagTypes.Contains(line.Split('|')[0])).ToArray();
 
         Assert.Equal(ChartPatternFlagTypes.Length * VariantsPerType, added.Length);
         Assert.Equal(before.Length + added.Length, current.Length);
         Assert.Equal(before, current.Where(line => !ChartPatternFlagTypes.Contains(line.Split('|')[0])));
+    }
+
+    [Fact]
+    public void OnlyTheLinesOfTheSplitMomentsAreNewSinceTheTwentiethPin()
+    {
+        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] before = BuildReportBeforeSplitMoments().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var added = current.Where(line => SplitStatisticalMomentTypes.Contains(line.Split('|')[0])).ToArray();
+
+        Assert.Equal(SplitStatisticalMomentTypes.Length * VariantsPerType, added.Length);
+        Assert.Equal(before.Length + added.Length, current.Length);
+        Assert.Equal(before, current.Where(line => !SplitStatisticalMomentTypes.Contains(line.Split('|')[0])));
     }
 
     /// <summary>The list of this test is the catalog: every flag type of the catalog is in it and nothing else (a new flag type without a re-pin is caught here).</summary>
@@ -862,6 +888,39 @@ public class ScreenerDefaultParameterCacheParityTests
 
                 Assert.Equal(standalone, screener);
             }
+        }
+    }
+
+    [Fact]
+    public void ValuesOfTheTypesBeforeSplitMomentsAreUnchanged()
+    {
+        var removed = SplitStatisticalMomentTypes.ToHashSet();
+        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
+        Assert.Equal(FingerprintBeforeSplitMoments, Fingerprint(string.Join("\n", lines) + "\n"));
+    }
+
+    [Theory]
+    [InlineData(IndicatorType.Skewness)]
+    [InlineData(IndicatorType.Kurtosis)]
+    public void TheSplitMomentTypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod(IndicatorType type)
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        foreach (int? period in new int?[] { null, 7, 9, 25 })
+        {
+            var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+            decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles);
+
+            int effectivePeriod = PeriodOrDefault(period, IndicatorDefaultConstants.SkewnessKurtosisMinPeriod, IndicatorDefaultConstants.SkewnessKurtosisMaxPeriod, IndicatorDefaultConstants.SkewnessKurtosisDefaultPeriod);
+            decimal? standalone = StockAnalyzer.Core.Models.Indicators.IndicatorFactory.CreateStatic(
+                type,
+                type == IndicatorType.Skewness
+                    ? new StockAnalyzer.Core.Models.Parameters.CoreSkewnessParameter { Period = effectivePeriod }
+                    : new StockAnalyzer.Core.Models.Parameters.CoreKurtosisParameter { Period = effectivePeriod })!.Calculate(candles).MainValues[^1];
+
+            Assert.NotNull(standalone);
+            Assert.Equal(standalone, screener);
         }
     }
 

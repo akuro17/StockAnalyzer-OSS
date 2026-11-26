@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Edwards & Magee / Thomas Bulkowski, *Encyclopedia of Chart Patterns*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Head and Shoulders](../../ChartPatterns_Images/01_Pattern_Recognition/01_head_and_shoulders.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A major top reversal pattern formed in the upper zone of an uptrend, where a central peak (Head) rises higher than the flanking shoulders (Left/Right Shoulders) and completes upon a closing breakout below the neckline connecting the two intermediate troughs (Inverse Head and Shoulders is the exact bullish mirror at a bottom).
 

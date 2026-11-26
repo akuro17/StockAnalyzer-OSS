@@ -5,6 +5,8 @@
              xmlns:vm="using:StockAnalyzer.Avalonia.ViewModels"
              xmlns:l="using:StockAnalyzer.Avalonia.Markup"
              xmlns:views="using:StockAnalyzer.Avalonia.Views"
+             xmlns:conv="using:StockAnalyzer.Avalonia.Converters"
+             xmlns:pf="using:StockAnalyzer.Core.Models.Portfolio"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="StockAnalyzer.Avalonia.Views.PortfolioSummaryView"
              x:DataType="vm:PortfolioSummaryViewModel"
@@ -135,9 +137,25 @@
                       Background="Transparent" />
 
         <!-- Right Pane: Dashboard & Positions Grid -->
-        <TabControl Grid.Column="2" Margin="12" ContextMenu="{x:Null}" ContextRequested="OnTabControlContextRequested">
+        <Grid Grid.Column="2" RowDefinitions="Auto,*">
+        <!-- Entry buttons: Cash Flow opens the dialog as a Deposit (the type can be switched to Withdrawal), Add Trade as a Long -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8" Margin="12,12,12,0">
+            <Button x:Name="CashFlowButton"
+                    Content="{l:Localize Portfolio_Btn_CashFlow}"
+                    Command="{Binding AddTransactionCommand}"
+                    CommandParameter="Deposit"
+                    ToolTip.Tip="{Binding StorageDisabledToolTip}"
+                    ToolTip.ShowOnDisabled="True"/>
+            <Button x:Name="AddTradeButton"
+                    Content="{l:Localize Portfolio_Btn_AddTrade}"
+                    Command="{Binding AddTransactionCommand}"
+                    CommandParameter="Long"
+                    ToolTip.Tip="{Binding StorageDisabledToolTip}"
+                    ToolTip.ShowOnDisabled="True"/>
+        </StackPanel>
+        <TabControl Grid.Row="1" Margin="12" ContextMenu="{x:Null}" ContextRequested="OnTabControlContextRequested">
             <!-- Tab 0: Summary -->
-            <TabItem Header="Summary">
+            <TabItem Header="{l:Localize Portfolio_TabSummary}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                   <StackPanel>
                     <Border Margin="12,12,12,0" Padding="12,8"
@@ -163,7 +181,12 @@
                                 <TextBlock Text="{l:Localize Portfolio_NetAssets}" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource HelperFontSize}"/>
                                 <TextBlock Text="{Binding NetAssets, StringFormat={}{0:N0}}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" Classes="value"/>
                             </StackPanel>
-                            
+
+                            <StackPanel>
+                                <TextBlock Text="{l:Localize Portfolio_CashBalance}" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource HelperFontSize}"/>
+                                <TextBlock Text="{Binding CashBalance, StringFormat={}{0:N0}}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" Classes="value"/>
+                            </StackPanel>
+
                             <StackPanel>
                                 <TextBlock Text="{l:Localize Portfolio_UnrealizedPnL}" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource HelperFontSize}"/>
                                 <TextBlock Text="{Binding TotalPnL, StringFormat={}{0:N0}}" FontSize="{DynamicResource TitleFontSize}" FontWeight="SemiBold" 
@@ -188,11 +211,29 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+                    <!-- Cash per currency, in its own units; shown while two or more currencies hold cash -->
+                    <ItemsControl Margin="12,0,12,12"
+                                  ItemsSource="{Binding CurrencyCashBalances}"
+                                  IsVisible="{Binding IsCashStripVisible}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="24"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CurrencyBalanceViewModel">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding Currency, StringFormat={}{0}:}" Foreground="{DynamicResource Brush.Text.Secondary}" FontSize="{DynamicResource HelperFontSize}"/>
+                                    <TextBlock Text="{Binding Balance, StringFormat={}{0:N2}}" FontSize="{DynamicResource HelperFontSize}" Classes="value"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                   </StackPanel>
                 </ScrollViewer>
             </TabItem>
                 <!-- Tab 1: Positions -->
-                <TabItem Header="Positions">
+                <TabItem Header="{l:Localize Portfolio_TabPositions}">
                     <Grid>
                         <DataGrid x:Name="PositionsDataGrid"
                                   ItemsSource="{Binding Positions}"
@@ -205,7 +246,7 @@
                                   SelectedItem="{Binding SelectedPosition}">
                             <DataGrid.ContextMenu>
                                 <ContextMenu ZIndex="99">
-                                    <MenuItem x:Name="MenuItemAddPosition" Header="Add Transactions" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnAddTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemAddPosition" Header="{l:Localize Portfolio_Menu_AddTransaction}" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnAddTransactionMenuClick"/>
                                     <MenuItem x:Name="MenuItemExitPosition" Header="{l:Localize Portfolio_Menu_ExitPosition}" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnExitPositionMenuClick"/>
                                 </ContextMenu>
                             </DataGrid.ContextMenu>
@@ -227,12 +268,13 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80"/>
-                                
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_Type}" Binding="{Binding Type}" Width="80"/>
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_Currency}" Binding="{Binding Currency}" Width="80"/>
+
                                 <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_Qty}" Width="100">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="vm:PortfolioPositionViewModel">
-                                            <TextBlock Text="{Binding Quantity, StringFormat={}{0:N0}}"
+                                            <TextBlock Text="{Binding Quantity, StringFormat={}{0:0.######}}"
                                                        HorizontalAlignment="Right" VerticalAlignment="Center"
                                                        Margin="0,0,12,0"/>
                                         </DataTemplate>
@@ -248,6 +290,8 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
+
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_CostBasis}" Binding="{Binding CostBasis, StringFormat={}{0:N2}}" Width="120"/>
 
                                 <DataGridTemplateColumn Header="{l:Localize Col_Price}" Width="100">
                                     <DataGridTemplateColumn.CellTemplate>
@@ -332,7 +376,7 @@
                 </TabItem>
 
                 <!-- Tab 2: Transaction History -->
-                <TabItem Header="Transactions">
+                <TabItem Header="{l:Localize Portfolio_TabTransactions}">
                     <Grid>
                         <!-- Transaction history list -->
                         <DataGrid x:Name="TransactionsDataGrid"
@@ -345,22 +389,30 @@
                                   BorderBrush="{DynamicResource Brush.Border.Primary}">
                             <DataGrid.ContextMenu>
                                 <ContextMenu ZIndex="99">
-                                    <MenuItem x:Name="MenuItemAdd" Header="Add Transactions" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnAddTransactionMenuClick"/>
-                                    <MenuItem x:Name="MenuItemEdit" Header="Edit Transaction" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnEditTransactionMenuClick"/>
-                                    <MenuItem x:Name="MenuItemDelete" Header="Delete Transaction" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnDeleteTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemAdd" Header="{l:Localize Portfolio_Menu_AddTransaction}" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnAddTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemEdit" Header="{l:Localize Portfolio_Menu_EditTransaction}" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnEditTransactionMenuClick"/>
+                                    <MenuItem x:Name="MenuItemDelete" Header="{l:Localize Portfolio_Menu_DeleteTransaction}" IsEnabled="{Binding $parent[UserControl].DataContext.IsStorageWritable}" ToolTip.Tip="{Binding $parent[UserControl].DataContext.StorageDisabledToolTip}" ToolTip.ShowOnDisabled="True" Click="OnDeleteTransactionMenuClick"/>
                                 </ContextMenu>
                             </DataGrid.ContextMenu>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Date" Binding="{Binding ExecutedAt, StringFormat={}{0:yyyy-MM-dd}}" IsReadOnly="True" Width="140"/>
-                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" IsReadOnly="True" Width="100"/>
-                                <DataGridTextColumn Header="Ticker" Binding="{Binding Ticker}" IsReadOnly="True" Width="100"/>
-                                <DataGridTextColumn Header="Quantity" Binding="{Binding Quantity, StringFormat={}{0:N6}}" IsReadOnly="True" Width="120"/>
-                                <DataGridTextColumn Header="Price" Binding="{Binding PricePerUnit, StringFormat={}{0:F2}}" IsReadOnly="True" Width="100"/>
-                                <DataGridTextColumn Header="Amount" Binding="{Binding CashAmount, StringFormat={}{0:F2}}" IsReadOnly="True" Width="100"/>
-                                <DataGridTextColumn Header="Fee" Binding="{Binding Fee, StringFormat={}{0:F2}}" IsReadOnly="True" Width="100"/>
-                                <DataGridTextColumn Header="Target" Binding="{Binding TargetPrice, StringFormat={}{0:F2}}" IsVisible="{Binding IsTargetPriceColumnVisible}" IsReadOnly="True" Width="100"/>
-                                <DataGridTextColumn Header="Stop Loss" Binding="{Binding StopLoss, StringFormat={}{0:F2}}" IsVisible="{Binding IsStopLossColumnVisible}" IsReadOnly="True" Width="100"/>
-                                <DataGridTextColumn Header="Notes" Binding="{Binding Notes, Mode=TwoWay}" IsVisible="{Binding IsNotesColumnVisible}" IsReadOnly="False" Width="*"/>
+                                <DataGridTextColumn Header="{l:Localize Col_Date}" Binding="{Binding ExecutedAt, StringFormat={}{0:yyyy-MM-dd}}" IsReadOnly="True" Width="140"/>
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_Type}" Binding="{Binding Type}" IsReadOnly="True" Width="100"/>
+                                <DataGridTextColumn Header="{l:Localize Col_Symbol}" Binding="{Binding Ticker}" IsReadOnly="True" Width="100"/>
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_Qty}" Binding="{Binding Quantity, StringFormat={}{0:N6}}" IsReadOnly="True" Width="120"/>
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_UnitPrice}" Binding="{Binding PricePerUnit, StringFormat={}{0:F2}}" IsReadOnly="True" Width="100"/>
+                                <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_Amount}" IsReadOnly="True" Width="100">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate x:DataType="pf:Transaction">
+                                            <TextBlock Text="{Binding ., Converter={x:Static conv:TransactionSettlementAmountConverter.Instance}}"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                       Margin="0,0,12,0"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_Fees}" Binding="{Binding Fee, StringFormat={}{0:F2}}" IsReadOnly="True" Width="100"/>
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_Target}" Binding="{Binding TargetPrice, StringFormat={}{0:F2}}" IsVisible="{Binding IsTargetPriceColumnVisible}" IsReadOnly="True" Width="100"/>
+                                <DataGridTextColumn Header="{l:Localize Col_StopLoss}" Binding="{Binding StopLoss, StringFormat={}{0:F2}}" IsVisible="{Binding IsStopLossColumnVisible}" IsReadOnly="True" Width="100"/>
+                                <DataGridTextColumn Header="{l:Localize Col_Notes}" Binding="{Binding Notes, Mode=OneWay}" IsVisible="{Binding IsNotesColumnVisible}" IsReadOnly="True" Width="*"/>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>
@@ -380,12 +432,12 @@
                             <DataGrid.Columns>
                                 <DataGridTextColumn Header="{l:Localize Portfolio_Col_ExitTime}" Binding="{Binding ExitTime, StringFormat={}{0:yyyy-MM-dd}}" Width="120"/>
                                 <DataGridTextColumn Header="{l:Localize Col_Symbol}" Binding="{Binding Ticker}" Width="100"/>
-                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80"/>
-                                
+                                <DataGridTextColumn Header="{l:Localize Portfolio_Col_Type}" Binding="{Binding Type}" Width="80"/>
+
                                 <DataGridTemplateColumn Header="{l:Localize Portfolio_Col_Qty}" Width="80">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate x:DataType="vm:ClosedPositionViewModel">
-                                            <TextBlock Text="{Binding Quantity, StringFormat={}{0:N0}}"
+                                            <TextBlock Text="{Binding Quantity, StringFormat={}{0:0.######}}"
                                                        HorizontalAlignment="Right" VerticalAlignment="Center"
                                                        Margin="0,0,12,0"/>
                                         </DataTemplate>
@@ -457,5 +509,6 @@
                     </Grid>
                 </TabItem>
             </TabControl>
+        </Grid>
     </Grid>
 </UserControl>

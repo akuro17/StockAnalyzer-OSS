@@ -7,7 +7,8 @@ namespace StockAnalyzer.Core.ReadOnly;
 /// <summary>
 /// Reads the portfolio files exactly as <see cref="UserPortfolioRepository"/> does (the same reader), but never recovers an unfinished save (that would write) and never creates the folder.
 /// A save in progress (<c>portfolio.swap</c>) or an incomplete set of files is <see cref="DataUnavailableException"/>, not "no portfolio": the application is replacing them and the next read sees them whole.
-/// The history is rebuilt with <see cref="PortfolioManager.RebuildPortfolio"/> (initial cash 0, as the application does outside tests), so closed positions and realized profit are as the application shows them.
+/// The history is rebuilt with <see cref="PortfolioManager.RebuildPortfolio(decimal, IReadOnlyList{Transaction}, CostBasisMethod)"/> (initial cash 0, as the application does outside tests) and the shared <see cref="PortfolioAccountingDefaults.CostBasis"/>,
+/// so closed positions, realized profit and the average cost of a partly exited position are as the application shows them.
 /// </summary>
 public sealed class FileReadOnlyPortfolioSource : IReadOnlyPortfolioSource
 {
@@ -48,7 +49,7 @@ public sealed class FileReadOnlyPortfolioSource : IReadOnlyPortfolioSource
             Portfolio? loaded = await UserPortfolioRepository.LoadFromParquetFilesAsync(_database, positions, transactions, cash, cashBalances, cancellationToken).ConfigureAwait(false);
             return loaded is null
                 ? new PortfolioReadResult(false, PortfolioFactory.Empty)
-                : new PortfolioReadResult(true, new PortfolioManager().RebuildPortfolio(0m, loaded.History));
+                : new PortfolioReadResult(true, new PortfolioManager().RebuildPortfolio(0m, loaded.History, PortfolioAccountingDefaults.CostBasis));
         }
         catch (OperationCanceledException)
         {

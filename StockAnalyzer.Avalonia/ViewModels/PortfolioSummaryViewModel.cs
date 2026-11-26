@@ -103,6 +103,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NetAssets))]
+    [NotifyPropertyChangedFor(nameof(CashBalance))]
     [NotifyPropertyChangedFor(nameof(TotalPnL))]
     [NotifyPropertyChangedFor(nameof(IsTotalProfit))]
     [NotifyPropertyChangedFor(nameof(IsTotalLoss))]
@@ -110,6 +111,78 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
     private PortfolioMetrics _metrics = new PortfolioMetrics(0, 0, 0, 0, 0);
 
     public decimal NetAssets => Metrics.TotalValue;
+
+    /// <summary>Cash of the portfolio in the base currency (the Metrics value, converted like the other totals).</summary>
+    public decimal CashBalance => Metrics.CashBalance;
+
+    /// <summary>
+    /// Cash per currency in its own units: exactly the currencies whose balance is not zero (a spent balance stays in the portfolio dictionary as 0 and is left out),
+    /// ordered by currency code (ordinal). Updated in place, item by item, so a refresh creates no new item for a currency that is still held.
+    /// </summary>
+    public ObservableCollection<CurrencyBalanceViewModel> CurrencyCashBalances { get; } = new();
+
+    /// <summary>True while at least <see cref="LayoutConstants.PortfolioCashStripMinCurrencies"/> currencies hold a non-zero cash balance (the strip is only useful then).</summary>
+    [ObservableProperty]
+    private bool _isCashStripVisible;
+
+    private readonly List<KeyValuePair<string, decimal>> _cashBalancesBuffer = new();
+
+    private static readonly Comparison<KeyValuePair<string, decimal>> CashBalanceOrder =
+        static (a, b) => string.CompareOrdinal(a.Key, b.Key);
+
+    private void SyncCashBalances(IReadOnlyDictionary<CurrencyCode, decimal> balances)
+    {
+        _cashBalancesBuffer.Clear();
+        foreach (var pair in balances)
+        {
+            if (pair.Value != 0m)
+            {
+                _cashBalancesBuffer.Add(new KeyValuePair<string, decimal>(pair.Key.Value, pair.Value));
+            }
+        }
+        _cashBalancesBuffer.Sort(CashBalanceOrder);
+
+        // Remove the currencies that no longer hold cash.
+        for (int i = CurrencyCashBalances.Count - 1; i >= 0; i--)
+        {
+            bool stillHeld = false;
+            for (int j = 0; j < _cashBalancesBuffer.Count; j++)
+            {
+                if (_cashBalancesBuffer[j].Key == CurrencyCashBalances[i].Currency)
+                {
+                    stillHeld = true;
+                    break;
+                }
+            }
+            if (!stillHeld) CurrencyCashBalances.RemoveAt(i);
+        }
+
+        // Place every held currency at its sorted index: update the existing item, or insert a new one.
+        for (int target = 0; target < _cashBalancesBuffer.Count; target++)
+        {
+            var (code, value) = (_cashBalancesBuffer[target].Key, _cashBalancesBuffer[target].Value);
+            int existing = -1;
+            for (int k = target; k < CurrencyCashBalances.Count; k++)
+            {
+                if (CurrencyCashBalances[k].Currency == code)
+                {
+                    existing = k;
+                    break;
+                }
+            }
+
+            if (existing < 0)
+            {
+                CurrencyCashBalances.Insert(target, new CurrencyBalanceViewModel(code, value));
+                continue;
+            }
+
+            CurrencyCashBalances[existing].Balance = value;
+            if (existing != target) CurrencyCashBalances.Move(existing, target);
+        }
+
+        IsCashStripVisible = CurrencyCashBalances.Count >= LayoutConstants.PortfolioCashStripMinCurrencies;
+    }
     public decimal TotalPnL => Metrics.TotalUnrealizedPL;
     public bool IsTotalProfit => TotalPnL > 0;
     public bool IsTotalLoss => TotalPnL < 0;
@@ -317,13 +390,12 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                 if (isTickerNode)
                 {
                     history = saved.History
-                        .Where(t => t.Type == TransactionType.Deposit ||
-                                    t.Type == TransactionType.Withdrawal ||
+                        .Where(t => t.Type.IsCashFlow() ||
                                     string.Equals(t.Ticker, node.Name, StringComparison.OrdinalIgnoreCase))
                         .ToList();
                 }
             }
-            portfolio = _portfolioManager.RebuildPortfolio(InitialCash, history);
+            portfolio = _portfolioManager.RebuildPortfolio(InitialCash, history, PortfolioAccountingDefaults.CostBasis);
         }
         else
         {
@@ -411,7 +483,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                 var saved = await _portfolioManager.LoadPortfolioAsync();
                 if (saved != null)
                 {
-                    _currentPortfolio = _portfolioManager.RebuildPortfolio(InitialCash, saved.History);
+                    _currentPortfolio = _portfolioManager.RebuildPortfolio(InitialCash, saved.History, PortfolioAccountingDefaults.CostBasis);
                 }
             }
             catch (Exception ex)
@@ -523,6 +595,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
                 vm.Metrics = result.Metrics;
                 vm.TotalRealizedPnL = result.Metrics.TotalRealizedPL;
+                vm.SyncCashBalances(currentPortfolio.CashBalances);
 
                 var unconverted = result.UnconvertedCurrencies;
                 vm.UnconvertedNotice = unconverted == null || unconverted.Count == 0
@@ -628,6 +701,8 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
                     pvm.IsHedged = vm._tickersWithBothBuffer.Contains(pos.Ticker);
                     pvm.UpdateFrom(evaluation);
+                    pvm.Currency = pos.AverageCost.Currency.Value;
+                    pvm.CostBasis = pos.GetCostBasis();
                     pvm.IsConversionUnavailable = unconverted != null && unconverted.Contains(pos.AverageCost.Currency);
                     vm.Positions.Add(pvm);
                 }
@@ -659,6 +734,8 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
                             pvm.IsHedged = false;
                             pvm.UpdateFrom(evaluation);
+                            pvm.Currency = string.Empty;
+                            pvm.CostBasis = 0m;
                             pvm.IsConversionUnavailable = false;
                             vm.Positions.Add(pvm);
                         }
@@ -669,7 +746,9 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                 vm._newTransactionsBuffer.Clear();
                 foreach (var t in currentPortfolio.History)
                 {
-                    if (!hasFilter || (vm.SelectedNode != null && vm.SelectedNode.IsAggregate) || (t.Ticker != null && vm._filterTickersBuffer.Contains(t.Ticker.ToUpperInvariant())))
+                    // A cash flow has no ticker but belongs to the ledger of every profile (it funds the trades), so it stays in the list.
+                    bool isCashFlow = t.Type.IsCashFlow();
+                    if (!hasFilter || (vm.SelectedNode != null && vm.SelectedNode.IsAggregate) || isCashFlow || (t.Ticker != null && vm._filterTickersBuffer.Contains(t.Ticker.ToUpperInvariant())))
                     {
                         vm._newTransactionsBuffer.Add(t);
                     }
@@ -755,9 +834,14 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
     [CommunityToolkit.Mvvm.Input.RelayCommand(CanExecute = nameof(IsStorageWritable))]
     private async Task AddTransactionAsync(string typeStr)
     {
-        if (Enum.TryParse<TransactionType>(typeStr, out var type))
+        // Enum.TryParse also accepts numbers that name no member (for example "99"); only a defined member may open the dialog.
+        if (Enum.TryParse<TransactionType>(typeStr, out var type) && Enum.IsDefined(typeof(TransactionType), type))
         {
             await OpenAddTransactionDialogAsync(type);
+        }
+        else
+        {
+            _logger.LogWarning("AddTransaction ignored an unknown transaction type: {Type}", typeStr);
         }
     }
 
@@ -799,7 +883,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                         var history = globalPortfolio.History.ToList();
                         history.Add(result);
 
-                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history);
+                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history, PortfolioAccountingDefaults.CostBasis);
                         await _portfolioManager.SavePortfolioAsync(rebuilt);
 
                         // Add to watchlist profile AFTER saving manual transaction to database
@@ -878,7 +962,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                         var history = globalPortfolio.History.ToList();
                         history.Add(result);
 
-                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history);
+                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history, PortfolioAccountingDefaults.CostBasis);
                         await _portfolioManager.SavePortfolioAsync(rebuilt);
 
                         _logger.LogInformation("Exit transaction added successfully and global portfolio rebuilt.");
@@ -915,16 +999,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
             using (var vm = _dialogViewModelFactory())
             {
-                vm.Type = transaction.Type;
-                vm.Ticker = transaction.Ticker ?? string.Empty;
-                vm.Quantity = transaction.Quantity;
-                vm.PricePerUnit = transaction.PricePerUnit;
-                vm.Fee = transaction.Fee;
-                vm.CashAmount = transaction.CashAmount;
-                vm.ExecutedAt = transaction.ExecutedAt.DateTime;
-                vm.Notes = transaction.Notes;
-                vm.TargetPrice = transaction.TargetPrice;
-                vm.StopLoss = transaction.StopLoss;
+                vm.LoadFrom(transaction);
 
                 var result = await _dialogService.ShowEditTransactionDialogAsync(vm);
                 if (result != null)
@@ -953,7 +1028,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                             return;
                         }
 
-                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history);
+                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history, PortfolioAccountingDefaults.CostBasis);
                         await _portfolioManager.SavePortfolioAsync(rebuilt);
 
                         _logger.LogInformation("Transaction edited successfully and global portfolio rebuilt.");
@@ -1004,7 +1079,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
                     if (idx >= 0)
                     {
                         history.RemoveAt(idx);
-                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history);
+                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history, PortfolioAccountingDefaults.CostBasis);
                         await _portfolioManager.SavePortfolioAsync(rebuilt);
 
                         _logger.LogInformation("Transaction deleted successfully and global portfolio rebuilt.");
@@ -1070,7 +1145,7 @@ public partial class PortfolioSummaryViewModel : ViewModelBase, IDisposable, IRe
 
                     if (removedCount > 0)
                     {
-                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history);
+                        var rebuilt = _portfolioManager.RebuildPortfolio(InitialCash, history, PortfolioAccountingDefaults.CostBasis);
                         await _portfolioManager.SavePortfolioAsync(rebuilt);
 
                         _logger.LogInformation("{Count} transactions deleted successfully and global portfolio rebuilt.", removedCount);

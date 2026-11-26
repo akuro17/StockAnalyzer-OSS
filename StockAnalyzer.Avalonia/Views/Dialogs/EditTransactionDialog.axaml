@@ -158,8 +158,8 @@
                 </Grid>
             </StackPanel>
 
-            <!-- Buy/Sell Fields -->
-            <StackPanel Spacing="12" IsVisible="{Binding IsBuyOrSell}">
+            <!-- Fields: Type, currency/exchange rate and notes are shown for every type; the trade-only rows are hidden for a deposit or withdrawal -->
+            <StackPanel Spacing="12">
                 <Grid ColumnDefinitions="*,*">
                     <!-- Type Selection (Moved here) -->
                     <StackPanel Spacing="6" Margin="0,0,8,0">
@@ -180,23 +180,38 @@
                     </StackPanel>
 
                     <!-- Quantity -->
-                    <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
+                    <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0" IsVisible="{Binding IsBuyOrSell}">
                         <TextBlock Text="{l:Localize Portfolio_Dialog_Quantity}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
-                        <NumericUpDown Value="{Binding Quantity}" 
-                                       Minimum="0.000001"
+                        <NumericUpDown Value="{Binding Quantity}"
+                                       Minimum="{Binding MinTradeQuantity}"
+                                       ClipValueToMinMax="True"
                                        FormatString="F6"
-                                       Height="38" 
+                                       Height="38"
                                        Background="{DynamicResource Brush.Background.Tertiary}"
                                        BorderBrush="{DynamicResource Brush.Border}"
                                        VerticalContentAlignment="Center"/>
                     </StackPanel>
                 </Grid>
 
-                <Grid ColumnDefinitions="*,*">
+                <!-- Deposit/Withdrawal Fields -->
+                <StackPanel Spacing="6" IsVisible="{Binding IsDepositOrWithdrawal}">
+                    <TextBlock Text="{l:Localize Portfolio_Dialog_CashAmount}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
+                    <NumericUpDown Value="{Binding CashAmount}"
+                                   Minimum="{Binding MinCashAmount}"
+                                   ClipValueToMinMax="True"
+                                   FormatString="F2"
+                                   Height="38"
+                                   Background="{DynamicResource Brush.Background.Tertiary}"
+                                   BorderBrush="{DynamicResource Brush.Border}"
+                                   VerticalContentAlignment="Center"/>
+                </StackPanel>
+
+                <Grid ColumnDefinitions="*,*" IsVisible="{Binding IsBuyOrSell}">
                     <StackPanel Spacing="6" Margin="0,0,8,0">
                         <TextBlock Text="{l:Localize Portfolio_Dialog_PricePerUnit}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
-                        <NumericUpDown Value="{Binding PricePerUnit}" 
-                                       Minimum="0"
+                        <NumericUpDown Value="{Binding PricePerUnit}"
+                                       Minimum="{Binding MinNonNegativeAmount}"
+                                       ClipValueToMinMax="True"
                                        FormatString="F2"
                                        Height="38" 
                                        Background="{DynamicResource Brush.Background.Tertiary}"
@@ -206,8 +221,9 @@
 
                     <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
                         <TextBlock Text="{l:Localize Portfolio_Dialog_Fee}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
-                        <NumericUpDown Value="{Binding Fee}" 
-                                       Minimum="0"
+                        <NumericUpDown Value="{Binding Fee}"
+                                       Minimum="{Binding MinNonNegativeAmount}"
+                                       ClipValueToMinMax="True"
                                        FormatString="F2"
                                        Height="38" 
                                        Background="{DynamicResource Brush.Background.Tertiary}"
@@ -232,8 +248,9 @@
                     <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0"
                                 IsVisible="{Binding IsExchangeRateVisible}">
                         <TextBlock Text="{l:Localize Portfolio_Dialog_ExchangeRate}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
-                        <NumericUpDown Value="{Binding AppliedRateValue}" 
-                                       Minimum="0.000001"
+                        <NumericUpDown Value="{Binding AppliedRateValue}"
+                                       Minimum="{Binding MinExchangeRate}"
+                                       ClipValueToMinMax="True"
                                        FormatString="F6"
                                        Height="38" 
                                        Background="{DynamicResource Brush.Background.Tertiary}"
@@ -244,11 +261,12 @@
                 </Grid>
 
                 <!-- Strategy Metadata: Target Price & Stop Loss -->
-                <Grid ColumnDefinitions="*,*">
+                <Grid ColumnDefinitions="*,*" IsVisible="{Binding IsBuyOrSell}">
                     <StackPanel Spacing="6" Margin="0,0,8,0">
                         <TextBlock Text="{l:Localize Portfolio_Dialog_TargetPrice}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
-                        <NumericUpDown Value="{Binding TargetPrice}" 
-                                       Minimum="0"
+                        <NumericUpDown Value="{Binding TargetPrice}"
+                                       Minimum="{Binding MinNonNegativeAmount}"
+                                       ClipValueToMinMax="True"
                                        FormatString="F2"
                                        Height="38" 
                                        Background="{DynamicResource Brush.Background.Tertiary}"
@@ -258,8 +276,9 @@
 
                     <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0">
                         <TextBlock Text="{l:Localize Portfolio_Dialog_StopLoss}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
-                        <NumericUpDown Value="{Binding StopLoss}" 
-                                       Minimum="0"
+                        <NumericUpDown Value="{Binding StopLoss}"
+                                       Minimum="{Binding MinNonNegativeAmount}"
+                                       ClipValueToMinMax="True"
                                        FormatString="F2"
                                        Height="38" 
                                        Background="{DynamicResource Brush.Background.Tertiary}"
@@ -280,18 +299,6 @@
                              VerticalContentAlignment="Top"
                              Padding="8,6"/>
                 </StackPanel>
-            </StackPanel>
-
-            <!-- Deposit/Withdrawal Fields -->
-            <StackPanel Spacing="6" IsVisible="{Binding IsDepositOrWithdrawal}">
-                <TextBlock Text="{l:Localize Portfolio_Dialog_CashAmount}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource Brush.Text.Secondary}"/>
-                <NumericUpDown Value="{Binding CashAmount}" 
-                               Minimum="0.01"
-                               FormatString="F2"
-                               Height="38" 
-                               Background="{DynamicResource Brush.Background.Tertiary}"
-                               BorderBrush="{DynamicResource Brush.Border}"
-                               VerticalContentAlignment="Center"/>
             </StackPanel>
 
             <!-- Common fields: Execution Date -->

@@ -52,6 +52,7 @@ public static class DrawingValueCatalog
             : ClassicPivotPointsValues.Calculate(r.Points[0].Time, r.Candles, r.Options.PivotPeriod, r.Options.PivotExtendMode, r.Color), "ClassicPivotPointsObject", RequiresCandles: true),
         new("CrossLine", 1, r => CrossLineValues.Calculate(r.Points[0], r.Timestamp, r.Color), "CrossLineObject"),
         new("DatePriceRange", 2, r => DatePriceRangeValues.Calculate(r.Points[0], r.Points[1], r.Candles, r.Color), "DatePriceRangeObject", RequiresCandles: true),
+        new("DistributionRange", 2, r => DistributionRangeValues.Calculate(r.Points[0], r.Points[1], r.Candles, r.Color, r.Options), "DistributionRangeObject", RequiresCandles: true),
     };
 
     /// <summary>All tools in the fixed specification order.</summary>

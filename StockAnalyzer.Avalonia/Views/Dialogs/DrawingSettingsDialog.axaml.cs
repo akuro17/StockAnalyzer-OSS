@@ -372,7 +372,7 @@ public partial class DrawingSettingsDialog : Window
         // before TakeSnapshot()/Commit() -- guarantees RangeBars and Points are captured together in
         // a consistent state. See
         // sa_analysis_report_VolumeProfile_PostImplementation_StrictReview_20260914.md F10.
-        if ((_drawing is FixedRangeVolumeProfileObject || _drawing is TimeAtPriceObject) && _candles != null)
+        if ((_drawing is FixedRangeVolumeProfileObject || _drawing is TimeAtPriceObject || _drawing is DistributionRangeObject) && _candles != null)
         {
             StockAnalyzer.Avalonia.Drawing.DeferredComputationRecalculator.TryRecalculate(_drawing, _candles);
         }

@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Joseph E. Granville, *A Strategy of Daily Stock Market Timing for Maximum Profit*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Granville's Law Sell Signal (Rules S1–S4)](../../ChartPatterns_Images/04_Trading_Rules/02_granvilles_law_sell_signal.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A rule-based trading indicator strictly evaluating Granville's 4 Sell Rules (moving average slope, breakdown crossover, resistance rejection, and deep upward deviation) against a long-term Simple Moving Average (default 200-bar SMA), completely independent of the Buy indicator.
 

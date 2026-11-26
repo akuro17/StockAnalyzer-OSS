@@ -26,7 +26,8 @@ public static class DrawingRecalculation
                  obj is not StockAnalyzer.Avalonia.Drawing.Objects.AutoElliottWaveObject &&
                  obj is not AnchoredVwapObject &&
                  obj is not FixedRangeVolumeProfileObject &&
-                 obj is not TimeAtPriceObject)
+                 obj is not TimeAtPriceObject &&
+                 obj is not DistributionRangeObject)
         {
             DeferredComputationRecalculator.TryRecalculate(obj, candles);
         }

@@ -2174,6 +2174,156 @@
                     </Border>
                 </StackPanel>
 
+                <!-- Distribution Range Settings -->
+                <StackPanel x:Name="DistributionRangePanel" Spacing="8" IsVisible="False">
+                    <Border Classes="SettingsCard">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_DataMode}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="DistDataModeCombo" SelectedIndex="0" Width="165" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <ComboBoxItem Content="{l:Localize Enum_DistributionDataMode_LogReturn}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DistributionDataMode_SimpleReturn}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DistributionDataMode_Price}"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Label_PriceType}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="DistPriceSourceCombo" SelectedIndex="3" Width="165" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <ComboBoxItem Content="Open"/>
+                                    <ComboBoxItem Content="High"/>
+                                    <ComboBoxItem Content="Low"/>
+                                    <ComboBoxItem Content="Close"/>
+                                    <ComboBoxItem Content="Median (H+L)/2"/>
+                                    <ComboBoxItem Content="Midpoint (O+C)/2"/>
+                                    <ComboBoxItem Content="Typical (H+L+C)/3"/>
+                                    <ComboBoxItem Content="Weighted (H+L+2C)/4"/>
+                                    <ComboBoxItem Content="Average (O+H+L+C)/4"/>
+                                    <ComboBoxItem Content="Heikin-Ashi Open"/>
+                                    <ComboBoxItem Content="Heikin-Ashi High"/>
+                                    <ComboBoxItem Content="Heikin-Ashi Low"/>
+                                    <ComboBoxItem Content="Heikin-Ashi Close"/>
+                                    <ComboBoxItem Content="True High"/>
+                                    <ComboBoxItem Content="True Low"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_DisplayStyle}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="DistDisplayStyleCombo" SelectedIndex="1" Width="165" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <ComboBoxItem Content="{l:Localize Enum_DistributionDisplayStyle_Histogram}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DistributionDisplayStyle_HistogramWithCurve}"/>
+                                    <ComboBoxItem x:Name="DistHorizontalProfileItem" Content="{l:Localize Enum_DistributionDisplayStyle_HorizontalPriceProfile}"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <TextBlock x:Name="DistDisplayStyleHintText"
+                                       Text="{l:Localize Setting_Dist_HorizontalRequiresPrice}"
+                                       Foreground="#E69F00"
+                                       FontSize="11"
+                                       TextWrapping="Wrap"
+                                       IsVisible="False"/>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_BinningRule}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="DistBinningRuleCombo" SelectedIndex="0" Width="165" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <ComboBoxItem Content="{l:Localize Enum_DistributionBinningRule_FreedmanDiaconis}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DistributionBinningRule_Sturges}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DistributionBinningRule_Scott}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_DistributionBinningRule_FixedCount}"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_FixedBinCount}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="DistFixedBinCountSpin" Minimum="5" Maximum="100" Value="20" Increment="1" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_ReferenceDistribution}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ComboBox x:Name="DistReferenceDistCombo" SelectedIndex="1" Width="165" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_None}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Normal}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_StudentT}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Laplace}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Logistic}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Cauchy}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Gev}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Uniform}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_LogNormal}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Gamma}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Weibull}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Exponential}"/>
+                                    <ComboBoxItem Content="{l:Localize Enum_ReferenceDistributionType_Pareto}"/>
+                                </ComboBox>
+                            </Grid>
+
+                            <CheckBox x:Name="DistOverrideStudentTCheck" Content="{l:Localize Param_OverrideStudentTDegreesOfFreedom}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_StudentTDegreesOfFreedom}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="DistStudentTDfSpin" Minimum="2.1" Maximum="1000" Value="5.0" Increment="0.5" FormatString="0.0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_GevShapeParameter}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="DistGevShapeSpin" Minimum="-0.5" Maximum="0.45" Value="0" Increment="0.05" FormatString="0.00" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_BandwidthMultiplier}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="DistBandwidthMultSpin" Minimum="0.25" Maximum="4.0" Value="1.0" Increment="0.05" FormatString="0.00" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <CheckBox x:Name="DistIncludeKdeCheck" Content="{l:Localize Param_IncludeKde}" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <CheckBox x:Name="DistShowStatsLabelCheck" Content="{l:Localize Param_ShowStatsLabel}" IsChecked="True" Foreground="{DynamicResource Brush.Text.Primary}"/>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_PlotHeightRatio}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="DistPlotHeightRatioSpin" Minimum="0.15" Maximum="0.90" Value="0.45" Increment="0.05" FormatString="0.00" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_BarColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ColorPicker x:Name="DistBarColorPicker" Width="50" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_BarOpacity}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="DistBarOpacitySpin" Minimum="0" Maximum="100" Value="35" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_KdeColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ColorPicker x:Name="DistKdeColorPicker" Width="50" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_ReferenceCurveColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ColorPicker x:Name="DistRefColorPicker" Width="50" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Label_FillColor}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <ColorPicker x:Name="DistFillColorPicker" Width="50" Height="28" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Label_FillOpacity}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="DistFillOpacitySpin" Minimum="0" Maximum="100" Value="10" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <CheckBox x:Name="DistRightToLeftCheck" Content="{l:Localize Param_RightToLeft}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+                            <CheckBox x:Name="DistLockRangeCheck" Content="{l:Localize Param_LockRange}" IsChecked="False" Foreground="{DynamicResource Brush.Text.Primary}"/>
+
+                            <Grid ColumnDefinitions="*, Auto" MinHeight="32">
+                                <TextBlock Text="{l:Localize Param_RangeBars}" Foreground="{DynamicResource Brush.Dialog.LabelText}" VerticalAlignment="Center"/>
+                                <NumericUpDown x:Name="DistRangeBarsSpin" Minimum="1" Maximum="100000" Value="1" FormatString="0" Width="120" Height="30" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
                 </StackPanel> <!-- SpecificSettingsSection -->
 
             </StackPanel> <!-- SettingsContentPanel -->

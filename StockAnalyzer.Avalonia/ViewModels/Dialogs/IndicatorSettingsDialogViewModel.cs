@@ -861,7 +861,8 @@ public partial class IndicatorSettingsDialogViewModel : ViewModelBase, IRecipien
         {
             var type = kvp.Key;
             var settings = kvp.Value;
-            if (type == IndicatorType.Price) continue;
+            // Price is listed in its own category; SkewnessKurtosis is hidden from new-add UI in favor of split Skewness / Kurtosis (D-1=B) while staying registered for saved workspaces/Core/Screener/MCP.
+            if (type == IndicatorType.Price || type == IndicatorType.SkewnessKurtosis) continue;
 
             tempItems.Add(new IndicatorCatalogItem
             {

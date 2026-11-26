@@ -44,7 +44,7 @@ internal static class McpHelpText
         options.Add((McpCommandLine.EnableDiscussionToken, "Offer the opt-in discussion tools: a volatile board in memory on which several AI agents talk about an analysis (nothing is saved under Data); listed below when this option is given."));
         options.Add(($"{McpCommandLine.ToolsetToken} <names>", $"Restrict read-only tools to comma-separated profiles ({string.Join(", ", McpToolsetCatalog.AllowedProfiles)}). Default all."));
         options.Add(($"{McpCommandLine.ResponseFormatToken} <mode>", $"Tool response format: {McpCommandLine.DualFormat} (default, text + structuredContent) or {McpCommandLine.TextOnlyFormat} (text only)."));
-        options.Add((McpCommandLine.CompactDefaultsToken, "Apply compact and rounded defaults on allowlisted tools when callers omit formatting parameters (excludes sa_evaluate_expressions)."));
+        options.Add((McpCommandLine.CompactDefaultsToken, "Apply compact and rounded defaults on allowlisted tools when callers omit formatting parameters (excludes sa_evaluate_expressions); with --enable-discussion it also makes the discussion read tool compact with a minimal session header."));
         options.Add((McpCommandLine.ProgressiveDiscoveryToken, $"Expose only {SearchToolsTool.ToolName}, {InvokeToolProxyTool.ToolName} (and {InvokeToolProxyTool.ActionToolName} when non-read-only tools are active) in tools/list; discover and invoke active tools on demand."));
         AppendTable(text, options);
 

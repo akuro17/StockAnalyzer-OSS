@@ -8,6 +8,7 @@ public interface IPortfolioManager
 {
     /// <summary>
     /// Applies a transaction to the current portfolio and returns a new updated portfolio instance.
+    /// It carries the average cost as <see cref="CostBasisMethod.LegacyAveragePreserve"/> does; the application does not call it (it rebuilds from the history instead).
     /// </summary>
     Portfolio ApplyTransaction(Portfolio current, Transaction transaction);
 
@@ -15,6 +16,14 @@ public interface IPortfolioManager
     /// Rebuilds the entire portfolio state in memory by sequentially re-applying sorted transactions.
     /// </summary>
     Portfolio RebuildPortfolio(decimal initialCash, IReadOnlyList<Transaction> transactions);
+
+    /// <summary>
+    /// Rebuilds the portfolio like <see cref="RebuildPortfolio(decimal, IReadOnlyList{Transaction})"/> and carries the average cost of a partly exited position
+    /// as <paramref name="costBasisMethod"/> says. The parameter is required (not optional) so that mock setups of the two-argument method stay valid expression trees.
+    /// Cash, realized PnL and closed positions do not depend on the method.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="costBasisMethod"/> is no member of <see cref="CostBasisMethod"/>.</exception>
+    Portfolio RebuildPortfolio(decimal initialCash, IReadOnlyList<Transaction> transactions, CostBasisMethod costBasisMethod);
 
     /// <summary>
     /// Evaluates the portfolio's current value and performance based on the provided latest prices.

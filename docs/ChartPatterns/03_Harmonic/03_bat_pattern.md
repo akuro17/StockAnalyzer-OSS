@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Scott Carney, *Harmonic Trading Vol. 1* (Bat 0.886 PRZ definition)
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Bat Pattern](../../ChartPatterns_Images/03_Harmonic/03_bat_pattern.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A 5-point harmonic reversal pattern characterized by a shallow B-point retracement (0.382–0.500 XA) and a deep 0.886 XA retracement at point D (just shy of point X) for high-precision reversals.
 

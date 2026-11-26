@@ -149,6 +149,32 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             return items.ToArray();
         }
 
+        /// <summary>The strings of an array argument. At most <paramref name="stopAfter"/> + 1 items are read: the caller checks the count and one item more than allowed is enough to refuse it.</summary>
+        public string[]? StringArray(string name, int stopAfter = int.MaxValue)
+        {
+            if (!TryGet(name, out JsonElement value))
+            {
+                return null;
+            }
+
+            if (value.ValueKind != JsonValueKind.Array)
+            {
+                throw Invalid(name, $"{name} must be an array of strings.");
+            }
+
+            var items = new List<string>();
+            foreach (JsonElement item in value.EnumerateArray())
+            {
+                items.Add(item.ValueKind == JsonValueKind.String ? item.GetString()! : throw Invalid(name, $"{name} must be an array of strings."));
+                if (items.Count > stopAfter)
+                {
+                    break;
+                }
+            }
+
+            return items.ToArray();
+        }
+
         public int IntegerOr(string name, int defaultValue)
         {
             long? value = Integer(name);
@@ -335,19 +361,50 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
 
     private async Task<string> ReadAsync(Arguments arguments, CancellationToken cancellationToken)
     {
+        // Checked before the board is touched (the request may have come over a pipe, which bypasses the schema of the tool).
+        bool compact = arguments.Boolean("compact") ?? false;
+        string headerMode = arguments.String("headerMode") ?? DiscussionNames.HeaderFull;
+        if (headerMode is not (DiscussionNames.HeaderFull or DiscussionNames.HeaderMinimal or DiscussionNames.HeaderNone))
+        {
+            throw Invalid("headerMode", $"headerMode must be {DiscussionNames.HeaderFull}, {DiscussionNames.HeaderMinimal} or {DiscussionNames.HeaderNone}.");
+        }
+
+        string view = arguments.String("view") ?? DiscussionNames.ViewFull;
+        if (view is not (DiscussionNames.ViewFull or DiscussionNames.ViewSummary))
+        {
+            throw Invalid("view", $"view must be {DiscussionNames.ViewFull} or {DiscussionNames.ViewSummary}.");
+        }
+
+        bool excludeEvents = arguments.Boolean("excludeEvents") ?? false;
+        int? tail = arguments.Integer("tail") is { } tailValue ? CheckedInt("tail", tailValue) : null;
+        var options = new DiscussionReadOptions(excludeEvents, tail);
+
         DiscussionReadResult read = await _hub.ReadAsync(
             arguments.String("sessionId"),
             arguments.String("participantToken"),
             arguments.Integer("afterSequence") ?? 0,
             arguments.Integer("limit") is { } limit ? CheckedInt("limit", limit) : null,
             arguments.IntegerOr("waitSeconds", 0),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            options.IsActive ? options : null).ConfigureAwait(false);
         return Build(writer =>
         {
             writer.WriteStartObject();
             writer.WriteStartArray("messages");
             foreach (DiscussionReadMessage message in read.Messages)
             {
+                if (view == DiscussionNames.ViewSummary)
+                {
+                    WriteSummaryMessage(writer, message, compact);
+                    continue;
+                }
+
+                if (compact)
+                {
+                    WriteCompactMessage(writer, message);
+                    continue;
+                }
+
                 writer.WriteStartObject();
                 writer.WriteNumber("sequence", message.Sequence);
                 WriteNullableString(writer, "handle", message.Handle);
@@ -391,11 +448,173 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             writer.WriteNumber("nextAfterSequence", read.NextAfterSequence);
             writer.WriteNumber("lastSequence", read.LastSequence);
             writer.WriteBoolean("hasMore", read.HasMore);
-            writer.WriteBoolean("timedOut", read.TimedOut);
-            writer.WritePropertyName("session");
-            WriteHeader(writer, read.Session);
+            if (!compact || read.TimedOut)
+            {
+                writer.WriteBoolean("timedOut", read.TimedOut);
+            }
+
+            switch (headerMode)
+            {
+                case DiscussionNames.HeaderFull:
+                    writer.WritePropertyName("session");
+                    WriteHeader(writer, read.Session);
+                    break;
+                case DiscussionNames.HeaderMinimal:
+                    writer.WritePropertyName("session");
+                    WriteMinimalHeader(writer, read.Session, compact);
+                    break;
+            }
+
             writer.WriteEndObject();
         });
+    }
+
+    /// <summary>
+    /// One message of a read with <c>view</c> summary: what is needed to survey a discussion. <c>origin</c> is always written (peer message or server event). <c>summary</c> is the
+    /// summary the writer gave in the interpretation, else the content cut to <see cref="DiscussionExtensionLimits.SummaryViewContentChars"/> characters (left out when both are empty);
+    /// <c>contentTruncated</c> is true when the content was cut, otherwise false (left out in a compact read). The name, the content and the rest of the interpretation are not written.
+    /// </summary>
+    private static void WriteSummaryMessage(Utf8JsonWriter writer, DiscussionReadMessage message, bool compact)
+    {
+        string? summary = message.Interpretation?.Summary;
+        bool truncated = false;
+        if (summary is null)
+        {
+            summary = DiscussionText.Truncate(message.Content, DiscussionExtensionLimits.SummaryViewContentChars);
+            truncated = summary.Length < message.Content.Length;
+        }
+
+        writer.WriteStartObject();
+        writer.WriteNumber("sequence", message.Sequence);
+        writer.WriteString("kind", DiscussionNames.ToWire(message.Kind));
+        writer.WriteString("origin", DiscussionNames.OriginOf(message.Kind));
+        if (message.Handle is not null)
+        {
+            writer.WriteString("handle", message.Handle);
+        }
+
+        if (message.ReplyToSequence is { } replyTo)
+        {
+            writer.WriteNumber("replyToSequence", replyTo);
+        }
+
+        if (message.ContextIds.Count > 0)
+        {
+            writer.WriteStartArray("contextIds");
+            foreach (long id in message.ContextIds)
+            {
+                writer.WriteNumberValue(id);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        if (message.Interpretation?.Direction is { } direction)
+        {
+            writer.WriteString("direction", direction);
+        }
+
+        if (summary.Length > 0)
+        {
+            writer.WriteString("summary", summary);
+        }
+
+        if (truncated)
+        {
+            writer.WriteBoolean("contentTruncated", true);
+        }
+        else if (!compact)
+        {
+            writer.WriteBoolean("contentTruncated", false);
+        }
+
+        writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// One message of a compact read: the same keys in the same order as the full form, but a key whose value is null, empty or false is left out
+    /// (<c>sequence</c>, <c>kind</c>, <c>origin</c> and <c>createdUtc</c> are always written). A present value is written exactly as in the full form.
+    /// </summary>
+    private static void WriteCompactMessage(Utf8JsonWriter writer, DiscussionReadMessage message)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("sequence", message.Sequence);
+        if (message.Handle is not null)
+        {
+            writer.WriteString("handle", message.Handle);
+        }
+
+        if (message.DisplayName is not null)
+        {
+            writer.WriteString("displayName", message.DisplayName);
+        }
+
+        writer.WriteString("kind", DiscussionNames.ToWire(message.Kind));
+        writer.WriteString("origin", DiscussionNames.OriginOf(message.Kind));
+        if (message.Content.Length > 0)
+        {
+            writer.WriteString("content", message.Content);
+        }
+
+        if (message.ReplyToSequence is { } replyTo)
+        {
+            writer.WriteNumber("replyToSequence", replyTo);
+        }
+
+        if (message.ContextIds.Count > 0)
+        {
+            writer.WriteStartArray("contextIds");
+            foreach (long id in message.ContextIds)
+            {
+                writer.WriteNumberValue(id);
+            }
+
+            writer.WriteEndArray();
+        }
+
+        writer.WriteString("createdUtc", DiscussionNames.FormatUtc(message.CreatedUtc));
+        if (message.HasStructuredInput)
+        {
+            writer.WriteBoolean("hasStructuredInput", true);
+        }
+
+        if (message.HasInterpretation)
+        {
+            writer.WriteBoolean("hasInterpretation", true);
+        }
+
+        if (message.Interpretation is { } interp)
+        {
+            writer.WritePropertyName("interpretation");
+            writer.WriteRawValue(DiscussionEvidenceValidator.SerializeInterpretationCanonical(interp), skipInputValidation: true);
+        }
+
+        writer.WriteEndObject();
+    }
+
+    /// <summary>
+    /// The part of the session header that changes while a discussion runs (headerMode minimal): id, state, the close reason of a closed discussion, the floor, the counters.
+    /// The floor is written as null in the full form of a result and left out in a compact one. Title, topic, turn mode, participants and epoch are not repeated.
+    /// </summary>
+    private static void WriteMinimalHeader(Utf8JsonWriter writer, DiscussionSessionHeader header, bool compact)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("id", header.Id);
+        writer.WriteString("state", DiscussionNames.ToWire(header.State));
+        if (header.State == DiscussionSessionState.Closed && DiscussionNames.ToWire(header.CloseReason) is { } reason)
+        {
+            writer.WriteString("closeReason", reason);
+        }
+
+        if (header.Floor is not null || !compact)
+        {
+            WriteFloor(writer, "floor", header.Floor);
+        }
+
+        writer.WriteNumber("messageCount", header.MessageCount);
+        writer.WriteNumber("remainingMessages", header.RemainingMessages);
+        writer.WriteNumber("contextCount", header.ContextCount);
+        writer.WriteEndObject();
     }
 
     private string Close(Arguments arguments)
@@ -481,6 +700,20 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
     {
         long contextId = arguments.Integer("contextId") ?? throw Invalid("contextId", "contextId is required.");
         bool includeResult = arguments.Boolean("includeResult") ?? true;
+
+        // The paths are checked before the board is touched; a request over the pipe may bypass the schema of the tool.
+        string[]? paths = arguments.StringArray("paths", DiscussionExtensionLimits.MaxJsonExtractPaths);
+        IReadOnlyList<DiscussionJsonPathExtractor.Segment[]>? parsedPaths = null;
+        if (paths is not null)
+        {
+            if (!includeResult)
+            {
+                throw Invalid("paths", "paths cannot be combined with includeResult false.");
+            }
+
+            parsedPaths = DiscussionJsonPathExtractor.ParseAll(paths);
+        }
+
         DiscussionAnalysisResult analysis = _hub.GetAnalysis(arguments.String("sessionId"), arguments.String("participantToken"), contextId);
         return Build(writer =>
         {
@@ -502,7 +735,11 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
                 writer.WriteRawValue(analysis.ProvenanceJson, skipInputValidation: true);
             }
 
-            if (includeResult)
+            if (parsedPaths is not null)
+            {
+                DiscussionJsonPathExtractor.Write(writer, analysis.ResultJson, paths!, parsedPaths);
+            }
+            else if (includeResult)
             {
                 writer.WritePropertyName("result");
                 writer.WriteRawValue(analysis.ResultJson, skipInputValidation: true);
@@ -534,7 +771,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             throw new DiscussionException(DiscussionErrorCodes.LimitExceeded, $"commandTail must be 0 to {DiscussionLimits.StatusTailMax}.", "commandTail");
         }
 
-        DiscussionStatusResult status = _hub.Status(sessionId, auditTail);
+        DiscussionStatusResult status = _hub.Status(sessionId, auditTail, arguments.Boolean("includeContexts") ?? false);
         return Build(writer =>
         {
             writer.WriteStartObject();
@@ -552,7 +789,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             else
             {
                 writer.WritePropertyName("session");
-                WriteHeader(writer, status.Sessions[0]);
+                WriteHeader(writer, status.Sessions[0], status.Contexts);
             }
 
             writer.WritePropertyName("effectiveLimits");
@@ -612,7 +849,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
     }
 
     /// <summary>The session header of spec 5.7. Written as a value: the caller has written the property name (or is inside an array).</summary>
-    private static void WriteHeader(Utf8JsonWriter writer, DiscussionSessionHeader header)
+    private static void WriteHeader(Utf8JsonWriter writer, DiscussionSessionHeader header, IReadOnlyList<DiscussionContextInfo>? contexts = null)
     {
         writer.WriteStartObject();
         writer.WriteString("id", header.Id);
@@ -638,6 +875,26 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
         writer.WriteEndArray();
         writer.WriteNumber("contextCount", header.ContextCount);
         writer.WriteString("hubEpoch", header.HubEpoch);
+        if (contexts is not null)
+        {
+            writer.WriteStartArray("contexts");
+            foreach (DiscussionContextInfo context in contexts)
+            {
+                writer.WriteStartObject();
+                writer.WriteNumber("contextId", context.ContextId);
+                writer.WriteString("tool", context.Tool);
+                writer.WriteString("attachedBy", context.AttachedBy);
+                WriteNullableString(writer, "analysisIntent", context.AnalysisIntent);
+                writer.WriteNumber("resultBytes", context.ResultBytes);
+                writer.WriteString("sha256", context.Sha256);
+                writer.WriteNumber("sequence", context.Sequence);
+                writer.WriteString("createdUtc", DiscussionNames.FormatUtc(context.CreatedUtc));
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
+        }
+
         writer.WriteEndObject();
     }
 

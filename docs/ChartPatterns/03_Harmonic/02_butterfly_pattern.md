@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Bryce Gilmore / Scott Carney, *Harmonic Trading Vol. 1*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Butterfly Pattern](../../ChartPatterns_Images/03_Harmonic/02_butterfly_pattern.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 An extension-type 5-point harmonic reversal pattern where point B forms a deep 0.786 retracement of XA and point D extends strictly beyond point X to the 1.272–1.618 XA extension zone to trigger a reversal at new price extremes.
 

@@ -83,6 +83,8 @@ public static class LayoutConstants
     public const int PortfolioRefreshIntervalSeconds = 60;
     public const int PortfolioJitterMinMs = 1500;
     public const int PortfolioJitterMaxMs = 4500;
+    /// <summary>The per-currency cash strip of the Summary tab is shown when at least this many currencies hold a non-zero cash balance.</summary>
+    public const int PortfolioCashStripMinCurrencies = 2;
 
     public const int AllocationRefreshIntervalSeconds = 60;
     public const int AllocationJitterMinMs = 1000;

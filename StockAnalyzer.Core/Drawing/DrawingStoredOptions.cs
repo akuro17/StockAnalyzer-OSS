@@ -1,4 +1,5 @@
 using System.Text.Json;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
@@ -37,6 +38,16 @@ public static class DrawingStoredOptions
     public const string ShowEProjectionKey = "showEProjection";
     public const string ShowNTProjectionKey = "showNTProjection";
 
+    // DistributionRange keys
+    public const string DataModeKey = "dataMode";
+    public const string BinningRuleKey = "binningRule";
+    public const string FixedBinCountKey = "fixedBinCount";
+    public const string ReferenceDistributionKey = "referenceDistribution";
+    public const string OverrideStudentTDegreesOfFreedomKey = "overrideStudentTDegreesOfFreedom";
+    public const string StudentTDegreesOfFreedomKey = "studentTDegreesOfFreedom";
+    public const string GevShapeParameterKey = "gevShapeParameter";
+    public const string BandwidthMultiplierKey = "bandwidthMultiplier";
+
     /// <summary>The tool name a saved object gives itself (<see cref="ToolKey"/>), or null.</summary>
     public static string? ReadTool(IReadOnlyDictionary<string, object?> parameters) => Text(parameters, ToolKey);
 
@@ -72,8 +83,23 @@ public static class DrawingStoredOptions
                 Bool(parameters, ShowDoubleReturnKey) ?? true,
                 Bool(parameters, ShowEProjectionKey) ?? true,
                 Bool(parameters, ShowNTProjectionKey) ?? true),
+            DistributionDataMode = Enumeration<DistributionDataMode>(parameters, DataModeKey) ?? DistributionDataMode.LogReturn,
+            DistributionPriceSource = Enumeration<PriceType>(parameters, PriceSourceKey) ?? PriceType.Close,
+            DistributionBinningRule = Enumeration<DistributionBinningRule>(parameters, BinningRuleKey) ?? DistributionBinningRule.FreedmanDiaconis,
+            DistributionFixedBinCount = Int(parameters, FixedBinCountKey) ?? DistributionRangeParameters.DefaultFixedBinCount,
+            DistributionReferenceDistribution = Enumeration<ReferenceDistributionType>(parameters, ReferenceDistributionKey) ?? ReferenceDistributionType.Normal,
+            DistributionOverrideStudentTDegreesOfFreedom = Bool(parameters, OverrideStudentTDegreesOfFreedomKey) ?? false,
+            DistributionStudentTDegreesOfFreedom = Decimal(parameters, StudentTDegreesOfFreedomKey) ?? DistributionRangeParameters.DefaultStudentTDegreesOfFreedom,
+            DistributionGevShapeParameter = Decimal(parameters, GevShapeParameterKey) ?? DistributionRangeParameters.DefaultGevShapeParameter,
+            DistributionBandwidthMultiplier = Double(parameters, BandwidthMultiplierKey) ?? DistributionRangeParameters.DefaultBandwidthMultiplier,
         };
     }
+
+    private static int? Int(IReadOnlyDictionary<string, object?> parameters, string key)
+        => parameters.TryGetValue(key, out object? value) && value is JsonElement { ValueKind: JsonValueKind.Number } element && element.TryGetInt32(out int number) ? number : null;
+
+    private static double? Double(IReadOnlyDictionary<string, object?> parameters, string key)
+        => parameters.TryGetValue(key, out object? value) && value is JsonElement { ValueKind: JsonValueKind.Number } element && element.TryGetDouble(out double number) ? number : null;
 
     private static bool? Bool(IReadOnlyDictionary<string, object?> parameters, string key)
         => parameters.TryGetValue(key, out object? value) && value is JsonElement { ValueKind: JsonValueKind.True or JsonValueKind.False } element ? element.GetBoolean() : null;

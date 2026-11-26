@@ -115,6 +115,7 @@ public static class ServiceCollectionExtensions
             registry.Register(new NurbsWeightedCurveSettingsPanelDefinition());
             registry.Register(new FixedRangeVolumeProfileSettingsPanelDefinition());
             registry.Register(new TimeAtPriceSettingsPanelDefinition());
+            registry.Register(new DistributionRangeSettingsPanelDefinition());
             registry.Register(new AnchoredVwapSettingsPanelDefinition());
             registry.Register(new FftSpectrumSettingsPanelDefinition());
             registry.Register(new BarPatternSettingsPanelDefinition());

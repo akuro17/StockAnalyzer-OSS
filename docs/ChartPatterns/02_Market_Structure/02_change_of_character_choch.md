@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Smart Money Concepts (SMC) / Dow Theory (trend reversal definition)
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Change of Character (CHoCH)](../../ChartPatterns_Images/02_Market_Structure/02_change_of_character_choch.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 An early trend-reversal signal triggered when price closes beyond the Protected Swing (Protected High / Protected Low) that originated the most recent BOS of the prevailing trend, flipping market structure direction.
 

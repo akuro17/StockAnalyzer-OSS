@@ -74,6 +74,7 @@ public static class DrawingToolBehaviorRegistry
         [DrawingTool.RangeSpline] = new RangeSplineBehavior(),
         [DrawingTool.FixedRangeVolumeProfile] = new FixedRangeVolumeBehavior(),
         [DrawingTool.TimeAtPrice] = new TimeAtPriceBehavior(),
+        [DrawingTool.DistributionRange] = new DistributionRangeBehavior(),
         [DrawingTool.AnchoredVWAP] = new AnchoredVwapBehavior(),
         [DrawingTool.FftSpectrum] = new FftSpectrumBehavior(),
         [DrawingTool.AngleTool] = new AngleBehavior(),

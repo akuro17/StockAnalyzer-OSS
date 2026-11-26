@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Drawing;
 using Xunit;
 
@@ -101,5 +102,46 @@ public sealed class DrawingEnumLocalizationKeysTests
         Assert.Equal(expectedRight, locale.GetProperty("Enum_FibonacciRetracementExtendMode_ExtendRight").GetString());
         Assert.Equal(expectedLeft, locale.GetProperty("Enum_FibonacciRetracementExtendMode_ExtendLeft").GetString());
         Assert.Equal(expectedBoth, locale.GetProperty("Enum_FibonacciRetracementExtendMode_ExtendBoth").GetString());
+    }
+
+    [Theory]
+    [InlineData("en")]
+    [InlineData("ja")]
+    public void DistributionRange_HasEveryEnumToolAndParameterKey(string code)
+    {
+        JsonElement locale = LoadLocale(code);
+        var keys = Enum.GetValues<DistributionDataMode>().Select(m => $"Enum_{nameof(DistributionDataMode)}_{m}")
+            .Concat(Enum.GetValues<DistributionDisplayStyle>().Select(m => $"Enum_{nameof(DistributionDisplayStyle)}_{m}"))
+            .Concat(Enum.GetValues<DistributionBinningRule>().Select(m => $"Enum_{nameof(DistributionBinningRule)}_{m}"))
+            .Concat(Enum.GetValues<ReferenceDistributionType>().Select(m => $"Enum_{nameof(ReferenceDistributionType)}_{m}"))
+            .Concat(new[]
+            {
+                "DrawTool_DistributionRange",
+                "Setting_Dist_HorizontalRequiresPrice",
+                "Param_DataMode",
+                "Param_DisplayStyle",
+                "Param_BinningRule",
+                "Param_FixedBinCount",
+                "Param_ReferenceDistribution",
+                "Param_OverrideStudentTDegreesOfFreedom",
+                "Param_StudentTDegreesOfFreedom",
+                "Param_GevShapeParameter",
+                "Param_BandwidthMultiplier",
+                "Param_IncludeKde",
+                "Param_ShowStatsLabel",
+                "Param_PlotHeightRatio",
+                "Param_BarColor",
+                "Param_BarOpacity",
+                "Param_KdeColor",
+                "Param_ReferenceCurveColor",
+                "Param_RightToLeft",
+                "Param_LockRange",
+                "Param_RangeBars"
+            });
+
+        foreach (string key in keys)
+        {
+            Assert.True(locale.TryGetProperty(key, out JsonElement value) && !string.IsNullOrWhiteSpace(value.GetString()), $"[{code}] missing {key}");
+        }
     }
 }

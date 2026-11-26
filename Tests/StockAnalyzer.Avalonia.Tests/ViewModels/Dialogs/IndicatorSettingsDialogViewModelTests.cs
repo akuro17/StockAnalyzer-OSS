@@ -810,4 +810,24 @@ public class IndicatorSettingsDialogViewModelTests : IDisposable
         var actual = IndicatorListDragGesture.GetRowPlacement(y, height);
         Assert.Equal(expected, actual);
     }
+
+    [Fact]
+    public void BuildCatalog_HidesLegacySkewnessKurtosis_WhileKeepingSplitIndicatorsAndLegacyWorkspaceEditSupport()
+    {
+        var vm = CreateViewModel();
+
+        Assert.DoesNotContain(vm.AllCatalogItems, i => i.Type == IndicatorType.SkewnessKurtosis);
+        Assert.Contains(vm.AllCatalogItems, i => i.Type == IndicatorType.Skewness && i.Category == CoreIndicatorCategory.Oscillator);
+        Assert.Contains(vm.AllCatalogItems, i => i.Type == IndicatorType.Kurtosis && i.Category == CoreIndicatorCategory.Oscillator);
+
+        var legacy = DefaultCoreIndicatorSettings.GetDefault().Single(s => s.TypeEnum == IndicatorType.SkewnessKurtosis).Clone();
+        legacy.Id = "legacy-skew-kurt";
+        legacy.IsEnabled = true;
+
+        vm.Initialize(new[] { legacy });
+
+        Assert.Single(vm.SubWindowIndicators);
+        Assert.Equal(IndicatorType.SkewnessKurtosis, vm.SubWindowIndicators[0].TypeEnum);
+        Assert.IsType<CoreSkewnessKurtosisParameter>(vm.SubWindowIndicators[0].ParameterObject);
+    }
 }

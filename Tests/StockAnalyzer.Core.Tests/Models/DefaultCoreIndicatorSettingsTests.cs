@@ -47,7 +47,8 @@ public class DefaultCoreIndicatorSettingsTests
         // + 3 HarmonicGartley + HarmonicButterfly + HarmonicBat (disabled by default, added 2026-11-25, chart patterns plan run V2-6).
         // + 4 GranvilleBuySignal + GranvilleSellSignal + ElliottWaveImpulse + ElliottWaveCorrective (disabled by default, added 2026-11-25, chart patterns plan run V2-7).
         // + 1 MarketStructureLlLh (disabled by default, added 2026-11-26, U-W10 bearish mirror of MarketStructureHhHl).
-        Assert.Equal(186, defaults.Count);
+        // + 2 Skewness + Kurtosis (disabled by default, SA-SPEC-SKEW-KURT-DIST-001).
+        Assert.Equal(188, defaults.Count);
     }
 
     [Fact]

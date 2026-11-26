@@ -695,7 +695,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
                         var executedAt = new DateTimeOffset(reader.GetDateTime(0), TimeSpan.Zero);
-                        var type = (TransactionType)reader.GetInt32(1);
+                        var type = ReadTransactionType(reader.GetInt32(1));
                         var ticker = reader.IsDBNull(2) ? null : reader.GetString(2);
                         var quantity = ReadStoredDecimal(reader.GetValue(3));
                         var price = ReadStoredDecimal(reader.GetValue(4));
@@ -741,7 +741,7 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
                     while (await reader.ReadAsync(ct).ConfigureAwait(false))
                     {
                         var executedAt = new DateTimeOffset(reader.GetDateTime(0), TimeSpan.Zero);
-                        var type = (TransactionType)reader.GetInt32(1);
+                        var type = ReadTransactionType(reader.GetInt32(1));
                         var ticker = reader.IsDBNull(2) ? null : reader.GetString(2);
                         var quantity = ReadStoredDecimal(reader.GetValue(3));
                         var price = ReadStoredDecimal(reader.GetValue(4));
@@ -775,6 +775,20 @@ public sealed class UserPortfolioRepository : IUserPortfolioRepository, IDisposa
         }
         _ioLock.Dispose();
         _disposed = true;
+    }
+
+    /// <summary>
+    /// The one place a stored <c>Type</c> number becomes a <see cref="TransactionType"/>. A number that names no member is a damaged row: the read fails
+    /// (the failed-read path: empty result, saving blocked) instead of producing a transaction the engine cannot process.
+    /// </summary>
+    private static TransactionType ReadTransactionType(int stored)
+    {
+        if (!Enum.IsDefined(typeof(TransactionType), stored))
+        {
+            throw new InvalidDataException($"Unknown TransactionType value {stored.ToString(CultureInfo.InvariantCulture)} in the stored transactions.");
+        }
+
+        return (TransactionType)stored;
     }
 
     private static string FormatDuckDbPath(string path) =>

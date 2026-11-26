@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Sakata Five Methods / Steve Nison, *Japanese Candlestick Charting Techniques* / Thomas Bulkowski, *Encyclopedia of Candlestick Charts*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Bullish Marubozu](../../ChartPatterns_Images/06_Candlestick_Patterns/01_bullish_marubozu.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Price Zone and Prior Trend Definition (Role: Bottom Reversal or Uptrend Acceleration)
 - **Prior Trend**: Not strictly required; in practice, recommended at bottom-zone reversals ($\text{Pos}(L_{\text{pat}}, t, 20) \le 0.30$) or upward range breakouts ($C_t > \max_{i \in [e-19, e]} H_i$).
 - **Volatility Context**: Referenced against the 14 bars ending at $e = t - k$ ($\text{ATR}_{\text{ctx}}(e, 14)$), strictly excluding the pattern bars themselves.

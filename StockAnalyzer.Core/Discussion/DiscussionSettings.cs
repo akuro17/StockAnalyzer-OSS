@@ -129,7 +129,7 @@ public static class DiscussionLimits
     // ---- Fixed values (spec section 4.2) -----------------------------------------------------------------------------------------
 
     /// <summary>Hub/remote handshake version; a mismatch is HUB_UNAVAILABLE.</summary>
-    public const int WireVersion = 1;
+    public const int WireVersion = 2;
 
     /// <summary>Request/reply line bound on the pipe.</summary>
     public const int WireMaxLineBytes = 5242880;

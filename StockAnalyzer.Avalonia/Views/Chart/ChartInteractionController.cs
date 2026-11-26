@@ -211,6 +211,34 @@ public class ChartInteractionController
         return true;
     }
 
+    private void TryUpdateBarLockedVerticalHandleDrag(
+        IChartObject obj,
+        bool lockRange,
+        ChartPoint chartPoint,
+        IReadOnlyList<CoreCandleData>? fullHistoryCandles)
+    {
+        if (obj.Points.Count < 2 || DraggedHandleIndex < 0 || DraggedHandleIndex >= 2)
+        {
+            return;
+        }
+
+        if (lockRange && fullHistoryCandles != null && fullHistoryCandles.Count > 0)
+        {
+            if (_moveDragAnchorPoints == null || _moveDragAnchorPoints.Count < 2)
+            {
+                _moveDragAnchorPoints = new List<ChartPoint>(obj.Points);
+            }
+            DateTime anchorTime = _moveDragAnchorPoints[DraggedHandleIndex].Time;
+            obj.Points[0] = _moveDragAnchorPoints[0];
+            obj.Points[1] = _moveDragAnchorPoints[1];
+            BarLockedTranslation.TryTranslate(obj, anchorTime, chartPoint.Time, fullHistoryCandles);
+        }
+        else
+        {
+            obj.Points[DraggedHandleIndex] = new ChartPoint(chartPoint.Time, obj.Points[DraggedHandleIndex].Price);
+        }
+    }
+
     private bool BeginHandleDrag(IChartObject obj, int handleIndex, global::Avalonia.Point point, ChartViewModel? viewModel)
     {
         if (!StartDragTransaction(viewModel, isHandleDrag: true))
@@ -226,7 +254,9 @@ public class ChartInteractionController
         {
             aabbObj.GetDataBounds(out _freehandAnchorMinTime, out _freehandAnchorMaxTime, out _freehandAnchorMinPrice, out _freehandAnchorMaxPrice);
         }
-        else if ((obj is FixedRangeVolumeProfileObject frvp && frvp.LockRange) || (obj is TimeAtPriceObject tap && tap.LockRange))
+        else if ((obj is FixedRangeVolumeProfileObject frvp && frvp.LockRange)
+              || (obj is TimeAtPriceObject tap && tap.LockRange)
+              || (obj is DistributionRangeObject dist && dist.LockRange))
         {
             _moveDragAnchorPoints = new List<ChartPoint>(obj.Points);
         }
@@ -311,7 +341,8 @@ public class ChartInteractionController
                  selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.HoughResonantFanObject ||
                  selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.HoughMagneticLineObject ||
                  selectedObject is StockAnalyzer.Avalonia.Drawing.FixedRangeVolumeProfileObject ||
-                 selectedObject is StockAnalyzer.Avalonia.Drawing.TimeAtPriceObject)
+                 selectedObject is StockAnalyzer.Avalonia.Drawing.TimeAtPriceObject ||
+                 selectedObject is StockAnalyzer.Avalonia.Drawing.DistributionRangeObject)
         {
             if (selectedObject.Points.Count >= 2)
             {
@@ -1393,7 +1424,8 @@ public class ChartInteractionController
                      selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.HoughResonantFanObject ||
                      selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.HoughMagneticLineObject ||
                      selectedObject is StockAnalyzer.Avalonia.Drawing.FixedRangeVolumeProfileObject ||
-                     selectedObject is StockAnalyzer.Avalonia.Drawing.TimeAtPriceObject)
+                     selectedObject is StockAnalyzer.Avalonia.Drawing.TimeAtPriceObject ||
+                     selectedObject is StockAnalyzer.Avalonia.Drawing.DistributionRangeObject)
             {
                 if (selectedObject.Points.Count >= 2)
                 {
@@ -1846,45 +1878,15 @@ public class ChartInteractionController
             }
             else if (DraggedObject is StockAnalyzer.Avalonia.Drawing.FixedRangeVolumeProfileObject frvp)
             {
-                if (frvp.Points.Count >= 2 && DraggedHandleIndex >= 0 && DraggedHandleIndex < 2)
-                {
-                    if (frvp.LockRange && fullHistoryCandles != null && fullHistoryCandles.Count > 0)
-                    {
-                        if (_moveDragAnchorPoints == null || _moveDragAnchorPoints.Count < 2)
-                        {
-                            _moveDragAnchorPoints = new List<ChartPoint>(frvp.Points);
-                        }
-                        var anchorTime = _moveDragAnchorPoints[DraggedHandleIndex].Time;
-                        frvp.Points[0] = _moveDragAnchorPoints[0];
-                        frvp.Points[1] = _moveDragAnchorPoints[1];
-                        BarLockedTranslation.TryTranslate(frvp, anchorTime, chartPoint.Time, fullHistoryCandles);
-                    }
-                    else
-                    {
-                        frvp.Points[DraggedHandleIndex] = new ChartPoint(chartPoint.Time, frvp.Points[DraggedHandleIndex].Price);
-                    }
-                }
+                TryUpdateBarLockedVerticalHandleDrag(frvp, frvp.LockRange, chartPoint, fullHistoryCandles);
             }
             else if (DraggedObject is StockAnalyzer.Avalonia.Drawing.TimeAtPriceObject tap)
             {
-                if (tap.Points.Count >= 2 && DraggedHandleIndex >= 0 && DraggedHandleIndex < 2)
-                {
-                    if (tap.LockRange && fullHistoryCandles != null && fullHistoryCandles.Count > 0)
-                    {
-                        if (_moveDragAnchorPoints == null || _moveDragAnchorPoints.Count < 2)
-                        {
-                            _moveDragAnchorPoints = new List<ChartPoint>(tap.Points);
-                        }
-                        var anchorTime = _moveDragAnchorPoints[DraggedHandleIndex].Time;
-                        tap.Points[0] = _moveDragAnchorPoints[0];
-                        tap.Points[1] = _moveDragAnchorPoints[1];
-                        BarLockedTranslation.TryTranslate(tap, anchorTime, chartPoint.Time, fullHistoryCandles);
-                    }
-                    else
-                    {
-                        tap.Points[DraggedHandleIndex] = new ChartPoint(chartPoint.Time, tap.Points[DraggedHandleIndex].Price);
-                    }
-                }
+                TryUpdateBarLockedVerticalHandleDrag(tap, tap.LockRange, chartPoint, fullHistoryCandles);
+            }
+            else if (DraggedObject is StockAnalyzer.Avalonia.Drawing.DistributionRangeObject dist)
+            {
+                TryUpdateBarLockedVerticalHandleDrag(dist, dist.LockRange, chartPoint, fullHistoryCandles);
             }
             else if (DraggedObject is StockAnalyzer.Avalonia.Drawing.RectangleObject)
             {
@@ -2104,6 +2106,7 @@ public class ChartInteractionController
             else if (DraggedObject is not AnchoredVwapObject &&
                      DraggedObject is not FixedRangeVolumeProfileObject &&
                      DraggedObject is not TimeAtPriceObject &&
+                     DraggedObject is not DistributionRangeObject &&
                      DeferredComputationRecalculator.TryRecalculate(DraggedObject, snapshot.Candles, _candleDataCache))
             {
             }
@@ -3336,6 +3339,7 @@ public class ChartInteractionController
             {
                 tap.Recalculate(coreCandles);
             }
+            // DistributionRangeObject intentionally defers heavy KDE/PDF recomputation to OnDrawingFinished.
         }
     }
 

@@ -16,12 +16,12 @@ public sealed class DrawingValueCatalogTests
         "FibonacciRetracement", "FibonacciFan", "FibonacciExpansion", "FibonacciChannel", "ParallelChannel",
         "GannFan", "GannBox", "SineLine", "TimeCycles", "Pitchfork",
         "AngleTool", "GannSquareOfNine", "TargetPriceProjection", "LongPosition", "ShortPosition", "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints",
-        "CrossLine", "DatePriceRange",
+        "CrossLine", "DatePriceRange", "DistributionRange",
     };
 
-    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 2, 1, 3, 3, 3, 2, 1, 1, 1, 2 };
+    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 2, 1, 3, 3, 3, 2, 1, 1, 1, 2, 2 };
 
-    private static readonly string[] CandleTools = { "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints", "DatePriceRange" };
+    private static readonly string[] CandleTools = { "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints", "DatePriceRange", "DistributionRange" };
 
     /// <summary>The one bar-based tool whose calculator accepts a missing bar list (the GUI object calculates before any bar is known): it still gives the figures that need no bars.</summary>
     private const string BarOptionalTool = "DatePriceRange";

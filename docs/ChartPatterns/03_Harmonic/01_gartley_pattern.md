@@ -7,13 +7,6 @@
 - **Theoretical Basis**: H.M. Gartley / Scott Carney, *Harmonic Trading Vol. 1*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Gartley Pattern (Gartley 222)](../../ChartPatterns_Images/03_Harmonic/01_gartley_pattern.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A 5-point (`X-A-B-C-D`) harmonic reversal pattern where point B retraces 0.618 of the initial impulse leg XA and point D converges at the 0.786 XA Potential Reversal Zone (PRZ) without breaching point X.
 

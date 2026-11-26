@@ -12,6 +12,7 @@ using StockAnalyzer.Avalonia.Tests.Services;
 
 namespace StockAnalyzer.Avalonia.Tests.ViewModels;
 
+[Collection("EditTransactionDialogCache State")]
 public class EditTransactionDialogViewModelTests
 {
     private readonly Mock<IMarketDataProvider> _mockMarketDataProvider;
@@ -221,5 +222,213 @@ public class EditTransactionDialogViewModelTests
         
         vm.SelectedCurrency = CurrencyCode.JPY;
         Assert.False(vm.IsExchangeRateEnabled); // Exchange rate field should also be disabled even if JPY is selected
+    }
+
+    private static Transaction CreateStoredJpyExit(Guid id, Guid relatedId, DateTimeOffset executedAt) =>
+        new(
+            executedAt, TransactionType.ExitLong, "7203", 100m, 2100m, 0m, 15m, "memo", null, null, id, relatedId,
+            price: new Money(2100m, CurrencyCode.JPY),
+            commission: new Money(15m, CurrencyCode.JPY),
+            appliedRate: new ExchangeRate(CurrencyCode.JPY, CurrencyCode.USD, 0.0067m, executedAt.UtcDateTime));
+
+    [Fact]
+    public void LoadFrom_ThenSave_KeepsIdRelatedIdCurrencyAndRate()
+    {
+        var id = Guid.NewGuid();
+        var relatedId = Guid.NewGuid();
+        var original = CreateStoredJpyExit(id, relatedId, DateTimeOffset.UtcNow.AddDays(-3));
+        // The dialog opens with the last used currency, which is not the currency of the stored transaction.
+        EditTransactionDialogViewModel.ResetCache();
+        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+
+        vm.LoadFrom(original);
+        Assert.True(vm.SaveCommand.CanExecute(null));
+        vm.SaveCommand.Execute(null);
+
+        Assert.NotNull(vm.Result);
+        Assert.Equal(id, vm.Result.Id);
+        Assert.Equal(relatedId, vm.Result.RelatedTransactionId);
+        Assert.Equal(CurrencyCode.JPY, vm.Result.Price.Currency);
+        Assert.Equal(CurrencyCode.JPY, vm.Result.Commission.Currency);
+        Assert.NotNull(vm.Result.AppliedRate);
+        Assert.Equal(0.0067m, vm.Result.AppliedRate.Value.Rate);
+        Assert.Equal(CurrencyCode.JPY, vm.Result.AppliedRate.Value.BaseCurrency);
+        Assert.Equal(CurrencyCode.USD, vm.Result.AppliedRate.Value.QuoteCurrency);
+        Assert.Equal("memo", vm.Result.Notes);
+        Assert.Equal(15m, vm.Result.Fee);
+        Assert.Equal(TransactionType.ExitLong, vm.Result.Type);
+    }
+
+    [Fact]
+    public void LoadFrom_ThenSave_KeepsTheStoredInstantWhenTheDateIsNotTouched()
+    {
+        var original = CreateStoredJpyExit(Guid.NewGuid(), Guid.NewGuid(), DateTimeOffset.UtcNow.AddDays(-3));
+        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+
+        vm.LoadFrom(original);
+
+        // Kind decides how Save() builds the DateTimeOffset: only a UTC value keeps the stored instant on every machine.
+        Assert.Equal(DateTimeKind.Utc, vm.ExecutedAt!.Value.Kind);
+        vm.SaveCommand.Execute(null);
+        Assert.Equal(original.ExecutedAt, vm.Result!.ExecutedAt);
+    }
+
+    [Fact]
+    public void LoadFrom_OnACashFlow_KeepsIdCurrencyAndRate()
+    {
+        var id = Guid.NewGuid();
+        var executedAt = DateTimeOffset.UtcNow.AddDays(-5);
+        var original = new Transaction(
+            executedAt, TransactionType.Deposit, null, 0m, 0m, 50000m, id: id,
+            price: new Money(50000m, CurrencyCode.EUR),
+            commission: new Money(0m, CurrencyCode.EUR),
+            appliedRate: new ExchangeRate(CurrencyCode.EUR, CurrencyCode.USD, 1.08m, executedAt.UtcDateTime));
+        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+
+        vm.LoadFrom(original);
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal(id, vm.Result!.Id);
+        Assert.Null(vm.Result.RelatedTransactionId);
+        Assert.Equal(CurrencyCode.EUR, vm.Result.Price.Currency);
+        Assert.Equal(1.08m, vm.Result.AppliedRate!.Value.Rate);
+        Assert.Equal(50000m, vm.Result.CashAmount);
+    }
+
+    [Theory]
+    [InlineData(TransactionType.Deposit)]
+    [InlineData(TransactionType.Withdrawal)]
+    public void SwitchingFromATradeToACashFlow_KeepsTheCurrencyAndRateTheUserChose(TransactionType cashFlow)
+    {
+        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+        vm.SelectedCurrency = CurrencyCode.JPY;
+        vm.AppliedRateValue = 0.0067m;
+
+        vm.Type = cashFlow;
+
+        Assert.Equal(CurrencyCode.JPY, vm.SelectedCurrency);
+        Assert.Equal(0.0067m, vm.AppliedRateValue);
+        Assert.True(vm.IsExchangeRateVisible);
+        Assert.True(vm.IsExchangeRateEnabled);
+        Assert.True(vm.IsDepositOrWithdrawal);
+        Assert.False(vm.IsBuyOrSell);
+    }
+
+    [Fact]
+    public void ACashFlowInAForeignCurrency_CanBeSavedOnlyOnceTheRateIsEntered()
+    {
+        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+        vm.ExecutedAt = DateTime.Today;
+        vm.Type = TransactionType.Deposit;
+        vm.CashAmount = 100m;
+        vm.SelectedCurrency = CurrencyCode.JPY;   // the rate box is empty
+
+        Assert.False(vm.SaveCommand.CanExecute(null));
+        Assert.True(vm.IsExchangeRateVisible);   // the field that unblocks Save is reachable (it is no longer tied to the trade panel)
+
+        vm.AppliedRateValue = 0.0067m;
+
+        Assert.True(vm.SaveCommand.CanExecute(null));
+        vm.SaveCommand.Execute(null);
+        Assert.Equal(CurrencyCode.JPY, vm.Result!.Price.Currency);
+        Assert.Equal(0.0067m, vm.Result.AppliedRate!.Value.Rate);
+    }
+
+    [Theory]
+    [InlineData(TransactionType.Deposit)]
+    [InlineData(TransactionType.Withdrawal)]
+    public void ACashFlow_KeepsItsNotes(TransactionType cashFlow)
+    {
+        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+        vm.ExecutedAt = DateTime.Today;
+        vm.Type = cashFlow;
+        vm.CashAmount = 100m;
+        vm.Notes = "salary";
+
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal("salary", vm.Result!.Notes);
+    }
+
+    [Theory]
+    [InlineData(TransactionType.Deposit)]
+    [InlineData(TransactionType.Withdrawal)]
+    public void SwitchingFromATradeToACashFlow_SavesNoFeeAndNoTradeFields(TransactionType cashFlow)
+    {
+        // The Fee box is hidden for a cash flow, so a value typed while the type was still a trade must not travel into the saved row:
+        // the engine ignores it today, and a later rule that honours the fee would otherwise move cash for a number the user cannot see.
+        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+        vm.ExecutedAt = DateTime.Today;
+        vm.Ticker = "AAPL";
+        vm.Quantity = 3m;
+        vm.PricePerUnit = 5m;
+        vm.Fee = 12.34m;
+        vm.TargetPrice = 9m;
+        vm.StopLoss = 1m;
+        vm.Type = cashFlow;
+        vm.CashAmount = 100m;
+
+        vm.SaveCommand.Execute(null);
+
+        var result = vm.Result!;
+        Assert.Equal(0m, result.Fee);
+        Assert.Equal(0m, result.Commission.Amount);
+        Assert.Equal(vm.SelectedCurrency, result.Commission.Currency);
+        Assert.Null(result.Ticker);
+        Assert.Equal(0m, result.Quantity);
+        Assert.Equal(0m, result.PricePerUnit);
+        Assert.Null(result.TargetPrice);
+        Assert.Null(result.StopLoss);
+        Assert.Equal(100m, result.CashAmount);
+    }
+
+    [Theory]
+    [InlineData(TransactionType.Deposit)]
+    [InlineData(TransactionType.Withdrawal)]
+    public void EditingAStoredCashFlowThatCarriesAFee_SavesNoFee(TransactionType cashFlow)
+    {
+        // A row written by an older version may hold a fee on a cash flow (the engine never used it). Saving after an edit clears it.
+        var executedAt = DateTimeOffset.UtcNow.AddDays(-4);
+        var original = new Transaction(
+            executedAt, cashFlow, null, 0m, 0m, 100m, 7m, null, null, null, Guid.NewGuid(), null,
+            price: new Money(100m, CurrencyCode.USD), commission: new Money(7m, CurrencyCode.USD));
+        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+
+        vm.LoadFrom(original);
+        vm.SaveCommand.Execute(null);
+
+        Assert.Equal(0m, vm.Result!.Fee);
+        Assert.Equal(0m, vm.Result.Commission.Amount);
+        Assert.Equal(original.Id, vm.Result.Id);
+    }
+
+    [Fact]
+    public void TheMinimumsOfTheNumericBoxes_AreTheValuesOfPortfolioInputLimits()
+    {
+        var vm = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+
+        Assert.Equal(PortfolioInputLimits.MinTradeQuantity, vm.MinTradeQuantity);
+        Assert.Equal(PortfolioInputLimits.MinCashAmount, vm.MinCashAmount);
+        Assert.Equal(PortfolioInputLimits.MinExchangeRate, vm.MinExchangeRate);
+        Assert.Equal(PortfolioInputLimits.MinNonNegativeAmount, vm.MinNonNegativeAmount);
+    }
+
+    [Fact]
+    public void Save_InAddMode_GeneratesANewIdEachTimeAndNoRelatedId()
+    {
+        var vm1 = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+        vm1.Ticker = "AAPL";
+        vm1.Quantity = 1m;
+        vm1.PricePerUnit = 10m;
+        vm1.SaveCommand.Execute(null);
+        var vm2 = new EditTransactionDialogViewModel(_mockMarketDataProvider.Object, _dispatcherService, _mockLocalizationService.Object);
+        vm2.Ticker = "AAPL";
+        vm2.Quantity = 1m;
+        vm2.PricePerUnit = 10m;
+        vm2.SaveCommand.Execute(null);
+
+        Assert.NotEqual(Guid.Empty, vm1.Result!.Id);
+        Assert.NotEqual(vm1.Result.Id, vm2.Result!.Id);
+        Assert.Null(vm1.Result.RelatedTransactionId);
     }
 }

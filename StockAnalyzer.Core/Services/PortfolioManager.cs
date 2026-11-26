@@ -47,7 +47,7 @@ public class PortfolioManager : IPortfolioManager
         public Dictionary<string, List<OpenLot>> OpenLots { get; set; } = new();
     }
 
-    private ProcessResult ProcessTransactions(decimal initialCash, IEnumerable<Transaction> transactions)
+    private ProcessResult ProcessTransactions(decimal initialCash, IEnumerable<Transaction> transactions, CostBasisMethod costBasisMethod = CostBasisMethod.LegacyAveragePreserve)
     {
         var result = new ProcessResult();
         result.Cash = initialCash;
@@ -292,7 +292,13 @@ public class PortfolioManager : IPortfolioManager
                         }
                         else
                         {
-                            result.Positions[key] = new Position(transaction.Ticker!, remainingQty, existing.AverageCostPerUnit, existing.IsShort, averageCost: existing.AverageCost);
+                            var averageCostPerUnit = costBasisMethod == CostBasisMethod.FifoRemainingLots
+                                ? AverageOfOpenLots(lots)
+                                : existing.AverageCostPerUnit;
+                            var averageCost = costBasisMethod == CostBasisMethod.FifoRemainingLots
+                                ? new Money(averageCostPerUnit, existing.AverageCost.Currency)
+                                : existing.AverageCost;
+                            result.Positions[key] = new Position(transaction.Ticker!, remainingQty, averageCostPerUnit, existing.IsShort, averageCost: averageCost);
                         }
                     }
                     break;
@@ -305,9 +311,34 @@ public class PortfolioManager : IPortfolioManager
         return result;
     }
 
-    public Portfolio RebuildPortfolio(decimal initialCash, IReadOnlyList<Transaction> transactions)
+    /// <summary>
+    /// The average entry price of the quantity still open: sum(remaining quantity x lot price) / sum(remaining quantity). The commission is not part of it (owner decision D-7=A).
+    /// Called only while a position remains after an exit, which means its lots hold the remaining quantity.
+    /// </summary>
+    private static decimal AverageOfOpenLots(List<OpenLot> lots)
     {
-        var result = ProcessTransactions(initialCash, transactions);
+        decimal quantity = 0m;
+        decimal cost = 0m;
+        foreach (var lot in lots)
+        {
+            quantity += lot.RemainingQuantity;
+            cost += lot.RemainingQuantity * lot.Transaction.Price.Amount;
+        }
+
+        return cost / quantity;
+    }
+
+    public Portfolio RebuildPortfolio(decimal initialCash, IReadOnlyList<Transaction> transactions)
+        => RebuildPortfolio(initialCash, transactions, CostBasisMethod.LegacyAveragePreserve);
+
+    public Portfolio RebuildPortfolio(decimal initialCash, IReadOnlyList<Transaction> transactions, CostBasisMethod costBasisMethod)
+    {
+        if (!Enum.IsDefined(typeof(CostBasisMethod), costBasisMethod))
+        {
+            throw new ArgumentOutOfRangeException(nameof(costBasisMethod), costBasisMethod, "Unknown cost basis method.");
+        }
+
+        var result = ProcessTransactions(initialCash, transactions, costBasisMethod);
         return new Portfolio(
             result.Cash,
             result.Positions.ToImmutableDictionary(),

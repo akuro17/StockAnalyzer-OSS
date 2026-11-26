@@ -13,6 +13,7 @@ Lists the discussions on the board (or one) with their state and participants, t
 | `sessionId` | `string` | No | - | Only this discussion; leave out to list all. |
 | `auditTail` | `integer` | No | default: `0`, min: `0`, max: `100` | How many of the newest audit entries to return. |
 | `commandTail` | `integer` | No | default: `0`, min: `0`, max: `100` | How many of the newest tool calls of this process to return. |
+| `includeContexts` | `boolean` | No | default: `false`; needs sessionId | true lists the analysis contexts of the discussion given by sessionId (contextId, tool, attachedBy, analysisIntent, resultBytes, sha256, sequence, createdUtc; never the result). Needs sessionId. Default false. |
 
 ## Example Call
 

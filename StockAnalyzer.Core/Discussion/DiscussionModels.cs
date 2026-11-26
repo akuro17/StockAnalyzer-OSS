@@ -80,6 +80,20 @@ public static class DiscussionNames
     public const string Free = "free";
     public const string RoundRobin = "roundRobin";
 
+    /// <summary>The <c>headerMode</c> values of a read: the whole session header, only the changing part of it, or none.</summary>
+    public const string HeaderFull = "full";
+
+    public const string HeaderMinimal = "minimal";
+    public const string HeaderNone = "none";
+
+    /// <summary>The <c>view</c> values of a read: every field of a message, or only what is needed to survey the discussion.</summary>
+    public const string ViewFull = "full";
+
+    public const string ViewSummary = "summary";
+
+    /// <summary>The <c>Parameter</c> of the LIMIT_EXCEEDED refusal that a full set of waiting readers causes.</summary>
+    public const string WaitersParameter = "waiters";
+
     public static string ToWire(DiscussionTurnMode mode) => mode == DiscussionTurnMode.RoundRobin ? RoundRobin : Free;
 
     public static bool TryParseTurnMode(string? text, out DiscussionTurnMode mode)
@@ -172,6 +186,26 @@ public static class DiscussionEvidenceLimits
 }
 
 /// <summary>
+/// Hard bounds of the <c>paths</c> argument of <c>sa_discussion_get_analysis</c> (picking fields out of a stored result). Kept apart from <see cref="DiscussionLimits"/>
+/// like <see cref="DiscussionEvidenceLimits"/>: they are fixed values of the board, not settings.
+/// </summary>
+public static class DiscussionExtensionLimits
+{
+    public const int MaxJsonExtractPaths = 16;
+    public const int MaxJsonExtractPathChars = 128;
+    public const int MaxJsonExtractPathSegments = 16;
+
+    /// <summary>The most digits of an array index in a path.</summary>
+    public const int MaxJsonExtractIndexDigits = 6;
+
+    /// <summary>The largest array index of a path: the largest number of <see cref="MaxJsonExtractIndexDigits"/> digits (the two constants move together).</summary>
+    public const int MaxJsonExtractIndex = 999999;
+
+    /// <summary>The content of a message is cut to this many UTF-16 characters in the summary view of a read (a summary given by the writer is never cut).</summary>
+    public const int SummaryViewContentChars = 240;
+}
+
+/// <summary>
 /// Canonical market direction hypotheses for structured peer interpretation.
 /// </summary>
 public static class DiscussionInterpretationDirection
@@ -228,6 +262,18 @@ public sealed record DiscussionReadMessage(
     bool HasInterpretation = false,
     DiscussionInterpretation? Interpretation = null);
 
+/// <summary>
+/// The optional shaping of a read: leave out the server events, or read only the newest messages. A read without options (or with the defaults) takes the unchanged
+/// path of the board.
+/// </summary>
+/// <param name="ExcludeEvents">True leaves out the messages of kind <see cref="DiscussionMessageKind.Event"/> (joined, left, passed, floor passed, closed); peer messages and analysis entries stay.</param>
+/// <param name="Tail">When set, the newest messages that pass the filter (1 to the read limit of the board), in ascending order; it replaces <c>limit</c> and cannot be combined with an after-sequence or a wait.</param>
+public sealed record DiscussionReadOptions(bool ExcludeEvents = false, int? Tail = null)
+{
+    /// <summary>True when the options change the read; false for the defaults.</summary>
+    public bool IsActive => ExcludeEvents || Tail is not null;
+}
+
 public sealed record DiscussionReadResult(
     IReadOnlyList<DiscussionReadMessage> Messages,
     long NextAfterSequence,
@@ -265,11 +311,24 @@ public sealed record DiscussionCloseResult(bool AlreadyClosed, DiscussionSession
 /// <summary>One line of the hub audit ring (spec 5.11). Never content, tokens, display names or results.</summary>
 public sealed record DiscussionAuditEntry(long N, DateTimeOffset Utc, string Event, string? SessionId, string? Handle, long? Sequence, string? Code, string? Detail);
 
+/// <summary>One attached analysis context as the status lists it: what it is and where it came from, never its result, its arguments, its note or its provenance.</summary>
+public sealed record DiscussionContextInfo(
+    long ContextId,
+    string Tool,
+    string AttachedBy,
+    string? AnalysisIntent,
+    int ResultBytes,
+    string Sha256,
+    long Sequence,
+    DateTimeOffset CreatedUtc);
+
+/// <param name="Contexts">The contexts of the one session that was asked for with <c>includeContexts</c>; null when they were not asked for.</param>
 public sealed record DiscussionStatusResult(
     string HubEpoch,
     IReadOnlyList<DiscussionSessionHeader> Sessions,
     IReadOnlyList<DiscussionAuditEntry> Audit,
-    DateTimeOffset ServerTimeUtc);
+    DateTimeOffset ServerTimeUtc,
+    IReadOnlyList<DiscussionContextInfo>? Contexts = null);
 
 /// <summary>Counters for tests and the status: all of them must return to zero when every session is gone.</summary>
 public sealed record DiscussionDiagnostics(long TotalBytes, long RecomputedBytes, int SessionCount, int WaiterCount);

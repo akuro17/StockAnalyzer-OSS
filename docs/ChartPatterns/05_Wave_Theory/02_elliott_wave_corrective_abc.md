@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Ralph Nelson Elliott / Frost & Prechter, *Elliott Wave Principle*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Elliott Wave Corrective ABC](../../ChartPatterns_Images/05_Wave_Theory/02_elliott_wave_corrective_abc.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A wave-theory indicator detecting 3-wave counter-trend corrective structures (Wave A -> Wave B retracement -> Wave C completion across 4 confirmed pivots) following an impulsive move.
 

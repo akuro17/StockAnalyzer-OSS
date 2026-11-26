@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
 
@@ -40,7 +41,16 @@ public readonly record struct DrawingValueOptions
         PivotPeriod PivotPeriod = PivotPeriod.Day,
         PivotLineExtendMode PivotExtendMode = PivotLineExtendMode.None,
         decimal? IndicatorValueAtEntry = null,
-        ProjectionTargetSelection? ProjectionTargets = null)
+        ProjectionTargetSelection? ProjectionTargets = null,
+        DistributionDataMode DistributionDataMode = DistributionDataMode.LogReturn,
+        PriceType DistributionPriceSource = PriceType.Close,
+        DistributionBinningRule DistributionBinningRule = DistributionBinningRule.FreedmanDiaconis,
+        int DistributionFixedBinCount = DistributionRangeParameters.DefaultFixedBinCount,
+        ReferenceDistributionType DistributionReferenceDistribution = ReferenceDistributionType.Normal,
+        bool DistributionOverrideStudentTDegreesOfFreedom = false,
+        decimal DistributionStudentTDegreesOfFreedom = DistributionRangeParameters.DefaultStudentTDegreesOfFreedom,
+        decimal DistributionGevShapeParameter = DistributionRangeParameters.DefaultGevShapeParameter,
+        double DistributionBandwidthMultiplier = DistributionRangeParameters.DefaultBandwidthMultiplier)
     {
         this.ShowExtensions = ShowExtensions;
         this.PitchforkKind = PitchforkKind;
@@ -55,6 +65,15 @@ public readonly record struct DrawingValueOptions
         this.PivotExtendMode = PivotExtendMode;
         this.IndicatorValueAtEntry = IndicatorValueAtEntry;
         this.ProjectionTargets = ProjectionTargets;
+        this.DistributionDataMode = DistributionDataMode;
+        this.DistributionPriceSource = DistributionPriceSource;
+        this.DistributionBinningRule = DistributionBinningRule;
+        this.DistributionFixedBinCount = DistributionFixedBinCount;
+        this.DistributionReferenceDistribution = DistributionReferenceDistribution;
+        this.DistributionOverrideStudentTDegreesOfFreedom = DistributionOverrideStudentTDegreesOfFreedom;
+        this.DistributionStudentTDegreesOfFreedom = DistributionStudentTDegreesOfFreedom;
+        this.DistributionGevShapeParameter = DistributionGevShapeParameter;
+        this.DistributionBandwidthMultiplier = DistributionBandwidthMultiplier;
     }
 
     public bool ShowExtensions { get; init; }
@@ -82,4 +101,22 @@ public readonly record struct DrawingValueOptions
     public decimal? IndicatorValueAtEntry { get; init; }
 
     public ProjectionTargetSelection? ProjectionTargets { get; init; }
+
+    public DistributionDataMode DistributionDataMode { get; init; }
+
+    public PriceType DistributionPriceSource { get; init; }
+
+    public DistributionBinningRule DistributionBinningRule { get; init; }
+
+    public int DistributionFixedBinCount { get; init; }
+
+    public ReferenceDistributionType DistributionReferenceDistribution { get; init; }
+
+    public bool DistributionOverrideStudentTDegreesOfFreedom { get; init; }
+
+    public decimal DistributionStudentTDegreesOfFreedom { get; init; }
+
+    public decimal DistributionGevShapeParameter { get; init; }
+
+    public double DistributionBandwidthMultiplier { get; init; }
 }

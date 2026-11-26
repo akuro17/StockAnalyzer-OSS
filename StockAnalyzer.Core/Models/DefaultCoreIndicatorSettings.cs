@@ -2034,6 +2034,40 @@ public static class DefaultCoreIndicatorSettings
                     new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Cornish-Fisher VaR", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
                     new SeriesColorConfig { Name = CoreCornishFisherVarIndicator.GaussianVarSeriesName, DisplayName = "Gaussian VaR", Color = IndicatorDefaultConstants.CornishFisherGaussianColor, TargetSeries = new List<string> { CoreCornishFisherVarIndicator.GaussianVarSeriesName } }
                 }
+            },
+            new CoreIndicatorSettings
+            {
+                // Independent sample skewness (G1); zero baseline marks normal symmetry.
+                TypeEnum = IndicatorType.Skewness,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreSkewnessParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Skewness", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // Independent sample excess kurtosis (G2, normal = 0); zero baseline marks normal tails.
+                TypeEnum = IndicatorType.Kurtosis,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreKurtosisParameter(),
+                Color = IndicatorDefaultConstants.SkewnessKurtosisKurtosisColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Excess Kurtosis", Color = IndicatorDefaultConstants.SkewnessKurtosisKurtosisColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
             }
         };
 

@@ -70,8 +70,8 @@ public sealed class CalculateDrawingValuesCrossLineDatePriceRangeTests : IDispos
         string[] names = tool.GetProperty("inputSchema").GetProperty("properties").GetProperty("tool").GetProperty("enum").EnumerateArray().Select(e => e.GetString()!).ToArray();
 
         Assert.Equal(DrawingValueCatalog.All.Select(d => d.Name).ToArray(), names);
-        Assert.Equal(26, names.Length);
-        Assert.Equal(new[] { "ClassicPivotPoints", "CrossLine", "DatePriceRange" }, names[^3..]);
+        Assert.Equal(27, names.Length);
+        Assert.Equal(new[] { "CrossLine", "DatePriceRange", "DistributionRange" }, names[^3..]);
         string description = tool.GetProperty("description").GetString()!;
         Assert.Contains("DatePriceRange", description);
         Assert.Contains("CrossLine", description);

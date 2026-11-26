@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Edwards & Magee / Thomas Bulkowski (High-Tight Flag & Standard Flag criteria)
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Bullish / Bearish Flag](../../ChartPatterns_Images/01_Pattern_Recognition/03_bullish_bearish_flag.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A trend continuation pattern consisting of a sharp, nearly straight price impulse (flagpole) followed by a narrow, gently counter-sloping (or horizontal) parallel consolidation channel (flag body), completed by a closing breakout through the channel boundary in the direction of the pole.
 

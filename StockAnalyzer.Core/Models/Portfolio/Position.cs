@@ -22,4 +22,9 @@ public sealed record Position
         IsShort = isShort;
         AverageCost = averageCost ?? new Money(averageCostPerUnit, CurrencyCode.JPY);
     }
+
+    /// <summary>
+    /// Quantity x AverageCostPerUnit, in the currency of <see cref="AverageCost"/>. A method, not a property, so the record's serialized shape does not change.
+    /// </summary>
+    public decimal GetCostBasis() => Quantity * AverageCostPerUnit;
 }

@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Sakata Five Methods / Steve Nison, *Japanese Candlestick Charting Techniques* / Thomas Bulkowski, *Encyclopedia of Candlestick Charts*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Three White Soldiers](../../ChartPatterns_Images/06_Candlestick_Patterns/18_three_white_soldiers.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Price Zone and Prior Trend Definition (Role: Downtrend Bottom Zone or Base-Building Range (Bullish Breakout))
 - **Prior Downtrend or Bottom-Zone Range (v2.0 Improvement)**: At bar $e = t - k$, satisfies either (a) short-term prior downtrend ($C_{e-10} - C_e \ge 1.5 \cdot \text{ATR}_{\text{ctx}}(e, 14) \land C_e < \text{EMA}_{10}(e)$) **or** (b) bottom zone of the trailing `PriceZoneLookbackBars` (default $60$ bars) range ($\text{Pos}(L_{\text{pat}}, t, \text{PriceZoneLookbackBars}) \le \text{PriceZoneThreshold}$, default $0.25$), preventing missed signals on Three White Soldiers emerging from a base.
 

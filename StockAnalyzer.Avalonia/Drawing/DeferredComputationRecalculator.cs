@@ -83,6 +83,9 @@ public static class DeferredComputationRecalculator
             case DatePriceRangeObject dpr:
                 dpr.Recalculate(candles);
                 return true;
+            case DistributionRangeObject dist:
+                dist.Recalculate(candles);
+                return true;
             case Objects.KalmanFilterProjectionObject kalman:
                 kalman.Recalculate(candles);
                 return true;

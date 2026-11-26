@@ -8,13 +8,6 @@
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 - **Symmetric Mirror Indicator (Bullish)**: [03_higher_high_higher_low.md](03_higher_high_higher_low.md) (`MarketStructureHhHl`, sharing `HigherHighHigherLowEngine` via `CoreStructureTrendIndicatorBase`)
 
-## Visual Reference
-
-![Lower Low / Lower High (Bearish Market Structure)](../../ChartPatterns_Images/02_Market_Structure/04_lower_low_lower_high.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A state indicator identifying a healthy bearish market structure where both the latest two confirmed swing lows and latest two confirmed swing highs step strictly lower, and the current closing price remains below the most recent confirmed swing high (`HigherHighHigherLowEngine`, `side = -1`).
 

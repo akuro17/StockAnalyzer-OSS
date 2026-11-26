@@ -71,6 +71,17 @@ public sealed class FftSpectrumBehavior : TwoClickBehavior<FftSpectrumObject>
     }
 }
 
+public sealed class DistributionRangeBehavior : TwoClickBehavior<DistributionRangeObject>
+{
+    protected override DistributionRangeObject CreateInstance(ChartPoint p, IEnumerable<CoreCandleData>? _)
+        => new DistributionRangeObject(p, p);
+
+    protected override void OnPointUpdated(DistributionRangeObject obj, ChartPoint chartPoint, IEnumerable<CoreCandleData>? candles)
+    {
+        // Live preview defers heavy KDE/PDF calculation until placement completes.
+    }
+}
+
 // --- Prediction Tools ---
 
 public sealed class LongShortPositionBehavior : ClickToPlaceBehavior<LongShortPositionObject>

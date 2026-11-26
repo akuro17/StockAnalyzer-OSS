@@ -12,7 +12,7 @@ Appends one message to a discussion; messages cannot be edited or deleted. The c
 |---|---|---|---|---|
 | `sessionId` | `string` | Yes | - | The discussion. |
 | `participantToken` | `string` | Yes | - | Your token from sa_discussion_join. |
-| `content` | `string` | No | - | The message (required unless pass is true); at most 16384 UTF-8 bytes. |
+| `content` | `string` | No | - | The message (required unless pass is true or interpretation is given; a given content must not be empty); at most 16384 UTF-8 bytes. |
 | `pass` | `boolean` | No | - | true gives your turn away without posting (roundRobin discussions only); send no content with it. |
 | `replyToSequence` | `integer` | No | min: `1` | The sequence of the message this one answers. |
 | `contextIds` | `array` | No | - | Analysis contexts this message refers to (at most 8, all different). |

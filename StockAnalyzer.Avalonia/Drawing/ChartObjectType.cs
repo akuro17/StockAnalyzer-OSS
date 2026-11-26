@@ -113,5 +113,6 @@ public enum ChartObjectType
     DisjointChannel,
 
     // Plan 07 (appended: never insert above)
-    DatePriceRange
+    DatePriceRange,
+    DistributionRange
 }

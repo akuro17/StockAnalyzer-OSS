@@ -161,6 +161,38 @@ internal sealed class HubRig : IDisposable
 
     public void Dispose() => Hub.Dispose();
 
+    /// <summary>
+    /// Waits (bounded, in real time) until <paramref name="count"/> readers wait on the board. Today a read registers its wait and its timer synchronously inside the call,
+    /// so this returns at once; it is a guard for a test that moves the manual clock after starting a waiting read, in case a later change lets the read suspend before it registers.
+    /// </summary>
+    public Task UntilWaitersAsync(int count)
+        => UntilAsync(() => Hub.GetDiagnostics().WaiterCount == count, $"{count} waiting reader(s)");
+
+    /// <summary>
+    /// Waits until the first reader of the session has looked up to <paramref name="readPosition"/> and waits again (the look and the new wait happen under one lock),
+    /// for example after an event woke a filtered wait.
+    /// </summary>
+    public Task UntilReaderWaitsAgainAsync(string sessionId, long readPosition)
+        => UntilAsync(
+            () => Hub.GetDiagnostics().WaiterCount == 1 && Hub.Status(sessionId).Sessions[0].Participants[0].LastReadSequence == readPosition,
+            $"the first reader at position {readPosition} waiting again");
+
+    /// <summary>Upper bound (real time) for a state that the hub reaches by itself; it is not a pause that a result depends on.</summary>
+    private static readonly TimeSpan StateTimeout = TimeSpan.FromSeconds(10);
+
+    private static readonly TimeSpan StatePollInterval = TimeSpan.FromMilliseconds(5);
+
+    /// <summary>The one bounded poll of the discussion tests: replaces a fixed sleep before an assertion about the hub state.</summary>
+    public static async Task UntilAsync(Func<bool> condition, string what)
+    {
+        DateTime limit = DateTime.UtcNow + StateTimeout;
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < limit, $"{what} not reached in time.");
+            await Task.Delay(StatePollInterval);
+        }
+    }
+
     public static string CodeOf(Action action) => Assert.Throws<DiscussionException>(action).Code;
 
     public static DiscussionException Refused(Action action) => Assert.Throws<DiscussionException>(action);

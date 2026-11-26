@@ -20,6 +20,12 @@ public partial class PortfolioPositionViewModel : ViewModelBase
     [ObservableProperty][NotifyPropertyChangedFor(nameof(Type))][NotifyPropertyChangedFor(nameof(ShowSymbol))][NotifyPropertyChangedFor(nameof(SymbolMargin))][NotifyPropertyChangedFor(nameof(SymbolVerticalAlignment))][NotifyPropertyChangedFor(nameof(ZIndex))][NotifyPropertyChangedFor(nameof(SymbolBorderThickness))] private bool _isShort;
     [ObservableProperty][NotifyPropertyChangedFor(nameof(ShowSymbol))][NotifyPropertyChangedFor(nameof(SymbolMargin))][NotifyPropertyChangedFor(nameof(SymbolVerticalAlignment))][NotifyPropertyChangedFor(nameof(ZIndex))][NotifyPropertyChangedFor(nameof(SymbolBorderThickness))] private bool _isHedged;
 
+    /// <summary>ISO code of the currency of the position's cost, price and cost basis (empty for a ticker that is listed but not held).</summary>
+    [ObservableProperty] private string _currency = string.Empty;
+
+    /// <summary>Quantity x average price, in <see cref="Currency"/> (not converted to the base currency).</summary>
+    [ObservableProperty] private decimal _costBasis;
+
     /// <summary>Text of the value and PnL cells while <see cref="IsConversionUnavailable"/> is true (an em dash, never 0).</summary>
     public const string UnavailableValueText = "—";
 

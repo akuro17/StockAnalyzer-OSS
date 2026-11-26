@@ -42,7 +42,11 @@ internal abstract class DiscussionToolBase : IMcpTool
     public virtual string? CompactUsageHint => null;
 
     public Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
-        => DiscussionToolCalls.ExecuteAsync(_gateway, Operation, _identity, arguments.ValueKind == JsonValueKind.Object ? arguments.GetRawText() : "{}", cancellationToken);
+        => DiscussionToolCalls.ExecuteAsync(_gateway, Operation, _identity, PrepareArgumentsJson(arguments), cancellationToken);
+
+    /// <summary>The arguments as the text the gateway receives. A tool that supplies defaults for omitted arguments overrides this; the others forward the caller's object unchanged.</summary>
+    protected virtual string PrepareArgumentsJson(JsonElement arguments)
+        => arguments.ValueKind == JsonValueKind.Object ? arguments.GetRawText() : "{}";
 }
 
 /// <summary>The one place where a gateway failure becomes a tool failure.</summary>

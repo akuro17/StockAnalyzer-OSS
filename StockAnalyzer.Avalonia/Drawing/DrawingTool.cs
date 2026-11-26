@@ -130,5 +130,6 @@ public enum DrawingTool
 
     // Plan 07 (appended: enum ordinals are persisted/compared, never insert above)
     DatePriceRange,
-    ElliottWave
+    ElliottWave,
+    DistributionRange
 }

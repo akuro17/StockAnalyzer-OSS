@@ -365,7 +365,7 @@ internal static class McpServerComposition
                 tools.Add(new DiscussionJoinTool(board, identity));
                 tools.Add(new DiscussionLeaveTool(board, identity));
                 tools.Add(new DiscussionPostTool(board, identity, discussionSettings));
-                tools.Add(new DiscussionReadTool(board, identity, discussionSettings));
+                tools.Add(new DiscussionReadTool(board, identity, discussionSettings, compactDefaults));
                 tools.Add(new DiscussionStatusTool(board, identity));
                 tools.Add(new DiscussionCloseTool(board, identity));
                 tools.Add(new DiscussionAttachAnalysisTool(board, identity, () => registryOfTools!, progressiveDiscovery));

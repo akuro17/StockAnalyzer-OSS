@@ -172,6 +172,66 @@ public sealed class UserPortfolioRepositoryLoadFailureTests : IDisposable
         Assert.Single((await repository.LoadPortfolioAsync()).History);
     }
 
+    [Fact]
+    public async Task Load_WhenATransactionTypeNamesNoMember_FailsTheReadAndBlocksTheNextSave()
+    {
+        using var repository = NewRepository();
+        await repository.SavePortfolioAsync(TwoDeposits());
+        RewriteSecondTransactionType(UndefinedTransactionType);
+        var damaged = Snapshot();
+
+        var loaded = await repository.LoadPortfolioAsync();
+
+        Assert.Empty(loaded.History);   // not one row with an undefined type that the engine would later reject
+        await Assert.ThrowsAsync<IOException>(async () => await repository.SavePortfolioAsync(OneDeposit()));
+        AssertFilesUnchanged(damaged);
+    }
+
+    [Fact]
+    public async Task Load_WhenATransactionTypeNamesNoMember_InTheLegacyLayout_FailsTheReadToo()
+    {
+        Directory.CreateDirectory(PortfolioDir);
+        using (var connection = new DuckDBConnection("DataSource=:memory:"))
+        {
+            connection.Open();
+            void Run(string sql) { using var command = connection.CreateCommand(); command.CommandText = sql; command.ExecuteNonQuery(); }
+            string Target(string name) => Path.Combine(PortfolioDir, name + ".parquet").Replace('\\', '/');
+
+            Run("CREATE TABLE cash (CashBalance DOUBLE); INSERT INTO cash VALUES (1000.5);");
+            Run("CREATE TABLE positions (Ticker VARCHAR, Quantity DOUBLE, AverageCostPerUnit DOUBLE, IsShort BOOLEAN);");
+            Run("CREATE TABLE transactions (ExecutedAt TIMESTAMP, Type INTEGER, Ticker VARCHAR, Quantity DOUBLE, PricePerUnit DOUBLE, CashAmount DOUBLE, Fee DOUBLE, Notes VARCHAR, " +
+                "TargetPrice DOUBLE, StopLoss DOUBLE, Id VARCHAR, RelatedTransactionId VARCHAR);");
+            Run($"INSERT INTO transactions VALUES (TIMESTAMP '2026-03-02 09:15:30', {UndefinedTransactionType}, NULL, 0, 0, 100, 0, NULL, NULL, NULL, '{Guid.NewGuid()}', NULL);");
+            foreach (string table in new[] { "cash", "positions", "transactions" }) Run($"COPY {table} TO '{Target(table)}' (FORMAT PARQUET);");
+        }
+        using var repository = NewRepository();
+
+        Assert.Empty((await repository.LoadPortfolioAsync()).History);
+        await Assert.ThrowsAsync<IOException>(async () => await repository.SavePortfolioAsync(OneDeposit()));
+    }
+
+    /// <summary>A number that is no member of <see cref="TransactionType"/> (the members are 0..5).</summary>
+    private const int UndefinedTransactionType = 99;
+
+    /// <summary>Row 2 keeps every column except <c>Type</c>, which becomes <paramref name="type"/>.</summary>
+    private void RewriteSecondTransactionType(int type)
+    {
+        string path = Path.Combine(PortfolioDir, "transactions.parquet");
+        string sql = path.Replace('\\', '/');
+        string rewritten = sql + ".rewritten";
+        using (var connection = new DuckDBConnection("DataSource=:memory:"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                $"COPY (SELECT * EXCLUDE (rn) REPLACE (CASE WHEN rn = 2 THEN {type} ELSE Type END AS Type) " +
+                $"FROM (SELECT *, row_number() OVER (ORDER BY ExecutedAt) AS rn FROM read_parquet('{sql}'))) TO '{rewritten}' (FORMAT PARQUET);";
+            command.ExecuteNonQuery();
+        }
+
+        File.Move(rewritten, path, overwrite: true);
+    }
+
     /// <summary>Row 2 keeps every column except <c>PriceCurrency</c>, which becomes NULL: a read of the new layout fails on that row.</summary>
     private void RewriteTransactionsWithANullCurrencyInTheSecondRow()
     {

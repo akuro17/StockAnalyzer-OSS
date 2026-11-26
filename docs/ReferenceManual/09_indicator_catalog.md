@@ -201,6 +201,8 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `LjungBoxQ` | `210` | `CoreLjungBoxQParameter` | `Period` (int, default `60`), `MaxLag` (int, default `10`), `Alpha` (double, default `0.05`) | `false` | `"Main"`, `"SignificanceLevel"`, `"QStatistic"` |
 | `ADFStationarity` | `213` | `CoreAdfStationarityParameter` | `Period` (int, default `60`), `LagOrder` (int, default `1`), `UseLogPrice` (bool, default `true`) | `false` | `"Main"`, `"CriticalValue5Pct"`, `"HalfLife"`, `"Rho"` |
 | `VarianceRatio` | `214` | `CoreVarianceRatioParameter` | `Period` (int, default `60`), `AggregationHorizon` (int, default `5`) | `false` | `"Main"`, `"RandomWalkLine"`, `"ZStarStatistic"`, `"PValue"` |
+| `Skewness` | `275` | `CoreSkewnessParameter` | `Period` (int, default `30`), `UseLogReturn` (bool, default `true`) | `false` | `"Main"` |
+| `Kurtosis` | `276` | `CoreKurtosisParameter` | `Period` (int, default `30`), `UseLogReturn` (bool, default `true`) | `false` | `"Main"` |
 
 ### Category: PatternRecognition
 

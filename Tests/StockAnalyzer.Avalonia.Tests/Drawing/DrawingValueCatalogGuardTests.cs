@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia.Media;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Drawing.Values;
 using StockAnalyzer.Core.Models;
@@ -47,6 +48,7 @@ public sealed class DrawingValueCatalogGuardTests
         ["ClassicPivotPoints"] = p => new ClassicPivotPointsObject(p[0]),
         ["CrossLine"] = p => new CrossLineObject(p[0]),
         ["DatePriceRange"] = p => new DatePriceRangeObject(p[0], p[1]),
+        ["DistributionRange"] = p => new DistributionRangeObject(p[0], p[1]),
     };
 
     /// <summary>Daily bars (one per calendar day, from 2025-11-01) with a wavy close, so the regression has a spread, the VWAP a deviation and the pivot periods differ from each other.</summary>
@@ -67,6 +69,7 @@ public sealed class DrawingValueCatalogGuardTests
             case AnchoredVwapObject vwap: vwap.Recalculate(Candles); break;
             case ClassicPivotPointsObject pivots: pivots.Recalculate(Candles); break;
             case DatePriceRangeObject range: range.Recalculate(Candles); break;
+            case DistributionRangeObject dist: dist.Recalculate(Candles); break;
         }
     }
 
@@ -161,6 +164,8 @@ public sealed class DrawingValueCatalogGuardTests
         { "AnchoredVWAP", "band 2 only, weighted" },
         { "ClassicPivotPoints", "week, extend both" },
         { "ClassicPivotPoints", "month, extend left" },
+        { "DistributionRange", "log return, StudentT override 6.5" },
+        { "DistributionRange", "price, Pareto, FixedCount 12" },
     };
 
     [Theory]
@@ -212,6 +217,26 @@ public sealed class DrawingValueCatalogGuardTests
                     pivots.Period = PivotPeriod.Month;
                     pivots.ExtendMode = PivotLineExtendMode.ExtendLeft;
                     options = new DrawingValueOptions(PivotPeriod: PivotPeriod.Month, PivotExtendMode: PivotLineExtendMode.ExtendLeft);
+                    break;
+                case DistributionRangeObject dist when setting.StartsWith("log return"):
+                    dist.ReferenceDistribution = ReferenceDistributionType.StudentT;
+                    dist.OverrideStudentTDegreesOfFreedom = true;
+                    dist.StudentTDegreesOfFreedom = 6.5m;
+                    options = new DrawingValueOptions(
+                        DistributionReferenceDistribution: ReferenceDistributionType.StudentT,
+                        DistributionOverrideStudentTDegreesOfFreedom: true,
+                        DistributionStudentTDegreesOfFreedom: 6.5m);
+                    break;
+                case DistributionRangeObject dist:
+                    dist.DataMode = DistributionDataMode.Price;
+                    dist.BinningRule = DistributionBinningRule.FixedCount;
+                    dist.FixedBinCount = 12;
+                    dist.ReferenceDistribution = ReferenceDistributionType.Pareto;
+                    options = new DrawingValueOptions(
+                        DistributionDataMode: DistributionDataMode.Price,
+                        DistributionBinningRule: DistributionBinningRule.FixedCount,
+                        DistributionFixedBinCount: 12,
+                        DistributionReferenceDistribution: ReferenceDistributionType.Pareto);
                     break;
                 default:
                     throw new InvalidOperationException(setting);

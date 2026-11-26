@@ -29,7 +29,7 @@ public sealed class DiscussionWireTests
         Assert.Equal((byte)'\n', bytes[^1]);
         Assert.Equal(1, bytes.Count(b => b == (byte)'\n'));
         using JsonDocument line = JsonDocument.Parse(bytes);
-        Assert.Equal(1, line.RootElement.GetProperty("wire").GetInt32());
+        Assert.Equal(DiscussionLimits.WireVersion, line.RootElement.GetProperty("wire").GetInt32());
         Assert.Equal("post", line.RootElement.GetProperty("op").GetString());
         Assert.Equal("Antigravity", line.RootElement.GetProperty("caller").GetString());
         Assert.Equal(JsonValueKind.Object, line.RootElement.GetProperty("args").ValueKind);
@@ -94,21 +94,21 @@ public sealed class DiscussionWireTests
     [InlineData("[1,2]", "Malformed")]
     [InlineData("""{"op":"read","args":{}}""", "Malformed")]
     [InlineData("""{"wire":"1","op":"read","args":{}}""", "Malformed")]
-    [InlineData("""{"wire":2,"op":"read","args":{}}""", "VersionMismatch")]
-    [InlineData("""{"wire":1,"args":{}}""", "Malformed")]
-    [InlineData("""{"wire":1,"op":"read"}""", "Malformed")]
-    [InlineData("""{"wire":1,"op":"read","args":[]}""", "Malformed")]
+    [InlineData("""{"wire":3,"op":"read","args":{}}""", "VersionMismatch")]
+    [InlineData("""{"wire":2,"args":{}}""", "Malformed")]
+    [InlineData("""{"wire":2,"op":"read"}""", "Malformed")]
+    [InlineData("""{"wire":2,"op":"read","args":[]}""", "Malformed")]
     public void ABadRequestLineIsRefusedWithItsKind(string line, string expected)
     {
         Assert.Equal(Enum.Parse<DiscussionWireProblem>(expected), ProblemOf(() => DiscussionWire.ParseRequest(Encoding.UTF8.GetBytes(line))));
     }
 
     [Theory]
-    [InlineData("""{"wire":1,"ok":true}""", "Malformed")]
-    [InlineData("""{"wire":1,"ok":true,"result":[]}""", "Malformed")]
-    [InlineData("""{"wire":1,"ok":false}""", "Malformed")]
-    [InlineData("""{"wire":1,"ok":false,"error":{"code":"X"}}""", "Malformed")]
-    [InlineData("""{"wire":1,"ok":"yes","result":{}}""", "Malformed")]
+    [InlineData("""{"wire":2,"ok":true}""", "Malformed")]
+    [InlineData("""{"wire":2,"ok":true,"result":[]}""", "Malformed")]
+    [InlineData("""{"wire":2,"ok":false}""", "Malformed")]
+    [InlineData("""{"wire":2,"ok":false,"error":{"code":"X"}}""", "Malformed")]
+    [InlineData("""{"wire":2,"ok":"yes","result":{}}""", "Malformed")]
     [InlineData("""{"wire":9,"ok":true,"result":{}}""", "VersionMismatch")]
     [InlineData("not json at all", "Malformed")]
     public void ABadReplyLineIsRefusedWithItsKind(string line, string expected)

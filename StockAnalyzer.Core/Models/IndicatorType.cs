@@ -434,7 +434,11 @@ public enum IndicatorType
     [Description("Elliott Wave Corrective ABC")] ElliottWaveCorrective,
 
     // WebAi remediation plan (U-W10): bearish market structure trend mirror (append-only; preserves all existing ordinals).
-    [Description("Lower Low / Lower High")] MarketStructureLlLh
+    [Description("Lower Low / Lower High")] MarketStructureLlLh,
+
+    // Split statistical moment indicators (SA-SPEC-SKEW-KURT-DIST-001, append-only; preserves all existing ordinals).
+    [Description("Skewness")] Skewness,
+    [Description("Kurtosis")] Kurtosis
 }
 
 public static class IndicatorTypeExtensions

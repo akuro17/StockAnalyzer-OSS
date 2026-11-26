@@ -83,7 +83,7 @@ internal static class DiscussionText
         return false;
     }
 
-    /// <summary>The text cut to at most <paramref name="maxChars"/> UTF-16 characters, never in the middle of a surrogate pair. For log records only; user text is never cut.</summary>
+    /// <summary>The text cut to at most <paramref name="maxChars"/> UTF-16 characters, never in the middle of a surrogate pair. For log records and for view projections that flag the cut (the summary view of a read); a stored message is never cut.</summary>
     public static string Truncate(string text, int maxChars)
     {
         if (text.Length <= maxChars)

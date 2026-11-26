@@ -145,7 +145,7 @@ public class ScreenerIndicatorGroup
                 IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
                 IndicatorType.MansfieldRS, IndicatorType.McClellanOscillator, IndicatorType.MarketBreadth,
                 // Statistics of a window of returns (statistical functions plan R3): nearest siblings Hurst, Entropy, PACF, Variance, VaR.
-                IndicatorType.SkewnessKurtosis, IndicatorType.JarqueBera, IndicatorType.LjungBoxQ,
+                IndicatorType.SkewnessKurtosis, IndicatorType.Skewness, IndicatorType.Kurtosis, IndicatorType.JarqueBera, IndicatorType.LjungBoxQ,
                 // Statistical functions plan R5: nearest sibling CointegrationSpread (augmented Dickey-Fuller test).
                 IndicatorType.ADFStationarity,
                 // Statistical functions plan R6: nearest sibling HurstExponent (its VarianceRatio series).

@@ -112,6 +112,7 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
         ["ClassicPivotPoints"] = (p, _) => new ClassicPivotPointsObject(p[0]),
         ["CrossLine"] = (p, _) => new CrossLineObject(p[0]),
         ["DatePriceRange"] = (p, _) => new DatePriceRangeObject(p[0], p[1]),
+        ["DistributionRange"] = (p, _) => new DistributionRangeObject(p[0], p[1]),
     };
 
     /// <summary>The bars the fixture stores for <see cref="_closes"/> (open = close - 0.2, high = close + 0.5, low = close - 0.5, volume 1000), as the chart objects take them.</summary>
@@ -126,6 +127,7 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
             case AnchoredVwapObject vwap: vwap.Recalculate(candles); break;
             case ClassicPivotPointsObject pivots: pivots.Recalculate(candles); break;
             case DatePriceRangeObject range: range.Recalculate(candles); break;
+            case DistributionRangeObject dist: dist.Recalculate(candles); break;
         }
     }
 

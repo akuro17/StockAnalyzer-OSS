@@ -13,7 +13,9 @@ public static class BarLockedTranslation
 {
     /// <summary>True for a range-locked object whose move is expressed in bars.</summary>
     public static bool IsBarLocked(IChartObject obj)
-        => obj is FixedRangeVolumeProfileObject { LockRange: true } || obj is TimeAtPriceObject { LockRange: true };
+        => obj is FixedRangeVolumeProfileObject { LockRange: true }
+        || obj is TimeAtPriceObject { LockRange: true }
+        || obj is DistributionRangeObject { LockRange: true };
 
     /// <summary>
     /// Translates a bar-locked object by the bar distance between <paramref name="fromTime"/> and <paramref name="toTime"/>.
@@ -38,6 +40,11 @@ public static class BarLockedTranslation
                 tap.TranslateBars(
                     TimeAtPriceObject.FindNearestBarIndex(toTime, history)
                     - TimeAtPriceObject.FindNearestBarIndex(fromTime, history), history);
+                return true;
+            case DistributionRangeObject { LockRange: true } dist:
+                dist.TranslateBars(
+                    DistributionRangeObject.FindNearestBarIndex(toTime, history)
+                    - DistributionRangeObject.FindNearestBarIndex(fromTime, history), history);
                 return true;
             default:
                 return false;

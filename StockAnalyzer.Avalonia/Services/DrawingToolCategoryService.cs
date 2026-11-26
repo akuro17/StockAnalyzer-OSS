@@ -202,6 +202,7 @@ public static class DrawingToolCategoryService
                     new DrawingToolInfo(DrawingTool.TimeCycles, "\u23F1\uFE0F", "DrawTool_TimeCycles"),
                     new DrawingToolInfo(DrawingTool.FixedRangeVolumeProfile, "\U0001F4CA", "DrawTool_FRVP"),
                     new DrawingToolInfo(DrawingTool.TimeAtPrice, "\u23F3", "DrawTool_TimeAtPrice"),
+                    new DrawingToolInfo(DrawingTool.DistributionRange, "\U0001F4C8", "DrawTool_DistributionRange"),
                 }),
 
             // 12. Icon

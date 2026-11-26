@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Sakata Five Methods / Steve Nison, *Japanese Candlestick Charting Techniques* / Thomas Bulkowski, *Encyclopedia of Candlestick Charts*
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Bearish Gap Three Methods](../../ChartPatterns_Images/06_Candlestick_Patterns/37_bearish_gap_three_methods.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Price Zone and Prior Trend Definition (Role: Within Downtrend (Bearish Continuation))
 - **Prior Downtrend (Required)**: At bar $e = t - k$, $C_{e-10} - C_e \ge 1.0 \cdot \text{ATR}_{\text{ctx}}(e, 14) \;\land\; C_e \le \text{EMA}_{20}(e) \;\land\; \left(C_e < \text{EMA}_{10}(e) \lor \text{EMA}_{10}(e) < \text{EMA}_{20}(e)\right)$.
 - **Price Zone (Low Zone to Mid-Bounce)**: Pattern first-bar close $C_s$ lies within the bottom 40% of the trailing $N_{\text{zone}} = 20$-bar range ($\text{Pos}(C_s, s, 20) \le \text{PriceZoneThreshold}$, evaluating to $\le 0.40$ under `CoreCandlePatternParameter.CreateFor` default `PriceZoneThreshold = 0.40m`, `CandlestickPredicates.T4Holds`).

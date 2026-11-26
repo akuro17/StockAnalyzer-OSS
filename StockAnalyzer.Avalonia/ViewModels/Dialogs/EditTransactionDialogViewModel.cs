@@ -172,8 +172,14 @@ public partial class EditTransactionDialogViewModel : ViewModelBase, IDisposable
     private static readonly CurrencyCode[] CachedCurrencies = new[] { CurrencyCode.USD, CurrencyCode.JPY, CurrencyCode.EUR };
     public CurrencyCode[] Currencies => CachedCurrencies;
 
+    // Lower bounds of the numeric boxes (the one definition is PortfolioInputLimits; the view binds to these).
+    public decimal MinTradeQuantity => PortfolioInputLimits.MinTradeQuantity;
+    public decimal MinCashAmount => PortfolioInputLimits.MinCashAmount;
+    public decimal MinExchangeRate => PortfolioInputLimits.MinExchangeRate;
+    public decimal MinNonNegativeAmount => PortfolioInputLimits.MinNonNegativeAmount;
+
     public bool IsBuyOrSell => Type == TransactionType.Long || Type == TransactionType.Short || Type == TransactionType.ExitLong || Type == TransactionType.ExitShort;
-    public bool IsDepositOrWithdrawal => Type == TransactionType.Deposit || Type == TransactionType.Withdrawal;
+    public bool IsDepositOrWithdrawal => Type.IsCashFlow();
 
     public Transaction? Result { get; private set; }
 
@@ -216,13 +222,35 @@ public partial class EditTransactionDialogViewModel : ViewModelBase, IDisposable
         _dispatcherService = dispatcherService ?? throw new ArgumentNullException(nameof(dispatcherService));
         _localizationService = localizationService ?? throw new ArgumentNullException(nameof(localizationService));
         InitializeTypes();
+        LoadFrom(original);
+        _ = InitializeAsync();
+    }
+
+    // Set only while an existing transaction is edited: Save() then keeps its identity instead of creating a new row.
+    private Guid? _editingId;
+    private Guid? _editingRelatedId;
+
+    /// <summary>
+    /// Fills every field of the dialog from a stored transaction (currency and exchange rate included) and remembers its
+    /// <see cref="Transaction.Id"/> and <see cref="Transaction.RelatedTransactionId"/>, so that <see cref="Save"/> returns the edited
+    /// transaction under the same identity. A dialog that never calls this creates new transactions as before.
+    /// </summary>
+    public void LoadFrom(Transaction original)
+    {
+        ArgumentNullException.ThrowIfNull(original);
+
+        _editingId = original.Id;
+        _editingRelatedId = original.RelatedTransactionId;
+
         Type = original.Type;
         Ticker = original.Ticker ?? string.Empty;
         Quantity = original.Quantity;
         PricePerUnit = original.PricePerUnit;
         Fee = original.Fee;
         CashAmount = original.CashAmount;
-        ExecutedAt = original.ExecutedAt.DateTime;
+        // UtcDateTime (Kind = Utc), not DateTime (Kind = Unspecified): Save() builds a DateTimeOffset from this value, and an
+        // Unspecified value would be read as local time and move the stored instant by the local UTC offset on every edit.
+        ExecutedAt = original.ExecutedAt.UtcDateTime;
         Notes = original.Notes;
         TargetPrice = original.TargetPrice;
         StopLoss = original.StopLoss;
@@ -232,7 +260,6 @@ public partial class EditTransactionDialogViewModel : ViewModelBase, IDisposable
         {
             IsCurrencySelectionEnabled = false;
         }
-        _ = InitializeAsync();
     }
 
     private async Task InitializeAsync()
@@ -366,9 +393,11 @@ public partial class EditTransactionDialogViewModel : ViewModelBase, IDisposable
             IsBuyOrSell ? PricePerUnit : 0m,
             IsDepositOrWithdrawal ? CashAmount : 0m,
             IsBuyOrSell ? Fee : 0m,
-            IsBuyOrSell ? Notes : null,
+            Notes,
             IsBuyOrSell ? TargetPrice : null,
             IsBuyOrSell ? StopLoss : null,
+            id: _editingId,
+            relatedTransactionId: _editingRelatedId,
             price: new Money(IsBuyOrSell ? PricePerUnit : (IsDepositOrWithdrawal ? CashAmount : 0m), SelectedCurrency),
             commission: new Money(IsBuyOrSell ? Fee : 0m, SelectedCurrency),
             appliedRate: rate

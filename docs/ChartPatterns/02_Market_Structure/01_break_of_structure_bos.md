@@ -7,13 +7,6 @@
 - **Theoretical Basis**: Smart Money Concepts (SMC) / Dow Theory (trend continuation definition)
 - **Common Mathematical Definitions**: [00_COMMON_MATHEMATICAL_DEFINITIONS.md](../00_COMMON_MATHEMATICAL_DEFINITIONS.md)
 
-## Visual Reference
-
-![Break of Structure (BOS)](../../ChartPatterns_Images/02_Market_Structure/01_break_of_structure_bos.png)
-
-> [!NOTE]
-> This chart image is a conceptual visual illustration for reference only. Actual detection results depend on the strict mathematical rules, parameters, and market data, and may not match this illustration.
-
 ## 1. Pattern Overview
 A trend continuation signal triggered when price decisively breaks and closes beyond the most recent confirmed swing high (in an established uptrend) or confirmed swing low (in an established downtrend) in the direction of the prevailing trend.
 
