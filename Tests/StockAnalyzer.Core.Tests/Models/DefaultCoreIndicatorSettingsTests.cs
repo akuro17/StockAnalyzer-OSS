@@ -48,7 +48,12 @@ public class DefaultCoreIndicatorSettingsTests
         // + 4 GranvilleBuySignal + GranvilleSellSignal + ElliottWaveImpulse + ElliottWaveCorrective (disabled by default, added 2026-11-25, chart patterns plan run V2-7).
         // + 1 MarketStructureLlLh (disabled by default, added 2026-11-26, U-W10 bearish mirror of MarketStructureHhHl).
         // + 2 Skewness + Kurtosis (disabled by default, SA-SPEC-SKEW-KURT-DIST-001).
-        Assert.Equal(188, defaults.Count);
+        // + 3 KpssStationarity + RollingSharpe + RollingMaxDrawdown (disabled by default, DSL indicator and drawing tool expansion run I-1).
+        // + 4 TreynorRatio + InformationRatio + TrackingError + RollingCovariance (disabled by default, DSL indicator and drawing tool expansion run I-2).
+        // + 6 TrimmedMA + WinsorizedMA + HuberMA + BiweightMA + GeometricMA + HarmonicMA (disabled by default, DSL expansion run I-3).
+        // + 2 PolynomialRegression + NonlinearRegression (disabled by default, DSL expansion run I-4).
+        // + 5 OneSampleTTest + TwoSampleTTest + KsTwoSampleTest + MannWhitneyUTest + KlDivergence (disabled by default, DSL expansion run I-5).
+        Assert.Equal(208, defaults.Count);
     }
 
     [Fact]

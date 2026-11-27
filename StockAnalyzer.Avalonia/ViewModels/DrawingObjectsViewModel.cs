@@ -1038,6 +1038,8 @@ public partial class DrawingObjectsViewModel : ViewModelBase, IDisposable
         var context = _chartViewModel?.CreateDrawingCalculationContext() ?? DrawingCalculationContext.Empty;
         foreach (var child in children)
         {
+            // The anchors were moved onto the parent's anchor point: a fixed-period range drawing is put back on exactly its period (a completed move).
+            DrawingRecalculation.SnapRangeAfterEdit(child, context.Candles, StockAnalyzer.Core.Drawing.RangeSnapKind.BodyMove);
             DrawingRecalculation.AfterMoveCompleted(child, context);
         }
     }

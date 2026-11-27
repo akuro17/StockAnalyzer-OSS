@@ -187,7 +187,7 @@ public sealed class CatalogToolsTests
         IndicatorType[] twoSymbol = BacktestIndicatorEligibility.SynchronousCalculationUnsupportedTypes
             .Where(type => Factory.IsRegistered(type) && Factory.Create(type) is ICrossTickerIndicator)
             .ToArray();
-        Assert.Equal(11, twoSymbol.Length);
+        Assert.Equal(15, twoSymbol.Length); // 11 earlier + the four two-symbol statistics of the DSL expansion run I-2
 
         string filter = string.Join(",", twoSymbol.Concat(new[] { IndicatorType.RSI, IndicatorType.Correlation, IndicatorType.ZigZag }).Select(type => $"\"{type}\""));
         using var response = await CallCapabilitiesAsync($$"""{"indicatorTypeFilter":[{{filter}}]}""");

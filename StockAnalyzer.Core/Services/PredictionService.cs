@@ -305,11 +305,7 @@ public class PredictionService : IPredictionService, IDisposable
 
         // ONNX Runtime copies the options into the session at construction, so the
         // SessionOptions native handle can be released as soon as this method returns.
-        using var sessionOptions = new SessionOptions
-        {
-            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-            ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
-        };
+        using var sessionOptions = OnnxSessionOptionsFactory.CreateInferenceOptions(_settings);
 
         InferenceSession session;
         try { session = new InferenceSession(modelPath, sessionOptions); }

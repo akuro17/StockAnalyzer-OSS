@@ -59,6 +59,30 @@ public class PredictionSettings
     public int RetryBaseDelayMs { get; set; } = 50;
     public int RetryMaxDelayMs { get; set; } = 500;
 
+    public const int MinNumThreads = 1;
+    public const int MaxIntraOpNumThreads = 64;
+    public const int MaxInterOpNumThreads = 16;
+    public const int DefaultIntraOpNumThreads = 1;
+    public const int DefaultInterOpNumThreads = 1;
+    public const bool DefaultAllowIntraOpSpinning = false;
+
+    /// <summary>
+    /// ONNX Runtime intra-op thread count per session. <see langword="null"/> delegates thread count selection to ORT automatically;
+    /// valid non-null values are [1, 64]. Default 1 minimizes synchronization overhead on batch-1 chart inference.
+    /// </summary>
+    public int? IntraOpNumThreads { get; set; } = DefaultIntraOpNumThreads;
+
+    /// <summary>
+    /// ONNX Runtime inter-op thread count per session. <see langword="null"/> leaves the ORT default; valid non-null values are [1, 16].
+    /// Under the current fixed <c>ExecutionMode.ORT_SEQUENTIAL</c>, values above 1 only apply if <c>ORT_PARALLEL</c> is enabled in the future.
+    /// </summary>
+    public int? InterOpNumThreads { get; set; } = DefaultInterOpNumThreads;
+
+    /// <summary>
+    /// Sets <c>session.intra_op.allow_spinning</c> (<c>"1"</c> or <c>"0"</c>). Default <see langword="false"/> avoids CPU busy-spin contention against UI/Skia rendering.
+    /// </summary>
+    public bool AllowIntraOpSpinning { get; set; } = DefaultAllowIntraOpSpinning;
+
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(ModelPath)) throw new System.InvalidOperationException("PredictionSettings: ModelPath cannot be empty.");
@@ -70,5 +94,9 @@ public class PredictionSettings
         if (RetryMaxAttempts < 1) throw new System.InvalidOperationException("PredictionSettings: RetryMaxAttempts must be at least 1 (required by Polly RetryStrategyOptions).");
         if (RetryBaseDelayMs <= 0) throw new System.InvalidOperationException("PredictionSettings: RetryBaseDelayMs must be positive.");
         if (RetryMaxDelayMs < RetryBaseDelayMs) throw new System.InvalidOperationException("PredictionSettings: RetryMaxDelayMs must be >= RetryBaseDelayMs.");
+        if (IntraOpNumThreads is { } intraOp && (intraOp < MinNumThreads || intraOp > MaxIntraOpNumThreads))
+            throw new System.InvalidOperationException($"PredictionSettings: IntraOpNumThreads must be null or between {MinNumThreads} and {MaxIntraOpNumThreads}.");
+        if (InterOpNumThreads is { } interOp && (interOp < MinNumThreads || interOp > MaxInterOpNumThreads))
+            throw new System.InvalidOperationException($"PredictionSettings: InterOpNumThreads must be null or between {MinNumThreads} and {MaxInterOpNumThreads}.");
     }
 }

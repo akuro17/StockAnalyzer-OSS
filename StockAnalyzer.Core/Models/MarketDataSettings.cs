@@ -51,6 +51,13 @@ public class MarketDataSettings
     public int RsRatingRefreshDebounceMilliseconds { get; set; } = StockAnalyzer.Core.Models.Settings.RsRatingLimits.DefaultRefreshDebounceMilliseconds;
 
     /// <summary>
+    /// Maximum cached symbol/timeframe entries in <see cref="StockAnalyzer.Core.Services.TimeFrameManager"/> when constructed by DI.
+    /// Checked against <see cref="StockAnalyzer.Core.Models.Settings.TimeFrameCacheLimits"/> at startup by
+    /// <see cref="StockAnalyzer.Core.Models.Settings.TimeFrameCacheSettingsValidator"/>.
+    /// </summary>
+    public int TimeFrameCacheMaxEntries { get; set; } = StockAnalyzer.Core.Models.Settings.TimeFrameCacheLimits.DefaultMaxEntries;
+
+    /// <summary>
     /// Validates the settings.
     /// </summary>
     public void Validate()

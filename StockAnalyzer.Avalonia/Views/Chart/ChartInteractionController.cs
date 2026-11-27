@@ -185,6 +185,9 @@ public class ChartInteractionController
     private decimal _linkedAppliedPriceDelta;
     private StockAnalyzer.Avalonia.Services.Drawing.IDrawingEditCoordinator? _activeCoordinator;
     private StockAnalyzer.Core.Models.Drawing.DrawingEditToken? _activeDragToken;
+
+    /// <summary>True once the pointer has moved the dragged object since the drag began (a press and release without movement must not snap anything).</summary>
+    private bool _dragPointerMoved;
     private ICoordinateTransform? _lastCoordinateTransform;
     private global::Avalonia.Point? _lastChartPosition;
 
@@ -249,6 +252,7 @@ public class ChartInteractionController
         DraggedObject = obj;
         DraggedHandleIndex = handleIndex;
         LastDragPoint = point;
+        _dragPointerMoved = false;
 
         if (obj is StockAnalyzer.Avalonia.Drawing.IAabbDeformableObject aabbObj)
         {
@@ -342,7 +346,8 @@ public class ChartInteractionController
                  selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.HoughMagneticLineObject ||
                  selectedObject is StockAnalyzer.Avalonia.Drawing.FixedRangeVolumeProfileObject ||
                  selectedObject is StockAnalyzer.Avalonia.Drawing.TimeAtPriceObject ||
-                 selectedObject is StockAnalyzer.Avalonia.Drawing.DistributionRangeObject)
+                 selectedObject is StockAnalyzer.Avalonia.Drawing.DistributionRangeObject ||
+                 selectedObject is StockAnalyzer.Avalonia.Drawing.IRangeAnalysisDrawing)
         {
             if (selectedObject.Points.Count >= 2)
             {
@@ -436,6 +441,12 @@ public class ChartInteractionController
     public Action? OnObjectEdited { get; set; }
     public Action<IChartObject>? OnDrawingFinished { get; set; }
     public Action<IChartObject>? OnObjectDragged { get; set; }
+
+    /// <summary>
+    /// The bars the end-point snap of a fixed-period range drawing (<see cref="StockAnalyzer.Avalonia.Drawing.IPeriodSnappedRange"/>) works on when a placement finishes (the drag and settings paths have their own context).
+    /// Null or an empty list means no snap.
+    /// </summary>
+    public Func<IReadOnlyList<CoreCandleData>?>? RangeSnapCandlesProvider { get; set; }
 
     /// <summary>
     /// Invoked (on the UI thread) after the selection-idle timer auto-deselects an object.
@@ -858,12 +869,31 @@ public class ChartInteractionController
             // pattern-detection recompute per frame caused visible drag stutter, and for
             // Harmonic/Elliott it also made large patterns flicker as candle subsets changed).
             var releaseContext = viewModel?.CreateDrawingCalculationContext() ?? DrawingCalculationContext.Empty;
+
+            // End-point snap of a fixed-period range drawing: an explicit step of the confirmed edit, only when the pointer really moved something, and before the recalculation
+            // and before the drag transaction is committed below (one undo step restores both the anchors and the period). A handle drag resizes or slides the range; a body move re-snaps it.
+            bool snapRange = _dragPointerMoved;
+            int releasedHandle = DraggedHandleIndex;
+            if (snapRange)
+            {
+                DrawingRecalculation.SnapRangeAfterEdit(
+                    objToNotify,
+                    releaseContext.Candles,
+                    releasedHandle >= 0 && releasedHandle < 2 ? StockAnalyzer.Core.Drawing.RangeSnapKind.HandleRelease : StockAnalyzer.Core.Drawing.RangeSnapKind.BodyMove,
+                    releasedHandle);
+            }
+
             DrawingRecalculation.AfterMoveCompleted(objToNotify, releaseContext);
 
             if (_linkedMoveMembers != null)
             {
                 for (int i = 0; i < _linkedMoveMembers.Length; i++)
                 {
+                    if (snapRange)
+                    {
+                        DrawingRecalculation.SnapRangeAfterEdit(_linkedMoveMembers[i], releaseContext.Candles, StockAnalyzer.Core.Drawing.RangeSnapKind.BodyMove);
+                    }
+
                     DrawingRecalculation.AfterMoveCompleted(_linkedMoveMembers[i], releaseContext);
                 }
             }
@@ -873,10 +903,16 @@ public class ChartInteractionController
             {
                 for (int i = 0; i < _multiSelectMoveMembers.Length; i++)
                 {
+                    if (snapRange)
+                    {
+                        DrawingRecalculation.SnapRangeAfterEdit(_multiSelectMoveMembers[i], releaseContext.Candles, StockAnalyzer.Core.Drawing.RangeSnapKind.BodyMove);
+                    }
+
                     DrawingRecalculation.AfterMoveCompleted(_multiSelectMoveMembers[i], releaseContext);
                 }
             }
             ClearMultiSelectMoveState();
+            _dragPointerMoved = false;
 
             _candleDataCache.Invalidate();
             DraggedObject = null;
@@ -1425,7 +1461,8 @@ public class ChartInteractionController
                      selectedObject is StockAnalyzer.Avalonia.Drawing.Objects.HoughMagneticLineObject ||
                      selectedObject is StockAnalyzer.Avalonia.Drawing.FixedRangeVolumeProfileObject ||
                      selectedObject is StockAnalyzer.Avalonia.Drawing.TimeAtPriceObject ||
-                     selectedObject is StockAnalyzer.Avalonia.Drawing.DistributionRangeObject)
+                     selectedObject is StockAnalyzer.Avalonia.Drawing.DistributionRangeObject ||
+                     selectedObject is StockAnalyzer.Avalonia.Drawing.IRangeAnalysisDrawing)
             {
                 if (selectedObject.Points.Count >= 2)
                 {
@@ -1510,6 +1547,7 @@ public class ChartInteractionController
                 _candleDataCache.Invalidate();
                 DraggedObject = hitObject;
                 LastDragPoint = point;
+                _dragPointerMoved = false;
                 DraggedHandleIndex = -1;
                 return true;
             }
@@ -1535,6 +1573,7 @@ public class ChartInteractionController
                 _candleDataCache.Invalidate();
                 DraggedObject = hitObject;
                 LastDragPoint = point;
+                _dragPointerMoved = false;
                 DraggedHandleIndex = -1;
                 return true;
             }
@@ -1617,6 +1656,7 @@ public class ChartInteractionController
         var dragged = DraggedObject;
         if (dragged == null) return false;
 
+        _dragPointerMoved = true;
         var chartRelativePos = new global::Avalonia.Point(mousePos.X - chartMarginHorizontal, mousePos.Y - chartMarginTop);
 
         bool isHandleDrag = DraggedHandleIndex >= 0 &&
@@ -2107,6 +2147,7 @@ public class ChartInteractionController
                      DraggedObject is not FixedRangeVolumeProfileObject &&
                      DraggedObject is not TimeAtPriceObject &&
                      DraggedObject is not DistributionRangeObject &&
+                     DraggedObject is not IRangeAnalysisDrawing &&
                      DeferredComputationRecalculator.TryRecalculate(DraggedObject, snapshot.Candles, _candleDataCache))
             {
             }
@@ -2621,7 +2662,12 @@ public class ChartInteractionController
 
             // Handled by the SSoT recalculator for every object type it knows (RegressionTrend / RangeSpline / FixedRangeVolumeProfile /
             // Harmonic / AutoElliottWave / GeometricPattern ...). The result is not needed here: the new shape was updated either way.
-            DeferredComputationRecalculator.TryRecalculate(CurrentDrawingObject, candles, _candleDataCache);
+            // The range-analysis tools (IRangeAnalysisDrawing) calculate once the placement has finished (OnDrawingFinished): their kernels are too heavy for every pointer move.
+            if (CurrentDrawingObject is not IRangeAnalysisDrawing)
+            {
+                DeferredComputationRecalculator.TryRecalculate(CurrentDrawingObject, candles, _candleDataCache);
+            }
+
             return true;
         }
 
@@ -2737,6 +2783,18 @@ public class ChartInteractionController
             if (CurrentDrawingObject is ClothoidArrowObject existingArrow)
             {
                 existingArrow.AddPoint(chartPoint);
+                return true;
+            }
+            if (CurrentDrawingObject is InterpolationCurveObjectBase existingCurve)
+            {
+                existingCurve.AddPoint(chartPoint);
+
+                // The new anchor changes the signature of the curve: calculate it now, not at the next pointer move, so the curve never falls back to the straight polyline for a frame.
+                if (viewModel?.Candles is { Count: > 0 } curveCandles)
+                {
+                    DeferredComputationRecalculator.TryRecalculate(existingCurve, curveCandles, _candleDataCache);
+                }
+
                 return true;
             }
             if (CurrentDrawingObject is ElliottWaveObject existingElliott && behavior is ElliottWaveBehavior ewBehavior)
@@ -2960,6 +3018,8 @@ public class ChartInteractionController
             {
                 var result = coordinator.ExecuteEdit(StockAnalyzer.Core.Models.Drawing.DrawingOperationKind.Add, () =>
                 {
+                    // End-point snap of a fixed-period range drawing, inside the transaction and before the object is added: undo removes the object, redo restores the snapped one.
+                    DrawingRecalculation.SnapRangeAfterEdit(obj, RangeSnapCandlesProvider?.Invoke(), StockAnalyzer.Core.Drawing.RangeSnapKind.Placement);
                     objectManager.AddObject(obj);
                     if (layerService != null && panel.HasValue)
                     {
@@ -2975,6 +3035,7 @@ public class ChartInteractionController
             }
             else
             {
+                DrawingRecalculation.SnapRangeAfterEdit(obj, RangeSnapCandlesProvider?.Invoke(), StockAnalyzer.Core.Drawing.RangeSnapKind.Placement);
                 objectManager.AddObject(obj);
                 if (layerService != null && panel.HasValue)
                 {

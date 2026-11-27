@@ -114,7 +114,8 @@ public class RlDialogDataService(IRlModelGenerationRegistry registry, IQValueSer
 
         try
         {
-            using var session = new InferenceSession(onnxModelPath);
+            using var inspectOptions = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+            using var session = new InferenceSession(onnxModelPath, inspectOptions);
             return session.ModelMetadata.CustomMetadataMap.TryGetValue("symbol", out var s) && !string.IsNullOrWhiteSpace(s)
                 ? s
                 : null;

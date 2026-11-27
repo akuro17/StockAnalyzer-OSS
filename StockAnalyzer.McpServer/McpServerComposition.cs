@@ -150,6 +150,8 @@ internal static class McpServerComposition
         Core.Models.Settings.RlPortfolioSettings portfolioSettings = ReadPortfolioSettings(configuration, log);
 
         var collection = new ServiceCollection().AddStockAnalyzerReadOnlyCore(configuration);
+        collection.TryAddSingleton<ILogger<StockAnalyzerSettings>>(new LogSinkLogger<StockAnalyzerSettings>(log));
+        collection.TryAddSingleton<ILogger<TimeFrameManager>>(new LogSinkLogger<TimeFrameManager>(log));
         // The portfolio preflight and the portfolio training run of the execution gateway use the settings the GUI reads from the same section.
         collection.AddSingleton(portfolioSettings);
         if (enableExecution)

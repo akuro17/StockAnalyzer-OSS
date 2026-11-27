@@ -47,6 +47,7 @@ public interface IStockAnalyzerSettings
     string PipeName { get; }
     int PipeConnectionTimeoutMs { get; }
     int ScreenerMaxParallelism { get; }
+    bool AutoScaleScreenerParallelism => new Models.Settings.InfrastructureSettings().AutoScaleScreenerParallelism;
 
     // Market Structure (DTW, ZigZag)
     decimal ZigzagThresholdPercent { get; }
@@ -113,6 +114,7 @@ public interface IStockAnalyzerSettings
 
     /// <summary>How many tickers a scatter evaluation processes at the same time; see <c>ScatterMetrics:MaxParallelism</c>.</summary>
     int ScatterMaxParallelism => Models.Settings.ScatterMetricLimits.DefaultMaxParallelism;
+    bool ScatterAutoScaleParallelism => new Models.Settings.ScatterMetricSettings().AutoScaleParallelism;
 
     /// <summary>Pause (ms) after the last key stroke before the scatter metric catalog search runs; see <c>ScatterMetrics:InputDebounceMilliseconds</c>.</summary>
     int ScatterInputDebounceMilliseconds => Models.Settings.ScatterMetricLimits.DefaultInputDebounceMilliseconds;
@@ -186,6 +188,9 @@ public interface IStockAnalyzerSettings
     int PredictionRetryMaxAttempts { get; }
     int PredictionRetryBaseDelayMs { get; }
     int PredictionRetryMaxDelayMs { get; }
+    int? PredictionIntraOpNumThreads => Models.Settings.PredictionSettings.DefaultIntraOpNumThreads;
+    int? PredictionInterOpNumThreads => Models.Settings.PredictionSettings.DefaultInterOpNumThreads;
+    bool PredictionAllowIntraOpSpinning => Models.Settings.PredictionSettings.DefaultAllowIntraOpSpinning;
 
     // Localization
     string? LocaleResourcePath { get; }

@@ -155,7 +155,8 @@ public sealed class EnsembleSettingsManager : IEnsembleSettingsManager
         using var lease = registry.Acquire(manifest.ModelId)
             ?? throw EnsembleValidationErrors.Create($"Generation '{manifest.ModelId}' is unavailable.",
                 EnsembleValidationFailure.MissingGeneration);
-        using var session = new InferenceSession(lease.ModelPath);
+        using var inspectOptions = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+        using var session = new InferenceSession(lease.ModelPath, inspectOptions);
         return BuildCompatibility(manifest, session.ModelMetadata.CustomMetadataMap);
     }
 

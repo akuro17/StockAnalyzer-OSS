@@ -32,6 +32,7 @@ public static class ReadOnlyCoreServiceCollectionExtensions
         services.AddSingleton<IStockAnalyzerSettings, StockAnalyzerSettings>();
 
         services.AddSingleton<DuckDBConnectionManager>();
+        services.AddSingleton<IReadOnlyParquetConnectionPool, ReadOnlyDuckDbConnectionPool>();
         services.AddSingleton(sp => ReadOnlyDataTree.Probe(sp.GetRequiredService<IOptions<MarketDataSettings>>().Value));
 
         services.AddSingleton<IDataService>(sp =>
@@ -40,7 +41,8 @@ public static class ReadOnlyCoreServiceCollectionExtensions
                 ? new ParquetDataService(
                     sp.GetRequiredService<DuckDBConnectionManager>(),
                     sp.GetRequiredService<IOptions<MarketDataSettings>>(),
-                    sp.GetService<ILogger<ParquetDataService>>())
+                    sp.GetService<ILogger<ParquetDataService>>(),
+                    readPool: sp.GetRequiredService<IReadOnlyParquetConnectionPool>())
                 : new EmptyDataService();
             var aligner = ComparisonDataAligner.CreateStrict(inner, sp.GetService<ILogger<ComparisonDataAligner>>());
             return new SyntheticSymbolDataService(inner, aligner, sp.GetService<ILogger<SyntheticSymbolDataService>>());
@@ -115,7 +117,10 @@ public static class ReadOnlyCoreServiceCollectionExtensions
             Path.Combine(PathDiscovery.ResolveDataRootWithoutCreating(), PathDiscovery.NotesFolderName, Services.Notes.NoteDatabaseConnectionManager.DatabaseFileName)));
         // The backtest path of the Backtest window: preparation (reads stored bars), engine, report generator, evaluation. All pure in-memory
         // code (the engine and the report use memory streams only); exporters, run history and the configuration managers are not registered.
-        services.AddSingleton<ITimeFrameManager>(sp => new TimeFrameManager(sp.GetRequiredService<IDataService>()));
+        services.AddSingleton<ITimeFrameManager>(sp => TimeFrameManager.CreateConfigured(
+            sp.GetRequiredService<IDataService>(),
+            sp.GetRequiredService<IOptions<MarketDataSettings>>().Value.TimeFrameCacheMaxEntries,
+            sp.GetService<ILogger<TimeFrameManager>>()));
         services.AddSingleton<IBacktestEngine, BacktestEngine>();
         services.AddSingleton<BacktestReportGenerator>();
         services.AddSingleton<IQualifiedBacktestReportGenerator>(sp => sp.GetRequiredService<BacktestReportGenerator>());

@@ -24,15 +24,17 @@ namespace StockAnalyzer.Core.Services;
 public sealed class GraphPredictionService : IGraphPredictionService
 {
     private readonly IMLDataProcessor _processor;
+    private readonly IStockAnalyzerSettings? _settings;
     private readonly ILogger<GraphPredictionService> _logger;
     private readonly object _gate = new();
     private RuntimeBundle? _runtime;
     private bool _disposed;
 
-    public GraphPredictionService(IMLDataProcessor processor, ILogger<GraphPredictionService>? logger = null)
+    public GraphPredictionService(IMLDataProcessor processor, ILogger<GraphPredictionService>? logger = null, IStockAnalyzerSettings? settings = null)
     {
         _processor = processor ?? throw new ArgumentNullException(nameof(processor));
         _logger = logger ?? NullLogger<GraphPredictionService>.Instance;
+        _settings = settings;
     }
 
     public GraphModelInfo? Model
@@ -258,7 +260,7 @@ public sealed class GraphPredictionService : IGraphPredictionService
 
     // --- Loading and contract verification -------------------------------------------------------------------------------------------------
 
-    private static RuntimeBundle LoadRuntime(string runDirectory, CancellationToken cancellationToken)
+    private RuntimeBundle LoadRuntime(string runDirectory, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(runDirectory) || !Directory.Exists(runDirectory))
             throw new DirectoryNotFoundException("The graph run folder does not exist.");
@@ -291,7 +293,7 @@ public sealed class GraphPredictionService : IGraphPredictionService
             documentContract[property.Name] = property.Value.GetString()!;
         }
 
-        using var options = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL, ExecutionMode = ExecutionMode.ORT_SEQUENTIAL };
+        using var options = OnnxSessionOptionsFactory.CreateInferenceOptions(_settings);
         var session = new InferenceSession(modelPath, options);
         try
         {

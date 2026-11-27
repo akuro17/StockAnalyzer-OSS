@@ -252,10 +252,7 @@ public static class DistributionRangeCalculator
         PriceType priceSource,
         Span<double> destination)
     {
-        bool useHa = PriceDataHelper.IsHeikinAshi(priceSource);
-        decimal? prevClose = null;
-        decimal? prevHaOpen = null;
-        decimal? prevHaClose = null;
+        var walker = new RangePriceWalker(priceSource);
         bool hasPrevPrice = false;
         double prevPrice = 0.0;
         int count = 0;
@@ -263,14 +260,7 @@ public static class DistributionRangeCalculator
         for (int i = 0; i < barCount; i++)
         {
             CoreCandleData candle = candles[startIndex + i];
-            decimal priceDec = PriceDataHelper.ExtractPrice(in candle, priceSource, prevClose, prevHaOpen, prevHaClose);
-            prevClose = candle.Close;
-            if (useHa)
-            {
-                (prevHaOpen, prevHaClose) = (prevHaOpen.HasValue && prevHaClose.HasValue)
-                    ? HeikinAshiConverter.NextState(candle, prevHaOpen.Value, prevHaClose.Value)
-                    : HeikinAshiConverter.CalculateInitialValues(candle);
-            }
+            decimal priceDec = walker.Next(in candle);
 
             double price = (double)priceDec;
             if (!double.IsFinite(price))

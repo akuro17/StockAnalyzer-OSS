@@ -175,4 +175,125 @@ public class RobustRegressionMathTests
 
         Assert.True(allocated == 0, $"The kernels allocated {allocated} bytes in every one of {AllocationProbe.Samples} samples.");
     }
+
+    // ----- the overload with its own largest window (drawing tool follow-up, Run 9b; owner decision DR-2 = A) -----
+
+    private static decimal[] RandomWindow(Random rnd, int length)
+    {
+        var window = new decimal[length];
+        decimal value = 100m;
+        for (int i = 0; i < length; i++)
+        {
+            value += Math.Round((decimal)((rnd.NextDouble() - 0.5) * 3.0), 4);
+            window[i] = value;
+        }
+
+        return window;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheOverload_WithTheOldLimit_IsBitIdenticalToTheOldApi_OnManyRandomWindows(bool siegel)
+    {
+        var rnd = new Random(20261127);
+        for (int n = 0; n < 220; n++)
+        {
+            int length = rnd.Next(RobustRegressionMath.MinWindowLength, RobustRegressionMath.MaxWindowLength + 1);
+            decimal[] window = RandomWindow(rnd, length);
+            decimal[] scratchA = new decimal[RobustRegressionMath.ScratchLength(length, siegel)];
+            decimal[] scratchB = new decimal[scratchA.Length];
+
+            bool oldOk = RobustRegressionMath.TryFit(window, siegel, scratchA, out RobustLine oldLine);
+            bool newOk = RobustRegressionMath.TryFit(window, siegel, scratchB, RobustRegressionMath.MaxWindowLength, out RobustLine newLine);
+
+            Assert.True(oldOk && newOk);
+            Assert.Equal(oldLine, newLine);   // the record struct compares every field exactly (decimal equality, no tolerance)
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheOverload_SameLimitAndAnyLargerLimit_GiveTheSameLine_AndAFreshOrDirtyScratchDoesNotMatter(bool siegel)
+    {
+        var rnd = new Random(7);
+        decimal[] window = RandomWindow(rnd, 77);
+        int length = RobustRegressionMath.ScratchLength(window.Length, siegel);
+
+        decimal[] fresh = new decimal[length];
+        decimal[] dirty = new decimal[length + 123];
+        Array.Fill(dirty, -9876543210.123456789m);
+
+        Assert.True(RobustRegressionMath.TryFit(window, siegel, fresh, RobustRegressionMath.HardMaxWindowLength, out RobustLine a));
+        Assert.True(RobustRegressionMath.TryFit(window, siegel, dirty, 80, out RobustLine b));
+        Assert.Equal(a, b);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheOverload_FitsALongWindowUpToTheHardCap_AndTheOldApiStillRefusesIt(bool siegel)
+    {
+        decimal[] window = new decimal[RobustRegressionMath.HardMaxWindowLength];
+        for (int i = 0; i < window.Length; i++)
+        {
+            window[i] = 50m + (2m * i);   // an exact line: slope 2, intercept 50
+        }
+
+        decimal[] scratch = new decimal[RobustRegressionMath.ScratchLength(window.Length, siegel)];
+        Assert.False(RobustRegressionMath.TryFit(window, siegel, scratch, out _));
+        Assert.True(RobustRegressionMath.TryFit(window, siegel, scratch, RobustRegressionMath.HardMaxWindowLength, out RobustLine line));
+        Assert.Equal(2m, line.Slope);
+        Assert.Equal(50m, line.Intercept);
+        Assert.Equal(50m + (2m * (window.Length - 1)), line.FittedLast);
+        Assert.Equal(0m, line.ResidualSigma);
+
+        // Data dependent refusals stay a plain false: longer than the caller's limit, too short a scratch.
+        Assert.False(RobustRegressionMath.TryFit(window, siegel, scratch, window.Length - 1, out _));
+        Assert.False(RobustRegressionMath.TryFit(window, siegel, new decimal[scratch.Length - 1], RobustRegressionMath.HardMaxWindowLength, out _));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(RobustRegressionMath.HardMaxWindowLength + 1)]
+    [InlineData(int.MaxValue)]
+    public void TheOverload_ALimitOutsideTheHardCap_IsACallError_BeforeAnyScratchIsTouched(int maxWindowLength)
+    {
+        decimal[] window = { 1m, 2m, 3m, 4m };
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => RobustRegressionMath.TryFit(window, false, new decimal[1], maxWindowLength, out _));
+        Assert.Equal("maxWindowLength", ex.ParamName);
+    }
+
+    [Fact]
+    public void TheHardCap_IsMeasuredAndBelowTheScratchOfALargeArrayPoolRequest()
+    {
+        Assert.Equal(500, RobustRegressionMath.HardMaxWindowLength);
+        Assert.True(RobustRegressionMath.HardMaxWindowLength > RobustRegressionMath.MaxWindowLength);
+        // The shared ArrayPool serves up to 2^20 elements: the largest Theil-Sen scratch at the cap must fit.
+        Assert.True(RobustRegressionMath.ScratchLength(RobustRegressionMath.HardMaxWindowLength, siegel: false) <= 1 << 20);
+        Assert.Equal(30, RobustRegressionMath.MaxWindowLength);   // the indicator / MCP / DSL / flag bound is untouched by this overload
+    }
+
+    [Fact]
+    public void TheOverload_AllocatesNothing_WhenTheScratchIsGiven()
+    {
+        decimal[] window = RandomWindow(new Random(3), 120);
+        decimal[] scratch = new decimal[RobustRegressionMath.ScratchLength(window.Length, true)];
+        RobustRegressionMath.TryFit(window, false, scratch, RobustRegressionMath.HardMaxWindowLength, out _);
+        RobustRegressionMath.TryFit(window, true, scratch, RobustRegressionMath.HardMaxWindowLength, out _);
+
+        long allocated = AllocationProbe.Minimum(() =>
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                RobustRegressionMath.TryFit(window, false, scratch, RobustRegressionMath.HardMaxWindowLength, out _);
+                RobustRegressionMath.TryFit(window, true, scratch, RobustRegressionMath.HardMaxWindowLength, out _);
+            }
+        });
+
+        Assert.True(allocated == 0, $"The overload allocated {allocated} bytes in every one of {AllocationProbe.Samples} samples.");
+    }
 }

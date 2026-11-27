@@ -45,6 +45,7 @@ public sealed class ScreenerCatalogForScreenerTests
                 IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
                 IndicatorType.MansfieldRS, IndicatorType.MarketBreadth, IndicatorType.McClellanOscillator,
                 IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
+                IndicatorType.TreynorRatio, IndicatorType.InformationRatio, IndicatorType.TrackingError, IndicatorType.RollingCovariance,
             }.OrderBy(type => type.ToString(), StringComparer.Ordinal),
             types);
         Assert.All(types, type =>

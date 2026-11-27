@@ -7,6 +7,8 @@ using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Analysis;
 using StockAnalyzer.Core.Models.Indicators;
 using System.Collections.Generic;
+using System.Threading;
+using Serilog;
 
 namespace StockAnalyzer.Avalonia.Views.Chart;
 
@@ -17,6 +19,7 @@ namespace StockAnalyzer.Avalonia.Views.Chart;
 /// </summary>
 internal sealed class ChartDrawOperation : ICustomDrawOperation
 {
+    private static int s_renderBackendLogged;
     private readonly global::Avalonia.Rect _bounds;
     private readonly ChartDataSnapshot _snapshot;
     private readonly Renderers.IChartRenderer _mainRenderer;
@@ -114,6 +117,12 @@ internal sealed class ChartDrawOperation : ICustomDrawOperation
         }
 
         using var lease = feature.Lease();
+        if (Interlocked.Exchange(ref s_renderBackendLogged, 1) == 0)
+        {
+            bool hasGrContext = lease.GrContext != null;
+            Log.Information("Chart SkiaSharp backend initialized. HardwareAccelerated={HasGrContext}", hasGrContext);
+        }
+
         var canvas = lease.SkCanvas;
 
         canvas.Save();

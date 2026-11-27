@@ -33,7 +33,29 @@ public class TimeFrameManager : ITimeFrameManager
     public TimeFrameManager(IDataService dataService, int maxCacheEntries = 20)
     {
         _dataService = dataService ?? throw new ArgumentNullException(nameof(dataService));
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxCacheEntries, 1);
         _maxCacheEntries = maxCacheEntries;
+    }
+
+    /// <summary>
+    /// Validates <paramref name="maxCacheEntries"/> against <see cref="Models.Settings.TimeFrameCacheLimits"/> at composition time
+    /// so hard-band violations fail fast regardless of DI resolution order.
+    /// </summary>
+    public static TimeFrameManager CreateConfigured(
+        IDataService dataService,
+        int maxCacheEntries,
+        Microsoft.Extensions.Logging.ILogger<TimeFrameManager>? logger = null)
+    {
+        var warnings = Models.Settings.TimeFrameCacheSettingsValidator.Validate(maxCacheEntries);
+        if (logger is not null)
+        {
+            foreach (var warning in warnings)
+            {
+                Microsoft.Extensions.Logging.LoggerExtensions.LogWarning(logger, "{SettingWarning}", warning);
+            }
+        }
+
+        return new TimeFrameManager(dataService, maxCacheEntries);
     }
 
     /// <inheritdoc />

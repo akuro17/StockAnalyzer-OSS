@@ -131,5 +131,17 @@ public enum DrawingTool
     // Plan 07 (appended: enum ordinals are persisted/compared, never insert above)
     DatePriceRange,
     ElliottWave,
-    DistributionRange
+    DistributionRange,
+
+    // DSL indicator and drawing tool expansion (appended: enum ordinals are persisted/compared, never insert above)
+    GarchVolatilityCone,
+    PolynomialRegressionProjection,
+    NonlinearRegressionCurve,
+    RobustRegressionTrend,
+    WeightedRegressionTrend,
+    PchipCurve,
+    CubicSplineCurve,
+    RegularPolygon,
+    BootstrapConfidenceBand,
+    RangeRegimeDiagnosticCard
 }

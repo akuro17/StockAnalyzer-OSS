@@ -82,6 +82,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<Services.Export.IChartImageExportService, Services.Export.ChartImageExportService>();
         services.AddSingleton<Services.Export.ILayeredChartImageExportService, Services.Export.ChartImageExportService>();
         services.AddSingleton<ITickerSyncService, Services.TickerSyncService>();
+        services.AddSingleton<Core.Services.IReadOnlyParquetConnectionPool, Core.Services.ReadOnlyDuckDbConnectionPool>();
         services.AddSingleton<Core.Services.ParquetDataService>();
         // The synthetic symbols get their own aligner that never carries a close forward; the shared IComparisonDataAligner below keeps the chart's gap filling.
         services.AddSingleton<Core.Services.IDataService>(sp => new Core.Services.SyntheticSymbolDataService(
@@ -90,7 +91,10 @@ public static class ServiceCollectionExtensions
                 sp.GetRequiredService<Core.Services.ParquetDataService>(),
                 sp.GetService<Microsoft.Extensions.Logging.ILogger<Core.Services.ComparisonDataAligner>>()),
             sp.GetService<Microsoft.Extensions.Logging.ILogger<Core.Services.SyntheticSymbolDataService>>()));
-        services.AddSingleton<Core.Services.ITimeFrameManager, Core.Services.TimeFrameManager>();
+        services.AddSingleton<Core.Services.ITimeFrameManager>(sp => Core.Services.TimeFrameManager.CreateConfigured(
+            sp.GetRequiredService<Core.Services.IDataService>(),
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Core.Models.MarketDataSettings>>().Value.TimeFrameCacheMaxEntries,
+            sp.GetService<ILogger<Core.Services.TimeFrameManager>>()));
         services.AddSingleton<Services.Drawing.IMagnetSnapService, Services.Drawing.MagnetSnapService>();
         services.AddSingleton<Services.Drawing.ISmartGuideService, Services.Drawing.SmartGuideService>();
         services.AddSingleton<Services.IDrawingToolPresetService>(Services.DrawingToolPresetService.Shared);

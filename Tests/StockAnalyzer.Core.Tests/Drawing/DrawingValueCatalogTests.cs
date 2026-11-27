@@ -17,11 +17,12 @@ public sealed class DrawingValueCatalogTests
         "GannFan", "GannBox", "SineLine", "TimeCycles", "Pitchfork",
         "AngleTool", "GannSquareOfNine", "TargetPriceProjection", "LongPosition", "ShortPosition", "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints",
         "CrossLine", "DatePriceRange", "DistributionRange",
+        "GarchVolatilityCone", "RangeRegimeDiagnosticCard",
     };
 
-    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 2, 1, 3, 3, 3, 2, 1, 1, 1, 2, 2 };
+    private static readonly int[] ExpectedPointCounts = { 2, 2, 1, 1, 2, 1, 2, 2, 3, 3, 3, 2, 2, 2, 2, 3, 2, 1, 3, 3, 3, 2, 1, 1, 1, 2, 2, 2, 2 };
 
-    private static readonly string[] CandleTools = { "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints", "DatePriceRange", "DistributionRange" };
+    private static readonly string[] CandleTools = { "RegressionTrend", "AnchoredVWAP", "ClassicPivotPoints", "DatePriceRange", "DistributionRange", "GarchVolatilityCone", "RangeRegimeDiagnosticCard" };
 
     /// <summary>The one bar-based tool whose calculator accepts a missing bar list (the GUI object calculates before any bar is known): it still gives the figures that need no bars.</summary>
     private const string BarOptionalTool = "DatePriceRange";
@@ -40,7 +41,7 @@ public sealed class DrawingValueCatalogTests
     }
 
     [Fact]
-    public void All_HoldsTheTwentySixToolsOfTheSpecificationInOrder_WithUniqueNames()
+    public void All_HoldsTheToolsOfTheSpecificationInOrder_WithUniqueNames_TheLastTwoAppendedByTheDslExpansion()
     {
         Assert.Equal(ExpectedNames, DrawingValueCatalog.All.Select(d => d.Name).ToArray());
         Assert.Equal(ExpectedPointCounts, DrawingValueCatalog.All.Select(d => d.PointCount).ToArray());

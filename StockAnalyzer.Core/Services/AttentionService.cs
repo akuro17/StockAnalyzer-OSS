@@ -22,7 +22,7 @@ namespace StockAnalyzer.Core.Services;
 /// builders (<c>PredictionService.BuildFixedRawTensor</c> / <c>BuildComposedTensor</c>, read only; <c>EnsemblePredictionService</c> reuses them the same way) and
 /// the same settings (window, feature mode, feature spec), so the attention is of the very input the displayed prediction saw.
 /// </summary>
-public sealed class AttentionService : IAttentionService
+public sealed class AttentionService : IAttentionService, IDisposable
 {
     private readonly IModelGenerationRegistry _registry;
     private readonly IStockAnalyzerSettings _settings;
@@ -30,6 +30,8 @@ public sealed class AttentionService : IAttentionService
     private readonly IIndicatorFactory _indicators;
     private readonly ILogger<AttentionService> _logger;
     private readonly BoundedLruCache<string, ProductionContext> _contexts;
+    private readonly DisposableSessionCache<string, InferenceSession> _sessions;
+    private volatile bool _disposed;
 
     public AttentionService(IModelGenerationRegistry registry, IStockAnalyzerSettings settings, IMLDataProcessor processor,
         IIndicatorFactory? indicators = null, ILogger<AttentionService>? logger = null)
@@ -47,6 +49,15 @@ public sealed class AttentionService : IAttentionService
         _indicators = indicators ?? IndicatorFactory.Default;
         _logger = logger ?? NullLogger<AttentionService>.Instance;
         _contexts = new BoundedLruCache<string, ProductionContext>(cacheCapacity, StringComparer.Ordinal);
+        _sessions = new DisposableSessionCache<string, InferenceSession>(cacheCapacity, StringComparer.Ordinal);
+    }
+
+    internal int CachedSessionCount => _sessions.Count;
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _sessions.Dispose();
     }
 
     /// <summary>
@@ -62,6 +73,7 @@ public sealed class AttentionService : IAttentionService
 
     public Task<AttentionResult> ComputeAsync(AttentionRequestKey key, IReadOnlyList<CandleData> history, CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(history);
         return Task.Run(() => Compute(key, history, ownContract: false, cancellationToken), cancellationToken);
@@ -69,6 +81,7 @@ public sealed class AttentionService : IAttentionService
 
     public Task<AttentionResult> ComputeMemberAsync(AttentionRequestKey key, IReadOnlyList<CandleData> history, CancellationToken cancellationToken = default)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(key);
         ArgumentNullException.ThrowIfNull(history);
         return Task.Run(() => Compute(key, history, ownContract: true, cancellationToken), cancellationToken);
@@ -83,12 +96,18 @@ public sealed class AttentionService : IAttentionService
         if (!manifest.Timeframe.Equals(key.Timeframe, StringComparison.OrdinalIgnoreCase))
             return AttentionResult.Unsupported(AttentionContract.UnsupportedReason.Timeframe);
         var sidecarPath = lease.ModelPath + AttentionContract.SidecarSuffix;
-        if (!File.Exists(sidecarPath)) return AttentionResult.Unsupported(AttentionContract.UnsupportedReason.NoSidecar);
+        var sidecarFile = new FileInfo(sidecarPath);
+        if (!sidecarFile.Exists) return AttentionResult.Unsupported(AttentionContract.UnsupportedReason.NoSidecar);
 
         try
         {
-            using var options = new SessionOptions { GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL, ExecutionMode = ExecutionMode.ORT_SEQUENTIAL };
-            using var session = new InferenceSession(sidecarPath, options);
+            var sessionKey = $"{key.ModelId}|{manifest.ModelHash}|{sidecarPath}|{sidecarFile.LastWriteTimeUtc.Ticks}|{sidecarFile.Length}";
+            using var sessionLease = _sessions.AcquireOrCreate(sessionKey, () =>
+            {
+                using var options = OnnxSessionOptionsFactory.CreateInferenceOptions(_settings);
+                return new InferenceSession(sidecarPath, options);
+            });
+            var session = sessionLease.Value;
             var binding = ReadBinding(session.ModelMetadata.CustomMetadataMap, manifest.ModelHash, out var refusal);
             if (binding is null) return AttentionResult.Unsupported(AttentionContract.UnsupportedReason.NoSidecar, refusal);
             var context = ContextFor(key.ModelId, lease.ModelPath, ownContract);
@@ -116,7 +135,7 @@ public sealed class AttentionService : IAttentionService
             for (int i = 0; i < relative.Length; i++) relative[i] = last[i] / max;
             return AttentionResult.Ready(new AttentionSnapshot(key, binding.Heads, timestamps, ImmutableArray.Create(last), ImmutableArray.Create(relative)));
         }
-        catch (Exception ex) when (ex is OnnxRuntimeException or InvalidDataException or InvalidOperationException or ArgumentException or OverflowException)
+        catch (Exception ex) when (ex is not ObjectDisposedException && ex is (OnnxRuntimeException or InvalidDataException or InvalidOperationException or ArgumentException or OverflowException))
         {
             _logger.LogWarning(ex, "Attention could not be computed for generation {ModelId}.", key.ModelId);
             return AttentionResult.Failed(ex.Message);
@@ -149,7 +168,7 @@ public sealed class AttentionService : IAttentionService
         // context is read from the model's own metadata only.
         var cacheKey = ownContract ? MemberContextPrefix + modelId : modelId + SingleContextSeparator + PredictionContractFingerprint.Compute(_settings);
         if (_contexts.TryGet(cacheKey, out var cached)) return cached;
-        using var options = new SessionOptions();
+        using var options = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
         using var session = new InferenceSession(modelPath, options);
         var metadata = session.ModelMetadata.CustomMetadataMap;
         int window;

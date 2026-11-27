@@ -38,7 +38,8 @@ internal static class PredictionMonitoringReducer
             return cached;
 
         using var lease = registry.Acquire(modelId) ?? throw new InvalidDataException("Prediction generation is unavailable.");
-        using var session = new InferenceSession(lease.ModelPath);
+        using var inspectOptions = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+        using var session = new InferenceSession(lease.ModelPath, inspectOptions);
         var metadata = session.ModelMetadata.CustomMetadataMap;
         var contract = PredictionModelMetadata.ReadOutputContract(metadata);
         if (!TryReadNeutralThreshold(metadata, out var threshold))

@@ -149,6 +149,12 @@ public static class DeferredComputationRecalculator
             case ClassicPivotPointsObject cpp:
                 cpp.Recalculate(candles);
                 return true;
+            case InterpolationCurveObjectBase interpolation:
+                interpolation.Recalculate(candles);
+                return true;
+            case IRangeAnalysisDrawing rangeAnalysis:
+                rangeAnalysis.Recalculate(candles);
+                return true;
             default:
                 return false;
         }

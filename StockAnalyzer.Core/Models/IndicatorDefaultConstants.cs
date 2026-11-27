@@ -350,10 +350,12 @@ public static class IndicatorDefaultConstants
     public const double QuantileBandsMinLowerQuantile = 0.01;
     public const double QuantileBandsMaxLowerQuantile = 0.49;
 
-    // Theil-Sen / Siegel regression (robust line of the last Period prices, unit: price; the window limit is the measured bound of the kernel)
+    // Theil-Sen / Siegel regression (robust line of the last Period prices, unit: price). The indicator fits EVERY bar, so its window limit is an independent, measured bound (cost per series is
+    // bars x window^2): owner decision 2026-11-27 (DI-1 = A2) = 5,000 bars within about 3 s in Debug and Release for both methods (measured table in the step log of the drawing tool follow-up).
+    // It is smaller than the hard cap of the kernel overload (one window at a time, the drawing tool) and larger than the 30 bar bound of the MCP trendBars, the DSL functions and the flag rails.
     public const int TheilSenDefaultPeriod = 20;
     public const int TheilSenMinPeriod = 5;
-    public const int TheilSenMaxPeriod = StockAnalyzer.Core.MathUtils.RobustRegressionMath.MaxWindowLength;
+    public const int TheilSenMaxPeriod = 70;
     public const double TheilSenDefaultBandMultiplier = 2.0;
     public const double TheilSenMinBandMultiplier = 0.0;
     public const double TheilSenMaxBandMultiplier = 10.0;
@@ -367,6 +369,134 @@ public static class IndicatorDefaultConstants
     public const double CornishFisherVarMinConfidenceLevel = StockAnalyzer.Core.MathUtils.NormalityAndTailMath.MinConfidenceLevel;
     public const double CornishFisherVarMaxConfidenceLevel = StockAnalyzer.Core.MathUtils.NormalityAndTailMath.MaxConfidenceLevel;
     public static readonly IndicatorColor CornishFisherGaussianColor = new(255, 204, 121, 167); // Okabe-Ito Reddish purple #CC79A7
+
+    // KPSS level-stationarity statistic (DSL expansion run I-1; unit: dimensionless statistic >= 0, the higher the stronger the evidence against stationarity).
+    // The 5 % level equals ArimaMath's private KpssCriticalValue5Percent (a test pins the equality); the 1 % level is the standard Kwiatkowski et al. (1992) value for the level test.
+    public const int KpssStationarityDefaultPeriod = 60;
+    public const int KpssStationarityMinPeriod = 8; // the kernel returns 0.0 below 8 samples (ArimaMath.KpssMinSampleLength)
+    public const int KpssStationarityMaxPeriod = 500;
+    public const bool KpssStationarityDefaultUseReturns = false;
+    public const decimal KpssCriticalValue5Percent = 0.463m;
+    public const decimal KpssCriticalValue1Percent = 0.739m;
+    public static readonly IndicatorColor KpssCriticalValue1PercentColor = new(255, 213, 94, 0); // Okabe-Ito Vermillion #D55E00
+
+    // Risk ratios of a window of returns / prices (DSL expansion runs I-1 and I-2). Annualisation is opt-in (default off), like the volatility family: the per-bar value does not
+    // depend on the chart time frame; PeriodsPerYear (shared constants above) is also the divisor that turns the annual risk-free rate into a per-bar rate.
+    public const bool RiskRatioAnnualizeDefault = false;
+    public const double UnannualizedPeriodsPerYear = 1.0; // the kernels' periodsPerYear argument when Annualize is off: no scaling
+    public const double RiskRatioMinAnnualRiskFreeRate = -0.5;
+    public const double RiskRatioMaxAnnualRiskFreeRate = 1.0;
+    public const decimal RiskRatioDefaultAnnualRiskFreeRate = 0m;
+
+    // Rolling Sharpe ratio (unit: dimensionless ratio, per bar or annualised by sqrt(PeriodsPerYear); sample standard deviation, divisor n - 1)
+    public const int RollingSharpeDefaultPeriod = 20;
+    public const int RollingSharpeMinPeriod = 2;
+    public const int RollingSharpeMaxPeriod = 500;
+    public const bool RollingSharpeDefaultUseLogReturn = false;
+    public static readonly IndicatorColor RollingSharpeColor = new(255, 0, 114, 178); // Okabe-Ito Blue #0072B2
+
+    // Rolling maximum drawdown (unit: positive ratio in [0, 1] of the window peak, or percent when AsPercent is on)
+    public const int RollingMaxDrawdownDefaultPeriod = 60;
+    public const int RollingMaxDrawdownMinPeriod = 2;
+    public const int RollingMaxDrawdownMaxPeriod = 500;
+    public const bool RollingMaxDrawdownDefaultAsPercent = true;
+    public static readonly IndicatorColor RollingMaxDrawdownColor = new(255, 213, 94, 0); // Okabe-Ito Vermillion #D55E00
+    public const decimal PercentFactor = 100m;
+
+    // Two-symbol statistics of the returns of the chart symbol (a) and a comparison symbol (b) over the last Period returns (DSL expansion run I-2). A window needs Period valid pairs.
+    // Treynor ratio (unit: return per unit of beta; linear annualisation by PeriodsPerYear)
+    public const int TreynorRatioDefaultPeriod = 60;
+    public const int TreynorRatioMinPeriod = 3;
+    public const int TreynorRatioMaxPeriod = 500;
+    public static readonly IndicatorColor TreynorRatioColor = new(255, 0, 158, 115); // Okabe-Ito Bluish green #009E73
+
+    // Information ratio (unit: dimensionless, mean active return over tracking error; annualisation by sqrt(PeriodsPerYear))
+    public const int InformationRatioDefaultPeriod = 60;
+    public const int InformationRatioMinPeriod = 3;
+    public const int InformationRatioMaxPeriod = 500;
+    public static readonly IndicatorColor InformationRatioColor = new(255, 86, 180, 233); // Okabe-Ito Sky blue #56B4E9
+
+    // Tracking error (unit: standard deviation of the active return, a fraction or percent; annualisation by sqrt(PeriodsPerYear))
+    public const int TrackingErrorDefaultPeriod = 60;
+    public const int TrackingErrorMinPeriod = 3;
+    public const int TrackingErrorMaxPeriod = 500;
+    public const bool TrackingErrorDefaultAsPercent = true;
+    public static readonly IndicatorColor TrackingErrorColor = new(255, 230, 159, 0); // Okabe-Ito Orange #E69F00
+
+    // Rolling covariance (unit: return squared, raw and unscaled; sample covariance divides by n - 1, population by n)
+    public const int RollingCovarianceDefaultPeriod = 60;
+    public const int RollingCovarianceMinPeriod = 2;
+    public const int RollingCovarianceMaxPeriod = 500;
+    public const bool RollingCovarianceDefaultUseSample = true;
+    public static readonly IndicatorColor RollingCovarianceColor = new(255, 204, 121, 167); // Okabe-Ito Reddish purple #CC79A7
+
+    // Price-native window averages (DSL expansion run I-3; unit: price, overlay on the price pane). The window holds the last Period prices of the price source.
+    public const int WindowAverageDefaultPeriod = 20;
+    public const int WindowAverageMinPeriod = 2;
+    public const int WindowAverageMaxPeriod = 500;
+    public const decimal TrimFractionDefaultAlpha = 0.10m;
+    public const double TrimFractionMinAlpha = 0.0;
+    public const double TrimFractionMaxAlpha = StockAnalyzer.Core.MathUtils.DslRobustStatisticsMath.MaxTrimAlpha; // the DSL kernels' limit, so both accept the same settings
+    public const decimal HuberMaDefaultTuningK = 1.345m; // equals DslRobustStatisticsMath.DefaultHuberK (a test pins it)
+    public const double HuberMaMinTuningK = 0.1;
+    public const double HuberMaMaxTuningK = 10.0;
+    public const decimal BiweightMaDefaultTuningC = 4.685m; // equals DslRobustStatisticsMath.DefaultBiweightC (a test pins it)
+    public const double BiweightMaMinTuningC = 0.5;
+    public const double BiweightMaMaxTuningC = 20.0;
+    public static readonly IndicatorColor RobustMovingAverageColor = new(255, 0, 114, 178); // Okabe-Ito Blue #0072B2
+    public static readonly IndicatorColor GeneralizedMovingAverageColor = new(255, 0, 158, 115); // Okabe-Ito Bluish green #009E73
+
+    // Polynomial regression (DSL expansion run I-4; unit: price; the fitted polynomial of the last Period prices evaluated Horizon bars after the newest bar, drawn at the newest bar)
+    public const int PolynomialRegressionDefaultPeriod = 30;
+    public const int PolynomialRegressionMinPeriod = 4;
+    public const int PolynomialRegressionMaxPeriod = 500;
+    public const int PolynomialRegressionDefaultDegree = 2;
+    public const int PolynomialRegressionMinDegree = 1;
+    public const int PolynomialRegressionMaxDegree = StockAnalyzer.Core.MathUtils.DslRegressionMath.MaxPolyDegree;
+    public const int PolynomialRegressionDefaultForecastHorizon = 0;
+    public const int PolynomialRegressionMinForecastHorizon = 0;
+    public const int PolynomialRegressionMaxForecastHorizon = StockAnalyzer.Core.MathUtils.DslRegressionMath.MaxPolyHorizon;
+    public static readonly IndicatorColor PolynomialRegressionColor = new(255, 230, 159, 0); // Okabe-Ito Orange #E69F00
+
+    // Nonlinear regression (DSL expansion run I-4; unit: price; x = 1 .. Period within the window, the fitted value is at x = Period = the newest bar)
+    public const int NonlinearRegressionDefaultPeriod = 30;
+    public const int NonlinearRegressionMinPeriod = 5;
+    public const int NonlinearRegressionMaxPeriod = 500;
+    public const double NonlinearLogisticEpsilon = 1e-4; // the logistic fit needs y in [0, 1]: the window is mapped to [eps, 1 - eps]
+    public static readonly IndicatorColor NonlinearRegressionColor = new(255, 213, 94, 0); // Okabe-Ito Vermillion #D55E00
+
+    // Tests of returns (DSL expansion run I-5). The recent window holds the returns of the bars [i - Period + 1, i]; the baseline window the BaselinePeriod returns right before it.
+    // Statistics are dimensionless, p-values lie in [0, 1], the KL divergence is in nats. The first usable bar of a two-window test is Period + BaselinePeriod.
+    public const int OneSampleTTestDefaultPeriod = 30;
+    public const int OneSampleTTestMinPeriod = 3;
+    public const int OneSampleTTestMaxPeriod = 500;
+    public const bool TestDefaultUseLogReturn = false;
+    public const decimal OneSampleTTestDefaultNullMean = 0m;
+    public const double OneSampleTTestMinNullMean = -1.0; // a mean return per bar of -100 % .. +100 %
+    public const double OneSampleTTestMaxNullMean = 1.0;
+    public const int TwoSampleTestDefaultPeriod = 20;
+    public const int TwoSampleTestDefaultBaselinePeriod = 60;
+    public const int TwoSampleTTestMinPeriod = 3;
+    public const int TwoSampleTTestMaxPeriod = 250;
+    public const int TwoSampleTTestMinBaselinePeriod = 3;
+    public const int TwoSampleTTestMaxBaselinePeriod = 500;
+    // The Mann-Whitney kernel accepts n1 + n2 <= 512 (DslBivariateAndTestMath.MannWhitneyU), so its two ranges are narrower than those of the other two-sample tests (250 / 500, which
+    // can sum to 750): 200 + 300 = 500 stays inside the kernel without a cross-field check. Do NOT unify the ranges with the other tests (pinned by a test).
+    public const int MannWhitneyUMinPeriod = 3;
+    public const int MannWhitneyUMaxPeriod = 200;
+    public const int MannWhitneyUMinBaselinePeriod = 3;
+    public const int MannWhitneyUMaxBaselinePeriod = 300;
+    public const int KlDivergenceDefaultPeriod = 20;
+    public const int KlDivergenceDefaultBaselinePeriod = 60;
+    public const int KlDivergenceMinPeriod = 5;
+    public const int KlDivergenceMaxPeriod = 250;
+    public const int KlDivergenceMinBaselinePeriod = 5;
+    public const int KlDivergenceMaxBaselinePeriod = 500;
+    public const int KlDivergenceDefaultBinCount = 10;
+    public const int KlDivergenceMinBinCount = 4;
+    public const int KlDivergenceMaxBinCount = 64;
+    public const bool KlDivergenceDefaultUseLogReturn = true;
+    public static readonly IndicatorColor TestStatisticColor = new(255, 0, 114, 178); // Okabe-Ito Blue #0072B2
 
     // Downside Deviation (unit: ratio per bar; sigma- and sigma+ of the last Period simple returns against the target return)
     public const int DownsideDeviationDefaultPeriod = 20;

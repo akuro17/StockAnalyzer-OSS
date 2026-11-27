@@ -38,7 +38,8 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
         IOptions<StockAnalyzer.Core.Models.Settings.PythonIpcSettings>? pythonIpcOptions = null,
         IOptions<ScatterMetricSettings>? scatterMetricOptions = null,
         IOptions<StockAnalyzer.Core.Models.Settings.PythonPackageCheckSettings>? pythonPackageCheckOptions = null,
-        IOptions<MarketDataSettings>? marketDataOptions = null)
+        IOptions<MarketDataSettings>? marketDataOptions = null,
+        IOptions<RenderingSettings>? renderingOptions = null)
     {
         _logger = logger ?? NullLogger<StockAnalyzerSettings>.Instance;
         _configuration = configuration;
@@ -73,10 +74,20 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
         {
             _logger.LogWarning("{SettingWarning}", warning);
         }
+        if (_scatterMetricSettings.AutoScaleParallelism
+            && _scatterMetricSettings.MaxParallelism != ScatterMetricLimits.DefaultMaxParallelism)
+        {
+            _logger.LogWarning("ScatterMetrics:AutoScaleParallelism is enabled; configured MaxParallelism ({ManualParallelism}) is overridden by adaptive CPU concurrency.",
+                _scatterMetricSettings.MaxParallelism);
+        }
 
-        // Only the numeric RS Rating band is checked here; MarketDataSettings.Validate() (paths) runs where the data provider is built.
+        // Only the numeric RS Rating and TimeFrame cache bands are checked here; MarketDataSettings.Validate() (paths) runs where the data provider is built.
         _marketDataSettings = marketDataOptions?.Value ?? new MarketDataSettings();
         foreach (var warning in StockAnalyzer.Core.Models.Settings.RsRatingSettingsValidator.Validate(_marketDataSettings.RsRatingMaxStaleCalendarDays, _marketDataSettings.RsRatingRefreshDebounceMilliseconds))
+        {
+            _logger.LogWarning("{SettingWarning}", warning);
+        }
+        foreach (var warning in StockAnalyzer.Core.Models.Settings.TimeFrameCacheSettingsValidator.Validate(_marketDataSettings.TimeFrameCacheMaxEntries))
         {
             _logger.LogWarning("{SettingWarning}", warning);
         }
@@ -86,6 +97,12 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
 
         _infrastructureSettings = infrastructureOptions.Value;
         _infrastructureSettings.Validate();
+        if (_infrastructureSettings.AutoScaleScreenerParallelism
+            && _infrastructureSettings.ScreenerMaxParallelism != InfrastructureSettings.DefaultScreenerMaxParallelism)
+        {
+            _logger.LogWarning("Infrastructure:AutoScaleScreenerParallelism is enabled; configured ScreenerMaxParallelism ({ManualParallelism}) is overridden by adaptive CPU concurrency.",
+                _infrastructureSettings.ScreenerMaxParallelism);
+        }
 
         _marketStructureSettings = marketStructureOptions.Value;
         _marketStructureSettings.Validate();
@@ -110,6 +127,12 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
 
         _drawingInteractionSettings = drawingInteractionOptions?.Value ?? new StockAnalyzer.Core.Models.Settings.DrawingInteractionSettings();
         _drawingInteractionSettings.Validate();
+
+        var renderingSettings = renderingOptions?.Value ?? new RenderingSettings();
+        foreach (var warning in RenderingSettingsValidator.Validate(renderingSettings))
+        {
+            _logger.LogWarning("{SettingWarning}", warning);
+        }
     }
 
     private readonly ScreenerSettings _screenerSettings;
@@ -185,6 +208,7 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
     public string PipeName => _infrastructureSettings.PipeName;
     public int PipeConnectionTimeoutMs => _infrastructureSettings.PipeConnectionTimeoutMs;
     public int ScreenerMaxParallelism => _infrastructureSettings.ScreenerMaxParallelism;
+    public bool AutoScaleScreenerParallelism => _infrastructureSettings.AutoScaleScreenerParallelism;
 
     // Market Structure (DTW, ZigZag)
     public decimal ZigzagThresholdPercent => _marketStructureSettings.ZigzagThresholdPercent;
@@ -208,6 +232,7 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
     public int ScatterMaxRegisteredMetrics => _scatterMetricSettings.MaxRegisteredMetrics;
     public int ScatterMaxMetricOffset => _scatterMetricSettings.MaxOffset;
     public int ScatterMaxParallelism => _scatterMetricSettings.MaxParallelism;
+    public bool ScatterAutoScaleParallelism => _scatterMetricSettings.AutoScaleParallelism;
     public int ScatterInputDebounceMilliseconds => _scatterMetricSettings.InputDebounceMilliseconds;
 
     public int RsRatingRefreshDebounceMilliseconds => _marketDataSettings.RsRatingRefreshDebounceMilliseconds;
@@ -240,6 +265,9 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
     public int PredictionRetryMaxAttempts => _predictionSettings.RetryMaxAttempts;
     public int PredictionRetryBaseDelayMs => _predictionSettings.RetryBaseDelayMs;
     public int PredictionRetryMaxDelayMs => _predictionSettings.RetryMaxDelayMs;
+    public int? PredictionIntraOpNumThreads => _predictionSettings.IntraOpNumThreads;
+    public int? PredictionInterOpNumThreads => _predictionSettings.InterOpNumThreads;
+    public bool PredictionAllowIntraOpSpinning => _predictionSettings.AllowIntraOpSpinning;
 
     // Localization
     public string? LocaleResourcePath => _localizationSettings.ResourcePath;

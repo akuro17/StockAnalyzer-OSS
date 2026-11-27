@@ -2,9 +2,13 @@ namespace StockAnalyzer.Core.Models.Settings;
 
 public class InfrastructureSettings
 {
+    public const int DefaultScreenerMaxParallelism = 10;
+    public const int DefaultMaxAutoScreenerParallelism = 16;
+
     public string PipeName { get; set; } = "StockAnalyzerPipe";
     public int PipeConnectionTimeoutMs { get; set; } = 5000;
-    public int ScreenerMaxParallelism { get; set; } = 10;
+    public int ScreenerMaxParallelism { get; set; } = DefaultScreenerMaxParallelism;
+    public bool AutoScaleScreenerParallelism { get; set; } = false;
 
     public void Validate()
     {

@@ -180,6 +180,7 @@ namespace StockAnalyzer.Core.Services
                 startInfo.ArgumentList.Add("--pipe");
                 startInfo.ArgumentList.Add(_pipeName);
                 startInfo.EnvironmentVariables[PythonChildEnvironment.IoEncodingVariable] = PythonChildEnvironment.IoEncodingValue;
+                PythonChildEnvironment.ApplyInteractiveWorkerThreadCaps(startInfo);
 
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(_settings.PipeConnectionTimeoutMs);

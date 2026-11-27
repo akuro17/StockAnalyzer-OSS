@@ -1,10 +1,14 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.ReactiveUI;
 using System;
+using System.IO;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Serilog;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog.Formatting.Compact;
+using StockAnalyzer.Core.Models.Settings;
 
 namespace StockAnalyzer.Avalonia;
 
@@ -96,8 +100,89 @@ sealed class Program
 
     // Avalonia configuration, don't remove; also used by visual designer.
     public static AppBuilder BuildAvaloniaApp()
-        => AppBuilder.Configure<App>()
+    {
+        var builder = AppBuilder.Configure<App>()
             .UsePlatformDetect()
             .WithInterFont()
-            .LogToTrace();
+            .LogToTrace()
+            .With(new SkiaOptions
+            {
+                MaxGpuResourceSizeBytes = ResolveMaxGpuResourceSizeBytes()
+            });
+
+        if (OperatingSystem.IsWindows())
+        {
+            builder = builder.With(new Win32PlatformOptions
+            {
+                RenderingMode = new[]
+                {
+                    Win32RenderingMode.AngleEgl,
+                    Win32RenderingMode.Vulkan,
+                    Win32RenderingMode.Wgl,
+                    Win32RenderingMode.Software
+                },
+                CompositionMode = new[]
+                {
+                    Win32CompositionMode.WinUIComposition,
+                    Win32CompositionMode.DirectComposition
+                }
+            });
+        }
+
+        return builder;
+    }
+
+    /// <summary>
+    /// Reads <c>Rendering:MaxGpuResourceSizeBytes</c> prior to DI construction.
+    /// Falls back silently to <see cref="RenderingLimits.DefaultMaxGpuResourceSizeBytes"/> (128 MiB) during design mode,
+    /// when <c>appsettings.json</c> is absent/corrupt, or when the configured value is outside the hard band.
+    /// </summary>
+    internal static long ResolveMaxGpuResourceSizeBytes(string? appsettingsPath = null, bool? isDesignModeOverride = null)
+    {
+        if (isDesignModeOverride ?? Design.IsDesignMode)
+        {
+            return RenderingLimits.DefaultMaxGpuResourceSizeBytes;
+        }
+
+        string path = string.IsNullOrWhiteSpace(appsettingsPath)
+            ? Path.Combine(AppContext.BaseDirectory, "appsettings.json")
+            : appsettingsPath;
+
+        if (!File.Exists(path))
+        {
+            return RenderingLimits.DefaultMaxGpuResourceSizeBytes;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var doc = JsonDocument.Parse(stream, new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
+
+            if (doc.RootElement.ValueKind == JsonValueKind.Object
+                && doc.RootElement.TryGetProperty(RenderingSettings.SectionName, out var renderingSection)
+                && renderingSection.ValueKind == JsonValueKind.Object
+                && renderingSection.TryGetProperty(nameof(RenderingSettings.MaxGpuResourceSizeBytes), out var bytesElement)
+                && bytesElement.ValueKind == JsonValueKind.Number
+                && bytesElement.TryGetInt64(out long configuredBytes))
+            {
+                // Enforce the hard band identically to DI startup validation (no silent fallback on an explicit out-of-band value).
+                _ = RenderingSettingsValidator.Validate(configuredBytes);
+                return configuredBytes;
+            }
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Never fail app startup or visual designer on malformed pre-DI settings JSON.
+        }
+
+        return RenderingLimits.DefaultMaxGpuResourceSizeBytes;
+    }
 }

@@ -369,10 +369,18 @@ public class ScreenerService : IScreenerService, IScreenerServiceFactory
         var matchedSymbols = new ConcurrentBag<(int Index, string Symbol)>();
         int processedCount = 0;
 
+        int effectiveParallelism = StockAnalyzer.Core.Optimization.HardwareConcurrencyPolicy.ResolveEffectiveParallelism(
+            _settings.ScreenerMaxParallelism,
+            _settings.AutoScaleScreenerParallelism,
+            min: 1,
+            max: _settings.AutoScaleScreenerParallelism
+                ? StockAnalyzer.Core.Optimization.HardwareConcurrencyPolicy.DefaultScreenerAutoMaxParallelism
+                : int.MaxValue);
+
         var parallelOptions = new ParallelOptions
         {
             CancellationToken = ct,
-            MaxDegreeOfParallelism = _settings.ScreenerMaxParallelism
+            MaxDegreeOfParallelism = effectiveParallelism
         };
 
         try

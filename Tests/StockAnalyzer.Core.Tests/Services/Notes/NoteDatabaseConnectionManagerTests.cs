@@ -102,4 +102,37 @@ public class NoteDatabaseConnectionManagerTests
             try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
         }
     }
+
+    [Fact]
+    public async Task OpenConnectionAsync_AppliesVolatilePragmasToSecondAndSubsequentConnections()
+    {
+        var tempDir = CreateIsolatedTempDirectory();
+        try
+        {
+            var manager = new NoteDatabaseConnectionManager(NullLogger<NoteDatabaseConnectionManager>.Instance, tempDir);
+
+            using var first = await manager.OpenConnectionAsync();
+            using var second = await manager.OpenConnectionAsync();
+
+            using var syncCmd = second.CreateCommand();
+            syncCmd.CommandText = "PRAGMA synchronous;";
+            Assert.Equal(1L, Convert.ToInt64(await syncCmd.ExecuteScalarAsync())); // NORMAL = 1
+
+            using var cacheCmd = second.CreateCommand();
+            cacheCmd.CommandText = "PRAGMA cache_size;";
+            Assert.Equal(-16000L, Convert.ToInt64(await cacheCmd.ExecuteScalarAsync()));
+
+            using var tempStoreCmd = second.CreateCommand();
+            tempStoreCmd.CommandText = "PRAGMA temp_store;";
+            Assert.Equal(2L, Convert.ToInt64(await tempStoreCmd.ExecuteScalarAsync())); // MEMORY = 2
+
+            using var busyCmd = second.CreateCommand();
+            busyCmd.CommandText = "PRAGMA busy_timeout;";
+            Assert.Equal(5000L, Convert.ToInt64(await busyCmd.ExecuteScalarAsync()));
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, true); } catch { /* best-effort cleanup */ }
+        }
+    }
 }

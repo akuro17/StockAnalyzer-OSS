@@ -48,6 +48,9 @@ AI inference and model runtime parameters (`PredictionSettings`).
 - **`RetryMaxAttempts`** (`integer`, default `3`): Max attempts for model inference retries.
 - **`RetryBaseDelayMs`** (`integer`, default `50`): Exponential backoff base delay in milliseconds.
 - **`RetryMaxDelayMs`** (`integer`, default `500`): Exponential backoff max delay in milliseconds.
+- **`IntraOpNumThreads`** (`integer?`, default `1`, valid `[1, 64]` or `null`): ONNX Runtime intra-operator parallelism thread count (`null` delegates to ORT automatic sizing; `0` is rejected at startup and session creation).
+- **`InterOpNumThreads`** (`integer?`, default `1`, valid `[1, 16]` or `null`): ONNX Runtime inter-operator execution thread count (`null` delegates to ORT automatic sizing; `0` is rejected).
+- **`AllowIntraOpSpinning`** (`boolean`, default `false`): Controls `session.intra_op.allow_spinning` (`false` prevents idle CPU spinning between inference bursts).
 
 ### `PredictionMonitoring`
 Health checking and audit database settings (`PredictionMonitoringSettings`).
@@ -104,7 +107,8 @@ Filtering rules and limits (`ScreenerSettings`).
 Scatter plot analysis limits (`ScatterMetricSettings`).
 - **`MaxRegisteredMetrics`** (`integer`, default `32`): Maximum registered metric definitions.
 - **`MaxOffset`** (`integer`, default `500`): Maximum bar offset allowed for scatter metrics.
-- **`MaxParallelism`** (`integer`, default `10`): Maximum concurrent calculation tasks.
+- **`MaxParallelism`** (`integer`, default `10`): Maximum concurrent calculation tasks when auto-scaling is disabled.
+- **`AutoScaleParallelism`** (`boolean`, default `false`): When `true`, dynamically scales scatter calculation workers via `HardwareConcurrencyPolicy` (reserving `2` CPU cores, capped at `16`).
 - **`InputDebounceMilliseconds`** (`integer`, default `300`): UI input debounce duration.
 
 ### `Tickers`
@@ -149,7 +153,8 @@ Undo/Redo memory and performance management (`DrawingInteractionSettings`).
 IPC and processing bounds (`InfrastructureSettings`).
 - **`PipeName`** (`string`, default `"StockAnalyzerPipe"`): Windows named pipe / Unix domain socket name.
 - **`PipeConnectionTimeoutMs`** (`integer`, default `5000`): Client pipe connection timeout.
-- **`ScreenerMaxParallelism`** (`integer`, default `10`): Maximum parallel CPU workers for screening scans.
+- **`ScreenerMaxParallelism`** (`integer`, default `10`): Maximum parallel CPU workers for screening scans when auto-scaling is disabled.
+- **`AutoScaleScreenerParallelism`** (`boolean`, default `false`): When `true`, dynamically scales screener workers via `HardwareConcurrencyPolicy` (reserving `2` CPU cores, capped at `16`).
 
 ### `Localization`
 - **`ResourcePath`** (`string`, default `"Resources/Locales"`): Relative folder containing `{locale}.json` translation files.
@@ -173,6 +178,11 @@ Canonical paths for time-series parquet data and symbol coverage.
 - **`MonthlyDataPath`** (`string`, default `"Data/Monthly"`): Folder holding monthly candle parquet files.
 - **`MetadataPath`** (`string`, default `"Data/Metadata"`): Folder holding strategy metadata (`{ticker}.meta.parquet`) and signal bundles.
 - **`TickerListPath`** (`string`, default `"StockAnalyzer.Python/tickers.json"`): S&P 500 / universe ticker definitions.
+- **`TimeFrameCacheMaxEntries`** (`integer`, default `256`, hard `[1, 4096]`, standard `[20, 512]`): Maximum LRU entries held in `TimeFrameManager` candle cache.
+
+### `Rendering`
+Skia/GPU rendering resource limits (`RenderingSettings`).
+- **`MaxGpuResourceSizeBytes`** (`integer` [Int64], default `134217728` [128 MiB], hard `[33554432, 536870912]`, standard `[67108864, 268435456]`): Maximum GPU resource cache budget passed to `SkiaOptions.MaxGpuResourceSizeBytes` at startup.
 
 ### `RlPortfolio`
 Reinforcement learning multi-asset portfolio training defaults (`RlPortfolioSettings`).
@@ -193,6 +203,9 @@ When creating or modifying `appsettings.json`, the configuration validator check
 - **`Backtest`**: `MaxConditionTreeNodes` MUST be greater than or equal to `MaxConditionTreeDepth` (`MaxConditionTreeNodes >= MaxConditionTreeDepth`).
 - **`Screener`**: `MaxFilterTreeNodes` MUST be greater than or equal to `MaxFilterTreeDepth` (`MaxFilterTreeNodes >= MaxFilterTreeDepth`).
 - **`PatternRecognition`**: `MaxWindow` MUST be strictly greater than `MinWindow` (`MaxWindow > MinWindow`), and `DefaultThreshold` MUST satisfy $0.0 < \text{DefaultThreshold} \le 1.0$.
+- **`MarketDataSettings`**: `TimeFrameCacheMaxEntries` MUST fall inside hard band `[1, 4096]` (validated both at startup and DI composition; values outside standard `[20, 512]` emit a warning).
+- **`Rendering`**: `MaxGpuResourceSizeBytes` MUST fall inside hard band `[33554432, 536870912]` when explicitly set as an integer in non-design mode (values outside standard `[67108864, 268435456]` emit a warning at startup).
+- **`Prediction`**: When non-null, `IntraOpNumThreads` MUST be in `[1, 64]` and `InterOpNumThreads` MUST be in `[1, 16]` (`0` is rejected at startup and ONNX session creation).
 
 ---
 
@@ -230,7 +243,10 @@ When creating or modifying `appsettings.json`, the configuration validator check
     "ClassLabels": [ "Up", "Down", "Neutral" ],
     "RetryMaxAttempts": 3,
     "RetryBaseDelayMs": 50,
-    "RetryMaxDelayMs": 500
+    "RetryMaxDelayMs": 500,
+    "IntraOpNumThreads": 1,
+    "InterOpNumThreads": 1,
+    "AllowIntraOpSpinning": false
   },
   "PredictionMonitoring": {
     "Backend": "Sqlite",
@@ -295,6 +311,7 @@ When creating or modifying `appsettings.json`, the configuration validator check
     "MaxRegisteredMetrics": 32,
     "MaxOffset": 500,
     "MaxParallelism": 10,
+    "AutoScaleParallelism": false,
     "InputDebounceMilliseconds": 300
   },
   "Tickers": {
@@ -338,7 +355,8 @@ When creating or modifying `appsettings.json`, the configuration validator check
   "Infrastructure": {
     "PipeName": "StockAnalyzerPipe",
     "PipeConnectionTimeoutMs": 5000,
-    "ScreenerMaxParallelism": 10
+    "ScreenerMaxParallelism": 10,
+    "AutoScaleScreenerParallelism": false
   },
   "Localization": {
     "ResourcePath": "Resources/Locales"
@@ -360,7 +378,13 @@ When creating or modifying `appsettings.json`, the configuration validator check
     "WeeklyDataPath": "Data/Weekly",
     "MonthlyDataPath": "Data/Monthly",
     "MetadataPath": "Data/Metadata",
-    "TickerListPath": "StockAnalyzer.Python/tickers.json"
+    "TickerListPath": "StockAnalyzer.Python/tickers.json",
+    "RsRatingMaxStaleCalendarDays": 10,
+    "RsRatingRefreshDebounceMilliseconds": 500,
+    "TimeFrameCacheMaxEntries": 256
+  },
+  "Rendering": {
+    "MaxGpuResourceSizeBytes": 134217728
   },
   "RlPortfolio": {
     "MaxSymbols": 50,

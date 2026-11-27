@@ -53,6 +53,8 @@ public static class DrawingValueCatalog
         new("CrossLine", 1, r => CrossLineValues.Calculate(r.Points[0], r.Timestamp, r.Color), "CrossLineObject"),
         new("DatePriceRange", 2, r => DatePriceRangeValues.Calculate(r.Points[0], r.Points[1], r.Candles, r.Color), "DatePriceRangeObject", RequiresCandles: true),
         new("DistributionRange", 2, r => DistributionRangeValues.Calculate(r.Points[0], r.Points[1], r.Candles, r.Color, r.Options), "DistributionRangeObject", RequiresCandles: true),
+        new("GarchVolatilityCone", 2, r => GarchVolatilityConeValues.Calculate(r.Points[0], r.Points[1], r.Candles, r.Options.GarchForecastBars, r.Color, r.Options.GarchPriceSource), "GarchVolatilityConeObject", RequiresCandles: true),
+        new("RangeRegimeDiagnosticCard", 2, r => RangeRegimeDiagnosticCardValues.Calculate(r.Points[0], r.Points[1], r.Candles, r.Options.RegimeCardPeriodsPerYear, r.Color), "RangeRegimeDiagnosticCardObject", RequiresCandles: true),
     };
 
     /// <summary>All tools in the fixed specification order.</summary>

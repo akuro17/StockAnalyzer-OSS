@@ -2068,6 +2068,336 @@ public static class DefaultCoreIndicatorSettings
                 {
                     new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Excess Kurtosis", Color = IndicatorDefaultConstants.SkewnessKurtosisKurtosisColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
                 }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-1. Colours by role: statistic main line = RsiColor, the 5 % level = the test-panel line colour, the 1 % level its own colour; auto axis (the statistic is unbounded above).
+                TypeEnum = IndicatorType.KpssStationarity,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreKpssStationarityParameter(),
+                Color = IndicatorDefaultConstants.RsiColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "KPSS Statistic", Color = IndicatorDefaultConstants.RsiColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } },
+                    new SeriesColorConfig { Name = CoreKpssStationarityIndicator.CriticalValue5PctSeriesName, DisplayName = "5% Critical Value", Color = IndicatorDefaultConstants.TestSignificanceLineColor, TargetSeries = new List<string> { CoreKpssStationarityIndicator.CriticalValue5PctSeriesName } },
+                    new SeriesColorConfig { Name = CoreKpssStationarityIndicator.CriticalValue1PctSeriesName, DisplayName = "1% Critical Value", Color = IndicatorDefaultConstants.KpssCriticalValue1PercentColor, TargetSeries = new List<string> { CoreKpssStationarityIndicator.CriticalValue1PctSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-1. Dimensionless ratio around zero; zero baseline; auto axis.
+                TypeEnum = IndicatorType.RollingSharpe,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreRollingSharpeParameter(),
+                Color = IndicatorDefaultConstants.RollingSharpeColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Sharpe Ratio", Color = IndicatorDefaultConstants.RollingSharpeColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-1. Positive drawdown depth (percent by default); zero baseline; auto axis.
+                TypeEnum = IndicatorType.RollingMaxDrawdown,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreRollingMaxDrawdownParameter(),
+                Color = IndicatorDefaultConstants.RollingMaxDrawdownColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Max Drawdown", Color = IndicatorDefaultConstants.RollingMaxDrawdownColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-2. Two-symbol return per unit of beta; zero baseline; auto axis; disabled until a benchmark symbol is set.
+                TypeEnum = IndicatorType.TreynorRatio,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreTreynorRatioParameter(),
+                Color = IndicatorDefaultConstants.TreynorRatioColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Treynor Ratio", Color = IndicatorDefaultConstants.TreynorRatioColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-2. Two-symbol active return over tracking error; zero baseline; auto axis.
+                TypeEnum = IndicatorType.InformationRatio,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreInformationRatioParameter(),
+                Color = IndicatorDefaultConstants.InformationRatioColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Information Ratio", Color = IndicatorDefaultConstants.InformationRatioColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-2. Two-symbol standard deviation of the active return (percent by default); zero baseline; auto axis.
+                TypeEnum = IndicatorType.TrackingError,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreTrackingErrorParameter(),
+                Color = IndicatorDefaultConstants.TrackingErrorColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Tracking Error", Color = IndicatorDefaultConstants.TrackingErrorColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-2. Two-symbol covariance of returns (return squared, unscaled); zero baseline; auto axis.
+                TypeEnum = IndicatorType.RollingCovariance,
+                Category = CoreIndicatorCategory.Other,
+                IsEnabled = false,
+                ParameterObject = new CoreRollingCovarianceParameter(),
+                Color = IndicatorDefaultConstants.RollingCovarianceColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Covariance", Color = IndicatorDefaultConstants.RollingCovarianceColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-3. Price overlay: the mean of the window after the extremes are cut.
+                TypeEnum = IndicatorType.TrimmedMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreTrimmedMaParameter(),
+                Color = IndicatorDefaultConstants.RobustMovingAverageColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Trimmed MA", Color = IndicatorDefaultConstants.RobustMovingAverageColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-3. Price overlay: the mean of the window with the extremes clamped.
+                TypeEnum = IndicatorType.WinsorizedMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreWinsorizedMaParameter(),
+                Color = IndicatorDefaultConstants.RobustMovingAverageColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Winsorized MA", Color = IndicatorDefaultConstants.RobustMovingAverageColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-3. Price overlay: the Huber M-estimate of location.
+                TypeEnum = IndicatorType.HuberMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreHuberMaParameter(),
+                Color = IndicatorDefaultConstants.RobustMovingAverageColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Huber MA", Color = IndicatorDefaultConstants.RobustMovingAverageColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-3. Price overlay: the Tukey biweight M-estimate of location.
+                TypeEnum = IndicatorType.BiweightMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreBiweightMaParameter(),
+                Color = IndicatorDefaultConstants.RobustMovingAverageColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Biweight MA", Color = IndicatorDefaultConstants.RobustMovingAverageColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-3. Price overlay: the geometric mean of the window.
+                TypeEnum = IndicatorType.GeometricMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreGeometricMaParameter(),
+                Color = IndicatorDefaultConstants.GeneralizedMovingAverageColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Geometric MA", Color = IndicatorDefaultConstants.GeneralizedMovingAverageColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-3. Price overlay: the harmonic mean of the window.
+                TypeEnum = IndicatorType.HarmonicMA,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreHarmonicMaParameter(),
+                Color = IndicatorDefaultConstants.GeneralizedMovingAverageColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Harmonic MA", Color = IndicatorDefaultConstants.GeneralizedMovingAverageColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-4. Price overlay: the least-squares polynomial of the window at the newest bar (or Forecast Horizon bars ahead, drawn at the newest bar).
+                TypeEnum = IndicatorType.PolynomialRegression,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CorePolynomialRegressionParameter(),
+                Color = IndicatorDefaultConstants.PolynomialRegressionColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Polynomial Regression", Color = IndicatorDefaultConstants.PolynomialRegressionColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-4. Price overlay: the fitted curve at the newest bar. ParameterB and RSquared are chart-suppressed (scale), so they have no colour entry.
+                TypeEnum = IndicatorType.NonlinearRegression,
+                Category = CoreIndicatorCategory.Trend,
+                IsEnabled = false,
+                ParameterObject = new CoreNonlinearRegressionParameter(),
+                Color = IndicatorDefaultConstants.NonlinearRegressionColor,
+                Thickness = IndicatorDefaultConstants.DefaultOverlayThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Nonlinear Regression", Color = IndicatorDefaultConstants.NonlinearRegressionColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-5. t statistic of the window mean return against the null mean; zero baseline; auto axis. PValue is chart-suppressed (scale), no colour entry.
+                TypeEnum = IndicatorType.OneSampleTTest,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreOneSampleTTestParameter(),
+                Color = IndicatorDefaultConstants.TestStatisticColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "t Statistic", Color = IndicatorDefaultConstants.TestStatisticColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-5. Welch t of the recent against the baseline returns; zero baseline; auto axis. PValue is chart-suppressed (scale).
+                TypeEnum = IndicatorType.TwoSampleTTest,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreTwoSampleTTestParameter(),
+                Color = IndicatorDefaultConstants.TestStatisticColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                IncludeZeroBaseline = true,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Welch t Statistic", Color = IndicatorDefaultConstants.TestStatisticColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-5. Kolmogorov-Smirnov distance D in [0, 1] of the recent against the baseline returns. PValue is chart-suppressed.
+                TypeEnum = IndicatorType.KsTwoSampleTest,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreKsTwoSampleTestParameter(),
+                Color = IndicatorDefaultConstants.TestStatisticColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "KS Distance", Color = IndicatorDefaultConstants.TestStatisticColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-5. Smaller Mann-Whitney U (a pair count) of the recent against the baseline returns. PValue is chart-suppressed (scale).
+                TypeEnum = IndicatorType.MannWhitneyUTest,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreMannWhitneyUTestParameter(),
+                Color = IndicatorDefaultConstants.TestStatisticColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "Mann-Whitney U", Color = IndicatorDefaultConstants.TestStatisticColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
+            },
+            new CoreIndicatorSettings
+            {
+                // DSL expansion run I-5. KL divergence (nats) of the recent return distribution from the baseline distribution.
+                TypeEnum = IndicatorType.KlDivergence,
+                Category = CoreIndicatorCategory.Oscillator,
+                IsEnabled = false,
+                ParameterObject = new CoreKlDivergenceParameter(),
+                Color = IndicatorDefaultConstants.TestStatisticColor,
+                Thickness = IndicatorDefaultConstants.DefaultSubPanelThickness,
+                Style = CoreLineStyle.Solid,
+                IsOverlay = false,
+                SeriesColors = new System.Collections.ObjectModel.ObservableCollection<SeriesColorConfig>
+                {
+                    new SeriesColorConfig { Name = IndicatorResult.MainSeriesName, DisplayName = "KL Divergence", Color = IndicatorDefaultConstants.TestStatisticColor, TargetSeries = new List<string> { IndicatorResult.MainSeriesName } }
+                }
             }
         };
 

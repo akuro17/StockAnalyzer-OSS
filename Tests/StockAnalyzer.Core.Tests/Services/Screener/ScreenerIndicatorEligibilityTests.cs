@@ -76,13 +76,15 @@ public sealed class ScreenerIndicatorEligibilityTests
     {
         IndicatorType[] enabled = EnabledByTheScreenerOnly();
 
-        // The thirteen types (eleven two-symbol types plus MarketBreadth and McClellanOscillator; derived from the registry, then named once as the expectation of the derivation).
+        // The seventeen types (fifteen two-symbol types plus MarketBreadth and McClellanOscillator; derived from the registry, then named once as the expectation of the derivation).
+        // DSL expansion run I-2 added TreynorRatio, InformationRatio, TrackingError and RollingCovariance.
         Assert.Equal(
             new[]
             {
                 IndicatorType.CointegrationSpread, IndicatorType.CrossTickerDtw, IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
                 IndicatorType.MansfieldRS, IndicatorType.MarketBreadth, IndicatorType.McClellanOscillator,
                 IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.RollingAlpha, IndicatorType.RollingBeta, IndicatorType.RollingRSquared,
+                IndicatorType.TreynorRatio, IndicatorType.InformationRatio, IndicatorType.TrackingError, IndicatorType.RollingCovariance,
             }.OrderBy(type => type.ToString(), StringComparer.Ordinal),
             enabled);
 
@@ -199,14 +201,16 @@ public sealed class ScreenerIndicatorEligibilityTests
     }
 
     [Fact]
-    public void ScreenerOnlyTypes_AreExactlyTheNineTwoSymbolAndTwoUniverseBreadthTypesTheBacktestRefuses()
+    public void ScreenerOnlyTypes_AreExactlyTheFifteenTwoSymbolAndTwoUniverseBreadthTypesTheBacktestRefuses()
     {
         IndicatorType[] expected =
         {
             IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared, IndicatorType.CointegrationSpread,
             IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration,
             IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw, IndicatorType.MansfieldRS,
-            IndicatorType.McClellanOscillator, IndicatorType.MarketBreadth
+            IndicatorType.McClellanOscillator, IndicatorType.MarketBreadth,
+            // DSL expansion run I-2
+            IndicatorType.TreynorRatio, IndicatorType.InformationRatio, IndicatorType.TrackingError, IndicatorType.RollingCovariance
         };
 
         IndicatorType[] actual = Enum.GetValues<IndicatorType>().Distinct().Where(IndicatorFactory.Default.IsRegistered).Where(ScreenerIndicatorEligibility.IsScreenerOnlyType).ToArray();

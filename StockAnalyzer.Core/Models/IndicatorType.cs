@@ -438,7 +438,37 @@ public enum IndicatorType
 
     // Split statistical moment indicators (SA-SPEC-SKEW-KURT-DIST-001, append-only; preserves all existing ordinals).
     [Description("Skewness")] Skewness,
-    [Description("Kurtosis")] Kurtosis
+    [Description("Kurtosis")] Kurtosis,
+
+    // DSL indicator and drawing tool expansion, run I-1: KPSS stationarity, rolling Sharpe ratio and rolling maximum drawdown (append-only; preserves all existing ordinals).
+    [Description("KPSS Stationarity")] KpssStationarity,
+    [Description("Rolling Sharpe Ratio")] RollingSharpe,
+    [Description("Rolling Max Drawdown")] RollingMaxDrawdown,
+
+    // DSL indicator and drawing tool expansion, run I-2: two-symbol statistics of the returns of the chart symbol and a comparison symbol (append-only; preserves all existing ordinals).
+    [Description("Treynor Ratio")] TreynorRatio,
+    [Description("Information Ratio")] InformationRatio,
+    [Description("Tracking Error")] TrackingError,
+    [Description("Rolling Covariance")] RollingCovariance,
+
+    // DSL indicator and drawing tool expansion, run I-3: price-native robust and generalised window averages (overlays; append-only; preserves all existing ordinals).
+    [Description("Trimmed Moving Average")] TrimmedMA,
+    [Description("Winsorized Moving Average")] WinsorizedMA,
+    [Description("Huber Moving Average")] HuberMA,
+    [Description("Biweight Moving Average")] BiweightMA,
+    [Description("Geometric Moving Average")] GeometricMA,
+    [Description("Harmonic Moving Average")] HarmonicMA,
+
+    // DSL indicator and drawing tool expansion, run I-4: polynomial and nonlinear regression overlays (append-only).
+    [Description("Polynomial Regression")] PolynomialRegression,
+    [Description("Nonlinear Regression")] NonlinearRegression,
+
+    // DSL indicator and drawing tool expansion, run I-5: hypothesis tests of the returns of the last bars against a null mean or against the returns of the preceding bars (append-only).
+    [Description("One-Sample t-Test")] OneSampleTTest,
+    [Description("Two-Sample t-Test (Welch)")] TwoSampleTTest,
+    [Description("Two-Sample KS Test")] KsTwoSampleTest,
+    [Description("Mann-Whitney U Test")] MannWhitneyUTest,
+    [Description("KL Divergence")] KlDivergence
 }
 
 public static class IndicatorTypeExtensions

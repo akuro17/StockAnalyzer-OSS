@@ -203,6 +203,16 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `VarianceRatio` | `214` | `CoreVarianceRatioParameter` | `Period` (int, default `60`), `AggregationHorizon` (int, default `5`) | `false` | `"Main"`, `"RandomWalkLine"`, `"ZStarStatistic"`, `"PValue"` |
 | `Skewness` | `275` | `CoreSkewnessParameter` | `Period` (int, default `30`), `UseLogReturn` (bool, default `true`) | `false` | `"Main"` |
 | `Kurtosis` | `276` | `CoreKurtosisParameter` | `Period` (int, default `30`), `UseLogReturn` (bool, default `true`) | `false` | `"Main"` |
+| `KpssStationarity` | `277` | `CoreKpssStationarityParameter` | `Period` (int, default `60`), `UseReturns` (bool, default `false`) | `false` | `"Main"`, `"CriticalValue5Pct"`, `"CriticalValue1Pct"` |
+| `TreynorRatio` | `280` | `CoreTreynorRatioParameter` | `Period` (int, default `60`), `AnnualRiskFreeRate` (decimal, default `0`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`), `ComparisonSymbol` (string, default `""`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `CalculationMode` (BetaCalculationMode, default `0 (SimpleReturn)`) | `false` | `"Main"` |
+| `InformationRatio` | `281` | `CoreInformationRatioParameter` | `Period` (int, default `60`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`), `ComparisonSymbol` (string, default `""`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `CalculationMode` (BetaCalculationMode, default `0 (SimpleReturn)`) | `false` | `"Main"` |
+| `TrackingError` | `282` | `CoreTrackingErrorParameter` | `Period` (int, default `60`), `AsPercent` (bool, default `true`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`), `ComparisonSymbol` (string, default `""`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `CalculationMode` (BetaCalculationMode, default `0 (SimpleReturn)`) | `false` | `"Main"` |
+| `RollingCovariance` | `283` | `CoreRollingCovarianceParameter` | `Period` (int, default `60`), `UseSampleCovariance` (bool, default `true`), `ComparisonSymbol` (string, default `""`), `ComparisonPriceSource` (PriceType, default `0 (Close)`), `CalculationMode` (BetaCalculationMode, default `0 (SimpleReturn)`) | `false` | `"Main"` |
+| `OneSampleTTest` | `292` | `CoreOneSampleTTestParameter` | `Period` (int, default `30`), `NullMean` (decimal, default `0`), `UseLogReturn` (bool, default `false`) | `false` | `"Main"`, `"PValue"` |
+| `TwoSampleTTest` | `293` | `CoreTwoSampleTTestParameter` | `Period` (int, default `20`), `BaselinePeriod` (int, default `60`), `UseLogReturn` (bool, default `false`) | `false` | `"Main"`, `"PValue"` |
+| `KsTwoSampleTest` | `294` | `CoreKsTwoSampleTestParameter` | `Period` (int, default `20`), `BaselinePeriod` (int, default `60`), `UseLogReturn` (bool, default `false`) | `false` | `"Main"`, `"PValue"` |
+| `MannWhitneyUTest` | `295` | `CoreMannWhitneyUTestParameter` | `Period` (int, default `20`), `BaselinePeriod` (int, default `60`), `UseLogReturn` (bool, default `false`) | `false` | `"Main"`, `"PValue"` |
+| `KlDivergence` | `296` | `CoreKlDivergenceParameter` | `Period` (int, default `20`), `BaselinePeriod` (int, default `60`), `BinCount` (int, default `10`), `UseLogReturn` (bool, default `true`) | `false` | `"Main"` |
 
 ### Category: PatternRecognition
 
@@ -274,6 +284,14 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `McGinleyDynamic` | `195` | `CoreMcGinleyDynamicParameter` | `Period` (int, default `14`), `Constant` (decimal, default `0.6`) | `true` | `"Main"` |
 | `QuantileBands` | `215` | `CoreQuantileBandsParameter` | `Period` (int, default `20`), `UpperQuantile` (double, default `0.75`), `LowerQuantile` (double, default `0.25`) | `true` | `"Main"`, `"UpperBand"`, `"LowerBand"`, `"IQR"`, `"MAD"` |
 | `TheilSenRegression` | `216` | `CoreTheilSenRegressionParameter` | `Period` (int, default `20`), `BandMultiplier` (double, default `2`), `UseSiegelMedian` (bool, default `false`) | `true` | `"Main"`, `"UpperBand"`, `"LowerBand"`, `"Slope"`, `"Intercept"` |
+| `TrimmedMA` | `284` | `CoreTrimmedMaParameter` | `Alpha` (decimal, default `0.10`), `Period` (int, default `20`) | `true` | `"Main"` |
+| `WinsorizedMA` | `285` | `CoreWinsorizedMaParameter` | `Alpha` (decimal, default `0.10`), `Period` (int, default `20`) | `true` | `"Main"` |
+| `HuberMA` | `286` | `CoreHuberMaParameter` | `TuningK` (decimal, default `1.345`), `Period` (int, default `20`) | `true` | `"Main"` |
+| `BiweightMA` | `287` | `CoreBiweightMaParameter` | `TuningC` (decimal, default `4.685`), `Period` (int, default `20`) | `true` | `"Main"` |
+| `GeometricMA` | `288` | `CoreGeometricMaParameter` | `Period` (int, default `20`) | `true` | `"Main"` |
+| `HarmonicMA` | `289` | `CoreHarmonicMaParameter` | `Period` (int, default `20`) | `true` | `"Main"` |
+| `PolynomialRegression` | `290` | `CorePolynomialRegressionParameter` | `Period` (int, default `30`), `Degree` (int, default `2`), `ForecastHorizon` (int, default `0`) | `true` | `"Main"` |
+| `NonlinearRegression` | `291` | `CoreNonlinearRegressionParameter` | `Period` (int, default `30`), `ModelType` (NonlinearRegressionModel, default `0 (Exponential)`) | `true` | `"Main"`, `"ParameterB"`, `"RSquared"` |
 
 ### Category: Volatility
 
@@ -312,6 +330,8 @@ This section is generated from the production code (`IndicatorFactory`, each ind
 | `DownsideDeviation` | `211` | `CoreDownsideDeviationParameter` | `Period` (int, default `20`), `TargetReturn` (double, default `0`) | `false` | `"Main"`, `"UpsideDeviation"`, `"RollingSortino"`, `"SemivarianceAsymmetry"` |
 | `BipowerVariation` | `212` | `CoreBipowerVariationParameter` | `Period` (int, default `20`) | `false` | `"Main"`, `"TotalVolatility"`, `"JumpComponentHistogram"`, `"JumpRatio"` |
 | `CornishFisherVaR` | `217` | `CoreCornishFisherVarParameter` | `Period` (int, default `30`), `ConfidenceLevel` (double, default `0.95`) | `false` | `"Main"`, `"GaussianVaR"`, `"ProbabilisticSharpeRatio"` |
+| `RollingSharpe` | `278` | `CoreRollingSharpeParameter` | `Period` (int, default `20`), `UseLogReturn` (bool, default `false`), `Annualize` (bool, default `false`), `PeriodsPerYear` (int, default `252`), `AnnualRiskFreeRate` (decimal, default `0`) | `false` | `"Main"` |
+| `RollingMaxDrawdown` | `279` | `CoreRollingMaxDrawdownParameter` | `Period` (int, default `60`), `AsPercent` (bool, default `true`) | `false` | `"Main"` |
 
 ### Category: Volume
 
@@ -367,6 +387,7 @@ Enums are serialized as integers. The member name in parentheses is for readabil
 - **`HoughNormalizationMode`**: `0` = `Raw`, `1` = `Relative`, `2` = `Log`, `3` = `MinMax`, `4` = `ZScore`
 - **`MarketBreadthMetricMode`**: `0` = `AdRatio`, `1` = `PctAboveMa`, `2` = `AdLine`, `3` = `NetNewHighs`, `4` = `Trin`, `5` = `Cvi`
 - **`MovingAverageType`**: `0` = `ALMA`, `1` = `DEMA`, `2` = `EMA`, `3` = `HMA`, `4` = `KAMA`, `5` = `LRMA`, `6` = `LSMA`, `7` = `SMA`, `8` = `SMMA`, `9` = `TEMA`, `10` = `TMA`, `11` = `WMA`, `12` = `ZLEMA`
+- **`NonlinearRegressionModel`**: `0` = `Exponential`, `1` = `Logarithmic`, `2` = `Power`, `3` = `Logistic`
 - **`PatternDirectionMode`**: `0` = `Both`, `1` = `BullishOnly`, `2` = `BearishOnly`
 - **`PivotPointType`**: `0` = `Standard`, `1` = `Fibonacci`, `2` = `Woodie`, `3` = `Camarilla`
 - **`PivotSourcePeriod`**: `0` = `PreviousBar`, `1` = `Week`, `2` = `Month`

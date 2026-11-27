@@ -780,7 +780,8 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
     {
         try
         {
-            using (var session = new InferenceSession(result.ModelPath))
+            using var inspectOptions = Services.OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+            using (var session = new InferenceSession(result.ModelPath, inspectOptions))
             {
                 if (session.InputMetadata.Count == 0 || session.OutputMetadata.Count == 0)
                 {
@@ -916,7 +917,8 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
     {
         try
         {
-            using (var session = new InferenceSession(result.ModelPath))
+            using var inspectOptions = Services.OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+            using (var session = new InferenceSession(result.ModelPath, inspectOptions))
             {
                 if (session.InputMetadata.Count == 0 || session.OutputMetadata.Count == 0)
                 {
@@ -1216,7 +1218,8 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
 
         try
         {
-            using var session = new InferenceSession(onnxPath);
+            using var inspectOptions = Services.OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+            using var session = new InferenceSession(onnxPath, inspectOptions);
             if (session.InputMetadata.Count == 0 || session.OutputMetadata.Count == 0)
             {
                 return null;
@@ -1249,7 +1252,8 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
 
         try
         {
-            using var session = new InferenceSession(onnxPath);
+            using var inspectOptions = Services.OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+            using var session = new InferenceSession(onnxPath, inspectOptions);
             if (session.InputMetadata.Count == 0 || session.OutputMetadata.Count == 0)
             {
                 return null;

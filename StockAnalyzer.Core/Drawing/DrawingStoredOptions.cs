@@ -48,6 +48,10 @@ public static class DrawingStoredOptions
     public const string GevShapeParameterKey = "gevShapeParameter";
     public const string BandwidthMultiplierKey = "bandwidthMultiplier";
 
+    // GarchVolatilityCone and RangeRegimeDiagnosticCard keys
+    public const string ForecastBarsKey = "forecastBars";
+    public const string PeriodsPerYearKey = "periodsPerYear";
+
     /// <summary>The tool name a saved object gives itself (<see cref="ToolKey"/>), or null.</summary>
     public static string? ReadTool(IReadOnlyDictionary<string, object?> parameters) => Text(parameters, ToolKey);
 
@@ -92,6 +96,9 @@ public static class DrawingStoredOptions
             DistributionStudentTDegreesOfFreedom = Decimal(parameters, StudentTDegreesOfFreedomKey) ?? DistributionRangeParameters.DefaultStudentTDegreesOfFreedom,
             DistributionGevShapeParameter = Decimal(parameters, GevShapeParameterKey) ?? DistributionRangeParameters.DefaultGevShapeParameter,
             DistributionBandwidthMultiplier = Double(parameters, BandwidthMultiplierKey) ?? DistributionRangeParameters.DefaultBandwidthMultiplier,
+            GarchForecastBars = Int(parameters, ForecastBarsKey) ?? GarchVolatilityConeValues.DefaultHorizon,
+            RegimeCardPeriodsPerYear = Int(parameters, PeriodsPerYearKey) ?? RangeRegimeDiagnosticCardValues.DefaultPeriodsPerYear,
+            GarchPriceSource = Enumeration<PriceType>(parameters, PriceSourceKey) ?? PriceType.Close,
         };
     }
 

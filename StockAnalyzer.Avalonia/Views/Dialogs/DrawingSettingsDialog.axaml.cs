@@ -14,7 +14,7 @@ namespace StockAnalyzer.Avalonia.Views.Dialogs;
 
 public partial class DrawingSettingsDialog : Window
 {
-    private static readonly string[] FallbackHiddenTags = [DrawingParameterTags.Common, DrawingParameterTags.Geometry];
+    internal static readonly string[] FallbackHiddenTags = [DrawingParameterTags.Common, DrawingParameterTags.Geometry];
 
     private IChartObject? _drawing;
     private IDrawingSettingsPanelDefinition? _panelDefinition;
@@ -25,6 +25,9 @@ public partial class DrawingSettingsDialog : Window
     private bool _isBusyOrUnavailable;
     private DrawingObjectSettingsViewModel? _viewModel;
     private string _toolDisplayName = "Drawing Settings";
+
+    /// <summary>The period of a fixed-period range drawing when the dialog was opened (or last applied); the range is snapped only when the user changed it.</summary>
+    private int _periodAtOpen = -1;
 
     public DrawingSettingsDialog() : this(null!, null, null, null) { }
 
@@ -45,6 +48,7 @@ public partial class DrawingSettingsDialog : Window
         _onApply = onApply;
         _coordinator = coordinator;
         _candles = candles;
+        _periodAtOpen = (_drawing as IPeriodSnappedRange)?.Period ?? -1;
 
         if (_coordinator != null)
         {
@@ -362,6 +366,15 @@ public partial class DrawingSettingsDialog : Window
         if (_panelDefinition != null)
         {
             _panelDefinition.Commit(this, _drawing);
+        }
+
+        // End-point snap of a fixed-period range drawing: only when the user changed the period (a colour change must not move an anchor), before TakeSnapshot() so the period and the anchors
+        // are captured together (the same reason and position as the F10 fix below). OK and Apply both come through here.
+        if (_drawing is IPeriodSnappedRange periodRange && _candles != null && periodRange.Period != _periodAtOpen)
+        {
+            periodRange.SnapToPeriod(_candles, StockAnalyzer.Core.Drawing.RangeSnapKind.PeriodChange);
+            _periodAtOpen = periodRange.Period;
+            StockAnalyzer.Avalonia.Drawing.DeferredComputationRecalculator.TryRecalculate(_drawing, _candles);
         }
 
         // F10 fix: FixedRangeVolumeProfileObject's RangeBars setter only records a pending bar

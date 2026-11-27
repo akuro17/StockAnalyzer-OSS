@@ -96,7 +96,8 @@ public sealed class EphemeralPredictionModel : IDisposable
         EphemeralExecutionPolicy? policy,
         IIndicatorFactory? indicatorFactory = null,
         int maxComposedChannels = 64,
-        long maxTensorBytes = 64L * 1024 * 1024)
+        long maxTensorBytes = 64L * 1024 * 1024,
+        Services.IStockAnalyzerSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(lease);
         ArgumentNullException.ThrowIfNull(processor);
@@ -104,7 +105,8 @@ public sealed class EphemeralPredictionModel : IDisposable
         InferenceSession? session = null;
         try
         {
-            session = new InferenceSession(lease.OnnxPath);
+            using var sessionOptions = Services.OnnxSessionOptionsFactory.CreateInferenceOptions(settings);
+            session = new InferenceSession(lease.OnnxPath, sessionOptions);
             IReadOnlyDictionary<string, string> metadata = session.ModelMetadata.CustomMetadataMap;
             PredictionOutputContract output = PredictionModelMetadata.ReadOutputContract(metadata);
             bool regression = output.Semantic == PredictionOutputSemantic.LogReturn;

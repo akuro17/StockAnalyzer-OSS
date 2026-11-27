@@ -59,6 +59,7 @@ internal static class McpSettingsExposure
         nameof(IStockAnalyzerSettings.DefaultScreenerSymbols),
         nameof(IStockAnalyzerSettings.PipeName),
         nameof(IStockAnalyzerSettings.PipeConnectionTimeoutMs),
+        nameof(IStockAnalyzerSettings.AutoScaleScreenerParallelism),
         nameof(IStockAnalyzerSettings.BacktestMaxConditionGroupNameLength),
         nameof(IStockAnalyzerSettings.BacktestConditionDragStartDistance),
         nameof(IStockAnalyzerSettings.ScreenerMaxFilterGroupNameLength),
@@ -66,6 +67,7 @@ internal static class McpSettingsExposure
         nameof(IStockAnalyzerSettings.ScatterMaxRegisteredMetrics),
         nameof(IStockAnalyzerSettings.ScatterMaxMetricOffset),
         nameof(IStockAnalyzerSettings.ScatterMaxParallelism),
+        nameof(IStockAnalyzerSettings.ScatterAutoScaleParallelism),
         nameof(IStockAnalyzerSettings.ScatterInputDebounceMilliseconds),
         nameof(IStockAnalyzerSettings.RsRatingRefreshDebounceMilliseconds),
         nameof(IStockAnalyzerSettings.DrawingInteraction),
@@ -89,6 +91,9 @@ internal static class McpSettingsExposure
         nameof(IStockAnalyzerSettings.PredictionRetryMaxAttempts),
         nameof(IStockAnalyzerSettings.PredictionRetryBaseDelayMs),
         nameof(IStockAnalyzerSettings.PredictionRetryMaxDelayMs),
+        nameof(IStockAnalyzerSettings.PredictionIntraOpNumThreads),
+        nameof(IStockAnalyzerSettings.PredictionInterOpNumThreads),
+        nameof(IStockAnalyzerSettings.PredictionAllowIntraOpSpinning),
         nameof(IStockAnalyzerSettings.LocaleResourcePath),
     };
 

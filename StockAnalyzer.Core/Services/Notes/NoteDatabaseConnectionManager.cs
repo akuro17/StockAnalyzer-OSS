@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,6 +30,12 @@ public sealed class NoteDatabaseConnectionManager
 
     /// <summary>The file name of the notes database: the one definition shared with the read-only MCP source.</summary>
     public const string DatabaseFileName = "notes.db";
+
+    /// <summary>Per-connection SQLite page cache ceiling in KiB (~16 MiB).</summary>
+    public const int ConnectionCacheSizeKiB = 16_000;
+
+    /// <summary>Per-connection SQLite busy timeout in milliseconds.</summary>
+    public const int ConnectionBusyTimeoutMs = 5_000;
 
     private readonly IDataStorageState? _dataStorageState;
 
@@ -80,7 +87,17 @@ public sealed class NoteDatabaseConnectionManager
             await EnsureWalModeAsync(connection, ct).ConfigureAwait(false);
         }
 
+        await ApplyConnectionPragmasAsync(connection, ct).ConfigureAwait(false);
         return connection;
+    }
+
+    private static async Task ApplyConnectionPragmasAsync(SqliteConnection connection, CancellationToken ct)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = string.Create(
+            CultureInfo.InvariantCulture,
+            $"PRAGMA synchronous=NORMAL; PRAGMA cache_size=-{ConnectionCacheSizeKiB}; PRAGMA temp_store=MEMORY; PRAGMA busy_timeout={ConnectionBusyTimeoutMs};");
+        await command.ExecuteNonQueryAsync(ct).ConfigureAwait(false);
     }
 
     private async Task EnsureWalModeAsync(SqliteConnection connection, CancellationToken ct)

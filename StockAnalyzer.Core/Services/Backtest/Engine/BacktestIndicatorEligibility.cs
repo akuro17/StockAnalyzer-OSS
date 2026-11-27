@@ -64,6 +64,11 @@ public static class BacktestIndicatorEligibility
         IndicatorType.Ratiocator,
         IndicatorType.RollingAlpha,
         IndicatorType.RollingBeta,
+        // DSL expansion run I-2: the two-symbol statistics of returns have no value without a comparison symbol either.
+        IndicatorType.TreynorRatio,
+        IndicatorType.InformationRatio,
+        IndicatorType.TrackingError,
+        IndicatorType.RollingCovariance,
         IndicatorType.RollingRSquared,
     }.ToFrozenSet();
 

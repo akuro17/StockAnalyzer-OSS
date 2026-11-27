@@ -194,6 +194,17 @@ public static class IndicatorChartSuppression
             {
                 CoreCornishFisherVarIndicator.ProbabilisticSharpeRatioSeriesName,
             },
+            // The p-value lies in [0, 1] and differs in scale from the test statistic on the same sub-panel (DSL expansion run I-5).
+            [IndicatorType.OneSampleTTest] = new HashSet<string>(StringComparer.Ordinal) { CoreOneSampleTTestIndicator.PValueSeriesName },
+            [IndicatorType.TwoSampleTTest] = new HashSet<string>(StringComparer.Ordinal) { CoreTwoSampleTTestIndicator.PValueSeriesName },
+            [IndicatorType.KsTwoSampleTest] = new HashSet<string>(StringComparer.Ordinal) { CoreKsTwoSampleTestIndicator.PValueSeriesName },
+            [IndicatorType.MannWhitneyUTest] = new HashSet<string>(StringComparer.Ordinal) { CoreMannWhitneyUTestIndicator.PValueSeriesName },
+            // The shape parameter b and the R-squared differ in scale from the fitted price on the price pane (DSL expansion run I-4).
+            [IndicatorType.NonlinearRegression] = new HashSet<string>(StringComparer.Ordinal)
+            {
+                CoreNonlinearRegressionIndicator.ParameterBSeriesName,
+                CoreNonlinearRegressionIndicator.RSquaredSeriesName,
+            },
         };
 
     private static readonly IReadOnlyDictionary<IndicatorType, IReadOnlySet<string>> SuppressedDataWindowSeries =

@@ -205,23 +205,49 @@ public class StatisticalRobustIndicatorsTests
     }
 
     [Fact]
-    public void TheilSen_ParameterRanges_FollowTheMeasuredKernelBound()
+    public void TheilSen_ParameterRanges_FollowTheMeasuredIndicatorBound()
     {
-        Assert.Equal(RobustRegressionMath.MaxWindowLength, IndicatorDefaultConstants.TheilSenMaxPeriod);
-        Assert.Equal(30, IndicatorDefaultConstants.TheilSenMaxPeriod);
+        // The indicator bound is its own measured constant (DI-1 = A2, 2026-11-27): above the 30 bar bound of the other consumers, below the hard cap of the kernel overload.
+        Assert.Equal(70, IndicatorDefaultConstants.TheilSenMaxPeriod);
+        Assert.True(IndicatorDefaultConstants.TheilSenMaxPeriod > RobustRegressionMath.MaxWindowLength);
+        Assert.True(IndicatorDefaultConstants.TheilSenMaxPeriod <= RobustRegressionMath.HardMaxWindowLength);
         Assert.Equal(20, new CoreTheilSenRegressionIndicator().Period);
 
         Assert.Throws<ArgumentOutOfRangeException>(() => new CoreTheilSenRegressionParameter { Period = 4 }.Validate());
-        Assert.Throws<ArgumentOutOfRangeException>(() => new CoreTheilSenRegressionParameter { Period = 31 }.Validate());
+        Assert.Throws<ArgumentOutOfRangeException>(() => new CoreTheilSenRegressionParameter { Period = 71 }.Validate());
         Assert.Throws<ArgumentOutOfRangeException>(() => new CoreTheilSenRegressionParameter { BandMultiplier = -0.1 }.Validate());
         Assert.Throws<ArgumentOutOfRangeException>(() => new CoreTheilSenRegressionParameter { BandMultiplier = 10.1 }.Validate());
         Assert.Throws<ArgumentOutOfRangeException>(() => new CoreTheilSenRegressionParameter { BandMultiplier = double.NaN }.Validate());
-        new CoreTheilSenRegressionParameter { Period = 30, BandMultiplier = 10.0, UseSiegelMedian = true }.Validate();
+        new CoreTheilSenRegressionParameter { Period = 70, BandMultiplier = 10.0, UseSiegelMedian = true }.Validate();
 
-        Assert.False(new CoreTheilSenRegressionIndicator { Period = 31 }.Calculate(Candles(60)).IsSuccessful);
-        var longest = new CoreTheilSenRegressionIndicator { Period = 30, UseSiegelMedian = true }.Calculate(Candles(80));
+        Assert.False(new CoreTheilSenRegressionIndicator { Period = 71 }.Calculate(Candles(120)).IsSuccessful);
+        var longest = new CoreTheilSenRegressionIndicator { Period = 70, UseSiegelMedian = true }.Calculate(Candles(120));
         Assert.True(longest.IsSuccessful);
-        Assert.NotNull(longest.MainValues[79]);
+        Assert.Null(longest.MainValues[68]);
+        Assert.NotNull(longest.MainValues[69]);
+        Assert.NotNull(longest.MainValues[119]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheilSen_AWindowAboveThirty_EqualsTheKernelFitBarByBar_AndTheBoundsOfTheOtherConsumersStayThirty(bool siegel)
+    {
+        const int period = 70;
+        var candles = Candles(130);
+        var result = new CoreTheilSenRegressionIndicator { Period = period, UseSiegelMedian = siegel }.Calculate(candles);
+
+        Assert.True(result.IsSuccessful);
+        for (int i = period - 1; i < candles.Count; i++)
+        {
+            decimal[] window = candles.Skip(i - period + 1).Take(period).Select(c => c.Close).ToArray();
+            decimal[] scratch = new decimal[RobustRegressionMath.ScratchLength(period, siegel)];
+            Assert.True(RobustRegressionMath.TryFit(window, siegel, scratch, IndicatorDefaultConstants.TheilSenMaxPeriod, out RobustLine line));
+            Assert.Equal(line.FittedLast, result.MainValues[i]);
+        }
+
+        Assert.Equal(30, SeriesSummaryStatistics.MaxRobustTrendBars);
+        Assert.Equal(RobustRegressionMath.MaxWindowLength, SeriesSummaryStatistics.MaxRobustTrendBars);
     }
 
     // ---------------------------------------------------------------- CornishFisherVaR

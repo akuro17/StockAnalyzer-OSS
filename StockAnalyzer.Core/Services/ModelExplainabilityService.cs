@@ -131,7 +131,8 @@ public sealed class ModelExplainabilityService : IModelExplainabilityService
 
         try
         {
-            using var session = new InferenceSession(lease.ModelPath);
+            using var inspectOptions = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+        using var session = new InferenceSession(lease.ModelPath, inspectOptions);
             var explanation = ModelExplanation.Load(lease.ModelPath, session.ModelMetadata.CustomMetadataMap, manifest.ModelHash);
             var result = explanation is null
                 ? new ModelExplanationLoad(ExplanationAvailability.NotGenerated, null)
@@ -187,7 +188,8 @@ public sealed class ModelExplainabilityService : IModelExplainabilityService
             return load;
         }
 
-        using var session = new InferenceSession(lease.ModelPath);
+        using var inspectOptions = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+        using var session = new InferenceSession(lease.ModelPath, inspectOptions);
         var calibration = ModelCalibration.Load(lease.ModelPath, session.ModelMetadata.CustomMetadataMap, manifest.ModelHash,
             metrics.RootElement.GetProperty("data_revision").GetString() ?? "");
         var loaded = Loaded(calibration);

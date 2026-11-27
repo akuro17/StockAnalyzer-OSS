@@ -183,7 +183,8 @@ public sealed class EnsemblePredictionService : IPredictionService, IDisposable
 
     private MemberRuntime LoadMember(ModelGenerationLease lease, ModelGenerationManifest manifest, string[] canonical)
     {
-        var session = new InferenceSession(lease.ModelPath);
+        using var sessionOptions = OnnxSessionOptionsFactory.CreateInferenceOptions(_settings);
+        var session = new InferenceSession(lease.ModelPath, sessionOptions);
         try
         {
             var metadata = session.ModelMetadata.CustomMetadataMap;

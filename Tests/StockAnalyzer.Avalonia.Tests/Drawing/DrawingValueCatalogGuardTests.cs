@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Avalonia.Media;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Avalonia.Drawing.Objects;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Drawing.Values;
@@ -49,6 +50,8 @@ public sealed class DrawingValueCatalogGuardTests
         ["CrossLine"] = p => new CrossLineObject(p[0]),
         ["DatePriceRange"] = p => new DatePriceRangeObject(p[0], p[1]),
         ["DistributionRange"] = p => new DistributionRangeObject(p[0], p[1]),
+        ["GarchVolatilityCone"] = p => new GarchVolatilityConeObject(p[0], p[1]),
+        ["RangeRegimeDiagnosticCard"] = p => new RangeRegimeDiagnosticCardObject(p[0], p[1]),
     };
 
     /// <summary>Daily bars (one per calendar day, from 2025-11-01) with a wavy close, so the regression has a spread, the VWAP a deviation and the pivot periods differ from each other.</summary>
@@ -70,6 +73,8 @@ public sealed class DrawingValueCatalogGuardTests
             case ClassicPivotPointsObject pivots: pivots.Recalculate(Candles); break;
             case DatePriceRangeObject range: range.Recalculate(Candles); break;
             case DistributionRangeObject dist: dist.Recalculate(Candles); break;
+            case GarchVolatilityConeObject cone: cone.Recalculate(Candles); break;
+            case RangeRegimeDiagnosticCardObject card: card.Recalculate(Candles); break;
         }
     }
 

@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using StockAnalyzer.Avalonia.Drawing;
+using StockAnalyzer.Avalonia.Drawing.Objects;
 using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Tests.TestHelpers;
@@ -113,6 +114,8 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
         ["CrossLine"] = (p, _) => new CrossLineObject(p[0]),
         ["DatePriceRange"] = (p, _) => new DatePriceRangeObject(p[0], p[1]),
         ["DistributionRange"] = (p, _) => new DistributionRangeObject(p[0], p[1]),
+        ["GarchVolatilityCone"] = (p, _) => new GarchVolatilityConeObject(p[0], p[1]),
+        ["RangeRegimeDiagnosticCard"] = (p, _) => new RangeRegimeDiagnosticCardObject(p[0], p[1]),
     };
 
     /// <summary>The bars the fixture stores for <see cref="_closes"/> (open = close - 0.2, high = close + 0.5, low = close - 0.5, volume 1000), as the chart objects take them.</summary>
@@ -128,6 +131,8 @@ public sealed class CalculateDrawingValuesToolTests : IDisposable
             case ClassicPivotPointsObject pivots: pivots.Recalculate(candles); break;
             case DatePriceRangeObject range: range.Recalculate(candles); break;
             case DistributionRangeObject dist: dist.Recalculate(candles); break;
+            case GarchVolatilityConeObject cone: cone.Recalculate(candles); break;
+            case RangeRegimeDiagnosticCardObject card: card.Recalculate(candles); break;
         }
     }
 

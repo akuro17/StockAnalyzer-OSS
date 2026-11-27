@@ -30,6 +30,7 @@ public static class StockAnalyzerOptionsServiceCollectionExtensions
         services.Configure<PythonIpcSettings>(configuration.GetSection("PythonIpc"));
         services.Configure<PythonPackageCheckSettings>(configuration.GetSection(PythonPackageCheckSettings.SectionName));
         services.Configure<DrawingInteractionSettings>(configuration.GetSection("DrawingInteraction"));
+        services.Configure<RenderingSettings>(configuration.GetSection(RenderingSettings.SectionName));
         return services;
     }
 }

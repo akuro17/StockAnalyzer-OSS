@@ -37,6 +37,8 @@ using System.Diagnostics;
 using StockAnalyzer.Core.Services.Analysis;
 using StockAnalyzer.Core.Services;
 using Microsoft.Extensions.DependencyInjection;
+using global::Avalonia.Threading;
+using global::Avalonia.VisualTree;
 
 namespace StockAnalyzer.Avalonia.Views.Chart;
 
@@ -153,6 +155,14 @@ public class ChartBaseControl : Control, ICustomHitTest
     /// Phase 70-12-Fix: Ensures viewport initialization happens exactly once when layout is ready.
     /// </summary>
     private bool _isViewInitialized = false;
+
+    /// <summary>
+    /// Tracks whether a non-dragging crosshair invalidation is already queued for the next Render tick.
+    /// UI-thread only.
+    /// </summary>
+    private bool _pointerInvalidateQueued;
+
+    internal bool IsPointerInvalidateQueued => _pointerInvalidateQueued;
 
     /// <summary>
     /// True only while <see cref="Render"/> is executing. Its Layout Sync Guard can call
@@ -283,6 +293,9 @@ public class ChartBaseControl : Control, ICustomHitTest
 
         // Repaint when the selection-idle timer auto-deselects an object (hides its handles)
         _interactionController.OnSelectionIdleTimeout = () => InvalidateVisual();
+
+        // The bars a fixed-period range drawing snaps to when its placement finishes
+        _interactionController.RangeSnapCandlesProvider = () => ViewModel?.CreateDrawingCalculationContext().Candles;
 
         // Forward drawing finished event to ViewModel for tool-specific actions (e.g., DTW search)
         _interactionController.OnDrawingFinished = (obj) =>
@@ -503,7 +516,7 @@ public class ChartBaseControl : Control, ICustomHitTest
             _isReattaching = false;
         }
 
-        InvalidateVisual();
+        InvalidateImmediate();
     }
 
 
@@ -624,13 +637,39 @@ public class ChartBaseControl : Control, ICustomHitTest
     private void SafeInvalidateVisual()
     {
         if (_isRendering) return;
+        InvalidateImmediate();
+    }
+
+    private void InvalidateImmediate()
+    {
+        _pointerInvalidateQueued = false;
         InvalidateVisual();
+    }
+
+    private void ScheduleCrosshairInvalidate()
+    {
+        if (_pointerInvalidateQueued || _isRendering)
+        {
+            return;
+        }
+
+        _pointerInvalidateQueued = true;
+        global::Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            _pointerInvalidateQueued = false;
+            if (!this.IsAttachedToVisualTree() || _isRendering)
+            {
+                return;
+            }
+
+            InvalidateVisual();
+        }, DispatcherPriority.Render);
     }
 
     private void OnIndicatorsCollectionChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
     {
         UpdateSnapshot();
-        InvalidateVisual();
+        InvalidateImmediate();
     }
 
     private void OnCandlesUpdated()
@@ -968,6 +1007,7 @@ public class ChartBaseControl : Control, ICustomHitTest
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
+        _pointerInvalidateQueued = false;
         base.OnDetachedFromVisualTree(e);
 
         if (_freehandAdapter.IsActive)
@@ -1038,7 +1078,7 @@ public class ChartBaseControl : Control, ICustomHitTest
             {
                 if (freehandNeedsUpdate)
                 {
-                    InvalidateVisual();
+                    InvalidateImmediate();
                 }
                 e.Handled = true;
                 return;
@@ -1053,7 +1093,7 @@ public class ChartBaseControl : Control, ICustomHitTest
             HoveredCandle = null;
             _isCrosshairVisible = false;
             _interactionController.ClearCrosshairPosition(ViewModel?.Symbol ?? string.Empty);
-            InvalidateVisual();
+            InvalidateImmediate();
             return;
         }
 
@@ -1112,10 +1152,17 @@ public class ChartBaseControl : Control, ICustomHitTest
             }
         }
 
-        // Update Crosshair Data (previously throttled via Rx)
+        // Update Crosshair Data immediately (never delay DataWindow / HoveredCandle updates)
         UpdateCrosshairAtPointer(position);
 
-        InvalidateVisual(); // Trigger repaint for Crosshair movement
+        if (_interactionController.IsDragging || needsUpdate)
+        {
+            InvalidateImmediate();
+        }
+        else
+        {
+            ScheduleCrosshairInvalidate();
+        }
     }
 
     private void UpdateCrosshairAtPointer(global::Avalonia.Point position)
@@ -1446,7 +1493,7 @@ public class ChartBaseControl : Control, ICustomHitTest
         _currentDrawingObject = _interactionController.CurrentDrawingObject;
 
         if (ViewModel != null) ViewModel.CurrentTool = DrawingTool.Pointer; // Reset tool
-        InvalidateVisual();
+        InvalidateImmediate();
     }
 
 
@@ -1650,7 +1697,7 @@ public class ChartBaseControl : Control, ICustomHitTest
             {
                 UpdateSnapshot();
                 UpdateCrosshairAtPointer(mousePos);
-                InvalidateVisual();
+                InvalidateImmediate();
             }
             e.Handled = true;
             return;
@@ -1668,7 +1715,7 @@ public class ChartBaseControl : Control, ICustomHitTest
         // Update UI
         UpdateSnapshot();
         UpdateCrosshairAtPointer(mousePos);
-        InvalidateVisual();
+        InvalidateImmediate();
 
         e.Handled = true;
     }
@@ -1685,7 +1732,7 @@ public class ChartBaseControl : Control, ICustomHitTest
         var symbol = ViewModel?.Symbol ?? string.Empty;
         _interactionController.ClearCrosshairPosition(symbol);
 
-        InvalidateVisual();
+        InvalidateImmediate();
     }
 
     #endregion

@@ -92,7 +92,15 @@ public sealed class ScatterMetricEvaluator : IScatterMetricEvaluator
         double[] ys = new double[tickers.Count];
         int failed = 0;
 
-        var options = new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = _settings.ScatterMaxParallelism };
+        int effectiveParallelism = StockAnalyzer.Core.Optimization.HardwareConcurrencyPolicy.ResolveEffectiveParallelism(
+            _settings.ScatterMaxParallelism,
+            _settings.ScatterAutoScaleParallelism,
+            min: (int)Models.Settings.ScatterMetricLimits.MaxParallelism.HardMin,
+            max: _settings.ScatterAutoScaleParallelism
+                ? (int)Models.Settings.ScatterMetricLimits.MaxParallelism.StandardMax
+                : (int)Models.Settings.ScatterMetricLimits.MaxParallelism.HardMax);
+
+        var options = new ParallelOptions { CancellationToken = ct, MaxDegreeOfParallelism = effectiveParallelism };
         await Parallel.ForEachAsync(Enumerable.Range(0, tickers.Count), options, async (index, token) =>
         {
             token.ThrowIfCancellationRequested();

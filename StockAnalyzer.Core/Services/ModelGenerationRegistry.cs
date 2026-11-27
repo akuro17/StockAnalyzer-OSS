@@ -301,7 +301,8 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
             var evidence = ValidateEvidence(metricDoc.RootElement, modelHash);
             var (revision, target, timeframe, horizon, classOrder, score) = evidence;
 
-            using var session = new InferenceSession(stagedModel);
+            using var inspectOptions = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+            using var session = new InferenceSession(stagedModel, inspectOptions);
             var metadata = session.ModelMetadata.CustomMetadataMap;
             var outputContract = PredictionModelMetadata.ReadOutputContract(metadata);
             var lineage = TrainingLineage.Read(metadata.GetValueOrDefault(TrainingCheckpointContract.LineageKey));
@@ -709,7 +710,8 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
             if (evidence.Revision != m.EvaluationRevision || evidence.Target != m.TargetType
                 || evidence.Timeframe != m.Timeframe || evidence.Horizon != m.Horizon
                 || evidence.ClassOrder != m.ClassOrder || evidence.Score != m.Score) return false;
-            using var session = new InferenceSession(Path.Combine(directory, m.ModelFile));
+            using var inspectOptions = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+            using var session = new InferenceSession(Path.Combine(directory, m.ModelFile), inspectOptions);
             var metadata = session.ModelMetadata.CustomMetadataMap;
             var outputContract = PredictionModelMetadata.ReadOutputContract(metadata);
             var lineage = TrainingLineage.Read(metadata.GetValueOrDefault(TrainingCheckpointContract.LineageKey));
@@ -764,7 +766,8 @@ public sealed partial class ModelGenerationRegistry : IModelGenerationRegistry, 
         if (candidate.TargetType == PredictionModelMetadata.TargetTypeClassification
             && candidate.ClassOrder != string.Join(",", _predictionSettings.PredictionClassLabels))
             throw new InvalidOperationException("Model class labels disagree with current prediction settings.");
-        using var session = new InferenceSession(Path.Combine(_root, candidate.ModelId, candidate.ModelFile));
+        using var inspectOptions = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+        using var session = new InferenceSession(Path.Combine(_root, candidate.ModelId, candidate.ModelFile), inspectOptions);
         if (PredictionModelMetadata.RequiresFixedScaler(session.ModelMetadata.CustomMetadataMap))
             StockAnalyzer.Core.Models.Training.FixedScaler.Load(
                 Path.Combine(_root, candidate.ModelId, candidate.ModelFile), session.ModelMetadata.CustomMetadataMap);

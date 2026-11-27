@@ -16,7 +16,7 @@ public readonly record struct RobustLine(decimal Slope, decimal Intercept, decim
 /// <item>Siegel: <c>m_i = median_{j != i}</c> of the slopes through bar <c>i</c>, slope <c>m = median_i(m_i)</c>.</item>
 /// <item>Both: <c>Intercept = median_i(y_i - m i)</c> (the line value at window offset 0, owner decision U-13 = A), <c>FittedLast = Intercept + m (W - 1)</c>.</item>
 /// </list>
-/// Cost O(W^2) per window: this is why the Period of the indicators and the <c>trendBars</c> of the MCP summary are bounded by the measured <see cref="MaxWindowLength"/> (plan task T7).
+/// Cost O(W^2) per window: this is why every caller has a measured upper bound for the window (plan task T7): <see cref="MaxWindowLength"/> (the <see cref="TryFit(ReadOnlySpan{decimal}, bool, Span{decimal}, out RobustLine)"/> default, the MCP <c>trendBars</c>, the DSL functions, the flag rails), <c>IndicatorDefaultConstants.TheilSenMaxPeriod</c> (the indicator, every bar of a series is fitted) and <see cref="HardMaxWindowLength"/> (the overload that takes its own limit, one window at a time).
 /// Specification: docs/indicators_formulas.md, records indicators_formulas_0594 (subject RobustRegressionMath) and indicators_formulas_0604 (Theil-Sen regression).
 /// </summary>
 public static class RobustRegressionMath
@@ -25,12 +25,22 @@ public static class RobustRegressionMath
     public const int MinWindowLength = 2;
 
     /// <summary>
-    /// The largest window the robust fits are offered for: the Period of the TheilSenRegression indicator and the <c>trendBars</c> of the MCP <c>robustTrendSlope</c>
-    /// (<c>SeriesSummaryStatistics.MaxRobustTrendBars</c>) both take this one value. The pair-slope cost is quadratic; 5,000 bars of a window of 30 calculate in 318 ms (Theil-Sen) and
+    /// The window limit of <see cref="TryFit(ReadOnlySpan{decimal}, bool, Span{decimal}, out RobustLine)"/> and <see cref="TryTheilSenSlope"/>: the <c>trendBars</c> of the MCP <c>robustTrendSlope</c>
+    /// (<c>SeriesSummaryStatistics.MaxRobustTrendBars</c>), the DSL robust functions and the flag rails take this one value. The TheilSenRegression indicator has its own larger bound
+    /// (<c>IndicatorDefaultConstants.TheilSenMaxPeriod</c>, 2026-11-27) and passes it to the overload. The pair-slope cost is quadratic; 5,000 bars of a window of 30 calculate in 318 ms (Theil-Sen) and
     /// 382 ms (Siegel) in Release and in 334 / 675 ms in Debug, while 40 already needs 1,097 ms in Debug (Siegel). Owner decision 2026-11-17 (no candidate of the plan's {250, 120, 60} met the
     /// 1,000 ms rule in both modes; probe table in the step log of the plan).
     /// </summary>
     public const int MaxWindowLength = 30;
+
+    /// <summary>
+    /// The hard cap of the overload of <see cref="TryFit(ReadOnlySpan{decimal}, bool, Span{decimal}, int, out RobustLine)"/> that takes its own largest window: a call that asks for more is a programming error.
+    /// It is for a caller that fits ONE window at a time (the Robust Regression Trend drawing tool); callers that fit every bar of a series keep <see cref="MaxWindowLength"/>.
+    /// Measured 2026-11-27 (one fit, Debug / Release, median of runs): a window of 500 takes 16 / 9 ms (Theil-Sen) and 30 / 19 ms (Siegel) and needs 1.9 MB of scratch memory (Theil-Sen; Siegel 31 KB),
+    /// 1,000 takes 53 / 35 ms and 96 / 67 ms with 7.7 MB; the time stays under the 100 ms rule up to 1,000 but the quadratic scratch of Theil-Sen reaches the large object heap at 500 and is 8 MB at 1,000,
+    /// so the owner limit is 500 (probe table in the step log of the drawing tool follow-up).
+    /// </summary>
+    public const int HardMaxWindowLength = 500;
 
     /// <summary>Number of pair slopes of a window, <c>W (W - 1) / 2</c>.</summary>
     public static int PairCount(int windowLength) => (int)((long)windowLength * (windowLength - 1) / 2);
@@ -44,10 +54,28 @@ public static class RobustRegressionMath
     /// <see cref="ScratchLength"/>, or a decimal operation overflows. Allocates nothing.
     /// </summary>
     public static bool TryFit(ReadOnlySpan<decimal> window, bool siegel, Span<decimal> scratch, out RobustLine line)
+        => TryFitCore(window, siegel, scratch, MaxWindowLength, out line);
+
+    /// <summary>
+    /// <see cref="TryFit(ReadOnlySpan{decimal}, bool, Span{decimal}, out RobustLine)"/> with its own largest window. Fits the same line by the same code; only the limit differs: False when the window is longer than
+    /// <paramref name="maxWindowLength"/> (data dependent, like the other refusals). <paramref name="scratch"/> may be longer than <see cref="ScratchLength"/> and its content is irrelevant (every element is written before it is read).
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxWindowLength"/> is below <see cref="MinWindowLength"/> or above <see cref="HardMaxWindowLength"/> (a call error, so no scratch of that size is ever asked for).</exception>
+    public static bool TryFit(ReadOnlySpan<decimal> window, bool siegel, Span<decimal> scratch, int maxWindowLength, out RobustLine line)
+    {
+        if (maxWindowLength < MinWindowLength || maxWindowLength > HardMaxWindowLength)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxWindowLength), maxWindowLength, $"The largest window must be {MinWindowLength}..{HardMaxWindowLength}.");
+        }
+
+        return TryFitCore(window, siegel, scratch, maxWindowLength, out line);
+    }
+
+    private static bool TryFitCore(ReadOnlySpan<decimal> window, bool siegel, Span<decimal> scratch, int maxWindowLength, out RobustLine line)
     {
         line = default;
         int w = window.Length;
-        if (w < MinWindowLength || w > MaxWindowLength || scratch.Length < ScratchLength(w, siegel))
+        if (w < MinWindowLength || w > maxWindowLength || scratch.Length < ScratchLength(w, siegel))
         {
             return false;
         }

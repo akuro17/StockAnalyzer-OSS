@@ -45,8 +45,8 @@ public sealed class IndicatorRegistrationScreenerCatalogTests
         HashSet<IndicatorType> math = OfferedIn(vm, "Math");
 
         Assert.Contains(IndicatorType.Correlation, math);
-        // 11 two-symbol indicators + 2 universe-breadth indicators (MarketBreadth, McClellanOscillator)
-        Assert.Equal(13, ScreenerOnlyTypes().Length);
+        // 15 two-symbol indicators (11 earlier + TreynorRatio, InformationRatio, TrackingError, RollingCovariance of the DSL expansion run I-2) + 2 universe-breadth indicators (MarketBreadth, McClellanOscillator)
+        Assert.Equal(17, ScreenerOnlyTypes().Length);
         Assert.All(ScreenerOnlyTypes(), type => Assert.Contains(type, math));
     }
 
@@ -81,8 +81,8 @@ public sealed class IndicatorRegistrationScreenerCatalogTests
 
         HashSet<IndicatorType> math = OfferedIn(notes.IndicatorRegistrationViewModel, "Math");
 
-        // 11 two-symbol indicators + 2 universe-breadth indicators (MarketBreadth, McClellanOscillator)
-        Assert.Equal(13, ScreenerOnlyTypes().Length);
+        // 15 two-symbol indicators (11 earlier + TreynorRatio, InformationRatio, TrackingError, RollingCovariance of the DSL expansion run I-2) + 2 universe-breadth indicators (MarketBreadth, McClellanOscillator)
+        Assert.Equal(17, ScreenerOnlyTypes().Length);
         Assert.All(ScreenerOnlyTypes(), type => Assert.DoesNotContain(type, math));
         Assert.Contains(IndicatorType.Correlation, math);
     }

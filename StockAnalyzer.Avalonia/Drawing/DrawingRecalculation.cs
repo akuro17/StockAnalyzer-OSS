@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using StockAnalyzer.Core.Drawing;
 using StockAnalyzer.Core.Models;
 
 namespace StockAnalyzer.Avalonia.Drawing;
@@ -27,7 +28,8 @@ public static class DrawingRecalculation
                  obj is not AnchoredVwapObject &&
                  obj is not FixedRangeVolumeProfileObject &&
                  obj is not TimeAtPriceObject &&
-                 obj is not DistributionRangeObject)
+                 obj is not DistributionRangeObject &&
+                 obj is not IRangeAnalysisDrawing)
         {
             DeferredComputationRecalculator.TryRecalculate(obj, candles);
         }
@@ -59,6 +61,16 @@ public static class DrawingRecalculation
         {
             DeferredComputationRecalculator.TryRecalculate(obj, context);
         }
+    }
+
+    /// <summary>
+    /// Snaps a fixed-period range drawing (<see cref="IPeriodSnappedRange"/>) after an edit the user has confirmed: placement, handle release, move completion or a period change in the settings.
+    /// Called EXPLICITLY at those four places, before the transaction is committed and before the recalculation; it is deliberately not part of <see cref="AfterMoveFrame"/>, <see cref="AfterMoveCompleted"/>,
+    /// <see cref="AfterObjectsCreated"/> or the recalculator, so a load, a data refresh, a paste, an undo or a recalculation never moves an anchor. Returns true when the object changed.
+    /// </summary>
+    public static bool SnapRangeAfterEdit(IChartObject? obj, IReadOnlyList<CoreCandleData>? candles, RangeSnapKind kind, int draggedPointIndex = -1)
+    {
+        return obj is IPeriodSnappedRange snapped && candles != null && candles.Count > 0 && snapped.SnapToPeriod(candles, kind, draggedPointIndex);
     }
 
     /// <summary>

@@ -28,6 +28,9 @@ public readonly record struct DrawingValueOptions
     /// <param name="PivotExtendMode">ClassicPivotPoints only: the line extension (listed as an item of the values).</param>
     /// <param name="ProjectionTargets">TargetPriceProjection only: which of the five projections are shown; null shows all five (the chart object's start).</param>
     /// <param name="IndicatorValueAtEntry">LongPosition and ShortPosition only: the ATR the stop was bound to in the chart, when there is one; it adds the "ATR (Entry)" item.</param>
+    /// <param name="GarchForecastBars">GarchVolatilityCone only: the number of future bars of the cone (5..100).</param>
+    /// <param name="RegimeCardPeriodsPerYear">RangeRegimeDiagnosticCard only: the bars per year of the annualised rows (Sharpe, Sortino, CAGR).</param>
+    /// <param name="GarchPriceSource">GarchVolatilityCone only: the price the log returns are taken from (the close by default; independent of <paramref name="PriceSource"/>, whose default is Typical).</param>
     public DrawingValueOptions(
         bool ShowExtensions = false,
         PitchforkKind PitchforkKind = PitchforkKind.Andrews,
@@ -50,7 +53,10 @@ public readonly record struct DrawingValueOptions
         bool DistributionOverrideStudentTDegreesOfFreedom = false,
         decimal DistributionStudentTDegreesOfFreedom = DistributionRangeParameters.DefaultStudentTDegreesOfFreedom,
         decimal DistributionGevShapeParameter = DistributionRangeParameters.DefaultGevShapeParameter,
-        double DistributionBandwidthMultiplier = DistributionRangeParameters.DefaultBandwidthMultiplier)
+        double DistributionBandwidthMultiplier = DistributionRangeParameters.DefaultBandwidthMultiplier,
+        int GarchForecastBars = GarchVolatilityConeValues.DefaultHorizon,
+        int RegimeCardPeriodsPerYear = RangeRegimeDiagnosticCardValues.DefaultPeriodsPerYear,
+        PriceType GarchPriceSource = PriceType.Close)
     {
         this.ShowExtensions = ShowExtensions;
         this.PitchforkKind = PitchforkKind;
@@ -74,6 +80,9 @@ public readonly record struct DrawingValueOptions
         this.DistributionStudentTDegreesOfFreedom = DistributionStudentTDegreesOfFreedom;
         this.DistributionGevShapeParameter = DistributionGevShapeParameter;
         this.DistributionBandwidthMultiplier = DistributionBandwidthMultiplier;
+        this.GarchForecastBars = GarchForecastBars;
+        this.RegimeCardPeriodsPerYear = RegimeCardPeriodsPerYear;
+        this.GarchPriceSource = GarchPriceSource;
     }
 
     public bool ShowExtensions { get; init; }
@@ -119,4 +128,10 @@ public readonly record struct DrawingValueOptions
     public decimal DistributionGevShapeParameter { get; init; }
 
     public double DistributionBandwidthMultiplier { get; init; }
+
+    public int GarchForecastBars { get; init; }
+
+    public int RegimeCardPeriodsPerYear { get; init; }
+
+    public PriceType GarchPriceSource { get; init; }
 }

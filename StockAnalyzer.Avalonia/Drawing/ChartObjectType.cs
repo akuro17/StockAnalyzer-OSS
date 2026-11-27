@@ -114,5 +114,17 @@ public enum ChartObjectType
 
     // Plan 07 (appended: never insert above)
     DatePriceRange,
-    DistributionRange
+    DistributionRange,
+
+    // DSL indicator and drawing tool expansion (appended: never insert above)
+    GarchVolatilityCone,
+    PolynomialRegressionProjection,
+    NonlinearRegressionCurve,
+    RobustRegressionTrend,
+    WeightedRegressionTrend,
+    PchipCurve,
+    CubicSplineCurve,
+    RegularPolygon,
+    BootstrapConfidenceBand,
+    RangeRegimeDiagnosticCard
 }

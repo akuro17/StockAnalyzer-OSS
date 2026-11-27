@@ -3287,7 +3287,9 @@ public partial class ChartViewModel : ViewModelBase, IChartRenderSettings, IReci
                  obj is Drawing.Objects.HoughKeyLevelsObject ||
                  obj is Drawing.Objects.HoughResonantFanObject ||
                  obj is Drawing.Objects.HoughMagneticLineObject ||
-                 obj is Drawing.DistributionRangeObject)
+                 obj is Drawing.DistributionRangeObject ||
+                 obj is Drawing.InterpolationCurveObjectBase ||
+                 obj is Drawing.IRangeAnalysisDrawing)
         {
             if (_candles != null && _candles.Count > 0)
             {

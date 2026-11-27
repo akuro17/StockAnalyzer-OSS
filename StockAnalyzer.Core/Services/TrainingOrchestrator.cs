@@ -243,6 +243,7 @@ public sealed class TrainingOrchestrator : ITrainingOrchestrator
             if (config.ArtifactsDirectory is not null)
                 startInfo.Environment[PythonChildEnvironment.NoBytecodeVariable] = PythonChildEnvironment.NoBytecodeValue;
             TrainingResourceGuard.ApplyToChild(startInfo, resourceLimits);
+            PythonChildEnvironment.ApplyTrainingWorkerThreadCaps(startInfo);
 
             var state = new RunState { Stage = config.RequiresFinalizedSource ? "Training" : null };
             processState = state;

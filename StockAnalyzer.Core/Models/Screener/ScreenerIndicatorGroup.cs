@@ -66,7 +66,9 @@ public class ScreenerIndicatorGroup
                 IndicatorType.MESA, IndicatorType.KalmanFilter,
                 IndicatorType.MtfLaggedEma, IndicatorType.MovingAverageCross,
                 IndicatorType.FFTTrendFilter, IndicatorType.VIDYA,
-                IndicatorType.ChandelierExit, IndicatorType.T3, IndicatorType.McGinleyDynamic
+                IndicatorType.ChandelierExit, IndicatorType.T3, IndicatorType.McGinleyDynamic,
+                // DSL expansion run I-3: price-native window averages next to the other moving averages.
+                IndicatorType.TrimmedMA, IndicatorType.WinsorizedMA, IndicatorType.HuberMA, IndicatorType.BiweightMA, IndicatorType.GeometricMA, IndicatorType.HarmonicMA
             }, "Indicator", "ScreenerGroup_Trend"),
 
             new("Oscillator", new[]
@@ -122,7 +124,9 @@ public class ScreenerIndicatorGroup
                 // Statistical functions plan R4: nearest siblings Parkinson, Rogers-Satchell, HAR-RV (volatility estimators of a window of returns).
                 IndicatorType.DownsideDeviation, IndicatorType.BipowerVariation,
                 // Statistical functions plan R7: nearest siblings Donchian and Bollinger Bands (a channel of the window prices).
-                IndicatorType.QuantileBands
+                IndicatorType.QuantileBands,
+                // DSL expansion run I-1: nearest sibling UlcerIndex (a drawdown measure of a window of prices).
+                IndicatorType.RollingMaxDrawdown
             }, "Indicator", "ScreenerGroup_Volatility"),
 
             new("Math", new[]
@@ -151,7 +155,15 @@ public class ScreenerIndicatorGroup
                 // Statistical functions plan R6: nearest sibling HurstExponent (its VarianceRatio series).
                 IndicatorType.VarianceRatio,
                 // Statistical functions plan R7: nearest siblings LinearRegression (robust line) and VaR / CVaR (Cornish-Fisher VaR).
-                IndicatorType.TheilSenRegression, IndicatorType.CornishFisherVaR
+                IndicatorType.TheilSenRegression, IndicatorType.CornishFisherVaR,
+                // DSL expansion run I-1: nearest siblings ADFStationarity (KPSS, the opposite null hypothesis) and CornishFisherVaR (rolling Sharpe ratio of a window of returns).
+                IndicatorType.KpssStationarity, IndicatorType.RollingSharpe,
+                // DSL expansion run I-2: the two-symbol statistics of returns next to the other two-symbol indicators (RollingBeta, RollingAlpha); the Screener evaluates them (see ScreenerIndicatorEligibility).
+                IndicatorType.TreynorRatio, IndicatorType.InformationRatio, IndicatorType.TrackingError, IndicatorType.RollingCovariance,
+                // DSL expansion run I-4: nearest sibling LinearRegression (a polynomial and a nonlinear curve of the window).
+                IndicatorType.PolynomialRegression, IndicatorType.NonlinearRegression,
+                // DSL expansion run I-5: nearest siblings JarqueBera, LjungBoxQ and VarianceRatio (tests of a window of returns).
+                IndicatorType.OneSampleTTest, IndicatorType.TwoSampleTTest, IndicatorType.KsTwoSampleTest, IndicatorType.MannWhitneyUTest, IndicatorType.KlDivergence
             }, "Indicator", "ScreenerGroup_Math"),
 
             new("Chart", new[]

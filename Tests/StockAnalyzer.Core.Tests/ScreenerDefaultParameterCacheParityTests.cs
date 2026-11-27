@@ -130,7 +130,18 @@ public class ScreenerDefaultParameterCacheParityTests
     // TWENTY-FIRST re-pin, 2026-11-26 (SA-SPEC-SKEW-KURT-DIST-001: Skewness and Kurtosis appended; purely additive under lessons_webai_expansion_20261114_0001, 10 lines added, 1375 -> 1385):
     //   Old -> new hash: AFAFC7693ED96023C4FE5F145E10015861A4E9A1BE6DEA4E2126F66F63C3A2E0 -> 1A60C19210E78AB323A0F627F73634DB1945AE26E79D9143BA9643BF498C17CC.
     //   No existing line changed: removing Skewness and Kurtosis returns the twentieth pin identically (ValuesOfTheTypesBeforeSplitMomentsAreUnchanged).
-    private const string PinnedFingerprint = "1A60C19210E78AB323A0F627F73634DB1945AE26E79D9143BA9643BF498C17CC";
+    // TWENTY-SECOND re-pin, 2026-11-27 (DSL indicator and drawing tool expansion, runs I-1 and I-2 of one batch: KpssStationarity, RollingSharpe, RollingMaxDrawdown, TreynorRatio,
+    //   InformationRatio, TrackingError and RollingCovariance appended; purely additive under lessons_webai_expansion_20261114_0001, 100 lines added, 1385 -> 1485 over batches A, B and C; the pin after run I-1 alone
+    //   over 15 added lines was B9D68F78A9078C7C4DC7B4C57BD43D955098F8D88AB8C0DF75FC8A1CDB4B141E, after run I-2 3105A01F00F7CD050E2E39D515BB32213BF1D308E1C403E4AE9ECD1D66905B30).
+    //   Runs I-3 and I-4 (batch B) appended TrimmedMA, WinsorizedMA, HuberMA, BiweightMA, GeometricMA, HarmonicMA, PolynomialRegression and NonlinearRegression (40 lines, 1420 -> 1460) and run I-5 (batch C) OneSampleTTest, TwoSampleTTest, KsTwoSampleTest, MannWhitneyUTest and KlDivergence (25 lines, 1460 -> 1485; the pin after batch B was
+    //   BB69E8806E5A95307E8FAEB88942AE0D32201558D9ADDB4B56B6166EAB530481), so the
+    //   pin below covers the 20 types of batches A, B and C, and the old -> new line states the twenty-first pin to it (the types are in DslExpansionTypes):
+    //   Old -> new hash: 1A60C19210E78AB323A0F627F73634DB1945AE26E79D9143BA9643BF498C17CC -> 71164AAB93992241F8B4E0ABA6BF432B8D3B681E0853FC7B46D077FAEE2388BC.
+    //   No existing line changed: removing the new types returns the twenty-first pin identically (ValuesOfTheTypesBeforeDslExpansionAreUnchanged). Every value of the new types equals a
+    //   standalone calculation (TheDslExpansionTypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod). Later runs of the plan append their types to DslExpansionTypes and re-pin.
+    private const string PinnedFingerprint = "71164AAB93992241F8B4E0ABA6BF432B8D3B681E0853FC7B46D077FAEE2388BC";
+    /// <summary>The twenty-first pin before the DSL expansion types were appended.</summary>
+    private const string FingerprintBeforeDslExpansion = "1A60C19210E78AB323A0F627F73634DB1945AE26E79D9143BA9643BF498C17CC";
     /// <summary>The twentieth pin before Skewness and Kurtosis were appended.</summary>
     private const string FingerprintBeforeSplitMoments = "AFAFC7693ED96023C4FE5F145E10015861A4E9A1BE6DEA4E2126F66F63C3A2E0";
     /// <summary>The pin before the chart pattern flag types were added (the eighteenth re-pin).</summary>
@@ -172,9 +183,26 @@ public class ScreenerDefaultParameterCacheParityTests
 
     private static readonly string[] SplitStatisticalMomentTypes = { "Skewness", "Kurtosis" };
 
+    /// <summary>
+    /// The types of the DSL indicator and drawing tool expansion plan (their lines did not exist before the twenty-second re-pin): the single list of these types in this test. A run of the plan that adds
+    /// indicator types appends their names here and re-pins; every earlier proof starts from a report without them.
+    /// </summary>
+    private static readonly string[] DslExpansionSingleSymbolTypes =
+    {
+        "KpssStationarity", "RollingSharpe", "RollingMaxDrawdown",
+        "TrimmedMA", "WinsorizedMA", "HuberMA", "BiweightMA", "GeometricMA", "HarmonicMA",
+        "PolynomialRegression", "NonlinearRegression",
+        "OneSampleTTest", "TwoSampleTTest", "KsTwoSampleTest", "MannWhitneyUTest", "KlDivergence",
+    };
+
+    /// <summary>The two-symbol types of the plan (run I-2): without a comparison symbol the screener and a standalone calculation both give no value.</summary>
+    private static readonly string[] DslExpansionTwoSymbolTypes = { "TreynorRatio", "InformationRatio", "TrackingError", "RollingCovariance" };
+
+    private static readonly string[] DslExpansionTypes = DslExpansionSingleSymbolTypes.Concat(DslExpansionTwoSymbolTypes).ToArray();
+
     private static string BuildReportBeforeSplitMoments()
     {
-        var removed = SplitStatisticalMomentTypes.ToHashSet();
+        var removed = SplitStatisticalMomentTypes.Concat(DslExpansionTypes).ToHashSet();
         var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
         return string.Join("\n", lines) + "\n";
     }
@@ -182,7 +210,7 @@ public class ScreenerDefaultParameterCacheParityTests
     /// <summary>The current report without the lines of the chart pattern flag types or the later split moment indicators: every earlier pin and proof starts from it, so it is the report as it was before the nineteenth re-pin.</summary>
     private static string BuildReportBeforeChartPatterns()
     {
-        var removed = ChartPatternFlagTypes.Concat(SplitStatisticalMomentTypes).ToHashSet();
+        var removed = ChartPatternFlagTypes.Concat(SplitStatisticalMomentTypes).Concat(DslExpansionTypes).ToHashSet();
         var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
         return string.Join("\n", lines) + "\n";
     }
@@ -847,7 +875,7 @@ public class ScreenerDefaultParameterCacheParityTests
     [Fact]
     public void OnlyTheLinesOfTheSplitMomentsAreNewSinceTheTwentiethPin()
     {
-        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !DslExpansionTypes.Contains(line.Split('|')[0])).ToArray();
         string[] before = BuildReportBeforeSplitMoments().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var added = current.Where(line => SplitStatisticalMomentTypes.Contains(line.Split('|')[0])).ToArray();
 
@@ -894,9 +922,57 @@ public class ScreenerDefaultParameterCacheParityTests
     [Fact]
     public void ValuesOfTheTypesBeforeSplitMomentsAreUnchanged()
     {
-        var removed = SplitStatisticalMomentTypes.ToHashSet();
+        Assert.Equal(FingerprintBeforeSplitMoments, Fingerprint(BuildReportBeforeSplitMoments()));
+    }
+
+    [Fact]
+    public void ValuesOfTheTypesBeforeDslExpansionAreUnchanged()
+    {
+        var removed = DslExpansionTypes.ToHashSet();
         var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
-        Assert.Equal(FingerprintBeforeSplitMoments, Fingerprint(string.Join("\n", lines) + "\n"));
+        Assert.Equal(FingerprintBeforeDslExpansion, Fingerprint(string.Join("\n", lines) + "\n"));
+    }
+
+    /// <summary>Proof of the twenty-second re-pin: exactly the lines of the DSL expansion types (5 variants each) are new, and no other line moved.</summary>
+    [Fact]
+    public void OnlyTheLinesOfTheDslExpansionTypesAreNewSinceTheTwentyFirstPin()
+    {
+        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var added = current.Where(line => DslExpansionTypes.Contains(line.Split('|')[0])).ToArray();
+        var rest = current.Where(line => !DslExpansionTypes.Contains(line.Split('|')[0])).ToArray();
+
+        Assert.Equal(DslExpansionTypes.Length * VariantsPerType, added.Length);
+        Assert.Equal(current.Length - added.Length, rest.Length);
+        Assert.Equal(Fingerprint(string.Join("\n", rest) + "\n"), FingerprintBeforeDslExpansion);
+    }
+
+    /// <summary>The line of every DSL expansion type equals a standalone calculation (a Period outside the range of the parameter object keeps the defaults, like the screener does).</summary>
+    [Fact]
+    public void TheDslExpansionTypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod()
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        foreach (string name in DslExpansionSingleSymbolTypes)
+        {
+            IndicatorType type = Enum.Parse<IndicatorType>(name);
+            foreach (int? period in new int?[] { null, 7, 9, 25 })
+            {
+                var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+                decimal? screener = extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles);
+
+                CoreIndicatorParameterBase parameter = DefaultCoreIndicatorSettings.GetDefault().Single(s => s.TypeEnum == type).ParameterObject!.Clone();
+                var periodProperty = parameter.GetType().GetProperty("Period")!;
+                var range = (CoreParameterRangeAttribute)Attribute.GetCustomAttribute(periodProperty, typeof(CoreParameterRangeAttribute))!;
+                int defaultPeriod = (int)periodProperty.GetValue(parameter)!;
+                periodProperty.SetValue(parameter, PeriodOrDefault(period, (int)range.Minimum, (int)range.Maximum, defaultPeriod));
+
+                decimal? standalone = StockAnalyzer.Core.Models.Indicators.IndicatorFactory.CreateStatic(type, parameter)!.Calculate(candles).MainValues[^1];
+
+                Assert.NotNull(standalone);
+                Assert.Equal(standalone, screener);
+            }
+        }
     }
 
     [Theory]
@@ -921,6 +997,27 @@ public class ScreenerDefaultParameterCacheParityTests
 
             Assert.NotNull(standalone);
             Assert.Equal(standalone, screener);
+        }
+    }
+
+    /// <summary>A two-symbol type has no value without a comparison symbol: the screener line and a standalone calculation agree (both null) for every variant.</summary>
+    [Fact]
+    public void TheDslExpansionTwoSymbolTypesHaveNoValueWithoutAComparisonSymbol_InTheScreenerAndStandalone()
+    {
+        var candles = Candles(300);
+        var extractor = new ScreenerValueExtractor();
+
+        foreach (string name in DslExpansionTwoSymbolTypes)
+        {
+            IndicatorType type = Enum.Parse<IndicatorType>(name);
+            decimal? standalone = StockAnalyzer.Core.Models.Indicators.IndicatorFactory.CreateStatic(type, DefaultCoreIndicatorSettings.GetDefault().Single(s => s.TypeEnum == type).ParameterObject)!.Calculate(candles).MainValues[^1];
+            Assert.Null(standalone);
+
+            foreach (int? period in new int?[] { null, 7, 9, 25 })
+            {
+                var parameters = period.HasValue ? new Dictionary<string, object> { ["Period"] = period.Value } : new Dictionary<string, object>();
+                Assert.Null(extractor.ExtractValueNullable(new ScreenerIndicatorSideConfig { IndicatorType = type, Parameters = parameters }, candles));
+            }
         }
     }
 

@@ -22,12 +22,15 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource, I
     /// <summary>Optional source-authored BOOLEAN attestation; absent/null/false is unknown.</summary>
     public const string FinalityColumn = "is_final";
     private readonly DuckDBConnectionManager _dbManager;
+    private readonly IReadOnlyParquetConnectionPool? _readPool;
     private readonly MarketDataSettings _settings;
     private readonly ILogger<ParquetDataService> _logger;
     private readonly TimeProvider _clock;
     private readonly PredictionMonitoringSettings _monitoring;
     private readonly string? _attestedCopyRoot;
     private int _copiesSwept;
+    private const int TransientLockMaxRetries = 3;
+    private const int TransientLockBaseDelayMs = 20;
     private const string ParquetExtension = ".parquet";
     private const string ParquetSearchPattern = "*" + ParquetExtension;
 
@@ -219,12 +222,14 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource, I
         ILogger<ParquetDataService>? logger = null,
         TimeProvider? timeProvider = null,
         IOptions<PredictionMonitoringSettings>? monitoringOptions = null,
-        string? attestedCopyRoot = null)
+        string? attestedCopyRoot = null,
+        IReadOnlyParquetConnectionPool? readPool = null)
     {
         _attestedCopyRoot = attestedCopyRoot;
         _clock = timeProvider ?? TimeProvider.System;
         _monitoring = monitoringOptions?.Value ?? new PredictionMonitoringSettings();
         _dbManager = dbManager;
+        _readPool = readPool;
         _settings = settings.Value;
         _logger = logger ?? NullLogger<ParquetDataService>.Instance;
     }
@@ -277,6 +282,11 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource, I
 
         try
         {
+            if (_readPool is not null)
+            {
+                return await ReadCandlesPooledAsync(symbol, timeFrame, count, includePartialBar, filePath, cancellationToken).ConfigureAwait(false);
+            }
+
             using (await _dbManager.AcquireLockAsync("LoadCandles", cancellationToken).ConfigureAwait(false))
             {
                 var connection = _dbManager.GetConnection();
@@ -285,69 +295,7 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource, I
                     throw new InvalidOperationException("Connection must be a DbConnection to support async operations.");
                 }
 
-                DateTime? referenceDate = null;
-                if (!includePartialBar && TimeFrameAggregator.IsPeriodFrame(timeFrame))
-                {
-                    var dailyBasePath = ResolveBasePath(TimeFrame.D1);
-                    var dailyFilePath = ResolveFilePath(dailyBasePath, symbol);
-                    if (dailyFilePath != null)
-                    {
-                        using var maxDateCmd = dbConnection.CreateCommand();
-                        maxDateCmd.CommandText = $"SELECT MAX(date) FROM read_parquet('{FormatDuckDbPath(dailyFilePath)}') WHERE close IS NOT NULL AND date IS NOT NULL";
-                        var maxDateVal = await maxDateCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-                        if (maxDateVal != null && maxDateVal != DBNull.Value)
-                        {
-                            referenceDate = Convert.ToDateTime(maxDateVal).Date;
-                        }
-                    }
-                }
-
-                var candles = new List<CandleData>();
-                using var command = dbConnection.CreateCommand();
-
-                int fetchLimit = (!includePartialBar && TimeFrameAggregator.IsPeriodFrame(timeFrame) && count > 0)
-                    ? checked(count + 1)
-                    : count;
-
-                string limitClause = fetchLimit > 0 ? $"LIMIT {fetchLimit}" : "";
-                command.CommandText = $"SELECT date, open, high, low, close, volume FROM read_parquet('{FormatDuckDbPath(filePath)}') WHERE close IS NOT NULL AND date IS NOT NULL ORDER BY date DESC {limitClause}";
-
-                using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                {
-                    if (reader.IsDBNull(0) || reader.IsDBNull(4)) continue;
-
-                    // DuckDB's ADO provider returns DateTimeKind.Unspecified regardless of the
-                    // underlying Parquet data's own UTC timestamps; re-stamp Kind=Utc here so
-                    // downstream consumers that validate it (e.g. BacktestInput) accept these bars.
-                    var dt = DateTime.SpecifyKind(reader.GetDateTime(0), DateTimeKind.Utc);
-                    var close = Convert.ToDecimal(reader.GetValue(4));
-                    var open = reader.IsDBNull(1) ? close : Convert.ToDecimal(reader.GetValue(1));
-                    var high = reader.IsDBNull(2) ? Math.Max(open, close) : Convert.ToDecimal(reader.GetValue(2));
-                    var low = reader.IsDBNull(3) ? Math.Min(open, close) : Convert.ToDecimal(reader.GetValue(3));
-                    var volume = reader.IsDBNull(5) ? 0L : Convert.ToInt64(reader.GetValue(5));
-
-                    candles.Add(new CandleData(dt, open, high, low, close, volume));
-                }
-
-                // Reverse to get ASC order for the chart
-                candles.Reverse();
-
-                if (!includePartialBar && referenceDate is { } refDate)
-                {
-                    while (candles.Count > 0 && TimeFrameAggregator.IsPartialPeriod(candles[^1].Timestamp, timeFrame, refDate))
-                    {
-                        candles.RemoveAt(candles.Count - 1);
-                    }
-                }
-
-                if (count > 0 && candles.Count > count)
-                {
-                    candles.RemoveRange(0, candles.Count - count);
-                }
-
-                _logger.LogInformation("Loaded {Count} candles for {Symbol} from {FilePath}", candles.Count, symbol, filePath);
-                return new DataReadResult(DataReadStatus.Read, candles);
+                return await ExecuteCandleReadAsync(dbConnection, symbol, timeFrame, count, includePartialBar, filePath, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -359,6 +307,116 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource, I
             _logger.LogError(ex, "Failed to load candles from Parquet for {Symbol}", symbol);
             return new DataReadResult(DataReadStatus.Unreadable, Array.Empty<CandleData>());
         }
+    }
+
+    private async Task<DataReadResult> ReadCandlesPooledAsync(
+        string symbol,
+        TimeFrame timeFrame,
+        int count,
+        bool includePartialBar,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            using var lease = await _readPool!.AcquireLeaseAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await ExecuteCandleReadAsync(lease.Connection, symbol, timeFrame, count, includePartialBar, filePath, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                lease.MarkFaulted();
+                throw;
+            }
+            catch (Exception ex) when (attempt < TransientLockMaxRetries && ReadOnlyDuckDbConnectionPool.IsTransientParquetLock(ex, filePath))
+            {
+                lease.MarkFaulted();
+                int delayMs = TransientLockBaseDelayMs * (1 << attempt);
+                _logger.LogDebug(ex, "Transient Parquet lock while reading {Symbol} ({FilePath}); retrying in {DelayMs}ms (attempt {Attempt}/{MaxRetries}).",
+                    symbol, filePath, delayMs, attempt + 1, TransientLockMaxRetries);
+                await Task.Delay(TimeSpan.FromMilliseconds(delayMs), cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                lease.MarkFaulted();
+                throw;
+            }
+        }
+    }
+
+    private async Task<DataReadResult> ExecuteCandleReadAsync(
+        DbConnection dbConnection,
+        string symbol,
+        TimeFrame timeFrame,
+        int count,
+        bool includePartialBar,
+        string filePath,
+        CancellationToken cancellationToken)
+    {
+        DateTime? referenceDate = null;
+        if (!includePartialBar && TimeFrameAggregator.IsPeriodFrame(timeFrame))
+        {
+            var dailyBasePath = ResolveBasePath(TimeFrame.D1);
+            var dailyFilePath = ResolveFilePath(dailyBasePath, symbol);
+            if (dailyFilePath != null)
+            {
+                using var maxDateCmd = dbConnection.CreateCommand();
+                maxDateCmd.CommandText = $"SELECT MAX(date) FROM read_parquet('{FormatDuckDbPath(dailyFilePath)}') WHERE close IS NOT NULL AND date IS NOT NULL";
+                var maxDateVal = await maxDateCmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+                if (maxDateVal != null && maxDateVal != DBNull.Value)
+                {
+                    referenceDate = Convert.ToDateTime(maxDateVal).Date;
+                }
+            }
+        }
+
+        var candles = new List<CandleData>();
+        using var command = dbConnection.CreateCommand();
+
+        int fetchLimit = (!includePartialBar && TimeFrameAggregator.IsPeriodFrame(timeFrame) && count > 0)
+            ? checked(count + 1)
+            : count;
+
+        string limitClause = fetchLimit > 0 ? $"LIMIT {fetchLimit}" : "";
+        command.CommandText = $"SELECT date, open, high, low, close, volume FROM read_parquet('{FormatDuckDbPath(filePath)}') WHERE close IS NOT NULL AND date IS NOT NULL ORDER BY date DESC {limitClause}";
+
+        using var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            if (reader.IsDBNull(0) || reader.IsDBNull(4)) continue;
+
+            // DuckDB's ADO provider returns DateTimeKind.Unspecified regardless of the
+            // underlying Parquet data's own UTC timestamps; re-stamp Kind=Utc here so
+            // downstream consumers that validate it (e.g. BacktestInput) accept these bars.
+            var dt = DateTime.SpecifyKind(reader.GetDateTime(0), DateTimeKind.Utc);
+            var close = Convert.ToDecimal(reader.GetValue(4));
+            var open = reader.IsDBNull(1) ? close : Convert.ToDecimal(reader.GetValue(1));
+            var high = reader.IsDBNull(2) ? Math.Max(open, close) : Convert.ToDecimal(reader.GetValue(2));
+            var low = reader.IsDBNull(3) ? Math.Min(open, close) : Convert.ToDecimal(reader.GetValue(3));
+            var volume = reader.IsDBNull(5) ? 0L : Convert.ToInt64(reader.GetValue(5));
+
+            candles.Add(new CandleData(dt, open, high, low, close, volume));
+        }
+
+        // Reverse to get ASC order for the chart
+        candles.Reverse();
+
+        if (!includePartialBar && referenceDate is { } refDate)
+        {
+            while (candles.Count > 0 && TimeFrameAggregator.IsPartialPeriod(candles[^1].Timestamp, timeFrame, refDate))
+            {
+                candles.RemoveAt(candles.Count - 1);
+            }
+        }
+
+        if (count > 0 && candles.Count > count)
+        {
+            candles.RemoveRange(0, candles.Count - count);
+        }
+
+        _logger.LogInformation("Loaded {Count} candles for {Symbol} from {FilePath}", candles.Count, symbol, filePath);
+        return new DataReadResult(DataReadStatus.Read, candles);
     }
 
     private string ResolveBasePath(TimeFrame timeFrame)

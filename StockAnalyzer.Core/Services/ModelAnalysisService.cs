@@ -52,7 +52,8 @@ public sealed class ModelAnalysisService : IModelAnalysisService
         var manifest = _registry.GetManifest(modelId);
         if (manifest is null || !manifest.RequiredSidecars.Any(s => s.Kind == "analysis")) return null;
         if (_cache.TryGet(modelId, out var cached)) return cached;
-        using var session = new InferenceSession(lease.ModelPath);
+        using var inspectOptions = OnnxSessionOptionsFactory.CreateMetadataInspectionOptions();
+        using var session = new InferenceSession(lease.ModelPath, inspectOptions);
         using var metrics = JsonDocument.Parse(File.ReadAllText(lease.ModelPath + ".metrics.json"));
         var analysis = ModelAnalysis.Load(lease.ModelPath, session.ModelMetadata.CustomMetadataMap,
             manifest.ModelHash, metrics.RootElement.GetProperty("data_revision").GetString() ?? "");

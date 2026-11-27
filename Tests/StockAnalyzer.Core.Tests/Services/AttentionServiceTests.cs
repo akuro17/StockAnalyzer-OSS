@@ -336,6 +336,30 @@ public sealed class AttentionServiceTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Compute_RepeatedCallsReuseCachedSession_AndDisposeClearsCache()
+    {
+        using var parity = AttentionContractTests.Parity();
+        var candles = Candles(Case(parity, "newest_bar_of_a_short_history"));
+        var (registry, manifest) = await Registered(withSidecar: true);
+        using (registry)
+        {
+            using var service = new AttentionService(registry, Settings(), new MLDataProcessor());
+            var r1 = await service.ComputeAsync(Key(manifest.ModelId, candles), candles);
+            Assert.Equal(AttentionStatus.Ready, r1.Status);
+            Assert.Equal(1, service.CachedSessionCount);
+
+            var r2 = await service.ComputeAsync(Key(manifest.ModelId, candles), candles);
+            Assert.Equal(AttentionStatus.Ready, r2.Status);
+            Assert.Equal(1, service.CachedSessionCount);
+            Assert.Equal(r1.Snapshot!.Weights, r2.Snapshot!.Weights);
+
+            service.Dispose();
+            Assert.Equal(0, service.CachedSessionCount);
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => service.ComputeAsync(Key(manifest.ModelId, candles), candles));
+        }
+    }
+
     private static int IndexOf(byte[] haystack, byte[] needle)
     {
         for (int i = 0; i <= haystack.Length - needle.Length; i++)

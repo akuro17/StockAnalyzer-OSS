@@ -395,7 +395,7 @@ public sealed class ScreenerGuiMcpEquivalenceTests : IDisposable
     }
 
     [Fact]
-    public void TheTabOffersAllElevenTwoSymbolTypes()
+    public void TheTabOffersAllFifteenTwoSymbolTypes()
     {
         string[] names = TabTwoTickerTypes().Select(row => (string)row[0]).ToArray();
 
@@ -403,7 +403,9 @@ public sealed class ScreenerGuiMcpEquivalenceTests : IDisposable
         {
             IndicatorType.Correlation, IndicatorType.CrossCorrelation, IndicatorType.RollingBeta, IndicatorType.RollingAlpha, IndicatorType.RollingRSquared,
             IndicatorType.CointegrationSpread, IndicatorType.GrangerCausality, IndicatorType.JohansenCointegration, IndicatorType.PairRatio, IndicatorType.PairSpread, IndicatorType.Ratiocator, IndicatorType.CrossTickerDtw,
-            IndicatorType.RankCorrelation, IndicatorType.MansfieldRS
+            IndicatorType.RankCorrelation, IndicatorType.MansfieldRS,
+            // DSL expansion run I-2
+            IndicatorType.TreynorRatio, IndicatorType.InformationRatio, IndicatorType.TrackingError, IndicatorType.RollingCovariance
         };
         Assert.Equal(expected.Select(type => type.ToString()).OrderBy(n => n, StringComparer.Ordinal), names.OrderBy(n => n, StringComparer.Ordinal));
     }

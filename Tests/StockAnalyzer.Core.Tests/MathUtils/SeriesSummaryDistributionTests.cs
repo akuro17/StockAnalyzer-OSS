@@ -170,10 +170,10 @@ public class SeriesSummaryDistributionTests
     }
 
     [Fact]
-    public void TheBoundIsTheOneDefinitionOfTheKernelWindowLimit()
+    public void TheBoundIsTheOneDefinitionOfTheKernelWindowLimit_AndTheIndicatorHasItsOwnLargerMeasuredBound()
     {
         Assert.Equal(RobustRegressionMath.MaxWindowLength, SeriesSummaryStatistics.MaxRobustTrendBars);
-        Assert.Equal(RobustRegressionMath.MaxWindowLength, IndicatorDefaultConstants.TheilSenMaxPeriod);
+        Assert.True(IndicatorDefaultConstants.TheilSenMaxPeriod > RobustRegressionMath.MaxWindowLength);   // DI-1 = A2: the indicator bound (70) is independent of the 30 bar bound
         Assert.Equal(30, SeriesSummaryStatistics.MaxRobustTrendBars);
         Assert.True(SeriesSummaryStatistics.MinTrendBars <= SeriesSummaryStatistics.MaxRobustTrendBars);
     }

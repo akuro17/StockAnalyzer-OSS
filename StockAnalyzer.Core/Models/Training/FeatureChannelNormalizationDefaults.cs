@@ -33,6 +33,10 @@ public static class FeatureChannelNormalizationDefaults
         IndicatorType.HurstExponent, IndicatorType.Entropy, IndicatorType.MansfieldRS, IndicatorType.Bocpd,
         // p-values in [0, 1] (statistical functions plan R3)
         IndicatorType.JarqueBera, IndicatorType.LjungBoxQ,
+        // a drawdown is a bounded ratio / percentage of the window peak (DSL expansion run I-1)
+        IndicatorType.RollingMaxDrawdown,
+        // the Kolmogorov-Smirnov distance D lies in [0, 1] (DSL expansion run I-5)
+        IndicatorType.KsTwoSampleTest,
     };
 
     /// <summary>Values in price units (the channel moves with the price level).</summary>
@@ -51,6 +55,9 @@ public static class FeatureChannelNormalizationDefaults
         // Block chart overlays (Close, Reversal, Update are prices; the IsUpTrend flag is a helper that is not a public output, so it is never offered as a channel).
         IndicatorType.Renko, IndicatorType.PointAndFigure, IndicatorType.Kagi, IndicatorType.ThreeLineBreak,
         IndicatorType.QuantileBands, IndicatorType.TheilSenRegression,
+        // DSL expansion runs I-3 and I-4: window averages and regression curves drawn on the price pane (the Main series is a price).
+        IndicatorType.TrimmedMA, IndicatorType.WinsorizedMA, IndicatorType.HuberMA, IndicatorType.BiweightMA, IndicatorType.GeometricMA, IndicatorType.HarmonicMA,
+        IndicatorType.PolynomialRegression, IndicatorType.NonlinearRegression,
     };
 
     /// <summary>The raw price fields (open, high, low, close, ...) are price units.</summary>

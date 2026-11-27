@@ -9,7 +9,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend;
 /// or, with <see cref="UseSiegelMedian"/>, the Siegel repeated-median line. <c>Main</c> = the line value at the newest bar of the window (a price); <c>UpperBand</c> and <c>LowerBand</c> =
 /// <c>Main</c> +/- <see cref="BandMultiplier"/> x 1.4826 x the median absolute deviation of the residuals. <c>Slope</c> (price per bar) and <c>Intercept</c> (the line value at the OLDEST bar of the
 /// window, so it is window-relative) are chart-suppressed: they are not price levels of the bar (see <see cref="IndicatorChartSuppression"/>).
-/// The window is limited to <see cref="RobustRegressionMath.MaxWindowLength"/> bars (cost quadratic in the window). Null for bars before bar <c>Period - 1</c> and for a window with a missing price.
+/// The window is limited to <see cref="IndicatorDefaultConstants.TheilSenMaxPeriod"/> bars (cost quadratic in the window, every bar is fitted). Null for bars before bar <c>Period - 1</c> and for a window with a missing price.
 /// Causal: bar t uses bars &lt;= t only.
 /// </summary>
 [StockAnalyzerIndicator(IndicatorType.TheilSenRegression)]
@@ -79,7 +79,7 @@ public class CoreTheilSenRegressionIndicator : CoreIndicatorBase
             decimal? intercept = null;
             int first = i - Period + 1;
             if (first >= 0 && multiplier.HasValue && prices.IsComplete(first, i)
-                && RobustRegressionMath.TryFit(prices.Values.AsSpan(first, Period), UseSiegelMedian, scratch, out RobustLine line))
+                && RobustRegressionMath.TryFit(prices.Values.AsSpan(first, Period), UseSiegelMedian, scratch, IndicatorDefaultConstants.TheilSenMaxPeriod, out RobustLine line))
             {
                 try
                 {

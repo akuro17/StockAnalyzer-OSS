@@ -18,6 +18,9 @@ public class ScatterMetricSettings
     /// <summary>How many tickers are evaluated at the same time.</summary>
     public int MaxParallelism { get; set; } = ScatterMetricLimits.DefaultMaxParallelism;
 
+    /// <summary>When true, dynamically scales parallelism using host CPU count minus reserved UI headroom, capped by <see cref="ScatterMetricLimits.MaxParallelism"/> standard upper bound.</summary>
+    public bool AutoScaleParallelism { get; set; } = false;
+
     /// <summary>Pause (ms) after the last key stroke before the registration screen's catalog search runs.</summary>
     public int InputDebounceMilliseconds { get; set; } = ScatterMetricLimits.DefaultInputDebounceMilliseconds;
 }
