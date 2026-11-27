@@ -46,7 +46,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             using JsonDocument document = JsonDocument.Parse(string.IsNullOrWhiteSpace(request.ArgumentsJson) ? "{}" : request.ArgumentsJson);
             if (document.RootElement.ValueKind != JsonValueKind.Object)
             {
-                throw Invalid("arguments", "arguments must be a JSON object.");
+                throw Invalid(DiscussionArgumentNames.Arguments, "arguments must be a JSON object.");
             }
 
             var arguments = new Arguments(document.RootElement);
@@ -73,7 +73,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
         }
         catch (JsonException)
         {
-            return DiscussionReply.Fail(DiscussionErrorCodes.InvalidArgument, "The arguments are not valid JSON.", "arguments");
+            return DiscussionReply.Fail(DiscussionErrorCodes.InvalidArgument, "The arguments are not valid JSON.", DiscussionArgumentNames.Arguments);
         }
         catch (ObjectDisposedException)
         {
@@ -192,12 +192,12 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
     private string Create(Arguments arguments)
     {
         DiscussionTurnMode mode = DiscussionTurnMode.Free;
-        if (arguments.String("turnMode") is { } name && !DiscussionNames.TryParseTurnMode(name, out mode))
+        if (arguments.String(DiscussionArgumentNames.TurnMode) is { } name && !DiscussionNames.TryParseTurnMode(name, out mode))
         {
-            throw Invalid("turnMode", "turnMode must be free or roundRobin.");
+            throw Invalid(DiscussionArgumentNames.TurnMode, "turnMode must be free or roundRobin.");
         }
 
-        DiscussionCreateResult created = _hub.Create(arguments.String("title"), arguments.String("topic"), mode);
+        DiscussionCreateResult created = _hub.Create(arguments.String(DiscussionArgumentNames.Title), arguments.String(DiscussionArgumentNames.Topic), mode);
         return Build(writer =>
         {
             DiscussionSessionHeader session = created.Session;
@@ -217,7 +217,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
 
     private string Join(Arguments arguments)
     {
-        DiscussionJoinResult joined = _hub.Join(arguments.String("sessionId"), arguments.String("displayName"));
+        DiscussionJoinResult joined = _hub.Join(arguments.String(DiscussionArgumentNames.SessionId), arguments.String(DiscussionArgumentNames.DisplayName));
         return Build(writer =>
         {
             writer.WriteStartObject();
@@ -234,7 +234,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
 
     private string Leave(Arguments arguments)
     {
-        DiscussionLeaveResult left = _hub.Leave(arguments.String("sessionId"), arguments.String("participantToken"));
+        DiscussionLeaveResult left = _hub.Leave(arguments.String(DiscussionArgumentNames.SessionId), arguments.String(DiscussionArgumentNames.ParticipantToken));
         return Build(writer =>
         {
             writer.WriteStartObject();
@@ -248,25 +248,25 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
     private string Post(Arguments arguments, JsonElement root)
     {
         DiscussionInterpretation? interpretation = null;
-        if (root.TryGetProperty("interpretation", out JsonElement interp) && interp.ValueKind != JsonValueKind.Null)
+        if (root.TryGetProperty(DiscussionArgumentNames.Interpretation, out JsonElement interp) && interp.ValueKind != JsonValueKind.Null)
         {
             if (interp.ValueKind != JsonValueKind.Object)
             {
-                throw Invalid("interpretation", "interpretation must be an object.");
+                throw Invalid(DiscussionArgumentNames.Interpretation, "interpretation must be an object.");
             }
 
             interpretation = ParseInterpretation(interp);
         }
 
         var request = new DiscussionPostRequest(
-            arguments.String("content"),
-            arguments.Boolean("pass") ?? false,
-            arguments.Integer("replyToSequence"),
-            arguments.IntegerArray("contextIds"),
-            arguments.Integer("basedOnSequence"),
-            arguments.String("clientRequestId"),
+            arguments.String(DiscussionArgumentNames.Content),
+            arguments.Boolean(DiscussionArgumentNames.Pass) ?? false,
+            arguments.Integer(DiscussionArgumentNames.ReplyToSequence),
+            arguments.IntegerArray(DiscussionArgumentNames.ContextIds),
+            arguments.Integer(DiscussionArgumentNames.BasedOnSequence),
+            arguments.String(DiscussionArgumentNames.ClientRequestId),
             interpretation);
-        DiscussionPostResult posted = _hub.Post(arguments.String("sessionId"), arguments.String("participantToken"), request);
+        DiscussionPostResult posted = _hub.Post(arguments.String(DiscussionArgumentNames.SessionId), arguments.String(DiscussionArgumentNames.ParticipantToken), request);
         return Build(writer =>
         {
             writer.WriteStartObject();
@@ -362,29 +362,30 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
     private async Task<string> ReadAsync(Arguments arguments, CancellationToken cancellationToken)
     {
         // Checked before the board is touched (the request may have come over a pipe, which bypasses the schema of the tool).
-        bool compact = arguments.Boolean("compact") ?? false;
-        string headerMode = arguments.String("headerMode") ?? DiscussionNames.HeaderFull;
+        bool compact = arguments.Boolean(DiscussionArgumentNames.Compact) ?? false;
+        string headerMode = arguments.String(DiscussionArgumentNames.HeaderMode) ?? DiscussionNames.HeaderFull;
         if (headerMode is not (DiscussionNames.HeaderFull or DiscussionNames.HeaderMinimal or DiscussionNames.HeaderNone))
         {
-            throw Invalid("headerMode", $"headerMode must be {DiscussionNames.HeaderFull}, {DiscussionNames.HeaderMinimal} or {DiscussionNames.HeaderNone}.");
+            throw Invalid(DiscussionArgumentNames.HeaderMode, $"headerMode must be {DiscussionNames.HeaderFull}, {DiscussionNames.HeaderMinimal} or {DiscussionNames.HeaderNone}.");
         }
 
-        string view = arguments.String("view") ?? DiscussionNames.ViewFull;
+        string view = arguments.String(DiscussionArgumentNames.View) ?? DiscussionNames.ViewFull;
         if (view is not (DiscussionNames.ViewFull or DiscussionNames.ViewSummary))
         {
-            throw Invalid("view", $"view must be {DiscussionNames.ViewFull} or {DiscussionNames.ViewSummary}.");
+            throw Invalid(DiscussionArgumentNames.View, $"view must be {DiscussionNames.ViewFull} or {DiscussionNames.ViewSummary}.");
         }
 
-        bool excludeEvents = arguments.Boolean("excludeEvents") ?? false;
-        int? tail = arguments.Integer("tail") is { } tailValue ? CheckedInt("tail", tailValue) : null;
-        var options = new DiscussionReadOptions(excludeEvents, tail);
+        bool excludeEvents = arguments.Boolean(DiscussionArgumentNames.ExcludeEvents) ?? false;
+        int? tail = arguments.Integer(DiscussionArgumentNames.Tail) is { } tailValue ? CheckedInt(DiscussionArgumentNames.Tail, tailValue) : null;
+        bool waitForTurn = arguments.Boolean(DiscussionArgumentNames.WaitForTurn) ?? false;
+        var options = new DiscussionReadOptions(excludeEvents, tail, waitForTurn);
 
         DiscussionReadResult read = await _hub.ReadAsync(
-            arguments.String("sessionId"),
-            arguments.String("participantToken"),
-            arguments.Integer("afterSequence") ?? 0,
-            arguments.Integer("limit") is { } limit ? CheckedInt("limit", limit) : null,
-            arguments.IntegerOr("waitSeconds", 0),
+            arguments.String(DiscussionArgumentNames.SessionId),
+            arguments.String(DiscussionArgumentNames.ParticipantToken),
+            arguments.Integer(DiscussionArgumentNames.AfterSequence) ?? 0,
+            arguments.Integer(DiscussionArgumentNames.Limit) is { } limit ? CheckedInt(DiscussionArgumentNames.Limit, limit) : null,
+            arguments.IntegerOr(DiscussionArgumentNames.WaitSeconds, 0),
             cancellationToken,
             options.IsActive ? options : null).ConfigureAwait(false);
         return Build(writer =>
@@ -619,7 +620,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
 
     private string Close(Arguments arguments)
     {
-        DiscussionCloseResult closed = _hub.Close(arguments.String("sessionId"), arguments.String("participantToken"));
+        DiscussionCloseResult closed = _hub.Close(arguments.String(DiscussionArgumentNames.SessionId), arguments.String(DiscussionArgumentNames.ParticipantToken));
         return Build(writer =>
         {
             writer.WriteStartObject();
@@ -635,7 +636,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
 
     private string AttachPrecheck(Arguments arguments)
     {
-        _hub.AttachPrecheck(arguments.String("sessionId"), arguments.String("participantToken"));
+        _hub.AttachPrecheck(arguments.String(DiscussionArgumentNames.SessionId), arguments.String(DiscussionArgumentNames.ParticipantToken));
         return Build(writer =>
         {
             writer.WriteStartObject();
@@ -651,7 +652,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
     private string AttachCommit(JsonElement root, Arguments arguments)
     {
         string? canonicalArguments = null;
-        if (root.TryGetProperty("arguments", out JsonElement rawArguments) && rawArguments.ValueKind != JsonValueKind.Null)
+        if (root.TryGetProperty(DiscussionArgumentNames.Arguments, out JsonElement rawArguments) && rawArguments.ValueKind != JsonValueKind.Null)
         {
             canonicalArguments = DiscussionCanonicalJson.Canonicalize(rawArguments);
         }
@@ -660,7 +661,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             canonicalArguments = "{}";
         }
 
-        string? result = arguments.String("result");
+        string? result = arguments.String(DiscussionArgumentNames.Result);
         if (result is not null)
         {
             try
@@ -669,13 +670,19 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
             }
             catch (JsonException)
             {
-                throw Invalid("result", "result must be JSON text.");
+                throw Invalid(DiscussionArgumentNames.Result, "result must be JSON text.");
             }
         }
 
-        string? analysisIntent = arguments.String("analysisIntent");
+        string? analysisIntent = arguments.String(DiscussionArgumentNames.AnalysisIntent);
         DiscussionAttachResult attached = _hub.AttachCommit(
-            arguments.String("sessionId"), arguments.String("participantToken"), arguments.String("tool"), canonicalArguments, result, arguments.String("note"), analysisIntent);
+            arguments.String(DiscussionArgumentNames.SessionId),
+            arguments.String(DiscussionArgumentNames.ParticipantToken),
+            arguments.String(DiscussionArgumentNames.Tool),
+            canonicalArguments,
+            result,
+            arguments.String(DiscussionArgumentNames.Note),
+            analysisIntent);
         return Build(writer =>
         {
             writer.WriteStartObject();
@@ -698,23 +705,23 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
 
     private string GetAnalysis(Arguments arguments)
     {
-        long contextId = arguments.Integer("contextId") ?? throw Invalid("contextId", "contextId is required.");
-        bool includeResult = arguments.Boolean("includeResult") ?? true;
+        long contextId = arguments.Integer(DiscussionArgumentNames.ContextId) ?? throw Invalid(DiscussionArgumentNames.ContextId, "contextId is required.");
+        bool includeResult = arguments.Boolean(DiscussionArgumentNames.IncludeResult) ?? true;
 
         // The paths are checked before the board is touched; a request over the pipe may bypass the schema of the tool.
-        string[]? paths = arguments.StringArray("paths", DiscussionExtensionLimits.MaxJsonExtractPaths);
+        string[]? paths = arguments.StringArray(DiscussionArgumentNames.Paths, DiscussionExtensionLimits.MaxJsonExtractPaths);
         IReadOnlyList<DiscussionJsonPathExtractor.Segment[]>? parsedPaths = null;
         if (paths is not null)
         {
             if (!includeResult)
             {
-                throw Invalid("paths", "paths cannot be combined with includeResult false.");
+                throw Invalid(DiscussionArgumentNames.Paths, "paths cannot be combined with includeResult false.");
             }
 
             parsedPaths = DiscussionJsonPathExtractor.ParseAll(paths);
         }
 
-        DiscussionAnalysisResult analysis = _hub.GetAnalysis(arguments.String("sessionId"), arguments.String("participantToken"), contextId);
+        DiscussionAnalysisResult analysis = _hub.GetAnalysis(arguments.String(DiscussionArgumentNames.SessionId), arguments.String(DiscussionArgumentNames.ParticipantToken), contextId);
         return Build(writer =>
         {
             writer.WriteStartObject();
@@ -755,7 +762,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
     /// </summary>
     private string Status(string hubPart, Arguments arguments)
     {
-        int commandTail = arguments.IntegerOr("commandTail", 0);
+        int commandTail = arguments.IntegerOr(DiscussionArgumentNames.CommandTail, 0);
         IReadOnlyList<CommandLogEntry> commands = _commandLog is null || commandTail == 0 ? Array.Empty<CommandLogEntry>() : _commandLog.Tail(commandTail);
         return DiscussionStatusComposer.Compose(hubPart, DiscussionProcessInfo.LocalOnly, commands);
     }
@@ -763,15 +770,15 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
     /// <summary>The part of the status that belongs to the board: its epoch, the discussions, the limits it runs with, its audit and its clock. Also validates both tails.</summary>
     private string StatusHubPart(Arguments arguments)
     {
-        string? sessionId = arguments.String("sessionId");
-        int auditTail = arguments.IntegerOr("auditTail", 0);
-        int commandTail = arguments.IntegerOr("commandTail", 0);
+        string? sessionId = arguments.String(DiscussionArgumentNames.SessionId);
+        int auditTail = arguments.IntegerOr(DiscussionArgumentNames.AuditTail, 0);
+        int commandTail = arguments.IntegerOr(DiscussionArgumentNames.CommandTail, 0);
         if (commandTail < 0 || commandTail > DiscussionLimits.StatusTailMax)
         {
-            throw new DiscussionException(DiscussionErrorCodes.LimitExceeded, $"commandTail must be 0 to {DiscussionLimits.StatusTailMax}.", "commandTail");
+            throw new DiscussionException(DiscussionErrorCodes.LimitExceeded, $"commandTail must be 0 to {DiscussionLimits.StatusTailMax}.", DiscussionArgumentNames.CommandTail);
         }
 
-        DiscussionStatusResult status = _hub.Status(sessionId, auditTail, arguments.Boolean("includeContexts") ?? false);
+        DiscussionStatusResult status = _hub.Status(sessionId, auditTail, arguments.Boolean(DiscussionArgumentNames.IncludeContexts) ?? false);
         return Build(writer =>
         {
             writer.WriteStartObject();

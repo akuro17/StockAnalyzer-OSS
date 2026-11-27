@@ -367,7 +367,7 @@
   "McpServer_Field_FloorTimeoutSeconds": "フロアタイムアウト (秒)",
   "McpServer_Desc_FloorTimeoutSeconds": "ラウンドロビン方式で発言権が自動委譲されるまでの時間（10〜600秒）。既定値: 60 (1分)。",
   "McpServer_Field_MaxWaitSeconds": "長輪講最大待機時間 (秒)",
-  "McpServer_Desc_MaxWaitSeconds": "read 操作の待機（waitSeconds）の上限（0〜30秒）。既定値: 20。",
+  "McpServer_Desc_MaxWaitSeconds": "read 操作の待機（waitSeconds）の上限（0〜120秒。ホスト側の実効上限は ToolTimeoutSeconds - 1、既定 ToolTimeoutSeconds=60 では 59秒）。既定値: 20。",
   "McpServer_Field_DefaultReadLimit": "既定読み取り件数",
   "McpServer_Desc_DefaultReadLimit": "read 操作で limit 未指定時の既定取得件数（1〜MaxReadLimit）。既定値: 20。",
   "McpServer_Field_MaxReadLimit": "最大読み取り件数",

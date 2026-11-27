@@ -28,7 +28,7 @@ public static class DiscussionCanonicalJson
     {
         if (arguments.ValueKind != JsonValueKind.Object)
         {
-            throw new DiscussionException(DiscussionErrorCodes.InvalidArgument, "arguments must be a JSON object.", "arguments");
+            throw new DiscussionException(DiscussionErrorCodes.InvalidArgument, "arguments must be a JSON object.", DiscussionArgumentNames.Arguments);
         }
 
         using var stream = new MemoryStream();
@@ -42,7 +42,7 @@ public static class DiscussionCanonicalJson
             throw new DiscussionException(
                 DiscussionErrorCodes.LimitExceeded,
                 $"The arguments are larger than {DiscussionLimits.AnalysisArgumentsMaxBytes} bytes.",
-                "arguments");
+                DiscussionArgumentNames.Arguments);
         }
 
         return Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length);
@@ -61,7 +61,7 @@ public static class DiscussionCanonicalJson
                 {
                     if (string.Equals(properties[i - 1].Name, properties[i].Name, StringComparison.Ordinal))
                     {
-                        throw new DiscussionException(DiscussionErrorCodes.InvalidArgument, "arguments contain the same key twice.", "arguments", "duplicate key");
+                        throw new DiscussionException(DiscussionErrorCodes.InvalidArgument, "arguments contain the same key twice.", DiscussionArgumentNames.Arguments, "duplicate key");
                     }
                 }
 
@@ -105,7 +105,7 @@ public static class DiscussionCanonicalJson
     {
         if (depth > MaxDepth)
         {
-            throw new DiscussionException(DiscussionErrorCodes.InvalidArgument, $"arguments are nested deeper than {MaxDepth} levels.", "arguments");
+            throw new DiscussionException(DiscussionErrorCodes.InvalidArgument, $"arguments are nested deeper than {MaxDepth} levels.", DiscussionArgumentNames.Arguments);
         }
     }
 }

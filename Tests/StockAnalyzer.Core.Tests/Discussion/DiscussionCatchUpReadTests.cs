@@ -510,4 +510,296 @@ public sealed class DiscussionCatchUpReadTests : IDisposable
         Assert.Equal(new[] { "first", "second" }, document.RootElement.GetProperty("messages").EnumerateArray().Select(m => m.GetProperty("summary").GetString()));
         Assert.False(document.RootElement.TryGetProperty("session", out _));
     }
+
+    // ---- waitForTurn (D-03b, D-03c, D-02) ------------------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task WaitForTurnRefusalsRespectOrderAndDoNotMutateCallerState()
+    {
+        (string freeId, string freeAlice, _) = Open();
+
+        // Free mode rejected on waitForTurn even if tail/waitSeconds also invalid.
+        DiscussionException freeWithTailAndZeroWait = await Assert.ThrowsAsync<DiscussionException>(
+            () => ReadAsync(freeId, freeAlice, wait: 0, options: new DiscussionReadOptions(Tail: 1, WaitForTurn: true)));
+        Assert.Equal((DiscussionErrorCodes.InvalidArgument, DiscussionArgumentNames.WaitForTurn), (freeWithTailAndZeroWait.Code, freeWithTailAndZeroWait.Parameter));
+
+        DiscussionException freeWithTailAndWait = await Assert.ThrowsAsync<DiscussionException>(
+            () => ReadAsync(freeId, freeAlice, wait: 5, options: new DiscussionReadOptions(Tail: 1, WaitForTurn: true)));
+        Assert.Equal((DiscussionErrorCodes.InvalidArgument, DiscussionArgumentNames.WaitForTurn), (freeWithTailAndWait.Code, freeWithTailAndWait.Parameter));
+
+        DiscussionException freeWithCombinedTailArgs = await Assert.ThrowsAsync<DiscussionException>(
+            () => ReadAsync(freeId, freeAlice, after: 1, limit: 5, wait: 0, options: new DiscussionReadOptions(Tail: 999, WaitForTurn: true)));
+        Assert.Equal((DiscussionErrorCodes.InvalidArgument, DiscussionArgumentNames.WaitForTurn), (freeWithCombinedTailArgs.Code, freeWithCombinedTailArgs.Parameter));
+
+        string rrId = _rig.Hub.Create("round table", null, DiscussionTurnMode.RoundRobin).Session.Id;
+        string alice = _rig.Join(rrId, "Alice").Token;
+        string bob = _rig.Join(rrId, "Bob").Token;
+
+        // Round-robin: tail checked before waitSeconds, afterSequence, limit, and tail range.
+        DiscussionException rrTailWithZeroWait = await Assert.ThrowsAsync<DiscussionException>(
+            () => _rig.Hub.ReadAsync(rrId, bob, waitSeconds: 0, options: new DiscussionReadOptions(Tail: 1, WaitForTurn: true)));
+        Assert.Equal((DiscussionErrorCodes.InvalidArgument, DiscussionArgumentNames.Tail), (rrTailWithZeroWait.Code, rrTailWithZeroWait.Parameter));
+
+        DiscussionException rrTailWithWait = await Assert.ThrowsAsync<DiscussionException>(
+            () => _rig.Hub.ReadAsync(rrId, bob, waitSeconds: 5, options: new DiscussionReadOptions(Tail: 1, WaitForTurn: true)));
+        Assert.Equal((DiscussionErrorCodes.InvalidArgument, DiscussionArgumentNames.Tail), (rrTailWithWait.Code, rrTailWithWait.Parameter));
+
+        DiscussionException rrTailWithCombinedArgs = await Assert.ThrowsAsync<DiscussionException>(
+            () => _rig.Hub.ReadAsync(rrId, bob, afterSequence: 1, limit: 5, waitSeconds: 0, options: new DiscussionReadOptions(Tail: 999, WaitForTurn: true)));
+        Assert.Equal((DiscussionErrorCodes.InvalidArgument, DiscussionArgumentNames.Tail), (rrTailWithCombinedArgs.Code, rrTailWithCombinedArgs.Parameter));
+
+        // Round-robin without tail: omitted/0 waitSeconds rejected before Left check.
+        _rig.Hub.Leave(rrId, bob);
+        DiscussionException leftZeroWait = await Assert.ThrowsAsync<DiscussionException>(
+            () => _rig.Hub.ReadAsync(rrId, bob, waitSeconds: 0, options: new DiscussionReadOptions(WaitForTurn: true)));
+        Assert.Equal((DiscussionErrorCodes.InvalidArgument, DiscussionArgumentNames.WaitSeconds), (leftZeroWait.Code, leftZeroWait.Parameter));
+
+        // Round-robin with valid waitSeconds and left participant -> PARTICIPANT_NOT_JOINED("left").
+        DiscussionException leftPositiveWait = await Assert.ThrowsAsync<DiscussionException>(
+            () => _rig.Hub.ReadAsync(rrId, bob, waitSeconds: 5, options: new DiscussionReadOptions(WaitForTurn: true)));
+        Assert.Equal(DiscussionErrorCodes.ParticipantNotJoined, leftPositiveWait.Code);
+        Assert.Equal("left", leftPositiveWait.Hint);
+
+        // None of the refused reads moved Bob's LastReadSequence or Alice's floor.
+        DiscussionSessionHeader status = _rig.Hub.Status(rrId).Sessions[0];
+        Assert.Equal(0, status.Participants.Single(p => p.Handle == "p2").LastReadSequence);
+        Assert.Equal("p1", status.Floor!.Handle);
+    }
+
+    [Fact]
+    public async Task WaitForTurnBoundary1ReturnsImmediatelyWhenCallerAlreadyHoldsFloor()
+    {
+        string id = _rig.Hub.Create("round table", null, DiscussionTurnMode.RoundRobin).Session.Id;
+        string alice = _rig.Join(id, "Alice").Token;
+        _rig.Join(id, "Bob");
+
+        DiscussionReadResult result = await ReadAsync(id, alice, after: 0, wait: 10, options: new DiscussionReadOptions(ExcludeEvents: true, WaitForTurn: true)).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(result.TimedOut);
+        Assert.Empty(result.Messages);
+        Assert.Equal((2L, 2L, false), (result.NextAfterSequence, result.LastSequence, result.HasMore));
+        Assert.Equal("p1", result.Session.Floor!.Handle);
+        Assert.Equal(0, _rig.Hub.GetDiagnostics().WaiterCount);
+    }
+
+    [Fact]
+    public async Task WaitForTurnBoundary2IgnoresNonTurnMessagesAndReturnsAccumulatedUnreadWhenTurnArrives()
+    {
+        string id = _rig.Hub.Create("round table", null, DiscussionTurnMode.RoundRobin).Session.Id;
+        string alice = _rig.Join(id, "Alice").Token;
+        string bob = _rig.Join(id, "Bob").Token;
+        string carol = _rig.Join(id, "Carol").Token;
+
+        Task<DiscussionReadResult> waiting = ReadAsync(id, carol, after: 3, wait: 20, options: new DiscussionReadOptions(ExcludeEvents: true, WaitForTurn: true));
+        await _rig.UntilWaitersAsync(1);
+
+        _rig.Post(id, alice, "m1"); // floor -> Bob (p2), not Carol (p3)
+        await _rig.UntilWaitersAsync(1);
+        Assert.False(waiting.IsCompleted);
+        Assert.Equal(0, _rig.Hub.Status(id).Sessions[0].Participants.Single(p => p.Handle == "p3").LastReadSequence);
+
+        _rig.Post(id, bob, "m2"); // floor -> Carol (p3)
+        DiscussionReadResult result = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(result.TimedOut);
+        Assert.Equal(new[] { "m1", "m2" }, result.Messages.Select(m => m.Content));
+        Assert.Equal((5L, 5L, false), (result.NextAfterSequence, result.LastSequence, result.HasMore));
+        Assert.Equal("p3", result.Session.Floor!.Handle);
+        Assert.Equal(0, _rig.Hub.GetDiagnostics().WaiterCount);
+    }
+
+    [Fact]
+    public async Task WaitForTurnBoundary3TimeoutReturnsUnreadMessagesWithTimedOutTrueAndAdvancesCursor()
+    {
+        string id = _rig.Hub.Create("round table", null, DiscussionTurnMode.RoundRobin).Session.Id;
+        string alice = _rig.Join(id, "Alice").Token;
+        _rig.Join(id, "Bob");
+        string carol = _rig.Join(id, "Carol").Token;
+
+        Task<DiscussionReadResult> waiting = ReadAsync(id, carol, after: 3, wait: 10, options: new DiscussionReadOptions(ExcludeEvents: true, WaitForTurn: true));
+        await _rig.UntilWaitersAsync(1);
+
+        _rig.Time.Advance(TimeSpan.FromSeconds(2));
+        _rig.Post(id, alice, "early"); // floor -> Bob (p2)
+        await _rig.UntilWaitersAsync(1);
+        Assert.False(waiting.IsCompleted);
+
+        _rig.Time.Advance(TimeSpan.FromSeconds(8));
+        DiscussionReadResult result = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(result.TimedOut);
+        Assert.Equal(new[] { "early" }, result.Messages.Select(m => m.Content));
+        Assert.Equal((4L, 4L, false), (result.NextAfterSequence, result.LastSequence, result.HasMore));
+        Assert.Equal(4L, result.Session.Participants.Single(p => p.Handle == "p3").LastReadSequence);
+        Assert.Equal("p2", result.Session.Floor!.Handle);
+        Assert.Equal(0, _rig.Hub.GetDiagnostics().WaiterCount);
+    }
+
+    [Fact]
+    public async Task WaitForTurnWakesNextHolderOnFloorTimeoutUsingBoundedSlice()
+    {
+        using var rig = new HubRig(settings => settings.FloorTimeoutSeconds = 10);
+        string id = rig.Hub.Create("round table", null, DiscussionTurnMode.RoundRobin).Session.Id;
+        rig.Join(id, "Alice");
+        string bob = rig.Join(id, "Bob").Token;
+
+        Task<DiscussionReadResult> waiting = rig.Hub.ReadAsync(id, bob, afterSequence: 2, waitSeconds: 20, options: new DiscussionReadOptions(ExcludeEvents: true, WaitForTurn: true));
+        await rig.UntilWaitersAsync(1);
+
+        rig.Time.Advance(TimeSpan.FromSeconds(9));
+        await Task.Yield();
+        Assert.False(waiting.IsCompleted);
+
+        rig.Time.Advance(TimeSpan.FromSeconds(1));
+        DiscussionReadResult result = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(result.TimedOut);
+        Assert.Empty(result.Messages);
+        Assert.Equal((3L, 3L), (result.NextAfterSequence, result.LastSequence)); // moved past the stripped timeout event
+        Assert.Equal("p2", result.Session.Floor!.Handle);
+        Assert.Equal(0, rig.Hub.GetDiagnostics().WaiterCount);
+    }
+
+    [Fact]
+    public async Task WaitForTurnWakesNextHolderOnFloorTimeoutEvenWhenSessionHasNoRoomForTimeoutEvent()
+    {
+        using var rig = new HubRig(settings =>
+        {
+            settings.MaxMessagesPerSession = 10;
+            settings.FloorTimeoutSeconds = 10;
+        });
+        string id = rig.Hub.Create("full room", null, DiscussionTurnMode.RoundRobin).Session.Id;
+        string alice = rig.Join(id, "Alice").Token; // seq 1
+        string bob = rig.Join(id, "Bob").Token;     // seq 2
+        for (int i = 0; i < 4; i++)
+        {
+            rig.Post(id, alice, $"a{i}"); // seq 3,5,7,9
+            rig.Post(id, bob, $"b{i}");   // seq 4,6,8,10 -> floor back to Alice, Messages.Count == 10
+        }
+
+        Task<DiscussionReadResult> waiting = rig.Hub.ReadAsync(id, bob, afterSequence: 10, waitSeconds: 20, options: new DiscussionReadOptions(WaitForTurn: true));
+        await rig.UntilWaitersAsync(1);
+
+        rig.Time.Advance(TimeSpan.FromSeconds(10));
+        DiscussionReadResult result = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(result.TimedOut);
+        Assert.Empty(result.Messages);
+        Assert.Equal(10L, result.LastSequence);
+        Assert.Equal("p2", result.Session.Floor!.Handle);
+    }
+
+    [Fact]
+    public async Task WaitForTurnReturnsImmediatelyWhenSessionCloses()
+    {
+        string id = _rig.Hub.Create("round table", null, DiscussionTurnMode.RoundRobin).Session.Id;
+        string alice = _rig.Join(id, "Alice").Token;
+        string bob = _rig.Join(id, "Bob").Token;
+
+        Task<DiscussionReadResult> waiting = ReadAsync(id, bob, after: 2, wait: 20, options: new DiscussionReadOptions(ExcludeEvents: true, WaitForTurn: true));
+        await _rig.UntilWaitersAsync(1);
+
+        _rig.Hub.Close(id, alice);
+        DiscussionReadResult result = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(result.TimedOut);
+        Assert.Empty(result.Messages);
+        Assert.Equal(DiscussionSessionState.Closed, result.Session.State);
+        Assert.Equal(3L, result.NextAfterSequence);
+        Assert.Equal(0, _rig.Hub.GetDiagnostics().WaiterCount);
+    }
+
+    [Fact]
+    public async Task WaitForTurnMultiHopFloorTimeoutPassesIntermediateNonHoldersWithoutSpinning()
+    {
+        using var rig = new HubRig(settings =>
+        {
+            settings.FloorTimeoutSeconds = 10;
+            settings.MaxWaitSeconds = 30;
+        });
+        string id = rig.Hub.Create("three way", null, DiscussionTurnMode.RoundRobin).Session.Id;
+        rig.Join(id, "Alice");
+        rig.Join(id, "Bob");
+        string carol = rig.Join(id, "Carol").Token;
+
+        Task<DiscussionReadResult> waiting = rig.Hub.ReadAsync(id, carol, afterSequence: 3, waitSeconds: 25, options: new DiscussionReadOptions(ExcludeEvents: true, WaitForTurn: true));
+        await rig.UntilWaitersAsync(1);
+
+        // First slice: Alice -> Bob at t=10 (Carol not next yet, so keeps waiting)
+        rig.Time.Advance(TimeSpan.FromSeconds(10));
+        await HubRig.UntilAsync(
+            () => rig.Hub.GetDiagnostics().WaiterCount == 1
+                  && rig.Hub.Status(id).Sessions[0].Floor?.Handle == "p2"
+                  && rig.Hub.Status(id).Sessions[0].Participants[2].LastReadSequence == 0,
+            "p2 holding floor and p3 still waiting with untouched LastReadSequence");
+        Assert.False(waiting.IsCompleted);
+
+        // Second slice: Bob -> Carol at t=20
+        rig.Time.Advance(TimeSpan.FromSeconds(10));
+        DiscussionReadResult result = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(result.TimedOut);
+        Assert.Equal("p3", result.Session.Floor!.Handle);
+        Assert.Equal(5L, result.NextAfterSequence);
+    }
+
+    [Fact]
+    public async Task WaitForTurnWaiterLimitOnReEntryReturnsAccumulatedUnreadWithTimedOutTrue()
+    {
+        using var rig = new HubRig(settings => settings.MaxParticipantsPerSession = 10);
+        string s1 = rig.Hub.Create("primary", null, DiscussionTurnMode.RoundRobin).Session.Id;
+        string alice = rig.Join(s1, "Alice").Token;
+        rig.Join(s1, "Bob");
+        string carol = rig.Join(s1, "Carol").Token;
+
+        string s2 = rig.NewSession();
+        string[] s2Tokens = Enumerable.Range(0, 8).Select(i => rig.Join(s2, $"W2_{i}").Token).ToArray();
+        string s3 = rig.NewSession();
+        string[] s3Tokens = Enumerable.Range(0, 8).Select(i => rig.Join(s3, $"W3_{i}").Token).ToArray();
+
+        // Fill 15 of MaxTotalWaiters=16 slots in s2 and s3 first, then Carol takes slot 16 in s1.
+        var background = new List<Task<DiscussionReadResult>>();
+        for (int i = 0; i < 8; i++)
+        {
+            background.Add(rig.Hub.ReadAsync(s2, s2Tokens[i], afterSequence: 8, waitSeconds: 20));
+        }
+
+        for (int i = 0; i < 7; i++)
+        {
+            background.Add(rig.Hub.ReadAsync(s3, s3Tokens[i], afterSequence: 8, waitSeconds: 20));
+        }
+
+        Task<DiscussionReadResult> carolWait = rig.Hub.ReadAsync(s1, carol, afterSequence: 3, waitSeconds: 20, options: new DiscussionReadOptions(ExcludeEvents: true, WaitForTurn: true));
+        await rig.UntilWaitersAsync(16);
+
+        var hookEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var allowReentry = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        rig.Hub.BeforeFilteredWaitReentryHook = async () =>
+        {
+            hookEntered.TrySetResult();
+            await allowReentry.Task.ConfigureAwait(false);
+        };
+
+        // Waking Carol drops total waiters from 16 to 15; pause Carol outside locks while s3 takes slot 16.
+        rig.Post(s1, alice, "m1");
+        await hookEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        rig.Hub.BeforeFilteredWaitReentryHook = null;
+
+        background.Add(rig.Hub.ReadAsync(s3, s3Tokens[7], afterSequence: 8, waitSeconds: 20));
+        await rig.UntilWaitersAsync(16);
+        allowReentry.SetResult();
+
+        DiscussionReadResult result = await carolWait.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(result.TimedOut);
+        Assert.Equal(new[] { "m1" }, result.Messages.Select(m => m.Content));
+        Assert.Equal(4L, result.NextAfterSequence);
+        Assert.Equal(4L, result.Session.Participants.Single(p => p.Handle == "p3").LastReadSequence);
+
+        rig.Hub.Dispose();
+        foreach (Task<DiscussionReadResult> waiterTask in background)
+        {
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => waiterTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        }
+    }
 }

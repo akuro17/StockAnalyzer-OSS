@@ -298,7 +298,7 @@ internal sealed class DiscussionPipeHost : IDisposable
                 }
                 catch (DiscussionWireException error) when (error.Problem == DiscussionWireProblem.TooLong)
                 {
-                    await WriteReplyAsync(stream, DiscussionReply.Fail(DiscussionErrorCodes.LimitExceeded, "The request is larger than the link between the servers allows.", "arguments"), stop).ConfigureAwait(false);
+                    await WriteReplyAsync(stream, DiscussionReply.Fail(DiscussionErrorCodes.LimitExceeded, "The request is larger than the link between the servers allows.", DiscussionArgumentNames.Arguments), stop).ConfigureAwait(false);
                     return;
                 }
                 catch (Exception error) when (error is DiscussionWireException or OperationCanceledException or IOException)

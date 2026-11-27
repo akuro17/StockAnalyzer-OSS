@@ -198,7 +198,7 @@ internal sealed class DiscussionGatewayRouter : IDiscussionGateway, IDisposable
         {
             using JsonDocument document = JsonDocument.Parse(string.IsNullOrWhiteSpace(request.ArgumentsJson) ? "{}" : request.ArgumentsJson);
             return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("clientRequestId", out JsonElement id)
+                && document.RootElement.TryGetProperty(DiscussionArgumentNames.ClientRequestId, out JsonElement id)
                 && id.ValueKind == JsonValueKind.String
                 && !string.IsNullOrEmpty(id.GetString());
         }
@@ -246,7 +246,7 @@ internal sealed class DiscussionGatewayRouter : IDiscussionGateway, IDisposable
         {
             using JsonDocument document = JsonDocument.Parse(string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson);
             return document.RootElement.ValueKind == JsonValueKind.Object
-                && document.RootElement.TryGetProperty("commandTail", out JsonElement tail)
+                && document.RootElement.TryGetProperty(DiscussionArgumentNames.CommandTail, out JsonElement tail)
                 && tail.ValueKind == JsonValueKind.Number
                 && tail.TryGetInt32(out int value)
                     ? Math.Max(0, value)

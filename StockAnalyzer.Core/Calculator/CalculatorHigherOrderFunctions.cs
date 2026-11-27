@@ -62,7 +62,8 @@ internal static partial class CalculatorHigherOrderFunctions
         "opt_lbfgsb" or
         "fsolve" or
         "ode_bdf2" or
-        "inv_func";
+        "inv_func" or
+        "arr_zip_rolling_map";
 
     /// <summary>True for the higher-order functions whose argument 2 is a literal array declaring the state variables (<c>yVars</c>).</summary>
     public static bool DeclaresStateVariables(string name) => name is "ode_rk4" or "ode_rk45" or "ode_bdf2";
@@ -115,6 +116,9 @@ internal static partial class CalculatorHigherOrderFunctions
 
             case "arr_rolling_map":
                 return EvaluateArrayRollingMap(call, in scope, limits, ref budget, in boundScope, ref arena);
+
+            case "arr_zip_rolling_map":
+                return EvaluateArrayZipRollingMap(call, in scope, limits, ref budget, in boundScope, ref arena);
 
             case "quad2d_gk":
                 return EvaluateQuad2dGk(call, in scope, limits, ref budget, in boundScope, ref arena);

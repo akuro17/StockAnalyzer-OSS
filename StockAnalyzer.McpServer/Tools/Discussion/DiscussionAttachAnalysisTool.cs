@@ -55,7 +55,7 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool, IDynamicExecution
     public bool ResolveEffectiveIsHeavy(JsonElement arguments)
     {
         if (arguments.ValueKind == JsonValueKind.Object
-            && ToolArgs.HasNonNullProperty(arguments, "tool", out JsonElement toolEl)
+            && ToolArgs.HasNonNullProperty(arguments, DiscussionArgumentNames.Tool, out JsonElement toolEl)
             && toolEl.ValueKind == JsonValueKind.String)
         {
             string? toolName = toolEl.GetString()?.Trim();
@@ -65,7 +65,7 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool, IDynamicExecution
             {
                 if (inner.Tool is IDynamicExecutionProfileTool dynamicInner)
                 {
-                    JsonElement innerArgs = arguments.TryGetProperty("arguments", out JsonElement given) && given.ValueKind == JsonValueKind.Object
+                    JsonElement innerArgs = arguments.TryGetProperty(DiscussionArgumentNames.Arguments, out JsonElement given) && given.ValueKind == JsonValueKind.Object
                         ? given
                         : EmptyArguments;
                     return dynamicInner.ResolveEffectiveIsHeavy(innerArgs);
@@ -82,22 +82,22 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool, IDynamicExecution
         "{\"sessionId\":\"Sabcdef\",\"participantToken\":\"abcdef.AAAAAAAAAAAAAAAAAAAAAA\",\"tool\":\"sa_calculate_indicators\",\"arguments\":{\"symbol\":\"7203.T\"},\"analysisIntent\":\"TrendDetection\",\"note\":\"daily RSI\"}";
 
     public string InputSchemaJson => ToolSchema.Object()
-        .String("sessionId", "The discussion.", required: true)
-        .String("participantToken", "Your token from sa_discussion_join.", required: true)
-        .String("tool", "The analysis tool to run, for example sa_calculate_indicators.", required: true)
-        .FreeObject("arguments", "The arguments of that tool, as described by the tool itself (default: none).")
-        .String("analysisIntent", "[Recommended] Purpose or hypothesis of the analysis (e.g. TrendDetection, ReversalDetection, OverboughtOversold, MomentumAnalysis, DivergenceDetection, VolatilityAnalysis, SupportResistance, VolumeStructure, RelativeStrength, RegimeClassification, RiskAssessment).")
-        .String("note", $"A short remark shown with the context (at most {DiscussionLimits.NoteMaxChars} characters).")
+        .String(DiscussionArgumentNames.SessionId, "The discussion.", required: true)
+        .String(DiscussionArgumentNames.ParticipantToken, "Your token from sa_discussion_join.", required: true)
+        .String(DiscussionArgumentNames.Tool, "The analysis tool to run, for example sa_calculate_indicators.", required: true)
+        .FreeObject(DiscussionArgumentNames.Arguments, "The arguments of that tool, as described by the tool itself (default: none).")
+        .String(DiscussionArgumentNames.AnalysisIntent, "[Recommended] Purpose or hypothesis of the analysis (e.g. TrendDetection, ReversalDetection, OverboughtOversold, MomentumAnalysis, DivergenceDetection, VolatilityAnalysis, SupportResistance, VolumeStructure, RelativeStrength, RegimeClassification, RiskAssessment).")
+        .String(DiscussionArgumentNames.Note, $"A short remark shown with the context (at most {DiscussionLimits.NoteMaxChars} characters).")
         .Build();
 
     public async Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken)
     {
-        string sessionId = ToolArgs.String(arguments, "sessionId")!;
-        string token = ToolArgs.String(arguments, "participantToken")!;
-        string toolName = ToolArgs.String(arguments, "tool")!;
-        string? note = ToolArgs.String(arguments, "note");
-        string? analysisIntent = ToolArgs.String(arguments, "analysisIntent");
-        JsonElement innerArguments = arguments.TryGetProperty("arguments", out JsonElement given) && given.ValueKind == JsonValueKind.Object ? given : EmptyArguments;
+        string sessionId = ToolArgs.String(arguments, DiscussionArgumentNames.SessionId)!;
+        string token = ToolArgs.String(arguments, DiscussionArgumentNames.ParticipantToken)!;
+        string toolName = ToolArgs.String(arguments, DiscussionArgumentNames.Tool)!;
+        string? note = ToolArgs.String(arguments, DiscussionArgumentNames.Note);
+        string? analysisIntent = ToolArgs.String(arguments, DiscussionArgumentNames.AnalysisIntent);
+        JsonElement innerArguments = arguments.TryGetProperty(DiscussionArgumentNames.Arguments, out JsonElement given) && given.ValueKind == JsonValueKind.Object ? given : EmptyArguments;
 
         string? normalizedIntent = null;
         if (analysisIntent is not null)
@@ -107,7 +107,7 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool, IDynamicExecution
                 throw new ToolException(
                     ToolErrorCodes.InvalidArgument,
                     $"analysisIntent must be at most {DiscussionEvidenceLimits.MaxAnalysisIntentChars} characters without control characters.",
-                    "analysisIntent");
+                    DiscussionArgumentNames.AnalysisIntent);
             }
         }
 
@@ -124,7 +124,7 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool, IDynamicExecution
         }
         catch (ToolException error)
         {
-            throw new ToolException(error.Code, error.Message, error.Parameter is null ? "arguments" : "arguments." + error.Parameter, error.Hint);
+            throw new ToolException(error.Code, error.Message, error.Parameter is null ? DiscussionArgumentNames.Arguments : $"{DiscussionArgumentNames.Arguments}.{error.Parameter}", error.Hint);
         }
 
         string canonical;
@@ -143,18 +143,18 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool, IDynamicExecution
         string commit = Build(writer =>
         {
             WriteIdentity(writer, sessionId, token);
-            writer.WriteString("tool", toolName);
-            writer.WritePropertyName("arguments");
+            writer.WriteString(DiscussionArgumentNames.Tool, toolName);
+            writer.WritePropertyName(DiscussionArgumentNames.Arguments);
             writer.WriteRawValue(canonical);
-            writer.WriteString("result", result);
+            writer.WriteString(DiscussionArgumentNames.Result, result);
             if (note is not null)
             {
-                writer.WriteString("note", note);
+                writer.WriteString(DiscussionArgumentNames.Note, note);
             }
 
             if (normalizedIntent is not null)
             {
-                writer.WriteString("analysisIntent", normalizedIntent);
+                writer.WriteString(DiscussionArgumentNames.AnalysisIntent, normalizedIntent);
             }
         });
         return await DiscussionToolCalls.ExecuteAsync(_gateway, DiscussionOperations.AttachCommit, _identity, commit, cancellationToken).ConfigureAwait(false);
@@ -170,7 +170,7 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool, IDynamicExecution
         }
 
         string allowed = string.Join(", ", registry.CallableTools.Where(IsAllowed).Select(t => t.Tool.Name).OrderBy(name => name, StringComparer.Ordinal));
-        throw new ToolException(ToolErrorCodes.InvalidArgument, "tool is not an analysis tool that can be attached.", "tool", $"Allowed tools: {allowed}.");
+        throw new ToolException(ToolErrorCodes.InvalidArgument, "tool is not an analysis tool that can be attached.", DiscussionArgumentNames.Tool, $"Allowed tools: {allowed}.");
     }
 
     private static bool IsAllowed(RegisteredTool registered)
@@ -180,8 +180,8 @@ internal sealed class DiscussionAttachAnalysisTool : IMcpTool, IDynamicExecution
 
     private static void WriteIdentity(Utf8JsonWriter writer, string sessionId, string token)
     {
-        writer.WriteString("sessionId", sessionId);
-        writer.WriteString("participantToken", token);
+        writer.WriteString(DiscussionArgumentNames.SessionId, sessionId);
+        writer.WriteString(DiscussionArgumentNames.ParticipantToken, token);
     }
 
     /// <summary>Builds a JSON object: <paramref name="write"/> adds the members; the braces are written here.</summary>

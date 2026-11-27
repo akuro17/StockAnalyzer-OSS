@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Text.Json;
 using StockAnalyzer.Core.Discussion;
 using StockAnalyzer.McpServer;
@@ -70,7 +71,7 @@ public sealed class DiscussionToolsTests : IDisposable
     [Fact]
     public async Task WithoutTheFlagNoDiscussionToolExistsAndTheDiscussionSettingsAreNeverRead()
     {
-        McpServerRuntime runtime = await StartAsync(enableDiscussion: false, ("Discussion:MaxWaitSeconds", 99));
+        McpServerRuntime runtime = await StartAsync(enableDiscussion: false, ("Discussion:MaxWaitSeconds", 121));
 
         using JsonDocument list = JsonDocument.Parse((await runtime.Dispatcher.DispatchAsync("""{"jsonrpc":"2.0","id":2,"method":"tools/list"}""", CancellationToken.None))!);
         string[] names = list.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()!).ToArray();
@@ -85,9 +86,9 @@ public sealed class DiscussionToolsTests : IDisposable
     public void WithTheFlagABadDiscussionSettingStopsTheStartUpAndNamesTheKey()
     {
         var error = Assert.Throws<DiscussionLimitsException>(() => McpServerComposition.Create(
-            McpTestSupport.EmptyDataConfiguration(_emptyRoot, ("Discussion:MaxWaitSeconds", 99)), new LogSink(new StringWriter()), enableDiscussion: true));
+            McpTestSupport.EmptyDataConfiguration(_emptyRoot, ("Discussion:MaxWaitSeconds", 121)), new LogSink(new StringWriter()), enableDiscussion: true));
 
-        Assert.Contains("AiIntegration:Discussion:MaxWaitSeconds is 99", error.Message, StringComparison.Ordinal);
+        Assert.Contains("AiIntegration:Discussion:MaxWaitSeconds is 121", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -135,6 +136,37 @@ public sealed class DiscussionToolsTests : IDisposable
             Assert.Equal(attach, t.Tool.IsHeavy);
             Assert.False(t.Tool.IsExecution);
         });
+    }
+
+    [Fact]
+    public async Task AllNineDiscussionToolArgumentsAndDiscussionArgumentNamesMatchBidirectionally()
+    {
+        McpServerRuntime runtime = await StartAsync();
+
+        string[] constantKeys = typeof(DiscussionArgumentNames)
+            .GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)
+            .Where(field => field.IsLiteral && !field.IsInitOnly && field.FieldType == typeof(string))
+            .Select(field => (string)field.GetRawConstantValue()!)
+            .ToArray();
+
+        Assert.NotEmpty(constantKeys);
+        Assert.Equal(constantKeys.Length, constantKeys.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal("result", DiscussionArgumentNames.Result);
+
+        var schemaPropertyUnion = new HashSet<string>(StringComparer.Ordinal);
+        foreach (RegisteredTool registered in runtime.Tools.Tools.Where(t => t.Tool.Name.StartsWith("sa_discussion_", StringComparison.Ordinal)))
+        {
+            foreach (JsonProperty property in registered.Schema.GetProperty("properties").EnumerateObject())
+            {
+                schemaPropertyUnion.Add(property.Name);
+                Assert.Contains(property.Name, constantKeys);
+            }
+        }
+
+        string[] expectedSchemaKeys = constantKeys
+            .Where(key => !string.Equals(key, DiscussionArgumentNames.Result, StringComparison.Ordinal))
+            .ToArray();
+        Assert.All(expectedSchemaKeys, key => Assert.Contains(key, schemaPropertyUnion));
     }
 
     [Fact]
@@ -424,8 +456,31 @@ public sealed class DiscussionToolsTests : IDisposable
         Assert.True(McpHelpText.TryTool(with.Tools, includeExecutionTools: false, "sa_discussion_read", out string text, out string error), error);
         Assert.Contains("  limit (integer, optional, default 20, minimum 1, maximum 50)", text);
         Assert.Contains("  waitSeconds (integer, optional, default 0, minimum 0, maximum 20)", text);
+        Assert.Contains("  waitForTurn (boolean, optional)", text);
         Assert.Contains("  turnMode", McpHelpText.TryTool(with.Tools, false, "sa_discussion_create", out string create, out _) ? create : string.Empty);
         Assert.False(McpHelpText.TryTool(without.Tools, includeExecutionTools: false, "sa_discussion_read", out _, out _));
+    }
+
+    [Fact]
+    public async Task ReadWithWaitForTurnViaMcpWaitsUntilRoundRobinTurnArrives()
+    {
+        McpServerRuntime runtime = await StartAsync();
+        using JsonDocument created = await CallAsync(runtime, "sa_discussion_create", """{"title":"turn test","turnMode":"roundRobin"}""");
+        string sessionId = McpTestSupport.Structured(created).GetProperty("sessionId").GetString()!;
+        (string aliceToken, _) = await JoinAsync(runtime, sessionId, "Alice");
+        (string bobToken, _) = await JoinAsync(runtime, sessionId, "Bob");
+
+        Task<JsonDocument> bobRead = CallAsync(runtime, "sa_discussion_read", $$"""{"sessionId":"{{sessionId}}","participantToken":"{{bobToken}}","afterSequence":2,"waitSeconds":5,"waitForTurn":true}""");
+        await Task.Delay(50);
+        Assert.False(bobRead.IsCompleted);
+
+        using JsonDocument posted = await CallAsync(runtime, "sa_discussion_post", $$"""{"sessionId":"{{sessionId}}","participantToken":"{{aliceToken}}","content":"your turn bob"}""");
+        using JsonDocument readDoc = await bobRead.WaitAsync(TimeSpan.FromSeconds(5));
+        JsonElement structured = McpTestSupport.Structured(readDoc);
+
+        Assert.False(structured.GetProperty("timedOut").GetBoolean());
+        Assert.Equal("p2", structured.GetProperty("session").GetProperty("floor").GetProperty("handle").GetString());
+        Assert.Equal(new[] { "your turn bob" }, structured.GetProperty("messages").EnumerateArray().Select(m => m.GetProperty("content").GetString()));
     }
 
     [Theory]

@@ -78,16 +78,14 @@ public static class DtwMath
             return ComputeCore(p, q, radius, prev, curr);
         }
 
-        double[] poolPrev = ArrayPool<double>.Shared.Rent(m);
-        double[] poolCurr = ArrayPool<double>.Shared.Rent(m);
+        double[] pool = ArrayPool<double>.Shared.Rent(m * 2);
         try
         {
-            return ComputeCore(p, q, radius, poolPrev.AsSpan(0, m), poolCurr.AsSpan(0, m));
+            return ComputeCore(p, q, radius, pool.AsSpan(0, m), pool.AsSpan(m, m));
         }
         finally
         {
-            ArrayPool<double>.Shared.Return(poolPrev);
-            ArrayPool<double>.Shared.Return(poolCurr);
+            ArrayPool<double>.Shared.Return(pool);
         }
     }
 

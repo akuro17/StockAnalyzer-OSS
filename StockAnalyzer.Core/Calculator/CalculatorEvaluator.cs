@@ -778,6 +778,11 @@ internal static class CalculatorEvaluator
             return arrayOpOutcome;
         }
 
+        if (CalculatorArrayFunctions.TryEvaluateV9(call.Name, call.NamePosition, rawArgs, ref budget, ref arena, out DslEvalOutcome arrayV9Outcome))
+        {
+            return arrayV9Outcome;
+        }
+
         if (CalculatorMatrixDataFunctions.TryEvaluate(call.Name, call.NamePosition, rawArgs, ref arena, out DslEvalOutcome matrixDataOutcome))
         {
             return matrixDataOutcome;

@@ -355,7 +355,30 @@ internal static partial class CalculatorArrayFunctions
         "granger_test" or
         "johansen_test" or
         "arima_fit" or
-        "arima_forecast";
+        "arima_forecast" or
+        "arr_argwhere" or
+        "arr_bars_since" or
+        "arr_value_when" or
+        "arr_ffill" or
+        "cross_over" or
+        "cross_under" or
+        "arr_rolling_max" or
+        "arr_rolling_min" or
+        "arr_rolling_bars_since_max" or
+        "arr_rolling_bars_since_min" or
+        "arr_rolling_corr" or
+        "arr_zip_rolling_map" or
+        "align_asof" or
+        "arr_session_range" or
+        "pivot_high_causal" or
+        "pivot_low_causal" or
+        "zigzag_causal" or
+        "rdp_simplify" or
+        "pip_extract" or
+        "vp_bins" or
+        "cusum_filter" or
+        "arr_interp_at" or
+        "vp_value_area";
 
     public static DslEvalOutcome EvaluateArrayLoweredVariadic(
         string name,

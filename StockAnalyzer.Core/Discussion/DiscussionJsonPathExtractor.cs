@@ -328,5 +328,5 @@ internal static class DiscussionJsonPathExtractor
         return true;
     }
 
-    private static DiscussionException Invalid(string message) => new(DiscussionErrorCodes.InvalidArgument, message, "paths");
+    private static DiscussionException Invalid(string message) => new(DiscussionErrorCodes.InvalidArgument, message, DiscussionArgumentNames.Paths);
 }

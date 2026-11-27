@@ -94,21 +94,21 @@ public sealed class DiscussionWireTests
     [InlineData("[1,2]", "Malformed")]
     [InlineData("""{"op":"read","args":{}}""", "Malformed")]
     [InlineData("""{"wire":"1","op":"read","args":{}}""", "Malformed")]
-    [InlineData("""{"wire":3,"op":"read","args":{}}""", "VersionMismatch")]
-    [InlineData("""{"wire":2,"args":{}}""", "Malformed")]
-    [InlineData("""{"wire":2,"op":"read"}""", "Malformed")]
-    [InlineData("""{"wire":2,"op":"read","args":[]}""", "Malformed")]
+    [InlineData("""{"wire":2,"op":"read","args":{}}""", "VersionMismatch")]
+    [InlineData("""{"wire":3,"args":{}}""", "Malformed")]
+    [InlineData("""{"wire":3,"op":"read"}""", "Malformed")]
+    [InlineData("""{"wire":3,"op":"read","args":[]}""", "Malformed")]
     public void ABadRequestLineIsRefusedWithItsKind(string line, string expected)
     {
         Assert.Equal(Enum.Parse<DiscussionWireProblem>(expected), ProblemOf(() => DiscussionWire.ParseRequest(Encoding.UTF8.GetBytes(line))));
     }
 
     [Theory]
-    [InlineData("""{"wire":2,"ok":true}""", "Malformed")]
-    [InlineData("""{"wire":2,"ok":true,"result":[]}""", "Malformed")]
-    [InlineData("""{"wire":2,"ok":false}""", "Malformed")]
-    [InlineData("""{"wire":2,"ok":false,"error":{"code":"X"}}""", "Malformed")]
-    [InlineData("""{"wire":2,"ok":"yes","result":{}}""", "Malformed")]
+    [InlineData("""{"wire":3,"ok":true}""", "Malformed")]
+    [InlineData("""{"wire":3,"ok":true,"result":[]}""", "Malformed")]
+    [InlineData("""{"wire":3,"ok":false}""", "Malformed")]
+    [InlineData("""{"wire":3,"ok":false,"error":{"code":"X"}}""", "Malformed")]
+    [InlineData("""{"wire":3,"ok":"yes","result":{}}""", "Malformed")]
     [InlineData("""{"wire":9,"ok":true,"result":{}}""", "VersionMismatch")]
     [InlineData("not json at all", "Malformed")]
     public void ABadReplyLineIsRefusedWithItsKind(string line, string expected)

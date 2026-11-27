@@ -223,21 +223,22 @@ jobs:
       shell: bash
       env:
         TAG_NAME: ${{ github.ref_name }}
+        REPO: ${{ github.repository }}
       run: |
         git tag -f latest-dev "${TAG_NAME}^{commit}"
         git push -f origin refs/tags/latest-dev
 
         {
-          echo "Mirror of the latest official release: **${TAG_NAME}**"
+          echo "Rolling download link pointing to the latest build (**${TAG_NAME}**)."
           echo ""
-          cat "${RUNNER_TEMP}/release_notes.md"
+          echo "See the [${TAG_NAME} release](https://github.com/${REPO}/releases/tag/${TAG_NAME}) for full release notes and changelog."
         } > "${RUNNER_TEMP}/latest_dev_notes.md"
 
     - name: Update latest-dev release
       uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
       with:
         tag_name: latest-dev
-        name: "StockAnalyzer OSS - Latest Official Release (${{ github.ref_name }})"
+        name: "StockAnalyzer OSS - Development Build (Latest)"
         body_path: ${{ runner.temp }}/latest_dev_notes.md
         draft: false
         prerelease: true

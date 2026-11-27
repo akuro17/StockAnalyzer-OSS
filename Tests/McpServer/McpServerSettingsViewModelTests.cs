@@ -57,6 +57,8 @@ public sealed class McpServerSettingsViewModelTests : IDisposable
         Assert.Equal(6, vm.MaxParticipantsPerSession);
         Assert.Equal(300, vm.MaxMessagesPerSession);
         Assert.Equal(20, vm.MaxWaitSeconds);
+        Assert.Equal(0, vm.MaxWaitSecondsMinimum);
+        Assert.Equal(120, vm.MaxWaitSecondsMaximum);
         Assert.False(vm.IsModified);
         Assert.True(vm.IsValid);
     }
@@ -162,6 +164,22 @@ public sealed class McpServerSettingsViewModelTests : IDisposable
         vm.MaxActiveSessions = 5;
         Assert.True(string.IsNullOrEmpty(vm.MaxActiveSessionsError));
         Assert.True(vm.IsValid);
+    }
+
+    [Fact]
+    public async Task ViewModel_MaxWaitSeconds_FollowsExpandedWaitBand()
+    {
+        var manager = new McpServerSettingsManager(_testFilePath);
+        using var vm = new McpServerSettingsViewModel(manager);
+        await vm.LoadTask;
+
+        vm.MaxWaitSeconds = DiscussionLimits.WaitBand.Maximum;
+        Assert.True(string.IsNullOrEmpty(vm.MaxWaitSecondsError));
+        Assert.True(vm.IsValid);
+
+        vm.MaxWaitSeconds = DiscussionLimits.WaitBand.Maximum + 1;
+        Assert.False(string.IsNullOrEmpty(vm.MaxWaitSecondsError));
+        Assert.False(vm.IsValid);
     }
 
     [Fact]

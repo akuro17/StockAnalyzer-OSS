@@ -110,7 +110,7 @@ public static class DiscussionLimits
     public static readonly DiscussionBand ClosedRetentionBand = new(0, 3600);
     public static readonly DiscussionBand AwayBand = new(10, 3600);
     public static readonly DiscussionBand FloorTimeoutBand = new(10, 600);
-    public static readonly DiscussionBand WaitBand = new(0, 30);
+    public static readonly DiscussionBand WaitBand = new(0, 120);
     public static readonly DiscussionBand PostsPerMinuteBand = new(1, 120);
 
     /// <summary>The upper end of <see cref="DiscussionSettings.DefaultReadLimit"/> is <see cref="DiscussionSettings.MaxReadLimit"/> itself.</summary>
@@ -129,7 +129,7 @@ public static class DiscussionLimits
     // ---- Fixed values (spec section 4.2) -----------------------------------------------------------------------------------------
 
     /// <summary>Hub/remote handshake version; a mismatch is HUB_UNAVAILABLE.</summary>
-    public const int WireVersion = 2;
+    public const int WireVersion = 3;
 
     /// <summary>Request/reply line bound on the pipe.</summary>
     public const int WireMaxLineBytes = 5242880;

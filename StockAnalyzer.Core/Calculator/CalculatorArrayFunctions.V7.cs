@@ -81,28 +81,43 @@ internal static partial class CalculatorArrayFunctions
             return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, "Array index out of bounds in 'arr_take'.", name);
         }
 
-        Span<int> validated = stackalloc int[outputLength];
-        ReadOnlySpan<decimal> indices = arena.GetSlice(indicesArg.Array);
-        for (int k = 0; k < outputLength; k++)
+        int[]? rented = outputLength <= MathBufferLimits.StackAllocThreshold
+            ? null
+            : System.Buffers.ArrayPool<int>.Shared.Rent(outputLength);
+        Span<int> validated = rented is null
+            ? stackalloc int[outputLength]
+            : rented.AsSpan(0, outputLength);
+        try
         {
-            if (!DslMathValidation.TryReadInt32InRange(indices[k], 0, sourceLength - 1, out validated[k]))
+            ReadOnlySpan<decimal> indices = arena.GetSlice(indicesArg.Array);
+            for (int k = 0; k < outputLength; k++)
             {
-                return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, "Array index out of bounds in 'arr_take'.", name);
+                if (!DslMathValidation.TryReadInt32InRange(indices[k], 0, sourceLength - 1, out validated[k]))
+                {
+                    return DslEvalOutcome.Fail(CalculatorErrorCode.DomainError, position, "Array index out of bounds in 'arr_take'.", name);
+                }
+            }
+
+            if (!arena.TryAllocate(outputLength, out DslArrayHandle handle, out Span<decimal> output))
+            {
+                return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, "Array arena budget exceeded in 'arr_take'.", name);
+            }
+
+            ReadOnlySpan<decimal> source = arena.GetSlice(arrayArg.Array);
+            for (int k = 0; k < outputLength; k++)
+            {
+                output[k] = NormalizeZero(source[validated[k]]);
+            }
+
+            return DslEvalOutcome.OkArray(handle);
+        }
+        finally
+        {
+            if (rented is not null)
+            {
+                System.Buffers.ArrayPool<int>.Shared.Return(rented, clearArray: false);
             }
         }
-
-        if (!arena.TryAllocate(outputLength, out DslArrayHandle handle, out Span<decimal> output))
-        {
-            return DslEvalOutcome.Fail(CalculatorErrorCode.BudgetExceeded, position, "Array arena budget exceeded in 'arr_take'.", name);
-        }
-
-        ReadOnlySpan<decimal> source = arena.GetSlice(arrayArg.Array);
-        for (int k = 0; k < outputLength; k++)
-        {
-            output[k] = NormalizeZero(source[validated[k]]);
-        }
-
-        return DslEvalOutcome.OkArray(handle);
     }
 
     /// <summary>

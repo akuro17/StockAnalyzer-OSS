@@ -47,13 +47,13 @@ internal static class DiscussionPipeClient
         }
         catch (Exception error) when (error is JsonException or ArgumentException or InvalidOperationException)
         {
-            return DiscussionReply.Fail(DiscussionErrorCodes.InvalidArgument, "The arguments are not valid JSON.", "arguments");
+            return DiscussionReply.Fail(DiscussionErrorCodes.InvalidArgument, "The arguments are not valid JSON.", DiscussionArgumentNames.Arguments);
         }
 
         if (bytes.Length - 1 > DiscussionLimits.WireMaxLineBytes)
         {
             return DiscussionReply.Fail(
-                DiscussionErrorCodes.LimitExceeded, "The request is larger than the link between the servers allows.", "arguments", "Send less, for example a shorter note or a smaller result.");
+                DiscussionErrorCodes.LimitExceeded, "The request is larger than the link between the servers allows.", DiscussionArgumentNames.Arguments, "Send less, for example a shorter note or a smaller result.");
         }
 
         using NamedPipeClientStream client = NewClient(pipeName);

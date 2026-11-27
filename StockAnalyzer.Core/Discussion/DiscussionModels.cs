@@ -143,6 +143,50 @@ public static class DiscussionNames
     public static string FormatUtc(DateTimeOffset value) => value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
 }
 
+/// <summary>
+/// Canonical JSON argument keys accepted by the nine MCP discussion tools and dispatched through <see cref="IDiscussionGateway"/>.
+/// Covers the 32 top-level public tool input arguments plus the internal <c>attach_commit</c> wire field <see cref="Result"/>.
+/// Nested <c>interpretation</c> subfields remain outside this top-level argument registry.
+/// </summary>
+public static class DiscussionArgumentNames
+{
+    public const string SessionId = "sessionId";
+    public const string ParticipantToken = "participantToken";
+    public const string Title = "title";
+    public const string Topic = "topic";
+    public const string TurnMode = "turnMode";
+    public const string DisplayName = "displayName";
+    public const string Content = "content";
+    public const string Pass = "pass";
+    public const string ReplyToSequence = "replyToSequence";
+    public const string ContextIds = "contextIds";
+    public const string BasedOnSequence = "basedOnSequence";
+    public const string ClientRequestId = "clientRequestId";
+    public const string Interpretation = "interpretation";
+    public const string AfterSequence = "afterSequence";
+    public const string Limit = "limit";
+    public const string WaitSeconds = "waitSeconds";
+    public const string Compact = "compact";
+    public const string HeaderMode = "headerMode";
+    public const string ExcludeEvents = "excludeEvents";
+    public const string Tail = "tail";
+    public const string View = "view";
+    public const string WaitForTurn = "waitForTurn";
+    public const string ContextId = "contextId";
+    public const string IncludeResult = "includeResult";
+    public const string Paths = "paths";
+    public const string AuditTail = "auditTail";
+    public const string CommandTail = "commandTail";
+    public const string IncludeContexts = "includeContexts";
+    public const string Tool = "tool";
+    public const string Arguments = "arguments";
+    public const string AnalysisIntent = "analysisIntent";
+    public const string Note = "note";
+
+    /// <summary>Internal wire-only payload key sent by <c>attach_commit</c>; not a public MCP input schema argument.</summary>
+    public const string Result = "result";
+}
+
 // ---- Results (immutable) ------------------------------------------------------------------------------------------------------------
 
 /// <summary>The participant row of a session header.</summary>
@@ -263,15 +307,16 @@ public sealed record DiscussionReadMessage(
     DiscussionInterpretation? Interpretation = null);
 
 /// <summary>
-/// The optional shaping of a read: leave out the server events, or read only the newest messages. A read without options (or with the defaults) takes the unchanged
-/// path of the board.
+/// The optional shaping of a read: leave out the server events, read only the newest messages, or wait until the caller holds the turn in round-robin mode.
+/// A read without options (or with the defaults) takes the unchanged path of the board.
 /// </summary>
 /// <param name="ExcludeEvents">True leaves out the messages of kind <see cref="DiscussionMessageKind.Event"/> (joined, left, passed, floor passed, closed); peer messages and analysis entries stay.</param>
-/// <param name="Tail">When set, the newest messages that pass the filter (1 to the read limit of the board), in ascending order; it replaces <c>limit</c> and cannot be combined with an after-sequence or a wait.</param>
-public sealed record DiscussionReadOptions(bool ExcludeEvents = false, int? Tail = null)
+/// <param name="Tail">When set, the newest messages that pass the filter (1 to the read limit of the board), in ascending order; it replaces <c>limit</c> and cannot be combined with an after-sequence, a wait or <c>WaitForTurn</c>.</param>
+/// <param name="WaitForTurn">True waits until the caller holds the floor in round-robin mode (or the session closes), returning all filtered unread messages accumulated when the turn arrives or on timeout.</param>
+public sealed record DiscussionReadOptions(bool ExcludeEvents = false, int? Tail = null, bool WaitForTurn = false)
 {
     /// <summary>True when the options change the read; false for the defaults.</summary>
-    public bool IsActive => ExcludeEvents || Tail is not null;
+    public bool IsActive => ExcludeEvents || Tail is not null || WaitForTurn;
 }
 
 public sealed record DiscussionReadResult(

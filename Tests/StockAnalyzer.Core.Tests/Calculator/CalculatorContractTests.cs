@@ -462,10 +462,10 @@ public sealed class CalculatorContractTests
             ("dft_mag", 1, 1, "dft_mag(series)", false),
         };
 
-        // V1-V5 prefix of 437 entries remains frozen in order; DSL v6 appended 287 entries (total 724); DSL v7 appended 16 (total 740); DSL v8 appended 20 (total 760).
+        // V1-V5 prefix of 437 entries remains frozen in order; DSL v6 appended 287 entries (total 724); DSL v7 appended 16 (total 740); DSL v8 appended 20 (total 760); DSL v9 appended 23 (total 783); DSL v10 appended 2 (total 785).
         Assert.Equal(437, expected.Length);
-        Assert.Equal(760, ExpressionCalculator.Functions.Count);
-        Assert.Equal(760, ExpressionCalculator.Functions.Select(f => f.Name).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(785, ExpressionCalculator.Functions.Count);
+        Assert.Equal(785, ExpressionCalculator.Functions.Select(f => f.Name).Distinct(StringComparer.Ordinal).Count());
         foreach (CalculatorFunctionInfo fn in ExpressionCalculator.Functions.Skip(532))
         {
             Assert.False(string.IsNullOrWhiteSpace(fn.Signature));
@@ -566,6 +566,69 @@ public sealed class CalculatorContractTests
             Assert.False(actual.IsVariadic);
             Assert.False(actual.IsStatisticalVariadic);
             Assert.Equal(expectedV8[i].ReturnsArray, CalculatorArrayFunctions.ReturnsArray(actual.Name));
+        }
+    }
+
+    [Fact]
+    public void V9BuiltinFunctionsAreAppendedAtIndices760To782()
+    {
+        var expectedV9 = new (string Name, int Min, int Max, string Signature, bool ReturnsArray)[]
+        {
+            ("arr_argwhere", 1, 1, "arr_argwhere(cond)", true),
+            ("arr_bars_since", 1, 2, "arr_bars_since(cond[, fill])", true),
+            ("arr_value_when", 3, 4, "arr_value_when(cond, src, occurrence[, fill])", true),
+            ("arr_ffill", 2, 3, "arr_ffill(src, validMask[, fill])", true),
+            ("cross_over", 2, 2, "cross_over(a, b)", true),
+            ("cross_under", 2, 2, "cross_under(a, b)", true),
+            ("arr_rolling_max", 3, 3, "arr_rolling_max(a, w, fill)", true),
+            ("arr_rolling_min", 3, 3, "arr_rolling_min(a, w, fill)", true),
+            ("arr_rolling_bars_since_max", 3, 3, "arr_rolling_bars_since_max(a, w, fill)", true),
+            ("arr_rolling_bars_since_min", 3, 3, "arr_rolling_bars_since_min(a, w, fill)", true),
+            ("arr_rolling_corr", 4, 4, "arr_rolling_corr(x, y, w, fill)", true),
+            ("arr_zip_rolling_map", 4, 5, "arr_zip_rolling_map(expr, winVars, arrs, w[, fill])", true),
+            ("align_asof", 3, 6, "align_asof(targetTimes, srcTimes, srcVals[, fill, allowExactMatch, maxTolerance])", true),
+            ("arr_session_range", 5, 7, "arr_session_range(high, low, sessionIds, openingBars, kind[, fill, skipFirstSession])", true),
+            ("pivot_high_causal", 3, 4, "pivot_high_causal(high, left, right[, fill])", true),
+            ("pivot_low_causal", 3, 4, "pivot_low_causal(low, left, right[, fill])", true),
+            ("zigzag_causal", 4, 7, "zigzag_causal(high, low, threshold, mode[, outputKind, atrSeries, fill])", true),
+            ("rdp_simplify", 2, 3, "rdp_simplify(series, epsilon[, metric])", true),
+            ("pip_extract", 2, 3, "pip_extract(series, k[, metric])", true),
+            ("vp_bins", 3, 3, "vp_bins(prices, volumes, nBins)", true),
+            ("vp_poc", 3, 3, "vp_poc(prices, volumes, nBins)", false),
+            ("dtw_distance", 2, 3, "dtw_distance(series, template[, band])", false),
+            ("cusum_filter", 2, 2, "cusum_filter(series, threshold)", true),
+        };
+
+        Assert.Equal(23, expectedV9.Length);
+        for (int i = 0; i < expectedV9.Length; i++)
+        {
+            CalculatorFunctionInfo actual = ExpressionCalculator.Functions[760 + i];
+            Assert.Equal(expectedV9[i].Name, actual.Name);
+            Assert.Equal(expectedV9[i].Min, actual.MinArguments);
+            Assert.Equal(expectedV9[i].Max, actual.MaxArguments);
+            Assert.Equal(expectedV9[i].Signature, actual.Signature);
+            Assert.False(actual.IsVariadic);
+            Assert.False(actual.IsStatisticalVariadic);
+            Assert.Equal(expectedV9[i].ReturnsArray, CalculatorArrayFunctions.ReturnsArray(actual.Name));
+        }
+
+        var expectedV10 = new (string Name, int Min, int Max, string Signature, bool ReturnsArray)[]
+        {
+            ("arr_interp_at", 2, 3, "arr_interp_at(indices, src[, fill])", true),
+            ("vp_value_area", 3, 4, "vp_value_area(prices, volumes, nBins[, ratio])", true),
+        };
+
+        Assert.Equal(2, expectedV10.Length);
+        for (int i = 0; i < expectedV10.Length; i++)
+        {
+            CalculatorFunctionInfo actual = ExpressionCalculator.Functions[783 + i];
+            Assert.Equal(expectedV10[i].Name, actual.Name);
+            Assert.Equal(expectedV10[i].Min, actual.MinArguments);
+            Assert.Equal(expectedV10[i].Max, actual.MaxArguments);
+            Assert.Equal(expectedV10[i].Signature, actual.Signature);
+            Assert.False(actual.IsVariadic);
+            Assert.False(actual.IsStatisticalVariadic);
+            Assert.Equal(expectedV10[i].ReturnsArray, CalculatorArrayFunctions.ReturnsArray(actual.Name));
         }
     }
 

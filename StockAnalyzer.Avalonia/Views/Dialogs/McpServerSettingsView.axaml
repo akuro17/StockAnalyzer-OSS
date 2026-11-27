@@ -466,7 +466,7 @@
                             <Grid RowDefinitions="Auto,Auto" RowSpacing="4">
                                 <TextBlock Text="{l:Localize McpServer_Field_MaxWaitSeconds}" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                 <NumericUpDown Grid.Row="1" HorizontalAlignment="Right" Classes="SettingInput"
-                                               Value="{Binding MaxWaitSeconds}" Minimum="0" Maximum="30" Increment="1" FormatString="0"
+                                               Value="{Binding MaxWaitSeconds}" Minimum="{Binding MaxWaitSecondsMinimum}" Maximum="{Binding MaxWaitSecondsMaximum}" Increment="1" FormatString="0"
                                                AutomationProperties.AutomationId="McpServerSettings_MaxWaitSeconds"/>
                             </Grid>
                             <Separator Background="{DynamicResource Brush.Border.Primary}" Margin="0,4"/>

@@ -176,13 +176,13 @@ public sealed class DiscussionHub : IDisposable
     // ---- Errors -----------------------------------------------------------------------------------------------------------------------
 
     private static DiscussionException NotFound()
-        => new(DiscussionErrorCodes.DiscussionNotFound, "The discussion does not exist or has been removed.", "sessionId");
+        => new(DiscussionErrorCodes.DiscussionNotFound, "The discussion does not exist or has been removed.", DiscussionArgumentNames.SessionId);
 
     private static DiscussionException Closed()
-        => new(DiscussionErrorCodes.DiscussionClosed, "The discussion is closed.", "sessionId", "Read it to see the transcript; create a new discussion to continue.");
+        => new(DiscussionErrorCodes.DiscussionClosed, "The discussion is closed.", DiscussionArgumentNames.SessionId, "Read it to see the transcript; create a new discussion to continue.");
 
     private static DiscussionException NotJoined(string? hint = null)
-        => new(DiscussionErrorCodes.ParticipantNotJoined, "The participant token is not valid for this discussion.", "participantToken", hint ?? "Join the discussion first.");
+        => new(DiscussionErrorCodes.ParticipantNotJoined, "The participant token is not valid for this discussion.", DiscussionArgumentNames.ParticipantToken, hint ?? "Join the discussion first.");
 
     private static DiscussionException Invalid(string parameter, string message, string? hint = null)
         => new(DiscussionErrorCodes.InvalidArgument, message, parameter, hint);
@@ -271,7 +271,7 @@ public sealed class DiscussionHub : IDisposable
             throw new DiscussionException(
                 DiscussionErrorCodes.HubReset,
                 "The discussion board was restarted; its sessions and your token are gone.",
-                "participantToken",
+                DiscussionArgumentNames.ParticipantToken,
                 "Create a new discussion and join it again.");
         }
     }
@@ -400,7 +400,13 @@ public sealed class DiscussionHub : IDisposable
 
         session.FloorHolder = next;
         session.FloorSince = now;
+        WakeReaders(session, wake);
     }
+
+    private static bool IsCallerFloorHolder(Session session, Participant participant)
+        => session.TurnMode == DiscussionTurnMode.RoundRobin
+           && !session.Closed
+           && ReferenceEquals(session.FloorHolder, participant);
 
     private static void Touch(Session session, Participant participant, DateTimeOffset now)
     {
@@ -571,29 +577,29 @@ public sealed class DiscussionHub : IDisposable
     {
         if (title is null)
         {
-            throw Invalid("title", "title is required.");
+            throw Invalid(DiscussionArgumentNames.Title, "title is required.");
         }
 
         if (title.Length > DiscussionLimits.TitleMaxChars)
         {
-            throw Limit("title", $"title is longer than {DiscussionLimits.TitleMaxChars} characters.");
+            throw Limit(DiscussionArgumentNames.Title, $"title is longer than {DiscussionLimits.TitleMaxChars} characters.");
         }
 
         if (!DiscussionText.HasVisibleCharacter(title) || DiscussionText.IsInvalid(title, allowTabLineBreaks: false))
         {
-            throw Invalid("title", "title must contain a visible character and no control character.");
+            throw Invalid(DiscussionArgumentNames.Title, "title must contain a visible character and no control character.");
         }
 
         if (topic is not null)
         {
             if (topic.Length > DiscussionLimits.TopicMaxChars)
             {
-                throw Limit("topic", $"topic is longer than {DiscussionLimits.TopicMaxChars} characters.");
+                throw Limit(DiscussionArgumentNames.Topic, $"topic is longer than {DiscussionLimits.TopicMaxChars} characters.");
             }
 
             if (DiscussionText.IsInvalid(topic, allowTabLineBreaks: true))
             {
-                throw Invalid("topic", "topic contains a control character or an unpaired surrogate.");
+                throw Invalid(DiscussionArgumentNames.Topic, "topic contains a control character or an unpaired surrogate.");
             }
         }
 
@@ -648,18 +654,18 @@ public sealed class DiscussionHub : IDisposable
     {
         if (displayName is null)
         {
-            throw Invalid("displayName", "displayName is required.");
+            throw Invalid(DiscussionArgumentNames.DisplayName, "displayName is required.");
         }
 
         string name = displayName.Trim();
         if (name.Length == 0 || DiscussionText.IsInvalid(name, allowTabLineBreaks: false))
         {
-            throw Invalid("displayName", "displayName must contain a visible character and no control character.");
+            throw Invalid(DiscussionArgumentNames.DisplayName, "displayName must contain a visible character and no control character.");
         }
 
         if (name.Length > DiscussionLimits.DisplayNameMaxChars)
         {
-            throw Limit("displayName", $"displayName is longer than {DiscussionLimits.DisplayNameMaxChars} characters.");
+            throw Limit(DiscussionArgumentNames.DisplayName, $"displayName is longer than {DiscussionLimits.DisplayNameMaxChars} characters.");
         }
 
         return WithSession(sessionId, op =>
@@ -673,7 +679,7 @@ public sealed class DiscussionHub : IDisposable
             Participant? same = session.Participants.FirstOrDefault(p => string.Equals(p.DisplayName, name, StringComparison.Ordinal));
             if (same is not null && StateOf(same, op.Now) == DiscussionParticipantState.Active)
             {
-                throw Invalid("displayName", "The name is in use.", "name in use by an active participant");
+                throw Invalid(DiscussionArgumentNames.DisplayName, "The name is in use.", "name in use by an active participant");
             }
 
             bool rejoin = same is not null;
@@ -749,15 +755,21 @@ public sealed class DiscussionHub : IDisposable
             participant.Left = true;
             participant.LastSeenAt = op.Now;
             session.LastActivityAt = op.Now;
+            bool floorPassed = false;
             if (ReferenceEquals(session.FloorHolder, participant))
             {
                 PassFloor(session, participant, op.Now);
+                floorPassed = true;
             }
 
             string eventContent = $"{participant.Handle} ({participant.DisplayName}) {EventLeft}";
             if (HasRoom(session, DiscussionText.Utf8Bytes(eventContent)))
             {
                 Append(session, op.Now, null, DiscussionMessageKind.Event, eventContent, null, Array.Empty<long>(), op.Wake);
+            }
+            else if (floorPassed)
+            {
+                WakeReaders(session, op.Wake);
             }
 
             _audit.Add(DiscussionAuditEvents.ParticipantLeft, session.Id, participant.Handle);
@@ -808,12 +820,12 @@ public sealed class DiscussionHub : IDisposable
             {
                 if (requestId.Length == 0 || !requestId.All(DiscussionText.IsRequestIdCharacter))
                 {
-                    throw Invalid("clientRequestId", "clientRequestId may only contain letters, digits, underscore and hyphen.");
+                    throw Invalid(DiscussionArgumentNames.ClientRequestId, "clientRequestId may only contain letters, digits, underscore and hyphen.");
                 }
 
                 if (requestId.Length > DiscussionLimits.ClientRequestIdMaxChars)
                 {
-                    throw Limit("clientRequestId", $"clientRequestId is longer than {DiscussionLimits.ClientRequestIdMaxChars} characters.");
+                    throw Limit(DiscussionArgumentNames.ClientRequestId, $"clientRequestId is longer than {DiscussionLimits.ClientRequestIdMaxChars} characters.");
                 }
 
                 foreach (RecentPost stored in participant.RecentRequests)
@@ -866,12 +878,12 @@ public sealed class DiscussionHub : IDisposable
         {
             if (pass)
             {
-                throw Invalid("pass", "A pass carries no interpretation.");
+                throw Invalid(DiscussionArgumentNames.Pass, "A pass carries no interpretation.");
             }
 
             if (!DiscussionEvidenceValidator.TryValidateInterpretation(request.Interpretation, out interpretation, out string? errorReason))
             {
-                throw Invalid("interpretation", errorReason ?? "interpretation is invalid.");
+                throw Invalid(DiscussionArgumentNames.Interpretation, errorReason ?? "interpretation is invalid.");
             }
 
             interpretationJson = DiscussionEvidenceValidator.SerializeInterpretationCanonical(interpretation!);
@@ -882,12 +894,12 @@ public sealed class DiscussionHub : IDisposable
         {
             if (session.TurnMode != DiscussionTurnMode.RoundRobin)
             {
-                throw Invalid("pass", "pass is only meaningful in a round-robin discussion.", "Post a message instead.");
+                throw Invalid(DiscussionArgumentNames.Pass, "pass is only meaningful in a round-robin discussion.", "Post a message instead.");
             }
 
             if (request.Content is not null || request.ReplyToSequence is not null || request.ContextIds is not null)
             {
-                throw Invalid("pass", "A pass carries no content, reply or contexts.");
+                throw Invalid(DiscussionArgumentNames.Pass, "A pass carries no content, reply or contexts.");
             }
 
             content = $"{participant.Handle} ({participant.DisplayName}) {EventPassed}";
@@ -901,7 +913,7 @@ public sealed class DiscussionHub : IDisposable
             contentBytes = 0;
             if (interpretationBytes > _settings.MaxMessageBytes)
             {
-                throw Limit("interpretation", $"interpretation is larger than {_settings.MaxMessageBytes} bytes.");
+                throw Limit(DiscussionArgumentNames.Interpretation, $"interpretation is larger than {_settings.MaxMessageBytes} bytes.");
             }
         }
         else
@@ -909,18 +921,18 @@ public sealed class DiscussionHub : IDisposable
             string? posted = request.Content;
             if (posted is null || posted.Length == 0 || !DiscussionText.HasVisibleCharacter(posted))
             {
-                throw Invalid("content", "content is required and must contain a visible character.");
+                throw Invalid(DiscussionArgumentNames.Content, "content is required and must contain a visible character.");
             }
 
             contentBytes = DiscussionText.Utf8Bytes(posted);
             if (contentBytes > _settings.MaxMessageBytes)
             {
-                throw Limit("content", $"content is larger than {_settings.MaxMessageBytes} bytes.", "split the message or attach the data with sa_discussion_attach_analysis");
+                throw Limit(DiscussionArgumentNames.Content, $"content is larger than {_settings.MaxMessageBytes} bytes.", "split the message or attach the data with sa_discussion_attach_analysis");
             }
 
             if (DiscussionText.IsInvalid(posted, allowTabLineBreaks: true))
             {
-                throw Invalid("content", "content contains a control character or an unpaired surrogate.");
+                throw Invalid(DiscussionArgumentNames.Content, "content contains a control character or an unpaired surrogate.");
             }
 
             content = posted;
@@ -929,7 +941,7 @@ public sealed class DiscussionHub : IDisposable
         // Step 5: references.
         if (request.ReplyToSequence is { } replyTo && (replyTo < 1 || replyTo > session.LastSequence))
         {
-            throw Invalid("replyToSequence", "replyToSequence does not name an existing message.");
+            throw Invalid(DiscussionArgumentNames.ReplyToSequence, "replyToSequence does not name an existing message.");
         }
 
         long[] contextIds = Array.Empty<long>();
@@ -939,7 +951,7 @@ public sealed class DiscussionHub : IDisposable
                 || requestedContexts.Distinct().Count() != requestedContexts.Count
                 || requestedContexts.Any(id => id < 1 || id > session.Contexts.Count))
             {
-                throw Invalid("contextIds", $"contextIds must name at most {DiscussionLimits.MaxContextIdsPerPost} different existing contexts.");
+                throw Invalid(DiscussionArgumentNames.ContextIds, $"contextIds must name at most {DiscussionLimits.MaxContextIdsPerPost} different existing contexts.");
             }
 
             contextIds = requestedContexts.ToArray();
@@ -947,7 +959,7 @@ public sealed class DiscussionHub : IDisposable
 
         if (request.BasedOnSequence is { } basedOn && (basedOn < 0 || basedOn > session.LastSequence))
         {
-            throw Invalid("basedOnSequence", "basedOnSequence is outside the transcript.");
+            throw Invalid(DiscussionArgumentNames.BasedOnSequence, "basedOnSequence is outside the transcript.");
         }
 
         // Step 6: turn control (free discussions have none).
@@ -973,7 +985,7 @@ public sealed class DiscussionHub : IDisposable
         if (!pass && participant.AcceptedPostTimes.Count >= _settings.MaxPostsPerMinute)
         {
             int seconds = Math.Max(1, (int)Math.Ceiling((participant.AcceptedPostTimes[0] + window - now).TotalSeconds));
-            throw new DiscussionException(DiscussionErrorCodes.RateLimited, "Too many posts in a short time.", "content", $"retry after {seconds} s");
+            throw new DiscussionException(DiscussionErrorCodes.RateLimited, "Too many posts in a short time.", DiscussionArgumentNames.Content, $"retry after {seconds} s");
         }
 
         // Step 8: capacity.
@@ -1038,42 +1050,42 @@ public sealed class DiscussionHub : IDisposable
         CheckToken(participantToken);
         if (afterSequence < 0)
         {
-            throw Invalid("afterSequence", "afterSequence must not be negative.");
+            throw Invalid(DiscussionArgumentNames.AfterSequence, "afterSequence must not be negative.");
         }
 
         int effectiveLimit = limit ?? _settings.DefaultReadLimit;
         if (effectiveLimit < 1 || effectiveLimit > _settings.MaxReadLimit)
         {
-            throw Limit("limit", $"limit must be 1 to {_settings.MaxReadLimit}.");
+            throw Limit(DiscussionArgumentNames.Limit, $"limit must be 1 to {_settings.MaxReadLimit}.");
         }
 
         if (waitSeconds < 0 || waitSeconds > _settings.MaxWaitSeconds)
         {
-            throw Limit("waitSeconds", $"waitSeconds must be 0 to {_settings.MaxWaitSeconds}.");
+            throw Limit(DiscussionArgumentNames.WaitSeconds, $"waitSeconds must be 0 to {_settings.MaxWaitSeconds}.");
         }
 
         if (options is { IsActive: true })
         {
-            if (options.Tail is { } tail)
+            if (options.Tail is { } tail && !options.WaitForTurn)
             {
                 if (tail < 1 || tail > _settings.MaxReadLimit)
                 {
-                    throw Limit("tail", $"tail must be 1 to {_settings.MaxReadLimit}.");
+                    throw Limit(DiscussionArgumentNames.Tail, $"tail must be 1 to {_settings.MaxReadLimit}.");
                 }
 
                 if (afterSequence > 0)
                 {
-                    throw Invalid("afterSequence", "tail cannot be combined with afterSequence.");
+                    throw Invalid(DiscussionArgumentNames.AfterSequence, "tail cannot be combined with afterSequence.");
                 }
 
                 if (limit is not null)
                 {
-                    throw Invalid("limit", "tail replaces limit; send only one of them.");
+                    throw Invalid(DiscussionArgumentNames.Limit, "tail replaces limit; send only one of them.");
                 }
 
                 if (waitSeconds > 0)
                 {
-                    throw Invalid("waitSeconds", "tail cannot be combined with waitSeconds.");
+                    throw Invalid(DiscussionArgumentNames.WaitSeconds, "tail cannot be combined with waitSeconds.");
                 }
             }
 
@@ -1237,21 +1249,89 @@ public sealed class DiscussionHub : IDisposable
         {
             TaskCompletionSource<bool>? waiter = null;
             Session? waitedSession = null;
-            TimeSpan remaining = TimeSpan.Zero;
+            TimeSpan waitSpan = TimeSpan.Zero;
             bool firstLookNow = firstLook;
             DiscussionReadResult? done = WithSession<DiscussionReadResult?>(sessionId, op =>
             {
                 Participant participant = Resolve(op.Session, participantToken, allowLeft: true);
+                if (options.WaitForTurn)
+                {
+                    if (op.Session.TurnMode != DiscussionTurnMode.RoundRobin)
+                    {
+                        throw Invalid(DiscussionArgumentNames.WaitForTurn, "waitForTurn is only valid in roundRobin discussions.");
+                    }
+
+                    if (options.Tail is not null)
+                    {
+                        throw Invalid(DiscussionArgumentNames.Tail, "waitForTurn cannot be combined with tail.");
+                    }
+
+                    if (waitSeconds <= 0)
+                    {
+                        throw Invalid(DiscussionArgumentNames.WaitSeconds, "waitForTurn requires waitSeconds above 0.");
+                    }
+
+                    if (participant.Left)
+                    {
+                        throw NotJoined("left");
+                    }
+                }
+
                 EvaluateFloorTimeout(op.Session, op.Now, op.Wake);
                 Touch(op.Session, participant, op.Now);
+
+                if (options.WaitForTurn)
+                {
+                    if (IsCallerFloorHolder(op.Session, participant) || op.Session.Closed)
+                    {
+                        return CollectFiltered(op, participant, afterSequence, limit, options, timedOut: false);
+                    }
+
+                    TimeSpan remaining = deadline - op.Now;
+                    if (remaining <= TimeSpan.Zero)
+                    {
+                        return CollectFiltered(op, participant, afterSequence, limit, options, timedOut: true);
+                    }
+
+                    waitSpan = remaining;
+                    if (op.Session.FloorHolder is { } holder
+                        && !ReferenceEquals(holder, participant)
+                        && FloorTimeout > TimeSpan.Zero
+                        && NextAfter(op.Session, holder) is not null)
+                    {
+                        DateTimeOffset floorDeadline = op.Session.FloorSince + FloorTimeout;
+                        if (floorDeadline > op.Now)
+                        {
+                            TimeSpan floorRemaining = floorDeadline - op.Now;
+                            if (floorRemaining < waitSpan)
+                            {
+                                waitSpan = floorRemaining;
+                            }
+                        }
+                    }
+
+                    try
+                    {
+                        waiter = RegisterWaiterLocked(op, participant);
+                    }
+                    catch (DiscussionException error) when (!firstLookNow && error.Code == DiscussionErrorCodes.LimitExceeded && error.Parameter == DiscussionNames.WaitersParameter)
+                    {
+                        // Refused only after the reader had already waited: return any unread messages with TimedOut = true.
+                        return CollectFiltered(op, participant, afterSequence, limit, options, timedOut: true);
+                    }
+
+                    waitedSession = op.Session;
+                    return null;
+                }
+
                 DiscussionReadResult result = CollectFiltered(op, participant, afterSequence, limit, options, timedOut: false);
                 if (result.Messages.Count > 0 || waitSeconds == 0 || op.Session.Closed)
                 {
                     return result;
                 }
 
-                remaining = deadline - op.Now;
-                if (remaining <= TimeSpan.Zero)
+                waitSpan = deadline - op.Now;
+                if (waitSpan <= TimeSpan.Zero)
                 {
                     return result with { TimedOut = true };
                 }
@@ -1279,7 +1359,7 @@ public sealed class DiscussionHub : IDisposable
             try
             {
                 // A wake signals true; false means the reader's own newer wait took this one over (see RegisterWaiterLocked).
-                superseded = !await waiter!.Task.WaitAsync(remaining, _time, cancellationToken).ConfigureAwait(false);
+                superseded = !await waiter!.Task.WaitAsync(waitSpan, _time, cancellationToken).ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
@@ -1288,6 +1368,29 @@ public sealed class DiscussionHub : IDisposable
             finally
             {
                 RemoveWaiter(waitedSession!, waiter!);
+            }
+
+            if (options.WaitForTurn)
+            {
+                if (superseded)
+                {
+                    // A superseded wait ends with one last look without waiting again.
+                    return WithSession(sessionId, op =>
+                    {
+                        Participant participant = Resolve(op.Session, participantToken, allowLeft: true);
+                        EvaluateFloorTimeout(op.Session, op.Now, op.Wake);
+                        Touch(op.Session, participant, op.Now);
+                        return CollectFiltered(op, participant, afterSequence, limit, options, timedOut: false);
+                    });
+                }
+
+                if (BeforeFilteredWaitReentryHook is { } reentryHook)
+                {
+                    await reentryHook().ConfigureAwait(false);
+                }
+
+                firstLook = false;
+                continue;
             }
 
             if (elapsed || superseded)
@@ -1302,6 +1405,11 @@ public sealed class DiscussionHub : IDisposable
                     DiscussionReadResult result = CollectFiltered(op, participant, afterSequence, limit, options, timedOut: false);
                     return timedOutWhenEmpty && result.Messages.Count == 0 ? result with { TimedOut = true } : result;
                 });
+            }
+
+            if (BeforeFilteredWaitReentryHook is { } filteredHook)
+            {
+                await filteredHook().ConfigureAwait(false);
             }
 
             firstLook = false;
@@ -1406,7 +1514,7 @@ public sealed class DiscussionHub : IDisposable
         {
             if (DiscussionText.ContainsUnpairedSurrogate(resultJson))
             {
-                throw Invalid("result", "result contains an unpaired UTF-16 surrogate.");
+                throw Invalid(DiscussionArgumentNames.Result, "result contains an unpaired UTF-16 surrogate.");
             }
 
             byte[] bytes = Encoding.UTF8.GetBytes(resultJson);
@@ -1419,7 +1527,7 @@ public sealed class DiscussionHub : IDisposable
         {
             if (!DiscussionEvidenceValidator.TryNormalizeAnalysisIntent(analysisIntent, out normalizedIntent))
             {
-                throw Invalid("analysisIntent", $"analysisIntent must be at most {DiscussionEvidenceLimits.MaxAnalysisIntentChars} characters without control characters.");
+                throw Invalid(DiscussionArgumentNames.AnalysisIntent, $"analysisIntent must be at most {DiscussionEvidenceLimits.MaxAnalysisIntentChars} characters without control characters.");
             }
         }
 
@@ -1434,40 +1542,40 @@ public sealed class DiscussionHub : IDisposable
 
             if (string.IsNullOrEmpty(tool) || tool.Length > DiscussionLimits.ToolNameMaxChars || DiscussionText.IsInvalid(tool, allowTabLineBreaks: false))
             {
-                throw Invalid("tool", "tool must be the name of a registered tool.");
+                throw Invalid(DiscussionArgumentNames.Tool, "tool must be the name of a registered tool.");
             }
 
             if (canonicalArgumentsJson is null)
             {
-                throw Invalid("arguments", "arguments are required.");
+                throw Invalid(DiscussionArgumentNames.Arguments, "arguments are required.");
             }
 
             if (DiscussionText.Utf8Bytes(canonicalArgumentsJson) > DiscussionLimits.AnalysisArgumentsMaxBytes)
             {
-                throw Limit("arguments", $"The arguments are larger than {DiscussionLimits.AnalysisArgumentsMaxBytes} bytes.");
+                throw Limit(DiscussionArgumentNames.Arguments, $"The arguments are larger than {DiscussionLimits.AnalysisArgumentsMaxBytes} bytes.");
             }
 
             if (note is not null)
             {
                 if (note.Length > DiscussionLimits.NoteMaxChars)
                 {
-                    throw Limit("note", $"note is longer than {DiscussionLimits.NoteMaxChars} characters.");
+                    throw Limit(DiscussionArgumentNames.Note, $"note is longer than {DiscussionLimits.NoteMaxChars} characters.");
                 }
 
                 if (DiscussionText.IsInvalid(note, allowTabLineBreaks: true))
                 {
-                    throw Invalid("note", "note contains a control character or an unpaired surrogate.");
+                    throw Invalid(DiscussionArgumentNames.Note, "note contains a control character or an unpaired surrogate.");
                 }
             }
 
             if (resultJson is null)
             {
-                throw Invalid("result", "A result is required.");
+                throw Invalid(DiscussionArgumentNames.Result, "A result is required.");
             }
 
             if (resultBytes > _settings.MaxContextBytes)
             {
-                throw Limit("result", $"The result is larger than {_settings.MaxContextBytes} bytes.", "request a narrower window or fewer items");
+                throw Limit(DiscussionArgumentNames.Result, $"The result is larger than {_settings.MaxContextBytes} bytes.", "request a narrower window or fewer items");
             }
 
             // Reuse (D-21): the same tool, the same canonical arguments, the same result and the same analysisIntent.
@@ -1523,7 +1631,7 @@ public sealed class DiscussionHub : IDisposable
             Participant participant = Resolve(session, participantToken!, allowLeft: true);
             if (contextId < 1 || contextId > session.Contexts.Count)
             {
-                throw Invalid("contextId", "contextId does not name an attached context.");
+                throw Invalid(DiscussionArgumentNames.ContextId, "contextId does not name an attached context.");
             }
 
             ContextRecord context = session.Contexts[(int)contextId - 1];
@@ -1551,12 +1659,12 @@ public sealed class DiscussionHub : IDisposable
     {
         if (auditTail < 0 || auditTail > DiscussionLimits.StatusTailMax)
         {
-            throw Limit("auditTail", $"auditTail must be 0 to {DiscussionLimits.StatusTailMax}.");
+            throw Limit(DiscussionArgumentNames.AuditTail, $"auditTail must be 0 to {DiscussionLimits.StatusTailMax}.");
         }
 
         if (includeContexts && sessionId is null)
         {
-            throw Invalid("includeContexts", "includeContexts requires sessionId.");
+            throw Invalid(DiscussionArgumentNames.IncludeContexts, "includeContexts requires sessionId.");
         }
 
         var wake = new List<TaskCompletionSource<bool>>();
@@ -1620,6 +1728,9 @@ public sealed class DiscussionHub : IDisposable
     }
 
     // ---- diagnostics and shutdown -----------------------------------------------------------------------------------------------------
+
+    /// <summary>Optional test-only seam invoked outside all locks immediately before a woken filtered wait re-enters session evaluation.</summary>
+    internal Func<Task>? BeforeFilteredWaitReentryHook { get; set; }
 
     /// <summary>The byte counter, the same sum recomputed from the stored payload, and the numbers of sessions and waiting readers.</summary>
     internal DiscussionDiagnostics GetDiagnostics()

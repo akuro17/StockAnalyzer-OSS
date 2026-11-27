@@ -190,6 +190,7 @@ public sealed class CalculatorBodyErrorCodeTests
         "arr_scan_state([zzz + s + item], [s], item, [1], [0], 0)",
         "arr_reduce_state([zzz + s + item], [s], item, [1], [0])",
         "arr_rolling_map(zzz + sum(w), w, [1, 2], 1)",
+        "arr_zip_rolling_map(zzz + sum(a) + sum(b), [a, b], [[1, 2], [3, 4]], 1)",
         "quad2d_gk(zzz * x * y, x, y, 0, 1, 0, 1)",
         "opt_lbfgsb(zzz * x, [x], [0.5], [0], [1])",
         "fsolve([zzz * x], [x], [1])",

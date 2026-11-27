@@ -606,7 +606,7 @@ public sealed class DiscussionHubElectionTests : IDisposable
     {
         (string name, _, ScriptedBoard board) = StartHost();
 
-        byte[]? reply = await RawExchangeAsync(name, Encoding.UTF8.GetBytes("""{"wire":3,"op":"read","caller":"x","args":{}}""" + "\n"));
+        byte[]? reply = await RawExchangeAsync(name, Encoding.UTF8.GetBytes("""{"wire":2,"op":"read","caller":"x","args":{}}""" + "\n"));
 
         DiscussionFailure failure = DiscussionWire.ParseReply(reply!).Failure!;
         Assert.Equal(DiscussionErrorCodes.HubUnavailable, failure.Code);
@@ -623,7 +623,7 @@ public sealed class DiscussionHubElectionTests : IDisposable
         {
             await impostor.WaitForConnectionAsync();
             await DiscussionWire.ReadLineAsync(impostor, 1 << 20, CancellationToken.None);
-            await impostor.WriteAsync(Encoding.UTF8.GetBytes("""{"wire":3,"ok":true,"result":{}}""" + "\n"));
+            await impostor.WriteAsync(Encoding.UTF8.GetBytes("""{"wire":2,"ok":true,"result":{}}""" + "\n"));
             await impostor.FlushAsync();
             await Task.Delay(200);
         });

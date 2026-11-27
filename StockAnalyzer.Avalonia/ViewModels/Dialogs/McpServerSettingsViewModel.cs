@@ -56,6 +56,8 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
     public int MaxResponseTokensMaximum => McpResponseTokenLimits.Maximum;
     public int MaxResponseTokensIncrement => McpResponseTokenLimits.Kibibyte;
     public int MaxResponseTokensRecommended => McpResponseTokenLimits.RecommendedStrict;
+    public int MaxWaitSecondsMinimum => DiscussionLimits.WaitBand.Minimum;
+    public int MaxWaitSecondsMaximum => DiscussionLimits.WaitBand.Maximum;
 
     [RelayCommand]
     private void ApplyRecommendedMaxResponseTokens() => MaxResponseTokens = McpResponseTokenLimits.RecommendedStrict;
@@ -522,6 +524,8 @@ public partial class McpServerSettingsViewModel : ViewModelBase, ISettingsPageVi
             && e.PropertyName != nameof(MaxResponseTokensMaximum)
             && e.PropertyName != nameof(MaxResponseTokensIncrement)
             && e.PropertyName != nameof(MaxResponseTokensRecommended)
+            && e.PropertyName != nameof(MaxWaitSecondsMinimum)
+            && e.PropertyName != nameof(MaxWaitSecondsMaximum)
             && (e.PropertyName == nameof(UseTextOnlyResponse) || !e.PropertyName!.StartsWith("Use", StringComparison.Ordinal))
             && !e.PropertyName.EndsWith("Error", StringComparison.Ordinal))
         {

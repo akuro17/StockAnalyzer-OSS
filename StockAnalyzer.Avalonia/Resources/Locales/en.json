@@ -367,7 +367,7 @@
   "McpServer_Field_FloorTimeoutSeconds": "Floor Timeout (Seconds)",
   "McpServer_Desc_FloorTimeoutSeconds": "Seconds before speaking floor automatically passes in round-robin mode (10 to 600). Default: 60 (1 min).",
   "McpServer_Field_MaxWaitSeconds": "Max Wait Seconds",
-  "McpServer_Desc_MaxWaitSeconds": "Maximum waitSeconds permitted for read operations (0 to 30). Default: 20.",
+  "McpServer_Desc_MaxWaitSeconds": "Maximum waitSeconds permitted for read operations (0 to 120; effective host ceiling is ToolTimeoutSeconds - 1, i.e. 59 under default ToolTimeoutSeconds 60). Default: 20.",
   "McpServer_Field_DefaultReadLimit": "Default Read Limit",
   "McpServer_Desc_DefaultReadLimit": "Default number of messages returned by read when limit is omitted (1 to MaxReadLimit). Default: 20.",
   "McpServer_Field_MaxReadLimit": "Max Read Limit",

@@ -34,7 +34,7 @@ public sealed class DiscussionSettingsTests
         new(nameof(DiscussionSettings.ClosedRetentionSeconds), 0, 3600, (s, v) => s.ClosedRetentionSeconds = (int)v),
         new(nameof(DiscussionSettings.AwaySeconds), 10, 3600, (s, v) => s.AwaySeconds = (int)v),
         new(nameof(DiscussionSettings.FloorTimeoutSeconds), 10, 600, (s, v) => s.FloorTimeoutSeconds = (int)v),
-        new(nameof(DiscussionSettings.MaxWaitSeconds), 0, 30, (s, v) => s.MaxWaitSeconds = (int)v),
+        new(nameof(DiscussionSettings.MaxWaitSeconds), 0, 120, (s, v) => s.MaxWaitSeconds = (int)v),
         new(nameof(DiscussionSettings.MaxPostsPerMinute), 1, 120, (s, v) => s.MaxPostsPerMinute = (int)v),
         new(nameof(DiscussionSettings.MaxReadLimit), 1, 200, (s, v) => { s.MaxReadLimit = (int)v; s.DefaultReadLimit = (int)Math.Min(s.DefaultReadLimit, v); }),
         new(nameof(DiscussionSettings.AuditCapacity), 100, 10000, (s, v) => s.AuditCapacity = (int)v),
@@ -209,7 +209,7 @@ public sealed class DiscussionSettingsTests
     [Fact]
     public void TheFixedValuesAreThoseOfTheSpecification()
     {
-        Assert.Equal(2, DiscussionLimits.WireVersion);
+        Assert.Equal(3, DiscussionLimits.WireVersion);
         Assert.Equal(5242880, DiscussionLimits.WireMaxLineBytes);
         Assert.Equal(32, DiscussionLimits.MaxHubConnections);
         Assert.Equal(300, DiscussionLimits.PipeConnectTimeoutMs);
@@ -301,9 +301,9 @@ public sealed class DiscussionSettingsTests
     {
         var services = new ServiceCollection();
 
-        var error = Assert.Throws<DiscussionLimitsException>(() => services.AddStockAnalyzerDiscussion(Configuration(("MaxWaitSeconds", "31"))));
+        var error = Assert.Throws<DiscussionLimitsException>(() => services.AddStockAnalyzerDiscussion(Configuration(("MaxWaitSeconds", "121"))));
 
-        Assert.Contains("AiIntegration:Discussion:MaxWaitSeconds is 31", error.Message, StringComparison.Ordinal);
+        Assert.Contains("AiIntegration:Discussion:MaxWaitSeconds is 121", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

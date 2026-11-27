@@ -817,6 +817,36 @@ public static class ExpressionCalculator
         new("bond_price_dirty", 6, 7, "bond_price_dirty(face, couponRate, ytm, daysSinceCoupon, daysInPeriod, remainingCoupons[, freq])"),
         new("binomial_option_price_div", 8, 8, "binomial_option_price_div(S, K, T, r, q, sigma, steps, style)"),
         new("arima_forecast", 5, 5, "arima_forecast(series, p, d, q, horizon)"),
+        // DSL v9 Batch 1: Event/History Primitives & Monotonic-Deque Rolling
+        new("arr_argwhere", 1, 1, "arr_argwhere(cond)"),
+        new("arr_bars_since", 1, 2, "arr_bars_since(cond[, fill])"),
+        new("arr_value_when", 3, 4, "arr_value_when(cond, src, occurrence[, fill])"),
+        new("arr_ffill", 2, 3, "arr_ffill(src, validMask[, fill])"),
+        new("cross_over", 2, 2, "cross_over(a, b)"),
+        new("cross_under", 2, 2, "cross_under(a, b)"),
+        new("arr_rolling_max", 3, 3, "arr_rolling_max(a, w, fill)"),
+        new("arr_rolling_min", 3, 3, "arr_rolling_min(a, w, fill)"),
+        new("arr_rolling_bars_since_max", 3, 3, "arr_rolling_bars_since_max(a, w, fill)"),
+        new("arr_rolling_bars_since_min", 3, 3, "arr_rolling_bars_since_min(a, w, fill)"),
+        // DSL v9 Batch 2: Multivariate Rolling & Time-Axis/Session Alignment
+        new("arr_rolling_corr", 4, 4, "arr_rolling_corr(x, y, w, fill)"),
+        new("arr_zip_rolling_map", 4, 5, "arr_zip_rolling_map(expr, winVars, arrs, w[, fill])"),
+        new("align_asof", 3, 6, "align_asof(targetTimes, srcTimes, srcVals[, fill, allowExactMatch, maxTolerance])"),
+        new("arr_session_range", 5, 7, "arr_session_range(high, low, sessionIds, openingBars, kind[, fill, skipFirstSession])"),
+        // DSL v9 Batch 3: Causal Swings & Geometric Waveform Simplification
+        new("pivot_high_causal", 3, 4, "pivot_high_causal(high, left, right[, fill])"),
+        new("pivot_low_causal", 3, 4, "pivot_low_causal(low, left, right[, fill])"),
+        new("zigzag_causal", 4, 7, "zigzag_causal(high, low, threshold, mode[, outputKind, atrSeries, fill])"),
+        new("rdp_simplify", 2, 3, "rdp_simplify(series, epsilon[, metric])"),
+        new("pip_extract", 2, 3, "pip_extract(series, k[, metric])"),
+        // DSL v9 Batch 4: Volume Profile, DTW Reuse & CUSUM Change-Point
+        new("vp_bins", 3, 3, "vp_bins(prices, volumes, nBins)"),
+        new("vp_poc", 3, 3, "vp_poc(prices, volumes, nBins)"),
+        new("dtw_distance", 2, 3, "dtw_distance(series, template[, band])"),
+        new("cusum_filter", 2, 2, "cusum_filter(series, threshold)"),
+        // DSL v10: Piecewise-Linear Reconstruction & Volume Profile Value Area
+        new("arr_interp_at", 2, 3, "arr_interp_at(indices, src[, fill])"),
+        new("vp_value_area", 3, 4, "vp_value_area(prices, volumes, nBins[, ratio])"),
     };
 
     /// <summary>Input item for sequential batch evaluation in <see cref="EvaluateBatch"/>.</summary>

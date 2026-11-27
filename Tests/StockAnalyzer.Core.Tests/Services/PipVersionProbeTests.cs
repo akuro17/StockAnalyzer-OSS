@@ -7,6 +7,7 @@ using Xunit;
 
 namespace StockAnalyzer.Core.Tests.Services
 {
+    [Collection("ChildProcess")]
     public class PipVersionProbeTests
     {
         private static readonly TimeSpan ShortLimit = TimeSpan.FromMilliseconds(200);
