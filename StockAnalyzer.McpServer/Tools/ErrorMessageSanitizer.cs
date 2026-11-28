@@ -14,7 +14,7 @@ internal sealed class ErrorMessageSanitizer
     public const string Placeholder = "<path>";
 
     private static readonly Regex PathShapes = new(
-        @"file://[^\s""']+|[A-Za-z]:[\\/][^\s""']+|\\\\[^\s""']+|(?<![A-Za-z0-9_.])/(?:home|Users|tmp|var|opt|srv|etc|mnt|media|usr|root|proc|run)/[^\s""']+",
+        @"file://[^\s""']+|[A-Za-z]:[\\/][^\s""']+|\\\\[^\s""']+|(?<![A-Za-z0-9_.])/(?:home|Users|tmp|var|opt|srv|etc|mnt|media|usr|root|proc|run)/[^\s""']+|(?<![A-Za-z0-9_./\\>])[Dd]ata[\\/][^\s""']+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly string[] _roots;

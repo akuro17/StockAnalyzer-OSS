@@ -160,6 +160,7 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
     public int SyncTimeoutMinutes => _pythonSettings.SyncTimeoutMinutes;
     public IReadOnlyList<string> PythonEssentialPackages => _pythonSettings.EssentialPackages;
     public int DisposeWaitMs => _pythonSettings.DisposeWaitMs;
+    public bool PythonAutoUpdatePackagesOnStartup => _pythonSettings.AutoUpdatePackagesOnStartup;
     public int PythonRequestTimeoutMs => _pythonIpcSettings.RequestTimeoutMs;
     public int PythonMaxResponseBytes => _pythonIpcSettings.MaxResponseBytes;
     public int PythonMaxTimeoutRetries => _pythonIpcSettings.MaxTimeoutRetries;
@@ -268,6 +269,8 @@ public class StockAnalyzerSettings : IStockAnalyzerSettings
     public int? PredictionIntraOpNumThreads => _predictionSettings.IntraOpNumThreads;
     public int? PredictionInterOpNumThreads => _predictionSettings.InterOpNumThreads;
     public bool PredictionAllowIntraOpSpinning => _predictionSettings.AllowIntraOpSpinning;
+    public string? PredictionExpectedModelSha256 => _predictionSettings.ExpectedModelSha256;
+    public bool PredictionRequireVerifiedFallbackModel => _predictionSettings.RequireVerifiedFallbackModel;
 
     // Localization
     public string? LocaleResourcePath => _localizationSettings.ResourcePath;

@@ -75,6 +75,11 @@ using (runtime)
     // The execution gateway (and its start-up clean-up) is built before the first request, never for the help.
     try
     {
+        if (commandLine.EnableExecution)
+        {
+            log.Info("Execution tools enabled: jobs isolate artifacts to OS temporary folders under current user privileges without OS/network sandboxing.");
+        }
+
         runtime.PrepareExecution();
     }
     catch (Exception error)

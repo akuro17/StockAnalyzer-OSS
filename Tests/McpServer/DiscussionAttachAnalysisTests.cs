@@ -487,25 +487,6 @@ public sealed class DiscussionAttachAnalysisTests : IDisposable
         Assert.Equal("9984.T", fetchedStruct.GetProperty("provenance").GetProperty("symbol").GetString());
     }
 
-    private sealed class WeightedTool : IMcpTool
-    {
-        private readonly Func<CancellationToken, Task<string>> _run;
-
-        public WeightedTool(string name, bool isHeavy, Func<CancellationToken, Task<string>> run)
-        {
-            Name = name;
-            IsHeavy = isHeavy;
-            _run = run;
-        }
-
-        public string Name { get; }
-        public string Description => "Test weighted tool.";
-        public bool IsHeavy { get; }
-        public bool IsReadOnly => true;
-        public string InputSchemaJson => ToolSchema.Object().Build();
-        public Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken) => _run(cancellationToken);
-    }
-
     [Fact]
     public async Task AttachAnalysis_InheritsInnerToolHeavyProfile_ForTurnConcurrency()
     {

@@ -135,7 +135,7 @@ public sealed class TrainingInferenceFeatureParityTests
         using var connection = new DuckDBConnection("DataSource=:memory:");
         connection.Open();
         using var command = connection.CreateCommand();
-        var escapedPath = ParquetMarketDataProvider.EscapeDuckDbPath(parquetPath.Replace("\\", "/"));
+        var escapedPath = ParquetMarketDataProvider.FormatDuckDbPath(parquetPath);
         command.CommandText = $"SELECT date, channel_{channelIndex} FROM read_parquet('{escapedPath}') ORDER BY date ASC";
         using var reader = command.ExecuteReader();
 

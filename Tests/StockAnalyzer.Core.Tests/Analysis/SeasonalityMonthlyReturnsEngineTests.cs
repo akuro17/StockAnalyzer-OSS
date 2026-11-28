@@ -185,6 +185,97 @@ public class SeasonalityMonthlyReturnsEngineTests
         Assert.Equal(yearsBefore, result.CalendarYears.ToArray());
     }
 
+    [Fact]
+    public void Build_WithoutReferenceDate_LeavesAllCellsCompletedAndCompletedAveragesMatchingRowAverages()
+    {
+        SeasonalityChartResult result = Analyze(
+            5,
+            (new DateTime(2022, 1, 3), 100m),
+            (new DateTime(2022, 1, 31), 110m),
+            (new DateTime(2023, 1, 2), 100m),
+            (new DateTime(2023, 1, 15), 120m));
+
+        SeasonalityMonthlyReturnsTable table = SeasonalityMonthlyReturnsEngine.Build(result);
+
+        for (int row = 0; row < SeasonalityMonthlyReturnsTable.RowCount; row++)
+        {
+            for (int yearIndex = 0; yearIndex < table.Years.Count; yearIndex++)
+            {
+                Assert.False(table.Cell(row, yearIndex).IsPartial);
+            }
+
+            Assert.Equal(table.RowAverages[row], table.CompletedRowAverages[row]);
+        }
+    }
+
+    [Fact]
+    public void Build_WithPartialMonthReferenceDate_FlagsMonthAndAnnualAsPartialAndExcludesFromCompletedRowAverages()
+    {
+        SeasonalityChartResult result = Analyze(
+            5,
+            (new DateTime(2022, 1, 3), 100m),
+            (new DateTime(2022, 1, 31), 110m),
+            (new DateTime(2022, 2, 28), 110m),
+            (new DateTime(2022, 12, 30), 110m),
+            (new DateTime(2023, 1, 2), 100m),
+            (new DateTime(2023, 1, 31), 110m),
+            (new DateTime(2023, 2, 15), 132m));
+
+        SeasonalityMonthlyReturnsTable table = SeasonalityMonthlyReturnsEngine.Build(result, new DateTime(2023, 2, 15));
+
+        Assert.False(table.Cell(0, 1).IsPartial); // Jan 2023 completed
+        Assert.True(table.Cell(1, 1).IsPartial);  // Feb 2023 partial
+        Assert.True(table.Cell(SeasonalityMonthlyReturnsTable.AnnualRowIndex, 1).IsPartial); // Annual 2023 partial
+        Assert.False(table.Cell(1, 0).IsPartial); // Feb 2022 completed
+        Assert.False(table.Cell(SeasonalityMonthlyReturnsTable.AnnualRowIndex, 0).IsPartial);
+
+        // RowAverages retains SSoT behavior (includes partial cells)
+        Assert.Equal(0.10m, table.RowAverages[1]);  // (0% + 20%) / 2
+        Assert.Equal(0.21m, table.RowAverages[SeasonalityMonthlyReturnsTable.AnnualRowIndex]); // (10% + 32%) / 2
+
+        // CompletedRowAverages excludes partial cells
+        Assert.Equal(0.10m, table.CompletedRowAverages[0]); // Jan completed in both years
+        Assert.Equal(0.0m, table.CompletedRowAverages[1]);  // Feb completed in 2022 only
+        Assert.Equal(0.10m, table.CompletedRowAverages[SeasonalityMonthlyReturnsTable.AnnualRowIndex]); // Annual completed in 2022 only
+    }
+
+    [Fact]
+    public void Build_WhenOnlyDefinedCellInRowIsPartial_CompletedRowAverageIsNullWithoutDivideByZero()
+    {
+        SeasonalityChartResult result = Analyze(
+            5,
+            (new DateTime(2023, 6, 1), 100m),
+            (new DateTime(2023, 6, 15), 115m));
+
+        SeasonalityMonthlyReturnsTable table = SeasonalityMonthlyReturnsEngine.Build(result, new DateTime(2023, 6, 15));
+
+        Assert.True(table.Cell(5, 0).IsPartial);
+        Assert.True(table.Cell(SeasonalityMonthlyReturnsTable.AnnualRowIndex, 0).IsPartial);
+        Assert.Equal(0.15m, table.RowAverages[5]);
+        Assert.Equal(0.15m, table.RowAverages[SeasonalityMonthlyReturnsTable.AnnualRowIndex]);
+        Assert.Null(table.CompletedRowAverages[5]);
+        Assert.Null(table.CompletedRowAverages[SeasonalityMonthlyReturnsTable.AnnualRowIndex]);
+    }
+
+    [Fact]
+    public void Build_FiscalStartMonthFour_FlagsPartialCellUsingCycleYear()
+    {
+        var points = new[]
+        {
+            new SeasonalityPoint(new DateTime(2023, 4, 3), 100m),
+            new SeasonalityPoint(new DateTime(2024, 1, 15), 125m), // Jan 2024 belongs to cycle year 2023 when StartMonth == 4
+        };
+        var series = new SeasonalitySeriesInput(0, "BASE", SeasonalityRadiusMode.PercentVsYearStart, points);
+        SeasonalityChartResult result = SeasonalityChartEngine.Analyze(new[] { series }, new SeasonalityChartParameters(5, StartMonth: 4));
+
+        SeasonalityMonthlyReturnsTable table = SeasonalityMonthlyReturnsEngine.Build(result, new DateTime(2024, 1, 15));
+
+        int janRow = (1 - 4 + 12) % 12; // row 9 (Jan when StartMonth=4)
+        Assert.Equal(new[] { 2023 }, table.Years.ToArray());
+        Assert.True(table.Cell(janRow, 0).IsPartial);
+        Assert.True(table.Cell(SeasonalityMonthlyReturnsTable.AnnualRowIndex, 0).IsPartial);
+    }
+
     private static SeasonalityChartResult Analyze(uint years, params (DateTime Timestamp, decimal? Value)[] points)
     {
         var mapped = new SeasonalityPoint[points.Length];

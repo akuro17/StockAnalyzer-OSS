@@ -3,6 +3,8 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading.Tasks;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.Extensions.Logging;
@@ -10,8 +12,10 @@ using Polly;
 using Polly.CircuitBreaker;
 using Polly.Fallback;
 using Polly.Retry;
+using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Training;
 using StockAnalyzer.Core.Services.Backtest.Engine;
 
@@ -303,6 +307,11 @@ public class PredictionService : IPredictionService, IDisposable
             throw new System.IO.FileNotFoundException("ONNX model file not found.", modelPath);
         }
 
+        if (lease is null)
+        {
+            VerifyFallbackModelIntegrity(modelPath, candidateId);
+        }
+
         // ONNX Runtime copies the options into the session at construction, so the
         // SessionOptions native handle can be released as soon as this method returns.
         using var sessionOptions = OnnxSessionOptionsFactory.CreateInferenceOptions(_settings);
@@ -430,6 +439,113 @@ public class PredictionService : IPredictionService, IDisposable
             lease?.Dispose();
             RecordPermanentFailure(candidateId, error);
             throw;
+        }
+    }
+
+    internal void VerifyFallbackModelIntegrity(string modelPath, string? candidateId)
+    {
+        var modelFileName = Path.GetFileName(modelPath);
+        string? configuredExpected = _settings.PredictionExpectedModelSha256;
+        if (!string.IsNullOrWhiteSpace(configuredExpected))
+        {
+            string expectedHex = NormalizeAndValidateHex64(
+                configuredExpected,
+                "Configured PredictionExpectedModelSha256 is not a valid 64-character hexadecimal SHA-256 digest.",
+                candidateId);
+            VerifyFileDigestMatches(modelPath, modelFileName, expectedHex, "configured ExpectedModelSha256", candidateId);
+            return;
+        }
+
+        string sidecarPath = modelPath + PredictionSettings.Sha256SidecarSuffix;
+        if (File.Exists(sidecarPath))
+        {
+            string expectedHex = ReadAndValidateSha256Sidecar(sidecarPath, modelFileName, candidateId);
+            VerifyFileDigestMatches(modelPath, modelFileName, expectedHex, "SHA-256 sidecar", candidateId);
+            return;
+        }
+
+        if (_settings.PredictionRequireVerifiedFallbackModel)
+        {
+            var ex = new InvalidDataException(
+                $"Fallback ONNX model '{modelFileName}' has no ExpectedModelSha256 or .sha256 sidecar and RequireVerifiedFallbackModel is enabled.");
+            RecordPermanentFailure(candidateId, ex);
+            throw ex;
+        }
+
+        _logger.LogWarning(
+            "Loading unverified fallback ONNX model '{ModelFileName}' without ExpectedModelSha256 or .sha256 sidecar.",
+            modelFileName);
+    }
+
+    private string ReadAndValidateSha256Sidecar(string sidecarPath, string modelFileName, string? candidateId)
+    {
+        byte[] raw;
+        try
+        {
+            raw = BoundedFileReader.ReadAllBytes(sidecarPath, PredictionSettings.MaxSha256SidecarBytes);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            var wrapped = ex as InvalidDataException
+                ?? new InvalidDataException($"Unable to read SHA-256 sidecar for '{modelFileName}'.", ex);
+            RecordPermanentFailure(candidateId, wrapped);
+            throw wrapped;
+        }
+
+        if (raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF)
+        {
+            var bomEx = new InvalidDataException($"SHA-256 sidecar for '{modelFileName}' must not contain a UTF-8 BOM.");
+            RecordPermanentFailure(candidateId, bomEx);
+            throw bomEx;
+        }
+
+        string text;
+        try
+        {
+            text = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true).GetString(raw);
+        }
+        catch (DecoderFallbackException ex)
+        {
+            var decodeEx = new InvalidDataException($"SHA-256 sidecar for '{modelFileName}' contains invalid UTF-8 bytes.", ex);
+            RecordPermanentFailure(candidateId, decodeEx);
+            throw decodeEx;
+        }
+
+        return NormalizeAndValidateHex64(
+            text,
+            $"SHA-256 sidecar for '{modelFileName}' must contain exactly {ContentHash.HexLength} hexadecimal characters.",
+            candidateId);
+    }
+
+    private string NormalizeAndValidateHex64(string rawValue, string errorMessage, string? candidateId)
+    {
+        string normalized = rawValue.Trim().ToLowerInvariant();
+        if (!ContentHash.IsLowerHex64(normalized))
+        {
+            var ex = new InvalidDataException(errorMessage);
+            RecordPermanentFailure(candidateId, ex);
+            throw ex;
+        }
+
+        return normalized;
+    }
+
+    private void VerifyFileDigestMatches(
+        string modelPath,
+        string modelFileName,
+        string expectedLowerHex,
+        string sourceDescription,
+        string? candidateId)
+    {
+        string actualLowerHex = ContentHash.OfFile(modelPath);
+        if (!CryptographicOperations.FixedTimeEquals(
+                Encoding.ASCII.GetBytes(actualLowerHex),
+                Encoding.ASCII.GetBytes(expectedLowerHex)))
+        {
+            var ex = new InvalidDataException(
+                $"Fallback ONNX model '{modelFileName}' failed {sourceDescription} integrity verification.");
+            RecordPermanentFailure(candidateId, ex);
+            throw ex;
         }
     }
 

@@ -18,6 +18,7 @@ RESERVED_TRAINER_FLAGS: frozenset = frozenset({
     "preflight",
     "pretrain", "bag-index", "bag-count", "bag-seed", "bag-fraction", "bag-block-length", "meta-segment",
     "cpcv-groups", "cpcv-test-groups", "cpcv-combination",
+    "opset", "price-adjustment",
 })
 
 # sweep.py emits these two itself (--epochs from its own option, --no-verify always), so an --extra token must not repeat them.

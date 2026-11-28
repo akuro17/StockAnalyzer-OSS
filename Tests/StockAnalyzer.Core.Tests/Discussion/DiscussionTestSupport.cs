@@ -197,3 +197,24 @@ internal sealed class HubRig : IDisposable
 
     public static DiscussionException Refused(Action action) => Assert.Throws<DiscussionException>(action);
 }
+
+/// <summary>
+/// The one place that builds a router for a test with a real named pipe. A full run of the assembly stalls the whole process in garbage collections (measured: about 63 percent of
+/// 100 ms in the first minute), and the specified election lasts about one second (3 rounds of a 300 ms connect and a 50 ms pause), so a stall of that length makes a router answer
+/// HUB_UNAVAILABLE although the board is fine. The tests therefore widen the budget (rounds and the connect wait of a call); only a test that pins the specified budget asks for it
+/// as it is. The caller disposes the router.
+/// </summary>
+internal static class DiscussionRouterTestFactory
+{
+    public const int ToleratedElectionAttempts = 30;
+    public const int ToleratedCallConnectTimeoutMs = 1500;
+
+    public static DiscussionGatewayRouter Create(
+        string suffix, string dataFolder, bool sharing = true, ICommandLog? commandLog = null, DiscussionSettings? settings = null, bool specifiedBudget = false)
+    {
+        var transport = specifiedBudget
+            ? new DiscussionTransportOptions(suffix, sharing)
+            : new DiscussionTransportOptions(suffix, sharing, ToleratedElectionAttempts, ToleratedCallConnectTimeoutMs);
+        return new DiscussionGatewayRouter(settings ?? new DiscussionSettings(), TimeProvider.System, commandLog, protocolSuffix: null, dataFolder, transport);
+    }
+}

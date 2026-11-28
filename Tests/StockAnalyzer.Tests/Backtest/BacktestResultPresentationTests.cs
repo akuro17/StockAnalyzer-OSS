@@ -301,6 +301,58 @@ public class BacktestResultPresentationTests
         Assert.Empty(vm.AuditRows);
     }
 
+    [Fact]
+    public void AuditRows_ExposeLocalizedExecutionAssumptionsReturnBasisAndUniverseScope()
+    {
+        DateTime timestamp = BarTime(0);
+        var input = new BacktestInput(ImmutableArray<CandleData>.Empty, "TEST", TimeFrame.D1, BacktestInput.CurrentDataVersion, timestamp, timestamp, 0, 0);
+        var localization = new MapLocalizationService(new()
+        {
+            ["Backtest_Audit_OrderDependentBarsTemplate"] = "{0} of {1}",
+            ["Backtest_Audit_ExecutionAssumptions_ZeroFriction"] = "Zero friction",
+            ["Backtest_Audit_ExecutionAssumptions_ExplicitCosts"] = "Explicit costs",
+            ["Backtest_Audit_ExecutionAssumptions_AlwaysFill"] = "AlwaysFill",
+            ["Backtest_Audit_ExecutionAssumptions_RejectAtLimit"] = "RejectAtLimit",
+            ["Backtest_Audit_ReturnBasisValue"] = "Split-adjusted price return excluding cash dividends",
+            ["Backtest_Audit_UniverseScopeValue"] = "Local Parquet universe (survivorship bias)",
+        });
+
+        BacktestResult defaultResult = BacktestTestFactory.CreateResult(equityPoints: ThreeBars());
+        BacktestEvaluationArtifact defaultArtifact = new BacktestEvaluationService(
+                new FixedResultEngine(defaultResult), new BacktestReportGenerator(), new NoSamplingEvidenceTrustPolicy())
+            .Evaluate(input, defaultResult.Configuration, BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()),
+                new BacktestReportOptions(TimeFrame.D1, 0, timestamp, timestamp) { AnnualPeriods = 252 });
+
+        var vm = new BacktestResultsViewModel(localization, new FakeBacktestReportExporter(), new FakeDialogService());
+        vm.Update(defaultArtifact, 0, ImmutableArray<BacktestConditionEntry>.Empty, true, null);
+
+        Assert.Contains(vm.AuditRows, r => r.LabelKey == "Backtest_Audit_ExecutionAssumptions" && r.ValueText == "Zero friction; AlwaysFill");
+        Assert.Contains(vm.AuditRows, r => r.LabelKey == "Backtest_Audit_ReturnBasis" && r.ValueText == "Split-adjusted price return excluding cash dividends");
+        Assert.Contains(vm.AuditRows, r => r.LabelKey == "Backtest_Audit_UniverseScope" && r.ValueText == "Local Parquet universe (survivorship bias)");
+
+        var explicitConfig = new BacktestConfiguration
+        {
+            InitialCapital = defaultResult.Configuration.InitialCapital,
+            SizingModel = defaultResult.Configuration.SizingModel,
+            SizingParameter = defaultResult.Configuration.SizingParameter,
+            InitialMarginRatio = defaultResult.Configuration.InitialMarginRatio,
+            MaintenanceMarginRatio = defaultResult.Configuration.MaintenanceMarginRatio,
+            LiquidationPenaltyRatio = defaultResult.Configuration.LiquidationPenaltyRatio,
+            CommissionFlat = 1.5m,
+            PriceLimitFillMode = PriceLimitFillMode.RejectIfAtLimitPrice,
+        };
+        BacktestResult explicitResult = new(
+            defaultResult.Orders, defaultResult.Fills, defaultResult.Trades, defaultResult.EquityPoints, defaultResult.Signals,
+            explicitConfig, defaultResult.Status, defaultResult.StrategyName, defaultResult.ReproducibilityHash, defaultResult.IsInsufficientData, defaultResult.Warnings);
+        BacktestEvaluationArtifact explicitArtifact = new BacktestEvaluationService(
+                new FixedResultEngine(explicitResult), new BacktestReportGenerator(), new NoSamplingEvidenceTrustPolicy())
+            .Evaluate(input, explicitConfig, BacktestStrategySpecification.NoOp(Array.Empty<StrategyIndicatorRequest>()),
+                new BacktestReportOptions(TimeFrame.D1, 0, timestamp, timestamp) { AnnualPeriods = 252 });
+
+        vm.Update(explicitArtifact, 0, ImmutableArray<BacktestConditionEntry>.Empty, true, null);
+        Assert.Contains(vm.AuditRows, r => r.LabelKey == "Backtest_Audit_ExecutionAssumptions" && r.ValueText == "Explicit costs; RejectAtLimit");
+    }
+
     private sealed class MapLocalizationService(System.Collections.Generic.Dictionary<string, string> map) : ILocalizationService
     {
         public string GetString(string key) => map.TryGetValue(key, out string? value) ? value : key;

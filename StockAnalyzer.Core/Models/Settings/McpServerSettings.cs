@@ -59,9 +59,9 @@ public sealed class McpServerSettings
     public DiscussionSettings Discussion { get; set; } = new();
 
     /// <summary>
-    /// Builds the CLI argument string passed when starting StockAnalyzer.McpServer.
+    /// Builds the ordered CLI argument tokens passed when starting StockAnalyzer.McpServer via <c>ProcessStartInfo.ArgumentList</c>.
     /// </summary>
-    public string BuildLaunchArguments()
+    public IReadOnlyList<string> BuildLaunchArgumentList()
     {
         var args = new List<string>(7);
         if (EnableDiscussion)
@@ -92,8 +92,13 @@ public sealed class McpServerSettings
             args.Add(McpToolsetProfiles.ProgressiveDiscoveryToken);
         }
 
-        return string.Join(" ", args);
+        return args;
     }
+
+    /// <summary>
+    /// Builds the CLI argument string passed when starting StockAnalyzer.McpServer.
+    /// </summary>
+    public string BuildLaunchArguments() => string.Join(" ", BuildLaunchArgumentList());
 
     public McpServerSettings Clone()
     {

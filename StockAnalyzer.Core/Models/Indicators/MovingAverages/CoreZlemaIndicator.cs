@@ -20,51 +20,33 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
             }
         }
 
-        protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
         {
-            if (candles.Count == 0) return IndicatorResult.Success(_values);
-            int lag = (Period - 1) / 2;
-            decimal mult = 2m / (Period + 1);
+            _values.Clear();
+            if (series == null || series.Count == 0) return IndicatorResult.Success(_values);
+            if (Period <= 0)
+            {
+                for (int i = 0; i < series.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
+            }
 
-            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            var emaData = new List<decimal>();
-            for (int i = 0; i < candles.Count; i++)
+            int lag = (Period - 1) / 2;
+            var emaData = new List<decimal?>(series.Count);
+            for (int i = 0; i < series.Count; i++)
             {
                 if (i < lag)
                 {
-                    emaData.Add(priceSeries[i] ?? 0m);
+                    emaData.Add(series[i]);
                 }
                 else
                 {
-                    emaData.Add(2 * (priceSeries[i] ?? 0m) - (priceSeries[i - lag] ?? 0m));
+                    decimal? curr = series[i];
+                    decimal? lagged = series[i - lag];
+                    emaData.Add(curr.HasValue && lagged.HasValue ? 2m * curr.Value - lagged.Value : null);
                 }
             }
 
-            decimal? zlema = null;
-            for (int i = 0; i < candles.Count; i++)
-            {
-                if (i < Period - 1)
-                {
-                    _values.Add(null);
-                    continue;
-                }
-
-                if (zlema == null)
-                {
-                    decimal sum = 0;
-                    for (int j = 0; j < Period; j++)
-                    {
-                        sum += emaData[i - j];
-                    }
-                    zlema = sum / Period;
-                }
-                else
-                {
-                    zlema = (emaData[i] - zlema.Value) * mult + zlema.Value;
-                }
-                _values.Add(zlema);
-            }
-
+            _values.AddRange(IndicatorCalculationHelper.CalculateEmaWithNulls(emaData, Period));
             return IndicatorResult.Success(_values);
         }
     }

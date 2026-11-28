@@ -33,14 +33,14 @@ internal sealed class CheckPortfolioRlPreflightTool : IMcpTool
 
     public CheckPortfolioRlPreflightTool(
         SymbolResolver symbols,
+        ErrorMessageSanitizer sanitizer,
         IRlPortfolioService? portfolioService = null,
-        IReadOnlyStockAnalyzerGateway? gateway = null,
-        ErrorMessageSanitizer? sanitizer = null)
+        IReadOnlyStockAnalyzerGateway? gateway = null)
     {
-        _symbols = symbols;
+        _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
+        _sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
         _portfolioService = portfolioService ?? new RlPortfolioService(new RlPortfolioSettings());
         _gateway = gateway;
-        _sanitizer = sanitizer ?? new ErrorMessageSanitizer(Array.Empty<string?>());
     }
 
     public string Name => "sa_check_portfolio_rl_preflight";

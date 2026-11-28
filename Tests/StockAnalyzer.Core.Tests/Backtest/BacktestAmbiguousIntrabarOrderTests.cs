@@ -141,10 +141,10 @@ public class BacktestAmbiguousIntrabarOrderTests
         PricePathConflictMode = mode,
     };
 
-    /// <summary>Bar 1's Close (20) triggers the entry, filled at bar 2's Open (100); bar 3 is the bar under test; bar 4 lets the exit order fill.</summary>
+    /// <summary>Bar 1's Close (85) triggers the entry, filled at bar 2's Open (100); bar 3 is the bar under test; bar 4 lets the exit order fill.</summary>
     private static BacktestInput RiskScenario(CandleData bar3) => Input(
         Flat(0, 1m),
-        Flat(1, 20m),
+        Flat(1, 85m),
         SyntheticBars.Bar(2, 100m, 102m, 99m, 100m),
         SyntheticBars.Bar(3, bar3.Open, bar3.High, bar3.Low, bar3.Close),
         SyntheticBars.Bar(4, 96m, 97m, 95m, 96m));
@@ -276,7 +276,7 @@ public class BacktestAmbiguousIntrabarOrderTests
             => new(SyntheticBars.Start.AddDays(day), open, high, low, close, volume);
         BacktestInput input = Input(
             Candle(0, 1m, 1m, 1m, 1m, 10_000),
-            Candle(1, 20m, 20m, 20m, 20m, 10_000),
+            Candle(1, 85m, 85m, 85m, 85m, 10_000),
             Candle(2, 100m, 102m, 99m, 100m, 10_000),
             Candle(3, 100m, 112m, 90m, 98m, 10_000),
             Candle(4, 100m, 112m, 90m, 98m, 100),
@@ -320,7 +320,7 @@ public class BacktestAmbiguousIntrabarOrderTests
             => new(SyntheticBars.Start.AddDays(day), open, high, low, close, 10_000);
         return Input(
             Candle(0, 1m, 1m, 1m, 1m),
-            Candle(1, 20m, 20m, 20m, 20m),
+            Candle(1, 85m, 85m, 85m, 85m),
             Candle(2, 100m, 102m, 99m, 100m),
             Candle(3, 100m, 112m, 90m, 98m),
             Candle(4, open4, high4, low4, close4),

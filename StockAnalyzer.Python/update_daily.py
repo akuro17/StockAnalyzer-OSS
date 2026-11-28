@@ -96,11 +96,14 @@ def check_ohlc_invariants(row):
     return violations
 
 
-def warn_invalid_bars(symbol, frame):
-    """Log warning(s) for any OHLCV invariant violation in the fetched batch only. Never drops rows or aborts writes."""
+def filter_invalid_bars(frame):
+    """Return rows violating OHLCV invariants (never drops rows from the input frame)."""
     if frame is None or frame.is_empty():
-        return 0
-    invalid_df = frame.filter(
+        return frame
+    required_cols = ("open", "high", "low", "close", "volume")
+    if any(col not in frame.columns for col in required_cols):
+        return frame.clear()
+    return frame.filter(
         pl.col("high").is_null()
         | pl.col("low").is_null()
         | pl.col("open").is_null()
@@ -120,7 +123,21 @@ def warn_invalid_bars(symbol, frame):
         | (pl.col("high") <= 0)
         | (pl.col("low") <= 0)
         | (pl.col("close") <= 0)
-    ).sort("date")
+    )
+
+
+def count_invalid_bars(frame):
+    """Return count of OHLCV-invariant-violating bars without modifying the input frame."""
+    if frame is None or frame.is_empty():
+        return 0
+    return filter_invalid_bars(frame).height
+
+
+def warn_invalid_bars(symbol, frame):
+    """Log warning(s) for any OHLCV invariant violation in the fetched batch only. Never drops rows or aborts writes."""
+    if frame is None or frame.is_empty():
+        return 0
+    invalid_df = filter_invalid_bars(frame).sort("date")
     if invalid_df.is_empty():
         return 0
     for row in invalid_df.head(MAX_LOGGED_INVALID_BARS).iter_rows(named=True):
@@ -258,13 +275,18 @@ def validate_resync_file(path, stored_dates):
     allowed = allowed_missing_days(stored_days.len())
     if missing.len() > allowed:
         problems.append(describe_missing_days(missing, stored_days.len(), allowed))
+    invalid_ohlcv_count = count_invalid_bars(frame)
+    if invalid_ohlcv_count > 0:
+        logging.warning(
+            f"Split resync OHLCV check ({path}): {invalid_ohlcv_count} invalid OHLCV bar(s) present in resynced frame; rows preserved without aborting resync."
+        )
     return problems
 
 
-def update_ticker(provider, symbol, delay=None, start_period=5, full_history=False, force_period=False):
+def _update_ticker_impl(provider, symbol, delay=None, start_period=5, full_history=False, force_period=False):
     if not is_well_formed_ticker(symbol):
         logging.error(f"Skipping invalid ticker symbol: {symbol!r}")
-        return
+        return False, 0
     file_path = os.path.join(DATA_ROOT, f"{symbol}.parquet")
     
     start_ts = WHOLE_HISTORY_START_TS
@@ -294,10 +316,10 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
         if existing_df is None:
             raise ValueError(f"Failed to download initial data for new ticker {symbol} (data is empty or failed)")
         logging.info(f"{symbol}: No new data found.")
-        return
+        return False, 0
 
     df_new = normalize_downloaded_frame(df_new_pd)
-    warn_invalid_bars(symbol, df_new)
+    invalid_bars_count = warn_invalid_bars(symbol, df_new)
 
     resync_stored_dates = None  # set only for a split re-sync (the dates it replaces): the extra checks before the swap apply to it alone
     if existing_df is not None:
@@ -309,8 +331,9 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
             # A split the file has not recorded: rows stored before it are on the old scale, so replace the whole stored span.
             df_combined = fetch_split_resync_frame(provider, symbol, existing_df, delay)
             if df_combined is None:
-                return
+                return False, 0
             resync_stored_dates = existing_df["date"]
+            invalid_bars_count = count_invalid_bars(df_combined)
             action = "Re-synced (Split)"
         elif force_period and not full_history:
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -336,7 +359,7 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
             if problems:
                 logging.warning(f"{symbol}: Split resync skipped: written file failed validation ({'; '.join(problems)}); stored file left unchanged")
                 os.remove(tmp_path)
-                return
+                return False, 0
         try:
             os.replace(tmp_path, file_path)
         except PermissionError as e:
@@ -345,7 +368,7 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
             # The stored file is open elsewhere. No retry: the split stays unrecorded, so the next update detects it again.
             logging.warning(f"{symbol}: Split resync skipped: stored file is in use ({e}); stored file left unchanged")
             os.remove(tmp_path)
-            return
+            return False, 0
         logging.info(f"{symbol}: {action} successfully (Atomic). Total rows: {len(df_combined)}")
 
         # Update 52-week high/low in metadata parquet file upon time-series update
@@ -375,11 +398,24 @@ def update_ticker(provider, symbol, delay=None, start_period=5, full_history=Fal
                                 os.remove(tmp_meta)
             except Exception as e:
                 logging.warning(f"{symbol}: Could not update 52-week high/low in metadata parquet: {e}")
+        return True, invalid_bars_count
     except Exception as e:
         logging.error(f"{symbol}: Failed to write parquet: {e}")
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
         raise
+
+
+def update_ticker(provider, symbol, delay=None, start_period=5, full_history=False, force_period=False):
+    _, invalid_bars_count = _update_ticker_impl(
+        provider,
+        symbol,
+        delay=delay,
+        start_period=start_period,
+        full_history=full_history,
+        force_period=force_period,
+    )
+    return invalid_bars_count
 
 def main():
     parser = argparse.ArgumentParser(description="Update daily market data.")
@@ -405,13 +441,38 @@ def main():
     logging.info(f"Starting daily update for {len(tickers)} tickers...")
     
     has_failed = False
+    tickers_updated = 0
+    total_invalid_bars = 0
+    tickers_with_invalid_bars = 0
     for symbol in tickers:
         try:
-            update_ticker(provider, symbol, delay=args.delay, start_period=args.start_period, full_history=args.full_history, force_period=args.force_period)
+            updated, invalid_bars = _update_ticker_impl(
+                provider,
+                symbol,
+                delay=args.delay,
+                start_period=args.start_period,
+                full_history=args.full_history,
+                force_period=args.force_period,
+            )
+            if updated:
+                tickers_updated += 1
+            if invalid_bars > 0:
+                total_invalid_bars += invalid_bars
+                tickers_with_invalid_bars += 1
         except Exception as e:
             logging.error(f"Failed to update {symbol}: {e}")
             has_failed = True
     
+    logging.info(
+        f"Daily update summary: tickers_updated={tickers_updated}, "
+        f"total_invalid_bars={total_invalid_bars}, "
+        f"tickers_with_invalid_bars={tickers_with_invalid_bars}."
+    )
+    if total_invalid_bars > 0:
+        logging.warning(
+            f"Daily update OHLCV quality summary: {total_invalid_bars} invalid bar(s) across {tickers_with_invalid_bars} ticker(s) "
+            f"(tickers_updated={tickers_updated}); rows retained per CandleInvariant contract."
+        )
     logging.info("Daily update process completed.")
     if has_failed:
         import sys

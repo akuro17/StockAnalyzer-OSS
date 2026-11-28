@@ -16,6 +16,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
             if (candles.Count < 2)
             {
                 if (candles.Count == 1) _values.Add(null);
@@ -25,7 +26,13 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
             var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
             _values.Add(null);
             for (int i = 1; i < candles.Count; i++)
-                _values.Add(((priceSeries[i] ?? 0m) - (priceSeries[i - 1] ?? 0m)) * candles[i].Volume);
+            {
+                decimal? curr = priceSeries[i];
+                decimal? prev = priceSeries[i - 1];
+                _values.Add(curr.HasValue && prev.HasValue
+                    ? (curr.Value - prev.Value) * candles[i].Volume
+                    : null);
+            }
 
             return IndicatorResult.Success(_values);
         }

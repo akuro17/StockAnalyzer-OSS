@@ -50,7 +50,7 @@ public class CoreSSACycleIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
         _values.Clear();
         InPhase.Clear();
@@ -58,12 +58,12 @@ public class CoreSSACycleIndicator : CoreIndicatorBase
         Phase.Clear();
         DominantPeriod.Clear();
 
-        if (candles == null || candles.Count == 0)
+        if (series == null || series.Count == 0)
         {
             return IndicatorResult.Success(_values);
         }
 
-        int n = candles.Count;
+        int n = series.Count;
         int window = Math.Max(SsaDecompositionEngine.MinSampleCount, WindowSize);
         if (n < window)
         {
@@ -87,23 +87,7 @@ public class CoreSSACycleIndicator : CoreIndicatorBase
             });
         }
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         double[] doublePrices = new double[n];
-        for (int i = 0; i < n; i++)
-        {
-            doublePrices[i] = (double)(priceSeries[i] ?? 0m);
-        }
-
-        // Pre-fill nulls for warmup bars
-        for (int i = 0; i < window - 1; i++)
-        {
-            _values.Add(null);
-            InPhase.Add(null);
-            Quadrature.Add(null);
-            Phase.Add(null);
-            DominantPeriod.Add(null);
-        }
-
         int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
 
@@ -116,9 +100,46 @@ public class CoreSSACycleIndicator : CoreIndicatorBase
             double[] eigenvalues = new double[l];
             double[,] eigenvectors = new double[l, l];
             int[] sortedIndices = new int[l];
+            int contiguousValid = 0;
 
-            for (int t = window - 1; t < n; t++)
+            for (int t = 0; t < n; t++)
             {
+                if (!series[t].HasValue)
+                {
+                    contiguousValid = 0;
+                    _values.Add(null);
+                    InPhase.Add(null);
+                    Quadrature.Add(null);
+                    Phase.Add(null);
+                    DominantPeriod.Add(null);
+                    continue;
+                }
+
+                double val = (double)series[t]!.Value;
+                if (!double.IsFinite(val))
+                {
+                    contiguousValid = 0;
+                    _values.Add(null);
+                    InPhase.Add(null);
+                    Quadrature.Add(null);
+                    Phase.Add(null);
+                    DominantPeriod.Add(null);
+                    continue;
+                }
+
+                doublePrices[t] = val;
+                contiguousValid++;
+
+                if (contiguousValid < window)
+                {
+                    _values.Add(null);
+                    InPhase.Add(null);
+                    Quadrature.Add(null);
+                    Phase.Add(null);
+                    DominantPeriod.Add(null);
+                    continue;
+                }
+
                 ReadOnlySpan<double> windowSpan = doublePrices.AsSpan(t - window + 1, window);
                 SsaDecompositionEngine.Detrend(windowSpan, processed, SsaDetrendMode.LeastSquaresLinear, out _, out _);
 
@@ -253,7 +274,13 @@ public class CoreSSACycleIndicator : CoreIndicatorBase
                 double ampSq = iVal * iVal + qVal * qVal;
                 double? phaseVal = (ampSq <= 1e-24) ? null : Math.Atan2(qVal, iVal);
 
-                if (!double.IsFinite(cycleVal) || !double.IsFinite(dominantPeriodVal))
+                decimal? cycleDec = IndicatorCalculationHelper.ToDecimalOrNull(cycleVal);
+                decimal? iDec = IndicatorCalculationHelper.ToDecimalOrNull(iVal);
+                decimal? qDec = IndicatorCalculationHelper.ToDecimalOrNull(qVal);
+                decimal? pDec = phaseVal.HasValue ? IndicatorCalculationHelper.ToDecimalOrNull(phaseVal.Value) : null;
+                decimal? dpDec = IndicatorCalculationHelper.ToDecimalOrNull(dominantPeriodVal);
+
+                if (!cycleDec.HasValue || !iDec.HasValue || !qDec.HasValue || !dpDec.HasValue)
                 {
                     _values.Add(null);
                     InPhase.Add(null);
@@ -263,13 +290,13 @@ public class CoreSSACycleIndicator : CoreIndicatorBase
                 }
                 else
                 {
-                    _values.Add(decimal.Round((decimal)cycleVal, 8, MidpointRounding.AwayFromZero));
-                    InPhase.Add(decimal.Round((decimal)iVal, 8, MidpointRounding.AwayFromZero));
-                    Quadrature.Add(decimal.Round((decimal)qVal, 8, MidpointRounding.AwayFromZero));
-                    Phase.Add(phaseVal.HasValue && double.IsFinite(phaseVal.Value)
-                        ? decimal.Round((decimal)phaseVal.Value, 8, MidpointRounding.AwayFromZero)
+                    _values.Add(decimal.Round(cycleDec.Value, 8, MidpointRounding.AwayFromZero));
+                    InPhase.Add(decimal.Round(iDec.Value, 8, MidpointRounding.AwayFromZero));
+                    Quadrature.Add(decimal.Round(qDec.Value, 8, MidpointRounding.AwayFromZero));
+                    Phase.Add(pDec.HasValue
+                        ? decimal.Round(pDec.Value, 8, MidpointRounding.AwayFromZero)
                         : null);
-                    DominantPeriod.Add(decimal.Round((decimal)dominantPeriodVal, 8, MidpointRounding.AwayFromZero));
+                    DominantPeriod.Add(decimal.Round(dpDec.Value, 8, MidpointRounding.AwayFromZero));
                 }
             }
         }

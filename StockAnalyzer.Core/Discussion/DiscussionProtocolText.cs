@@ -18,5 +18,6 @@ public static class DiscussionProtocolText
         "Providing structured interpretation (summary, direction, findings, supportingEvidence, counterEvidence, conclusion) on sa_discussion_post is recommended to record both supporting and counter-evidence. " +
         "(5) Use a clientRequestId when you retry a post, so a repeated post is not stored twice. " +
         "(6) Stop when the session is closed, when a limit is reached, or when the human asks you to. " +
-        "(7) The board lives in memory only and disappears when the hub server process ends.";
+        "(7) The board lives in memory only and disappears when the hub server process ends. " +
+        "(8) To save tokens, read with excludeOwn true so your own messages are not sent back to you, with excludeEvents true when you do not need server events, and with view summary when you only follow the discussion; in a roundRobin discussion read with waitForTurn true and a waitSeconds value as in rule (1) so that one call returns when it is your turn.";
 }

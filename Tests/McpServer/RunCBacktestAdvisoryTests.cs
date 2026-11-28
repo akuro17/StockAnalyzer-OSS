@@ -118,6 +118,10 @@ public sealed class RunCBacktestAdvisoryTests : IDisposable
         Assert.False(portStructured.TryGetProperty("warnings", out _)); // CF-1: notes[] only
         string[] portNotes = ReadStringArray(portStructured, "notes");
         Assert.Contains(portNotes, w => w.StartsWith("SIZING_NOTIONAL_SMALL:", StringComparison.Ordinal) && w.Contains("default fixed size of 1 share", StringComparison.Ordinal));
+        Assert.Contains(portNotes, w => w.StartsWith("ZERO_FRICTION_ASSUMPTIONS:", StringComparison.Ordinal));
+        Assert.Contains(portNotes, w => w.StartsWith("PRICE_LIMIT_ALWAYS_FILL:", StringComparison.Ordinal));
+        Assert.Contains(portNotes, w => w.StartsWith("PRICE_RETURN_EXCLUDES_DIVIDENDS:", StringComparison.Ordinal));
+        Assert.Contains(portNotes, w => w.StartsWith("SURVIVORSHIP_BIAS_UNIVERSE:", StringComparison.Ordinal));
 
         const string paramConditions =
             """{"entryLong":{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"indicator":"SMA","parameters":{"Period":{"$param":"period"}}}},"exitLong":{"left":{"price":"Close"},"comparison":"LessThan","right":{"indicator":"SMA","parameters":{"Period":{"$param":"period"}}}}}""";
@@ -125,14 +129,22 @@ public sealed class RunCBacktestAdvisoryTests : IDisposable
         using JsonDocument optDef = (await McpTestSupport.CallAsync(dispatcher, "sa_optimize_backtest",
             $$"""{"symbol":"AAPL","conditions":{{paramConditions}},"parameterRanges":[{"name":"period","start":3,"end":5,"step":2}],"objective":"totalPnL","startDate":"2024-01-10","endDate":"2024-04-15"}"""))!;
         Assert.False(McpTestSupport.IsError(optDef), McpTestSupport.Structured(optDef).ToString());
-        Assert.Contains(ReadStringArray(McpTestSupport.Structured(optDef), "warnings"),
-            w => w.StartsWith("SIZING_NOTIONAL_SMALL:", StringComparison.Ordinal) && w.Contains("default fixed size of 1 share", StringComparison.Ordinal));
+        string[] optWarnings = ReadStringArray(McpTestSupport.Structured(optDef), "warnings");
+        Assert.Contains(optWarnings, w => w.StartsWith("SIZING_NOTIONAL_SMALL:", StringComparison.Ordinal) && w.Contains("default fixed size of 1 share", StringComparison.Ordinal));
+        Assert.Contains(optWarnings, w => w.StartsWith("ZERO_FRICTION_ASSUMPTIONS:", StringComparison.Ordinal));
+        Assert.Contains(optWarnings, w => w.StartsWith("PRICE_LIMIT_ALWAYS_FILL:", StringComparison.Ordinal));
+        Assert.Contains(optWarnings, w => w.StartsWith("PRICE_RETURN_EXCLUDES_DIVIDENDS:", StringComparison.Ordinal));
+        Assert.Contains(optWarnings, w => w.StartsWith("SURVIVORSHIP_BIAS_UNIVERSE:", StringComparison.Ordinal));
 
         using JsonDocument wfDef = (await McpTestSupport.CallAsync(dispatcher, "sa_run_walk_forward_analysis",
             $$"""{"symbol":"AAPL","conditions":{{paramConditions}},"parameterRanges":[{"name":"period","start":3,"end":5,"step":2}],"objective":"totalPnL","windows":{"generator":{"mode":"Rolling","inSampleBars":40,"outOfSampleBars":25,"stepBars":25} },"startDate":"2024-01-10","endDate":"2024-04-25"}"""))!;
         Assert.False(McpTestSupport.IsError(wfDef), McpTestSupport.Structured(wfDef).ToString());
-        Assert.Contains(ReadStringArray(McpTestSupport.Structured(wfDef), "warnings"),
-            w => w.StartsWith("SIZING_NOTIONAL_SMALL:", StringComparison.Ordinal) && w.Contains("default fixed size of 1 share", StringComparison.Ordinal));
+        string[] wfWarnings = ReadStringArray(McpTestSupport.Structured(wfDef), "warnings");
+        Assert.Contains(wfWarnings, w => w.StartsWith("SIZING_NOTIONAL_SMALL:", StringComparison.Ordinal) && w.Contains("default fixed size of 1 share", StringComparison.Ordinal));
+        Assert.Contains(wfWarnings, w => w.StartsWith("ZERO_FRICTION_ASSUMPTIONS:", StringComparison.Ordinal));
+        Assert.Contains(wfWarnings, w => w.StartsWith("PRICE_LIMIT_ALWAYS_FILL:", StringComparison.Ordinal));
+        Assert.Contains(wfWarnings, w => w.StartsWith("PRICE_RETURN_EXCLUDES_DIVIDENDS:", StringComparison.Ordinal));
+        Assert.Contains(wfWarnings, w => w.StartsWith("SURVIVORSHIP_BIAS_UNIVERSE:", StringComparison.Ordinal));
 
         // 2) Explicit fixed size (e.g. 5 shares) -> mentions "fixed size of 5 share(s)"
         using JsonDocument singleExplicit = (await McpTestSupport.CallAsync(dispatcher, "sa_run_backtest",
@@ -140,10 +152,24 @@ public sealed class RunCBacktestAdvisoryTests : IDisposable
         Assert.Contains(ReadStringArray(McpTestSupport.Structured(singleExplicit), "warnings"),
             w => w.StartsWith("SIZING_NOTIONAL_SMALL:", StringComparison.Ordinal) && w.Contains("fixed size of 5 share(s)", StringComparison.Ordinal));
 
-        // 3) PercentOfEquity -> NO SIZING_NOTIONAL_SMALL warning (and no warnings key at all)
+        // 3) PercentOfEquity -> NO SIZING_NOTIONAL_SMALL warning, while execution-realism & disclosure advisories apply when zero-cost / AlwaysFill
         using JsonDocument pctSingle = (await McpTestSupport.CallAsync(dispatcher, "sa_run_backtest",
             $$"""{"symbol":"AAPL","conditions":{{Conditions}},"account":{"sizingModel":"PercentOfEquity","sizingParameter":0.2},"startDate":"2024-01-10","endDate":"2024-04-15"}"""))!;
-        Assert.False(McpTestSupport.Structured(pctSingle).TryGetProperty("warnings", out _));
+        string[] pctWarnings = ReadStringArray(McpTestSupport.Structured(pctSingle), "warnings");
+        Assert.DoesNotContain(pctWarnings, w => w.StartsWith("SIZING_NOTIONAL_SMALL:", StringComparison.Ordinal));
+        Assert.Contains(pctWarnings, w => w.StartsWith("ZERO_FRICTION_ASSUMPTIONS:", StringComparison.Ordinal));
+        Assert.Contains(pctWarnings, w => w.StartsWith("PRICE_LIMIT_ALWAYS_FILL:", StringComparison.Ordinal));
+        Assert.Contains(pctWarnings, w => w.StartsWith("PRICE_RETURN_EXCLUDES_DIVIDENDS:", StringComparison.Ordinal));
+        Assert.Contains(pctWarnings, w => w.StartsWith("SURVIVORSHIP_BIAS_UNIVERSE:", StringComparison.Ordinal));
+
+        // 3b) Explicit non-zero cost + RejectIfAtLimitPrice suppresses ZERO_FRICTION_ASSUMPTIONS and PRICE_LIMIT_ALWAYS_FILL
+        using JsonDocument explicitSingle = (await McpTestSupport.CallAsync(dispatcher, "sa_run_backtest",
+            $$"""{"symbol":"AAPL","conditions":{{Conditions}},"account":{"sizingModel":"PercentOfEquity","sizingParameter":0.2,"commissionFlat":1.0,"priceLimitFillMode":"RejectIfAtLimitPrice"},"startDate":"2024-01-10","endDate":"2024-04-15"}"""))!;
+        string[] explicitWarnings = ReadStringArray(McpTestSupport.Structured(explicitSingle), "warnings");
+        Assert.DoesNotContain(explicitWarnings, w => w.StartsWith("ZERO_FRICTION_ASSUMPTIONS:", StringComparison.Ordinal));
+        Assert.DoesNotContain(explicitWarnings, w => w.StartsWith("PRICE_LIMIT_ALWAYS_FILL:", StringComparison.Ordinal));
+        Assert.Contains(explicitWarnings, w => w.StartsWith("PRICE_RETURN_EXCLUDES_DIVIDENDS:", StringComparison.Ordinal));
+        Assert.Contains(explicitWarnings, w => w.StartsWith("SURVIVORSHIP_BIAS_UNIVERSE:", StringComparison.Ordinal));
 
         // 4) Zero trades -> NO SIZING_NOTIONAL_SMALL warning
         using JsonDocument zeroTradeSingle = (await McpTestSupport.CallAsync(dispatcher, "sa_run_backtest",

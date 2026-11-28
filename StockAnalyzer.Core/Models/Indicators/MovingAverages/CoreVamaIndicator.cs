@@ -17,108 +17,103 @@ public class CoreVamaIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
+        _values.Clear();
 
-        if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
+        if (series == null || series.Count == 0) return IndicatorResult.Success(_values);
         int requiredDataCount = 2 * Period - 1;
-        if (candles.Count < requiredDataCount)
+        if (Period <= 0 || series.Count < requiredDataCount)
         {
-            _values.AddRange(Enumerable.Repeat<decimal?>(null, candles.Count));
+            _values.AddRange(Enumerable.Repeat<decimal?>(null, series.Count));
             return IndicatorResult.Success(_values);
         }
 
-        var closePrices = PriceDataHelper.ExtractPriceSeries(candles, PriceSource).Select(v => v ?? 0m).ToList();
-        var stdDevValues = StdDev(closePrices, Period);
-        var smaOfStdDev = Sma(stdDevValues, Period);
+        var stdDevValues = StdDevWithNulls(series, Period);
+        var smaOfStdDev = IndicatorCalculationHelper.CalculateSmaWithNulls(stdDevValues, Period);
 
         decimal? prevVama = null;
 
-        for (int i = 0; i < candles.Count; i++)
+        for (int i = 0; i < series.Count; i++)
         {
-            // The first point where StdDev and SMA(StdDev) are non-null is at index (2 * period - 2)
-            int firstValidIndex = 2 * Period - 2;
-
-            if (i < firstValidIndex || smaOfStdDev[i] == null || smaOfStdDev[i] == 0)
+            if (!series[i].HasValue || !stdDevValues[i].HasValue || !smaOfStdDev[i].HasValue || smaOfStdDev[i]!.Value == 0m)
             {
                 _values.Add(null);
+                continue;
             }
-            else
+
+            if (prevVama == null)
             {
-                if (prevVama == null)
+                // Seed the first VAMA value with the SMA of the non-null window ending at i
+                decimal seedSum = 0m;
+                bool seedValid = true;
+                for (int j = i - Period + 1; j <= i; j++)
                 {
-                    // Seed the first VAMA value with an SMA of the close price
-                    prevVama = closePrices.Skip(i - Period + 1).Take(Period).Average();
+                    if (!series[j].HasValue)
+                    {
+                        seedValid = false;
+                        break;
+                    }
+                    seedSum += series[j]!.Value;
                 }
 
-                var volatilityRatio = stdDevValues[i]!.Value / smaOfStdDev[i]!.Value;
-                var smoothingFactor = 2 / (Period * volatilityRatio + 1);
-                var currentVama = prevVama!.Value + smoothingFactor * (closePrices[i] - prevVama!.Value);
-                _values.Add(currentVama);
-                prevVama = currentVama;
+                if (!seedValid)
+                {
+                    _values.Add(null);
+                    continue;
+                }
+
+                prevVama = seedSum / Period;
             }
+
+            var volatilityRatio = stdDevValues[i]!.Value / smaOfStdDev[i]!.Value;
+            var smoothingFactor = 2m / (Period * volatilityRatio + 1m);
+            var currentVama = prevVama.Value + smoothingFactor * (series[i]!.Value - prevVama.Value);
+            _values.Add(currentVama);
+            prevVama = currentVama;
         }
 
         return IndicatorResult.Success(_values);
     }
 
-    private List<decimal?> StdDev(IReadOnlyList<decimal> data, int period)
+    private static List<decimal?> StdDevWithNulls(IReadOnlyList<decimal?> data, int period)
     {
-        var results = new List<decimal?>();
+        var results = new List<decimal?>(data.Count);
         for (int i = 0; i < data.Count; i++)
         {
             if (i < period - 1)
             {
                 results.Add(null);
+                continue;
             }
-            else
-            {
-                var slice = data.Skip(i - period + 1).Take(period).ToList();
-                if (slice.Count < period)
-                {
-                    results.Add(null);
-                    continue;
-                }
-                var avg = slice.Average();
-                var sum = slice.Sum(d => (d - avg) * (d - avg));
-                results.Add((decimal)Math.Sqrt((double)(sum / period)));
-            }
-        }
-        return results;
-    }
 
-    private List<decimal?> Sma(IReadOnlyList<decimal?> data, int period)
-    {
-        var results = new List<decimal?>();
-        for (int i = 0; i < data.Count; i++)
-        {
-            if (i < period - 1)
+            decimal sum = 0m;
+            bool hasNull = false;
+            for (int j = i - period + 1; j <= i; j++)
+            {
+                if (!data[j].HasValue)
+                {
+                    hasNull = true;
+                    break;
+                }
+                sum += data[j]!.Value;
+            }
+
+            if (hasNull)
             {
                 results.Add(null);
+                continue;
             }
-            else
-            {
-                decimal? sum = 0;
-                int count = 0;
-                for (int j = 0; j < period; j++)
-                {
-                    var index = i - j;
-                    if (index >= 0 && data[index].HasValue)
-                    {
-                        sum += data[index]!.Value;
-                        count++;
-                    }
-                }
 
-                if (count == period)
-                {
-                    results.Add(sum / period);
-                }
-                else
-                {
-                    results.Add(null);
-                }
+            decimal avg = sum / period;
+            decimal sqSum = 0m;
+            for (int j = i - period + 1; j <= i; j++)
+            {
+                decimal diff = data[j]!.Value - avg;
+                sqSum += diff * diff;
             }
+
+            results.Add(IndicatorCalculationHelper.ToDecimalOrNull(Math.Sqrt((double)(sqSum / period))));
         }
         return results;
     }

@@ -30,6 +30,12 @@ public enum WarningCode
     /// (for example a long stop of entry - multiple x ATR below zero), so that exit is switched off for the whole trade. One warning per entry bar. Append-only.
     /// </summary>
     DynamicExitLevelNonPositive = 5,
+
+    /// <summary>
+    /// Auxiliary WarnOnly-only alert emitted when price jump magnitude matches a target split ratio within +/-1% tolerance without a confirmed volume surge (currBar.Volume &gt; 0 required).
+    /// Informational only: never triggers AbortOnDetection or AutoAdjustHistorical/AdjustSplits. Append-only.
+    /// </summary>
+    PotentialUnadjustedSplitLowConfidence = 6,
 }
 
 /// <summary>

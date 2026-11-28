@@ -22,19 +22,27 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
 
             var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
             for (int i = 0; i < candles.Count; i++)
             {
-                if (i < Period - 1) { _values.Add(null); continue; }
+                if (Period <= 0 || i < Period - 1) { _values.Add(null); continue; }
 
-                decimal sumPV = 0, sumV = 0;
+                decimal sumPV = 0m, sumV = 0m;
+                bool hasNull = false;
                 for (int j = 0; j < Period; j++)
                 {
-                    sumPV += (priceSeries[i - j] ?? 0m) * candles[i - j].Volume;
+                    decimal? price = priceSeries[i - j];
+                    if (!price.HasValue)
+                    {
+                        hasNull = true;
+                        break;
+                    }
+                    sumPV += price.Value * candles[i - j].Volume;
                     sumV += candles[i - j].Volume;
                 }
-                _values.Add(sumV == 0 ? null : sumPV / sumV);
+                _values.Add(hasNull || sumV == 0m ? null : sumPV / sumV);
             }
 
             return IndicatorResult.Success(_values);

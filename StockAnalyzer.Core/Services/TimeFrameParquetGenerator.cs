@@ -423,5 +423,5 @@ public sealed class TimeFrameParquetGenerator : ITimeFrameParquetGenerator
         return Common.PathDiscovery.ResolveDataPath(configuredPath, relativeFallback, "*.parquet");
     }
 
-    private static string FormatDuckDbPath(string path) => path.Replace('\\', '/').Replace("'", "''");
+    private static string FormatDuckDbPath(string path) => ParquetMarketDataProvider.FormatDuckDbPath(path);
 }

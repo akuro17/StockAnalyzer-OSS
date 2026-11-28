@@ -12,6 +12,9 @@
       <Setter Property="BorderThickness" Value="0,0,1,1" />
       <Setter Property="Background" Value="{DynamicResource Brush.Background.Secondary}" />
     </Style>
+    <Style Selector="Border.mrCell.partial">
+      <Setter Property="Opacity" Value="0.82" />
+    </Style>
     <Style Selector="Border.mrCell > TextBlock">
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />
@@ -83,11 +86,22 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="controls:SeasonalityMonthlyReturnCellPresentation">
-                      <Border Classes="mrCell" Background="{Binding CellBackground}"
+                      <Border Classes="mrCell" Classes.partial="{Binding IsPartial}"
+                              Background="{Binding CellBackground}"
                               Width="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.CellWidth}"
                               Height="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).Frame.CellHeight}">
-                        <TextBlock Text="{Binding Text}" Foreground="{Binding CellForeground}"
-                                   FontSize="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).FontSize}" />
+                        <Panel>
+                          <TextBlock Text="{Binding Text}" Foreground="{Binding CellForeground}"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                                     FontSize="{Binding $parent[UserControl].((controls:SeasonalityMonthlyReturnsPresentation)DataContext).FontSize}" />
+                          <TextBlock Text="*" IsVisible="{Binding IsPartial}"
+                                     Foreground="{Binding CellForeground}"
+                                     FontSize="{DynamicResource HelperFontSize}"
+                                     HorizontalAlignment="Right" VerticalAlignment="Top"
+                                     Margin="0,0,2,0" IsHitTestVisible="False" />
+                          <Border IsVisible="{Binding IsPartial}" Background="Transparent"
+                                  ToolTip.Tip="{l:Localize Seasonality_MonthlyReturns_PartialTooltip}" />
+                        </Panel>
                       </Border>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>

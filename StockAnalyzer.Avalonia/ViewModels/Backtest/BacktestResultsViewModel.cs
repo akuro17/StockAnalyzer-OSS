@@ -326,6 +326,7 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
                 ConditionExpression = _presentation.ConditionExpression,
                 RunFingerprintText = _presentation.RunFingerprintText,
                 EquityLineSemantic = _presentation.EquityLineSemantic,
+                Warnings = _presentation.Warnings,
                 Revision = unchecked(_presentation.Revision + 1),
             };
         }
@@ -912,6 +913,19 @@ public partial class BacktestResultsViewModel : ViewModelBase, IDisposable
             "{0} of {1} bars",
             orderDependent.Affecting.ToString(CultureInfo.CurrentCulture),
             evaluatedBarCount.ToString(CultureInfo.CurrentCulture))));
+        bool isZeroFriction = result.Configuration.CommissionFlat == 0m
+            && result.Configuration.CommissionPerUnit == 0m
+            && result.Configuration.SlippageRatio == 0m;
+        bool isAlwaysFill = result.Configuration.PriceLimitFillMode == PriceLimitFillMode.AlwaysFill;
+        string frictionDisclosure = _localizationService.GetString(isZeroFriction
+            ? "Backtest_Audit_ExecutionAssumptions_ZeroFriction"
+            : "Backtest_Audit_ExecutionAssumptions_ExplicitCosts");
+        string limitFillDisclosure = _localizationService.GetString(isAlwaysFill
+            ? "Backtest_Audit_ExecutionAssumptions_AlwaysFill"
+            : "Backtest_Audit_ExecutionAssumptions_RejectAtLimit");
+        rows.Add(new("Backtest_Audit_ExecutionAssumptions", $"{frictionDisclosure}; {limitFillDisclosure}"));
+        rows.Add(new("Backtest_Audit_ReturnBasis", _localizationService.GetString("Backtest_Audit_ReturnBasisValue")));
+        rows.Add(new("Backtest_Audit_UniverseScope", _localizationService.GetString("Backtest_Audit_UniverseScopeValue")));
         return rows.ToImmutable();
     }
 

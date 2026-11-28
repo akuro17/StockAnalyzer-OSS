@@ -169,6 +169,7 @@ public static class DiscussionArgumentNames
     public const string Compact = "compact";
     public const string HeaderMode = "headerMode";
     public const string ExcludeEvents = "excludeEvents";
+    public const string ExcludeOwn = "excludeOwn";
     public const string Tail = "tail";
     public const string View = "view";
     public const string WaitForTurn = "waitForTurn";
@@ -307,16 +308,17 @@ public sealed record DiscussionReadMessage(
     DiscussionInterpretation? Interpretation = null);
 
 /// <summary>
-/// The optional shaping of a read: leave out the server events, read only the newest messages, or wait until the caller holds the turn in round-robin mode.
+/// The optional shaping of a read: leave out the server events, leave out the caller's own messages, read only the newest messages, or wait until the caller holds the turn in round-robin mode.
 /// A read without options (or with the defaults) takes the unchanged path of the board.
 /// </summary>
 /// <param name="ExcludeEvents">True leaves out the messages of kind <see cref="DiscussionMessageKind.Event"/> (joined, left, passed, floor passed, closed); peer messages and analysis entries stay.</param>
 /// <param name="Tail">When set, the newest messages that pass the filter (1 to the read limit of the board), in ascending order; it replaces <c>limit</c> and cannot be combined with an after-sequence, a wait or <c>WaitForTurn</c>.</param>
 /// <param name="WaitForTurn">True waits until the caller holds the floor in round-robin mode (or the session closes), returning all filtered unread messages accumulated when the turn arrives or on timeout.</param>
-public sealed record DiscussionReadOptions(bool ExcludeEvents = false, int? Tail = null, bool WaitForTurn = false)
+/// <param name="ExcludeOwn">True leaves out the caller's own records of kind message and analysis (by handle, so a re-joined participant's earlier records too); events stay unless <paramref name="ExcludeEvents"/> removes them. The cursor still moves past the records left out, and a wait ends only when a record that passes arrives.</param>
+public sealed record DiscussionReadOptions(bool ExcludeEvents = false, int? Tail = null, bool WaitForTurn = false, bool ExcludeOwn = false)
 {
     /// <summary>True when the options change the read; false for the defaults.</summary>
-    public bool IsActive => ExcludeEvents || Tail is not null || WaitForTurn;
+    public bool IsActive => ExcludeEvents || Tail is not null || WaitForTurn || ExcludeOwn;
 }
 
 public sealed record DiscussionReadResult(

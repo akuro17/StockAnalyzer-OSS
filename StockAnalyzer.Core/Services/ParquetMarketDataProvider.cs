@@ -333,6 +333,12 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         var deduplicatedList = rawList
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => TickerSymbol.Canonicalize(s))
+            .Where(s =>
+            {
+                if (AttestedFileNames.IsPlain(s)) return true;
+                _logger.LogWarning("Ignored unsafe ticker symbol '{Symbol}' in master ticker list.", s);
+                return false;
+            })
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -344,6 +350,11 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     {
         if (string.IsNullOrWhiteSpace(symbol)) return;
         symbol = TickerSymbol.Canonicalize(symbol);
+        if (!AttestedFileNames.IsPlain(symbol))
+        {
+            _logger.LogWarning("Rejected unsafe ticker symbol '{Symbol}' in AddTickerAsync.", symbol);
+            throw new ArgumentException($"Ticker symbol '{symbol}' is not a valid plain file name stem.", nameof(symbol));
+        }
 
         await UpdateTickerListAsync(list =>
         {
@@ -363,6 +374,12 @@ public class ParquetMarketDataProvider : IMarketDataProvider
         var normalizedSymbols = symbols
             .Where(s => !string.IsNullOrWhiteSpace(s))
             .Select(s => TickerSymbol.Canonicalize(s))
+            .Where(s =>
+            {
+                if (AttestedFileNames.IsPlain(s)) return true;
+                _logger.LogWarning("Ignored unsafe ticker symbol '{Symbol}' in AddTickersAsync.", s);
+                return false;
+            })
             .ToList();
 
         if (normalizedSymbols.Count == 0) return;
@@ -500,7 +517,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                 }
 
                 using var command = dbConnection.CreateCommand();
-                command.CommandText = $"SELECT * FROM read_parquet('{EscapeDuckDbPath(filePath)}') WHERE close IS NOT NULL AND date IS NOT NULL ORDER BY date ASC";
+                command.CommandText = $"SELECT * FROM read_parquet('{FormatDuckDbPath(filePath)}') WHERE close IS NOT NULL AND date IS NOT NULL ORDER BY date ASC";
 
                 // Use true async API and pass CancellationToken
                 using var reader = await command.ExecuteReaderAsync(ct);
@@ -528,6 +545,19 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                 sw.Stop();
                 _logger.LogTrace("Loaded {Count} candles for {Ticker} in {ElapsedMs}ms", candles.Count, ticker, sw.ElapsedMilliseconds);
             });
+        }
+
+        var diagnostics = CandleInvariant.DiagnoseSeries(ticker, candles);
+        if (diagnostics.HasIssues)
+        {
+            _logger.LogWarning(
+                "OHLCV diagnostic warning for {Symbol} ({TimeFrame}): {InvalidCount} invalid bar(s), {NonMonotonicCount} non-monotonic/duplicate timestamp(s), first at {FirstDate:yyyy-MM-dd} ({Detail}). Rows retained unchanged.",
+                ticker,
+                timeFrame,
+                diagnostics.InvalidBarCount,
+                diagnostics.NonMonotonicBarCount,
+                diagnostics.FirstInvalidTimestamp,
+                diagnostics.FirstViolationDetail ?? string.Empty);
         }
 
         return candles;
@@ -565,7 +595,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                 int deletedCount;
                 using (var countCommand = dbConnection.CreateCommand())
                 {
-                    countCommand.CommandText = $"SELECT COUNT(*) FROM read_parquet('{EscapeDuckDbPath(filePath)}') WHERE date >= ?";
+                    countCommand.CommandText = $"SELECT COUNT(*) FROM read_parquet('{FormatDuckDbPath(filePath)}') WHERE date >= ?";
                     var countParam = countCommand.CreateParameter();
                     countParam.Value = cutoff;
                     countCommand.Parameters.Add(countParam);
@@ -582,10 +612,10 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                 {
                     copyCommand.CommandText = $@"
                         COPY (
-                            SELECT * FROM read_parquet('{EscapeDuckDbPath(filePath)}')
+                            SELECT * FROM read_parquet('{FormatDuckDbPath(filePath)}')
                             WHERE date < ?
                             ORDER BY date ASC
-                        ) TO '{EscapeDuckDbPath(tempPath)}' (FORMAT PARQUET)";
+                        ) TO '{FormatDuckDbPath(tempPath)}' (FORMAT PARQUET)";
                     var copyParam = copyCommand.CreateParameter();
                     copyParam.Value = cutoff;
                     copyCommand.Parameters.Add(copyParam);
@@ -681,7 +711,9 @@ public class ParquetMarketDataProvider : IMarketDataProvider
 
                 // High-performance batch screening using glob patterns
                 var parquetPattern = Path.Combine(_baseDataPath, "*.parquet").Replace("\\", "/");
+#pragma warning disable CS0618 // SqlConditionTranslator is retained intentionally for legacy DuckDB batch ScreeningCriteria queries.
                 var sql = SqlConditionTranslator.BuildBatchQuery(parquetPattern, criteria);
+#pragma warning restore CS0618
 
                 using var command = dbConnection.CreateCommand();
                 command.CommandText = sql;
@@ -1665,7 +1697,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
                 if (connection is DbConnection dbConnection)
                 {
                     using var command = dbConnection.CreateCommand();
-                    command.CommandText = $"SELECT MAX(date) FROM read_parquet('{EscapeDuckDbPath(filePath)}')";
+                    command.CommandText = $"SELECT MAX(date) FROM read_parquet('{FormatDuckDbPath(filePath)}')";
                     var result = await command.ExecuteScalarAsync();
                     if (result != null && result != DBNull.Value)
                     {
@@ -1755,9 +1787,7 @@ public class ParquetMarketDataProvider : IMarketDataProvider
     /// Formats a file system path for DuckDB SQL interpolation by converting backslashes to forward slashes
     /// and escaping single quotes against SQL injection and syntax errors.
     /// </summary>
-    internal static string FormatDuckDbPath(string path) => EscapeDuckDbPath(path.Replace("\\", "/"));
-
-    internal static string EscapeDuckDbPath(string path) => path.Replace("'", "''");
+    internal static string FormatDuckDbPath(string path) => path.Replace("\\", "/").Replace("'", "''");
 
     /// <summary>
     /// Parses decimal text coming from Python (<c>str()</c> of a float: '.' decimal separator) independently of the thread culture.

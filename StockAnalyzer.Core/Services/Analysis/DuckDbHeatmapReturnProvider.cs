@@ -361,7 +361,7 @@ public sealed class DuckDbHeatmapReturnProvider : IHeatmapReturnProvider, IRsRat
     }
 
     private static string BuildDuckDbFilesList(IEnumerable<string> filePaths)
-        => string.Join(", ", filePaths.Select(f => $"'{ParquetMarketDataProvider.EscapeDuckDbPath(f)}'"));
+        => string.Join(", ", filePaths.Select(f => $"'{ParquetMarketDataProvider.FormatDuckDbPath(f)}'"));
 
     private static bool TryConvertToDecimal(object rawValue, out decimal value)
     {

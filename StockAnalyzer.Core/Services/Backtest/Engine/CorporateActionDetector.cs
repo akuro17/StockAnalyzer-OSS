@@ -13,15 +13,17 @@ namespace StockAnalyzer.Core.Services.Backtest.Engine;
 public static class CorporateActionDetector
 {
     // Typical split and reverse split multipliers:
-    // Splits: 2:1, 3:1, 4:1, 5:1, 10:1
-    // Reverse splits: 1:2 (0.5), 1:3 (0.3333..), 1:4 (0.25), 1:5 (0.2), 1:10 (0.1)
+    // Splits: 3:2 (1.5), 2:1, 3:1, 4:1, 5:1, 10:1
+    // Reverse splits: 2:3 (0.6666..), 1:2 (0.5), 1:3 (0.3333..), 1:4 (0.25), 1:5 (0.2), 1:10 (0.1)
     private static readonly decimal[] TargetRatios =
     [
+        1.5m,
         2.0m,
         3.0m,
         4.0m,
         5.0m,
         10.0m,
+        2.0m / 3.0m,
         0.5m,
         1.0m / 3.0m,
         0.25m,
@@ -29,11 +31,14 @@ public static class CorporateActionDetector
         0.1m,
     ];
 
-    private const decimal MinPriceJumpRatio = 0.25m;      // >= 25% price change
-    private const decimal VolumeSurgeMultiplier = 2.5m;   // >= 2.5x median volume
-    private const decimal RatioTolerance = 0.05m;         // +/- 5% tolerance
+    private const decimal MinPriceJumpRatio = 0.25m;             // >= 25% price change
+    private const decimal VolumeSurgeMultiplier = 2.5m;          // >= 2.5x median volume
+    private const decimal RatioTolerance = 0.05m;                // +/- 5% tolerance
+    private const decimal LowConfidenceRatioTolerance = 0.01m;   // +/- 1% tolerance when volume surge is unconfirmed
 
-    public static ImmutableArray<BacktestWarning> DetectPotentialSplits(ImmutableArray<CandleData> bars)
+    public static ImmutableArray<BacktestWarning> DetectPotentialSplits(
+        ImmutableArray<CandleData> bars,
+        bool includeLowConfidenceWithoutVolumeSurge = false)
     {
         if (bars.IsDefaultOrEmpty || bars.Length < 2)
         {
@@ -67,37 +72,56 @@ public static class CorporateActionDetector
                 ? currBar.Volume >= (long)Math.Ceiling(VolumeSurgeMultiplier * medianVolume)
                 : currBar.Volume > 0;
 
-            if (!volumeSurged)
-            {
-                continue;
-            }
-
-            // 3. Ratio integrality: Close_{t-1} / Close_t is close to a standard corporate action ratio
             decimal observedRatio = prevBar.Close / currBar.Close;
-            if (!MatchesTargetRatio(observedRatio, out decimal matchedTarget))
-            {
-                continue;
-            }
-
             decimal surgeFactor = medianVolume > 0m ? (decimal)currBar.Volume / medianVolume : 1m;
-            string message = FormattableString.Invariant(
-                $"Potential unadjusted stock split detected at bar {t} ({currBar.Timestamp:yyyy-MM-dd}): Price ratio {observedRatio:F2} (near {matchedTarget:F2}), volume surge {surgeFactor:F1}x.");
 
-            warnings.Add(new BacktestWarning(
-                WarningCode.PotentialUnadjustedSplit,
-                t,
-                currBar.Timestamp,
-                message));
+            if (volumeSurged)
+            {
+                // 3. Ratio integrality: Close_{t-1} / Close_t is close to a standard corporate action ratio
+                if (!MatchesTargetRatio(observedRatio, RatioTolerance, out decimal matchedTarget))
+                {
+                    continue;
+                }
+
+                string message = FormattableString.Invariant(
+                    $"Potential unadjusted stock split detected at bar {t} ({currBar.Timestamp:yyyy-MM-dd}): Price ratio {observedRatio:F2} (near {matchedTarget:F2}), volume surge {surgeFactor:F1}x.");
+
+                warnings.Add(new BacktestWarning(
+                    WarningCode.PotentialUnadjustedSplit,
+                    t,
+                    currBar.Timestamp,
+                    message));
+            }
+            else if (includeLowConfidenceWithoutVolumeSurge && currBar.Volume > 0)
+            {
+                // Auxiliary WarnOnly rule: tight +/-1% ratio match without volume surge (currBar.Volume > 0 prevents false triggers on zero-volume FX/indices).
+                if (!MatchesTargetRatio(observedRatio, LowConfidenceRatioTolerance, out decimal matchedTarget))
+                {
+                    continue;
+                }
+
+                string message = FormattableString.Invariant(
+                    $"Potential unadjusted stock split (low-confidence: volume surge not confirmed) detected at bar {t} ({currBar.Timestamp:yyyy-MM-dd}): Price ratio {observedRatio:F2} (near {matchedTarget:F2}), volume surge {surgeFactor:F1}x.");
+
+                warnings.Add(new BacktestWarning(
+                    WarningCode.PotentialUnadjustedSplitLowConfidence,
+                    t,
+                    currBar.Timestamp,
+                    message));
+            }
         }
 
         return warnings.ToImmutable();
     }
 
     private static bool MatchesTargetRatio(decimal ratio, out decimal matchedTarget)
+        => MatchesTargetRatio(ratio, RatioTolerance, out matchedTarget);
+
+    private static bool MatchesTargetRatio(decimal ratio, decimal tolerance, out decimal matchedTarget)
     {
         foreach (decimal target in TargetRatios)
         {
-            if (Math.Abs(ratio - target) / target <= RatioTolerance)
+            if (Math.Abs(ratio - target) / target <= tolerance)
             {
                 matchedTarget = target;
                 return true;

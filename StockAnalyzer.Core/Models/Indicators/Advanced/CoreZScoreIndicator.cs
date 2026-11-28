@@ -13,11 +13,15 @@ public class CoreZScoreIndicator : CoreIndicatorBase
         if (parameters is CoreSmaParameter p) Period = p.Period;
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
+        if (Period <= 0)
+        {
+            for (int i = 0; i < series.Count; i++) _values.Add(null);
+            return IndicatorResult.Success(_values);
+        }
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        for (int i = 0; i < candles.Count; i++)
+        for (int i = 0; i < series.Count; i++)
         {
             if (i < Period - 1)
             {
@@ -25,21 +29,46 @@ public class CoreZScoreIndicator : CoreIndicatorBase
                 continue;
             }
 
-            // Mean and StdDev
-            decimal sum = 0;
-            for (int j = 0; j < Period; j++) sum += priceSeries[i - j] ?? 0m;
-            decimal mean = sum / Period;
-
-            decimal sumSqDiff = 0;
+            decimal sum = 0m;
+            bool hasNull = false;
             for (int j = 0; j < Period; j++)
             {
-                decimal diff = (priceSeries[i - j] ?? 0m) - mean;
+                decimal? val = series[i - j];
+                if (!val.HasValue)
+                {
+                    hasNull = true;
+                    break;
+                }
+                sum += val.Value;
+            }
+
+            if (hasNull)
+            {
+                _values.Add(null);
+                continue;
+            }
+
+            decimal mean = sum / Period;
+            decimal sumSqDiff = 0m;
+            for (int j = 0; j < Period; j++)
+            {
+                decimal diff = series[i - j]!.Value - mean;
                 sumSqDiff += diff * diff;
             }
-            decimal stdDev = (decimal)Math.Sqrt((double)(sumSqDiff / Period));
 
-            if (stdDev == 0) _values.Add(0);
-            else _values.Add(((priceSeries[i] ?? 0m) - mean) / stdDev);
+            decimal? stdDev = IndicatorCalculationHelper.ToDecimalOrNull(Math.Sqrt((double)(sumSqDiff / Period)));
+            if (!stdDev.HasValue)
+            {
+                _values.Add(null);
+            }
+            else if (stdDev.Value == 0m)
+            {
+                _values.Add(0m);
+            }
+            else
+            {
+                _values.Add((series[i]!.Value - mean) / stdDev.Value);
+            }
         }
 
         return IndicatorResult.Success(_values);

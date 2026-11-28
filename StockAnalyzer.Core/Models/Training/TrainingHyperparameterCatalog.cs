@@ -209,4 +209,106 @@ public static class TrainingHyperparameterCatalog
         var duplicates = order.Where(name => counts[name] > 1).ToList();
         return duplicates;
     }
+
+    public sealed record StrictHyperparameterValidationResult(
+        bool IsValid,
+        string? OffendingKey,
+        string? Message,
+        IReadOnlyList<string> AllowedKeys);
+
+    /// <summary>
+    /// Strict allowlist check for automated callers (MCP <c>sa_start_training</c> and <see cref="Execution.SandboxedExecutionGateway"/>):
+    /// rejects duplicate keys, unknown keys outside <see cref="All"/>, keys not applicable to (<paramref name="framework"/>,
+    /// <paramref name="architecture"/>), domain violations, and <see cref="ValidateAttentionHeads"/> failures.
+    /// </summary>
+    public static StrictHyperparameterValidationResult ValidateStrictAllowlist(
+        TrainingFramework framework,
+        string? architecture,
+        IReadOnlyDictionary<string, string>? hyperparameters)
+    {
+        IReadOnlyList<string> allowedKeys = For(framework, architecture).Select(d => d.Key).ToArray();
+        if (hyperparameters is null || hyperparameters.Count == 0)
+        {
+            return new StrictHyperparameterValidationResult(true, null, null, allowedKeys);
+        }
+
+        IReadOnlyList<string> duplicates = FindDuplicates(hyperparameters.Keys);
+        if (duplicates.Count > 0)
+        {
+            string duplicate = duplicates[0];
+            return new StrictHyperparameterValidationResult(
+                false,
+                duplicate,
+                $"Duplicate hyperparameter key '{duplicate}' (keys are normalized case-insensitively without leading dashes).",
+                allowedKeys);
+        }
+
+        foreach (var (rawKey, rawValue) in hyperparameters)
+        {
+            if (string.IsNullOrWhiteSpace(rawKey))
+            {
+                return new StrictHyperparameterValidationResult(false, rawKey, "Hyperparameter key cannot be empty.", allowedKeys);
+            }
+
+            string normalized = Normalize(rawKey);
+            TrainingHyperparameterDefinition? definition = Find(rawKey);
+            if (definition is null)
+            {
+                return new StrictHyperparameterValidationResult(
+                    false,
+                    rawKey,
+                    $"Unknown hyperparameter '{rawKey}'.",
+                    allowedKeys);
+            }
+
+            bool matchesTarget = definition.Frameworks.Contains(framework)
+                && (definition.Architecture is null || string.Equals(definition.Architecture, architecture, StringComparison.Ordinal));
+            if (!matchesTarget)
+            {
+                return new StrictHyperparameterValidationResult(
+                    false,
+                    rawKey,
+                    $"Hyperparameter '{normalized}' is not supported for {framework}/{architecture}.",
+                    allowedKeys);
+            }
+
+            HyperparameterProblem problem = Validate(rawKey, rawValue);
+            if (problem != HyperparameterProblem.None)
+            {
+                return new StrictHyperparameterValidationResult(
+                    false,
+                    rawKey,
+                    FormatDomainProblem(definition, rawValue, problem),
+                    allowedKeys);
+            }
+        }
+
+        if (ValidateAttentionHeads(architecture, hyperparameters) == HyperparameterProblem.HeadsDoNotDivideHidden)
+        {
+            var (hidden, heads) = ResolveHiddenAndHeads(hyperparameters);
+            return new StrictHyperparameterValidationResult(
+                false,
+                HeadsKey,
+                $"Attention hidden size ({hidden}) must be evenly divisible by heads ({heads}).",
+                allowedKeys);
+        }
+
+        return new StrictHyperparameterValidationResult(true, null, null, allowedKeys);
+    }
+
+    private static string FormatDomainProblem(TrainingHyperparameterDefinition definition, string? rawValue, HyperparameterProblem problem)
+    {
+        TrainingHyperparameterDomain? domain = definition.Domain;
+        return problem switch
+        {
+            HyperparameterProblem.NotInteger => $"Hyperparameter '{definition.Key}' must be an integer (got '{rawValue}').",
+            HyperparameterProblem.NotNumber => $"Hyperparameter '{definition.Key}' must be a number (got '{rawValue}').",
+            HyperparameterProblem.NotFinite => $"Hyperparameter '{definition.Key}' must be finite.",
+            HyperparameterProblem.BelowMinimum when domain is not null =>
+                $"Hyperparameter '{definition.Key}' must be {(domain.MinimumInclusive ? ">=" : ">")} {LimitText(domain, upper: false)}.",
+            HyperparameterProblem.AboveMaximum when domain is not null =>
+                $"Hyperparameter '{definition.Key}' must be {(domain.MaximumInclusive ? "<=" : "<")} {LimitText(domain, upper: true)}.",
+            _ => $"Hyperparameter '{definition.Key}' is out of range.",
+        };
+    }
 }

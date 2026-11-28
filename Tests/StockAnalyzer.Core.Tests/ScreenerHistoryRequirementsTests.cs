@@ -233,6 +233,16 @@ public class ScreenerHistoryRequirementsTests
         Assert.Equal(1100, ScreenerHistoryRequirements.GetRequiredCandleCount(condition));
     }
 
+    [Fact]
+    public void GetRequiredCandleCount_RsiOversoldConditionWithLongPeriod_ScalesBeyondUnknownConditionFloor()
+    {
+        var condition = new StockAnalyzer.Core.Models.ScreeningConditions.RsiOversoldCondition(250, 30m);
+
+        int expected = (250 * IndicatorDefaultConstants.EmaConvergenceMultiplier) + ScreenerHistoryRequirements.HistoryMarginBars;
+        Assert.Equal(expected, ScreenerHistoryRequirements.GetRequiredCandleCount(condition));
+        Assert.Equal(1350, ScreenerHistoryRequirements.GetRequiredCandleCount(condition));
+    }
+
     // ===== G-1 / G1-T2: a Ratiocator in NormalizedRatio mode takes its base (R_0) from the FIRST bar it is given, so it needs the whole stored history =====
 
     private static ScreenerIndicatorEntry RatiocatorEntry(string key, object? mode, RightHandTargetMode targetMode = RightHandTargetMode.NumericValue)

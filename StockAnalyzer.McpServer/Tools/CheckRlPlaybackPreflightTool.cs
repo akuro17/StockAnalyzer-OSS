@@ -28,17 +28,17 @@ internal sealed class CheckRlPlaybackPreflightTool : IMcpTool
 
     public CheckRlPlaybackPreflightTool(
         SymbolResolver symbols,
+        ErrorMessageSanitizer sanitizer,
         IRlModelGenerationRegistry? registry = null,
         RlDialogDataService? dataService = null,
         RlLocalSourceFolders? sourceFolders = null,
-        ErrorMessageSanitizer? sanitizer = null,
         IReadOnlyStockAnalyzerGateway? gateway = null)
     {
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
+        _sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
         _registry = registry ?? new ReadOnlyModelGenerationRegistry();
         _dataService = dataService;
         _sourceFolders = sourceFolders;
-        _sanitizer = sanitizer ?? new ErrorMessageSanitizer(Array.Empty<string?>());
         _gateway = gateway;
     }
 

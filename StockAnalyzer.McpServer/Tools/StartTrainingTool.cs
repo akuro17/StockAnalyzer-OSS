@@ -124,6 +124,36 @@ internal sealed class StartTrainingTool : IMcpTool
             Hyperparameters = Hyperparameters(arguments),
         };
 
+        IReadOnlyList<string> offeredArchitectures = TrainingArchitectureCatalog.For(request.Framework);
+        if (!offeredArchitectures.Contains(request.Architecture, StringComparer.Ordinal))
+        {
+            throw new ToolException(
+                ToolErrorCodes.InvalidArgument,
+                $"Architecture '{request.Architecture}' is not offered for {request.Framework}.",
+                TrainingRequestJson.ArchitectureArgument,
+                $"Allowed architectures for {request.Framework}: {string.Join(", ", offeredArchitectures)}.");
+        }
+
+        if (request.Hyperparameters.Count > 0)
+        {
+            TrainingHyperparameterCatalog.StrictHyperparameterValidationResult hpValidation =
+                TrainingHyperparameterCatalog.ValidateStrictAllowlist(request.Framework, request.Architecture, request.Hyperparameters);
+            if (!hpValidation.IsValid)
+            {
+                string allowedHint = hpValidation.AllowedKeys.Count == 0
+                    ? "none"
+                    : string.Join(", ", hpValidation.AllowedKeys);
+                string paramPath = hpValidation.OffendingKey is { Length: > 0 } offendingKey
+                    ? HyperparameterPrefix + offendingKey
+                    : TrainingRequestJson.HyperparametersArgument;
+                throw new ToolException(
+                    ToolErrorCodes.InvalidArgument,
+                    hpValidation.Message!,
+                    paramPath,
+                    $"Allowed hyperparameters for {request.Framework}/{request.Architecture}: {allowedHint}.");
+            }
+        }
+
         TrainingJobTicket ticket;
         try
         {

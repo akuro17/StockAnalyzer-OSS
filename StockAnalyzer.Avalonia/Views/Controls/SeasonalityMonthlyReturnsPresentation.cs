@@ -142,12 +142,14 @@ public sealed class SeasonalityMonthlyReturnCellPresentation
         string text,
         SeasonalityMonthlyReturnSign sign,
         IBrush cellBackground,
-        IBrush cellForeground)
+        IBrush cellForeground,
+        bool isPartial = false)
     {
         Text = text;
         Sign = sign;
         CellBackground = cellBackground;
         CellForeground = cellForeground;
+        IsPartial = isPartial;
     }
 
     /// <summary>Signed percent (e.g. "+12.3%") or <see cref="SeasonalityMonthlyReturnsPresentation.MissingCellText"/>.</summary>
@@ -158,6 +160,9 @@ public sealed class SeasonalityMonthlyReturnCellPresentation
     public bool IsPositive => Sign == SeasonalityMonthlyReturnSign.Positive;
 
     public bool IsNegative => Sign == SeasonalityMonthlyReturnSign.Negative;
+
+    /// <summary>True when this cell reflects an in-progress calendar month or cycle year.</summary>
+    public bool IsPartial { get; }
 
     /// <summary>Settings-resolved cell background for this cell's sign bucket.</summary>
     public IBrush CellBackground { get; }
@@ -311,9 +316,11 @@ public sealed class SeasonalityMonthlyReturnsPresentation
                 var cells = new SeasonalityMonthlyReturnCellPresentation[SeasonalityMonthlyReturnsTable.RowCount];
                 for (int m = 0; m < SeasonalitySharedAxisFormatting.MonthsPerYear; m++)
                 {
-                    cells[m] = BuildCell(table.Cell(m, yearIndex).Return, style);
+                    SeasonalityMonthlyReturnCell cell = table.Cell(m, yearIndex);
+                    cells[m] = BuildCell(cell.Return, style, cell.IsPartial);
                 }
-                cells[SeasonalityMonthlyReturnsTable.AnnualRowIndex] = BuildCell(table.Cell(SeasonalityMonthlyReturnsTable.AnnualRowIndex, yearIndex).Return, style);
+                SeasonalityMonthlyReturnCell annualCell = table.Cell(SeasonalityMonthlyReturnsTable.AnnualRowIndex, yearIndex);
+                cells[SeasonalityMonthlyReturnsTable.AnnualRowIndex] = BuildCell(annualCell.Return, style, annualCell.IsPartial);
                 rows[yearIndex] = new SeasonalityMonthlyReturnsRowPresentation(header, false, cells);
             }
 
@@ -361,7 +368,8 @@ public sealed class SeasonalityMonthlyReturnsPresentation
                 var cells = new SeasonalityMonthlyReturnCellPresentation[columnHeaders.Length];
                 for (int yearIndex = 0; yearIndex < table.Years.Count; yearIndex++)
                 {
-                    cells[yearIndex] = BuildCell(table.Cell(rowIndex, yearIndex).Return, style);
+                    SeasonalityMonthlyReturnCell cell = table.Cell(rowIndex, yearIndex);
+                    cells[yearIndex] = BuildCell(cell.Return, style, cell.IsPartial);
                 }
 
                 cells[^1] = BuildCell(table.RowAverages[rowIndex], style);
@@ -377,7 +385,7 @@ public sealed class SeasonalityMonthlyReturnsPresentation
         }
     }
 
-    private static SeasonalityMonthlyReturnCellPresentation BuildCell(decimal? value, SeasonalityMonthlyReturnsStyle style)
+    private static SeasonalityMonthlyReturnCellPresentation BuildCell(decimal? value, SeasonalityMonthlyReturnsStyle style, bool isPartial = false)
     {
         if (value is not { } amount)
         {
@@ -393,7 +401,8 @@ public sealed class SeasonalityMonthlyReturnsPresentation
             amount.ToString(ReturnFormat, CultureInfo.InvariantCulture),
             sign,
             background,
-            foreground);
+            foreground,
+            isPartial);
     }
 
     private static string FormatYear(int year) =>

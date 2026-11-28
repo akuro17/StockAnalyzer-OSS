@@ -85,16 +85,57 @@ namespace StockAnalyzer.Core.Tests
             );
             var result = indicator.Calculate(candles);
 
-            // Check specific values
-            // 2nd candle (zero volume) should result in 0 illiquidity for that day
-            // But we are checking the Moving Average of Illiquidity.
-            // ... validation logic same as before, just syntax update ...
+            // Day 1 (Volume == 0) is excluded (null) from the rolling window mean, so bar 2 uses only Day 2:
+            // |101 - 102| / 102 / 12000 = 1 / 1224000
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(4, result.MainValues.Count);
+            Assert.Null(result.MainValues[0]);
+            Assert.Null(result.MainValues[1]);
+            Assert.NotNull(result.MainValues[2]);
+            decimal expectedBar2 = Math.Abs((101m - 102m) / 102m) / 12000m;
+            Assert.Equal(expectedBar2, result.MainValues[2]!.Value, 10);
+        }
+
+        [Fact]
+        public void Calculate_WithAllZeroVolumes_ReturnsAllNulls()
+        {
+            var indicator = new CoreAmihudIlliquidityIndicator { Period = 2 };
+            var candles = CreateTestCandles(
+                new decimal[] { 100, 102, 101, 103 },
+                new long[] { 0, 0, 0, 0 }
+            );
+
+            var result = indicator.Calculate(candles);
 
             Assert.True(result.IsSuccessful);
             Assert.Equal(4, result.MainValues.Count);
-            Assert.NotNull(result.MainValues[2]);
-            // Value from previous calculations in original test
-            Assert.Equal(0.0000004084967320261437908496M, result.MainValues[2].Value, 10);
+            Assert.All(result.MainValues, v => Assert.Null(v));
+        }
+
+        [Fact]
+        public void Calculate_WithNonPositivePricesOrInvalidPeriod_ExcludesInvalidBarsAndReturnsNull()
+        {
+            var indicator = new CoreAmihudIlliquidityIndicator { Period = 2 };
+            var candles = CreateTestCandles(
+                new decimal[] { 100m, 0m, 105m, -10m, 110m },
+                new long[] { 10000, 10000, 10000, 10000, 10000 }
+            );
+
+            var result = indicator.Calculate(candles);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(5, result.MainValues.Count);
+            // Window [1,2] has bar 1 (curr==0) invalid and bar 2 (prev==0) invalid -> null
+            Assert.Null(result.MainValues[2]);
+            // Window [2,3] has bar 2 (prev==0) invalid and bar 3 (curr<=0) invalid -> null
+            Assert.Null(result.MainValues[3]);
+            // Window [3,4] has bar 3 (curr<=0) invalid and bar 4 (prev<=0) invalid -> null
+            Assert.Null(result.MainValues[4]);
+
+            var zeroPeriod = new CoreAmihudIlliquidityIndicator { Period = 0 };
+            var zeroPeriodResult = zeroPeriod.Calculate(candles);
+            Assert.True(zeroPeriodResult.IsSuccessful);
+            Assert.All(zeroPeriodResult.MainValues, v => Assert.Null(v));
         }
     }
 }

@@ -18,6 +18,7 @@ public class PythonSettings
     public int PipeConnectPollIntervalMs { get; set; } = 100;
     public int DisposeWaitMs { get; set; } = 1000;
     public int SyncTimeoutMinutes { get; set; } = 2;
+    public bool AutoUpdatePackagesOnStartup { get; set; } = false;
 
     public string[] EssentialPackages { get; set; } = { "setuptools", "wheel", "polars", "pandas", "yfinance", "pyarrow" };
 

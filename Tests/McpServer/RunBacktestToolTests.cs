@@ -135,8 +135,11 @@ public sealed class RunBacktestToolTests : IDisposable
         Assert.Equal(new[] { "EntryLong", "ExitLong" }, roots.EnumerateArray().Select(r => r.GetProperty("root").GetString()).ToArray());
         Assert.Equal("Close > Close [1 bars back]", roots[0].GetProperty("text").GetString());
         string[] warnings = result.GetProperty("warnings").EnumerateArray().Select(w => w.GetString()!).ToArray();
-        Assert.Single(warnings);
-        Assert.StartsWith("SIZING_NOTIONAL_SMALL:", warnings[0], StringComparison.Ordinal);
+        Assert.Contains(warnings, w => w.StartsWith("SIZING_NOTIONAL_SMALL:", StringComparison.Ordinal));
+        Assert.Contains(warnings, w => w.StartsWith("ZERO_FRICTION_ASSUMPTIONS:", StringComparison.Ordinal));
+        Assert.Contains(warnings, w => w.StartsWith("PRICE_LIMIT_ALWAYS_FILL:", StringComparison.Ordinal));
+        Assert.Contains(warnings, w => w.StartsWith("PRICE_RETURN_EXCLUDES_DIVIDENDS:", StringComparison.Ordinal));
+        Assert.Contains(warnings, w => w.StartsWith("SURVIVORSHIP_BIAS_UNIVERSE:", StringComparison.Ordinal));
     }
 
     [Fact]

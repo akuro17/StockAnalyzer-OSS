@@ -257,8 +257,7 @@ public sealed class PreparedSourcePipelineParityTests
         using var db = new DuckDBConnection("DataSource=:memory:");
         db.Open();
         using var command = db.CreateCommand();
-        var escaped = ParquetMarketDataProvider.EscapeDuckDbPath(
-            run.Exports[symbol].Replace("\\", "/"));
+        var escaped = ParquetMarketDataProvider.FormatDuckDbPath(run.Exports[symbol]);
         command.CommandText = $"SELECT channel_0, channel_2 FROM read_parquet('{escaped}') ORDER BY date";
         using var reader = command.ExecuteReader();
         var sma = new List<double?>();
@@ -367,7 +366,7 @@ public sealed class PreparedSourcePipelineParityTests
                 {
                     db.Open();
                     using var command = db.CreateCommand();
-                    var escaped = ParquetMarketDataProvider.EscapeDuckDbPath(path.Replace("\\", "/"));
+                    var escaped = ParquetMarketDataProvider.FormatDuckDbPath(path);
                     command.CommandText = $"COPY (SELECT * FROM (VALUES {string.Join(",", rows)}) " +
                         $"AS t(date, open, high, low, close, volume)) TO '{escaped}' (FORMAT PARQUET)";
                     command.ExecuteNonQuery();

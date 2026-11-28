@@ -22,29 +22,44 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
             }
         }
 
-        protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
         {
+            _values.Clear();
 
-            if (candles.Count == 0)
+            if (series == null || series.Count == 0)
             {
                 return IndicatorResult.Success(_values);
             }
 
-            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            decimal x = priceSeries[0] ?? 0m; // Initial state estimate
-            decimal p = 1;                   // Initial error covariance
+            decimal x = 0m;
+            decimal p = 1m;
+            bool initialized = false;
 
-            _values.Add(x);
-
-            for (int i = 1; i < candles.Count; i++)
+            for (int i = 0; i < series.Count; i++)
             {
+                if (!series[i].HasValue)
+                {
+                    _values.Add(null);
+                    continue;
+                }
+
+                decimal price = series[i]!.Value;
+                if (!initialized)
+                {
+                    x = price;
+                    p = 1m;
+                    initialized = true;
+                    _values.Add(x);
+                    continue;
+                }
+
                 // Prediction update
                 p = p + Q;
 
                 // Measurement update
                 decimal k = p / (p + R); // Kalman gain
-                x = x + k * ((priceSeries[i] ?? 0m) - x);
-                p = (1 - k) * p;
+                x = x + k * (price - x);
+                p = (1m - k) * p;
 
                 _values.Add(x);
             }

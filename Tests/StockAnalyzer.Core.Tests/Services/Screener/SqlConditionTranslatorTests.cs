@@ -19,7 +19,9 @@ public class SqlConditionTranslatorTests
         };
 
         // Act
+#pragma warning disable CS0618 // SqlConditionTranslator is intentionally retained and covered by regression tests.
         string sql = SqlConditionTranslator.Translate(criteria);
+#pragma warning restore CS0618
 
         // Assert
         Assert.NotNull(sql);
@@ -27,6 +29,9 @@ public class SqlConditionTranslatorTests
         Assert.Contains("WHEN (ag + al) <= 1e-12 THEN 50.0", sql);
         Assert.Contains("ELSE (100.0 * ag) / (ag + al)", sql);
         // Correct time-series latest-bar ordering and warmup cutoff
+        Assert.Contains("row_number() OVER (ORDER BY date) as rn", sql);
+        Assert.Contains("Close - LAG(Close) OVER (ORDER BY date) as diff", sql);
+        Assert.Contains("WHERE Close IS NOT NULL", sql);
         Assert.Contains("WHERE rn > 14", sql);
         Assert.Contains("ORDER BY rn DESC", sql);
         Assert.Contains("LIMIT 1", sql);
@@ -41,7 +46,9 @@ public class SqlConditionTranslatorTests
         var criteria = new ScreeningCriteria();
 
         // Act
+#pragma warning disable CS0618 // SqlConditionTranslator is intentionally retained and covered by regression tests.
         string sql = SqlConditionTranslator.Translate(criteria);
+#pragma warning restore CS0618
 
         // Assert
         Assert.Equal("1=1", sql);

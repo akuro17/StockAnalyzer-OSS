@@ -107,7 +107,7 @@ public class CheckRlPlaybackPreflightToolZeroMutationTests
             return default;
         });
 
-        var tool = new CheckRlPlaybackPreflightTool(symbols, registry, dataService, sanitizer: new ErrorMessageSanitizer(Array.Empty<string?>()));
+        var tool = new CheckRlPlaybackPreflightTool(symbols, new ErrorMessageSanitizer(Array.Empty<string?>()), registry, dataService);
 
         // 1. Timeout -> EXECUTION_TIMEOUT (isError: true)
         McpMessageDispatcher timeoutDispatcher = await McpTestSupport.InitializedAsync(
@@ -142,7 +142,7 @@ public class CheckRlPlaybackPreflightToolZeroMutationTests
                 ? Task.FromException<RlAnchorRange>(new RlExternalReplayException(RlExternalReplayRejection.SourceUnavailable, rawMessage))
                 : Task.FromException<RlAnchorRange>(new InvalidOperationException(rawMessage)));
 
-        var tool = new CheckRlPlaybackPreflightTool(symbols, registry, dataService, sanitizer: new ErrorMessageSanitizer(new[] { @"C:\Users\someone\secret" }));
+        var tool = new CheckRlPlaybackPreflightTool(symbols, new ErrorMessageSanitizer(new[] { @"C:\Users\someone\secret" }), registry, dataService);
         McpMessageDispatcher dispatcher = await McpTestSupport.InitializedAsync(new IMcpTool[] { tool });
 
         using JsonDocument resp = (await McpTestSupport.CallAsync(dispatcher, "sa_check_rl_playback_preflight", """{"modelId":"m1"}"""))!;

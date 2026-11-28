@@ -70,7 +70,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
         var gateway = new MockGatewayWithCandles();
         var symbols = new SymbolResolver(gateway);
-        var tool = new GetModelAttentionTool(gateway, symbols, registry: registry);
+        var tool = new GetModelAttentionTool(gateway, symbols, new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry);
 
         using var activeDoc = JsonDocument.Parse("{\"modelId\":\"active\",\"symbol\":\"7203-T\"}");
         var ex1 = await Assert.ThrowsAsync<ToolException>(() => tool.InvokeAsync(activeDoc.RootElement, CancellationToken.None));
@@ -90,7 +90,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
         var gateway = new MockGatewayWithCandles();
         var symbols = new SymbolResolver(gateway);
-        var tool = new GetModelAttentionTool(gateway, symbols, registry: registry);
+        var tool = new GetModelAttentionTool(gateway, symbols, new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry);
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":{JsonSerializer.Serialize(traversalId)},\"symbol\":\"7203-T\"}}");
         var ex = await Assert.ThrowsAsync<ToolException>(() => tool.InvokeAsync(doc.RootElement, CancellationToken.None));
@@ -109,7 +109,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         var gateway = new MockGatewayWithCandles(candleCount: 10);
         var symbols = new SymbolResolver(gateway);
         var mockAttention = new MockAttentionService(AttentionResult.Failed("the history is shorter than the model window"));
-        var tool = new GetModelAttentionTool(gateway, symbols, registry: registry, attentionService: mockAttention);
+        var tool = new GetModelAttentionTool(gateway, symbols, new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry, attentionService: mockAttention);
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
         var ex = await Assert.ThrowsAsync<ToolException>(() => tool.InvokeAsync(doc.RootElement, CancellationToken.None));
@@ -128,7 +128,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         var gateway = new MockGatewayWithCandles(candleCount: 10);
         var symbols = new SymbolResolver(gateway);
         var mockAttention = new MockAttentionService(AttentionResult.Failed($"Failed to read C:\\secret\\model.onnx internal error"));
-        var tool = new GetModelAttentionTool(gateway, symbols, registry: registry, attentionService: mockAttention);
+        var tool = new GetModelAttentionTool(gateway, symbols, new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry, attentionService: mockAttention);
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
         var ex = await Assert.ThrowsAsync<ToolException>(() => tool.InvokeAsync(doc.RootElement, CancellationToken.None));
@@ -161,7 +161,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
         var gateway = new MockGatewayWithCandles(candleCount: 1); // Less than MinWindow (2)
         var symbols = new SymbolResolver(gateway);
-        var tool = new GetModelAttentionTool(gateway, symbols, registry: registry);
+        var tool = new GetModelAttentionTool(gateway, symbols, new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry);
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
         var ex = await Assert.ThrowsAsync<ToolException>(() => tool.InvokeAsync(doc.RootElement, CancellationToken.None));
@@ -201,7 +201,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         var snapshot = new AttentionSnapshot(key, Heads: 4, timestamps, weights, relative);
         var mockAttention = new MockAttentionService(AttentionResult.Ready(snapshot));
 
-        var tool = new GetModelAttentionTool(gateway, symbols, registry: registry, attentionService: mockAttention);
+        var tool = new GetModelAttentionTool(gateway, symbols, new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry, attentionService: mockAttention);
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
         string json = await tool.InvokeAsync(doc.RootElement, CancellationToken.None);
@@ -243,7 +243,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         var gateway = new MockGatewayWithCandles(candleCount: 10);
         var symbols = new SymbolResolver(gateway);
         var mockAttention = new MockAttentionService(AttentionResult.Unsupported("no_sidecar"));
-        var tool = new GetModelAttentionTool(gateway, symbols, registry: registry, attentionService: mockAttention);
+        var tool = new GetModelAttentionTool(gateway, symbols, new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry, attentionService: mockAttention);
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
         _ = await tool.InvokeAsync(doc.RootElement, CancellationToken.None);
@@ -274,7 +274,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         var gateway = new MockGatewayWithCandles(candleCount: 10);
         var symbols = new SymbolResolver(gateway);
         var mockAttention = new MockAttentionService(AttentionResult.Unsupported("no_sidecar"));
-        var tool = new GetModelAttentionTool(gateway, symbols, registry: registry, attentionService: mockAttention);
+        var tool = new GetModelAttentionTool(gateway, symbols, new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry, attentionService: mockAttention);
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
         string json = await tool.InvokeAsync(doc.RootElement, CancellationToken.None);
@@ -328,7 +328,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
         var gateway = new MockGatewayWithCandles(candleCount: 10);
         var attention = new MockAttentionService(ReadyResult(modelId, manifestTimeframe));
-        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), registry: registry, attentionService: attention);
+        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry, attentionService: attention);
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
         _ = await tool.InvokeAsync(doc.RootElement, CancellationToken.None);
@@ -345,7 +345,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         WriteManifest(modelId, "weekly");
         var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
         var gateway = new MockGatewayWithCandles(candleCount: 10);
-        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), registry: registry, attentionService: new MockAttentionService(ReadyResult(modelId, "weekly")));
+        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry, attentionService: new MockAttentionService(ReadyResult(modelId, "weekly")));
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\",\"asOfDate\":\"2026-01-09\"}}");
         _ = await tool.InvokeAsync(doc.RootElement, CancellationToken.None);
@@ -360,7 +360,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         WriteManifest(modelId, "monthly");
         var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
         var gateway = new MockGatewayWithCandles(candleCount: 1); // below AttentionContract.MinWindow
-        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), registry: registry, attentionService: new MockAttentionService(ReadyResult(modelId, "monthly")));
+        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry, attentionService: new MockAttentionService(ReadyResult(modelId, "monthly")));
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
         var ex = await Assert.ThrowsAsync<ToolException>(() => tool.InvokeAsync(doc.RootElement, CancellationToken.None));
@@ -381,7 +381,7 @@ public sealed class GetModelAttentionToolTests : IDisposable
         WriteManifest(modelId, manifestTimeframe);
         var registry = new ReadOnlyModelGenerationRegistry(_modelDir);
         var gateway = new MockGatewayWithCandles(candleCount: 10);
-        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), registry: registry, attentionService: new MockAttentionService(ReadyResult(modelId, "daily")));
+        var tool = new GetModelAttentionTool(gateway, new SymbolResolver(gateway), new ErrorMessageSanitizer(new[] { _tempDir }), registry: registry, attentionService: new MockAttentionService(ReadyResult(modelId, "daily")));
 
         using var doc = JsonDocument.Parse($"{{\"modelId\":\"{modelId}\",\"symbol\":\"7203-T\"}}");
         var ex = await Assert.ThrowsAsync<ToolException>(() => tool.InvokeAsync(doc.RootElement, CancellationToken.None));

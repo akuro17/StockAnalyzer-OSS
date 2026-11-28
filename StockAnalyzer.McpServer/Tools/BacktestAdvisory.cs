@@ -9,13 +9,102 @@ using StockAnalyzer.McpServer.Limits;
 namespace StockAnalyzer.McpServer.Tools;
 
 /// <summary>
-/// Shared advisory diagnostics for MCP backtest tools (<c>SIZING_NOTIONAL_SMALL</c> and <c>SAMPLE_TOO_SMALL</c>).
-/// Appends additive warnings without altering any Core calculation, metric, or factory default.
+/// Shared advisory diagnostics for MCP backtest and screener tools (<c>SIZING_NOTIONAL_SMALL</c>, <c>SAMPLE_TOO_SMALL</c>,
+/// <c>ZERO_FRICTION_ASSUMPTIONS</c>, <c>PRICE_LIMIT_ALWAYS_FILL</c>, <c>PRICE_RETURN_EXCLUDES_DIVIDENDS</c>, and <c>SURVIVORSHIP_BIAS_UNIVERSE</c>).
+/// Appends additive warnings/disclosures without altering any Core calculation, metric, or factory default.
 /// </summary>
 internal static class BacktestAdvisory
 {
     public const string SizingNotionalSmallCode = "SIZING_NOTIONAL_SMALL";
     public const string SampleTooSmallCode = "SAMPLE_TOO_SMALL";
+    public const string ZeroFrictionAssumptionsCode = "ZERO_FRICTION_ASSUMPTIONS";
+    public const string PriceLimitAlwaysFillCode = "PRICE_LIMIT_ALWAYS_FILL";
+    public const string PriceReturnExcludesDividendsCode = "PRICE_RETURN_EXCLUDES_DIVIDENDS";
+    public const string SurvivorshipBiasUniverseCode = "SURVIVORSHIP_BIAS_UNIVERSE";
+
+    public static string? ForZeroFriction(BacktestConfiguration configuration)
+    {
+        if (configuration.CommissionFlat != 0m || configuration.CommissionPerUnit != 0m || configuration.SlippageRatio != 0m)
+        {
+            return null;
+        }
+
+        return $"{ZeroFrictionAssumptionsCode}: Backtest uses zero commission and zero slippage (commissionFlat=0, commissionPerUnit=0, slippageRatio=0); reported returns may overstate live net performance unless explicit transaction costs are specified.";
+    }
+
+    public static string? ForSweepZeroFriction(IReadOnlyList<BoundBacktestSettings> combinations)
+    {
+        for (int i = 0; i < combinations.Count; i++)
+        {
+            if (ForZeroFriction(combinations[i].Configuration) is { } warning)
+            {
+                return warning;
+            }
+        }
+
+        return null;
+    }
+
+    public static string? ForPriceLimitAlwaysFill(BacktestConfiguration configuration)
+    {
+        if (configuration.PriceLimitFillMode != PriceLimitFillMode.AlwaysFill)
+        {
+            return null;
+        }
+
+        return $"{PriceLimitAlwaysFillCode}: PriceLimitFillMode is AlwaysFill; simulated orders still fill at bar prices even when a bar is locked at an exchange price limit (use RejectIfAtLimitPrice for limit-bar fill rejection).";
+    }
+
+    public static string? ForSweepPriceLimitAlwaysFill(IReadOnlyList<BoundBacktestSettings> combinations)
+    {
+        for (int i = 0; i < combinations.Count; i++)
+        {
+            if (ForPriceLimitAlwaysFill(combinations[i].Configuration) is { } warning)
+            {
+                return warning;
+            }
+        }
+
+        return null;
+    }
+
+    public static string ForPriceReturnExcludesDividends()
+        => $"{PriceReturnExcludesDividendsCode}: Backtest evaluates split-adjusted price return excluding cash dividends (total return may differ for dividend-paying equities).";
+
+    public static string ForSurvivorshipUniverse()
+        => $"{SurvivorshipBiasUniverseCode}: Evaluation uses only symbols present in the local Parquet dataset; delisted symbols removed from disk are excluded (survivorship bias).";
+
+    public static void AppendBacktestAdvisories(IList<string> target, BacktestConfiguration configuration)
+    {
+        if (ForZeroFriction(configuration) is { } zeroFriction)
+        {
+            target.Add(zeroFriction);
+        }
+
+        if (ForPriceLimitAlwaysFill(configuration) is { } alwaysFill)
+        {
+            target.Add(alwaysFill);
+        }
+
+        target.Add(ForPriceReturnExcludesDividends());
+        target.Add(ForSurvivorshipUniverse());
+    }
+
+    public static void AppendSweepAdvisories(IList<string> target, IReadOnlyList<BoundBacktestSettings> combinations)
+    {
+        if (ForSweepZeroFriction(combinations) is { } zeroFriction)
+        {
+            target.Add(zeroFriction);
+        }
+
+        if (ForSweepPriceLimitAlwaysFill(combinations) is { } alwaysFill)
+        {
+            target.Add(alwaysFill);
+        }
+
+        target.Add(ForPriceReturnExcludesDividends());
+        target.Add(ForSurvivorshipUniverse());
+    }
 
     public static bool HasExplicitSizingParameter(JsonElement arguments)
         => arguments.ValueKind == JsonValueKind.Object

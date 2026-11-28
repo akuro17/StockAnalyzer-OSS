@@ -547,6 +547,11 @@ public sealed class SeasonalityChartViewModelTests
         Assert.True(viewModel.MonthlyReturns!.HasData);
         Assert.True(viewModel.HasMonthlyReturns);
         Assert.Equal(SeasonalityMonthlyReturnsTable.RowCount, viewModel.MonthlyReturns.Rows.Count);
+        // Latest bar in BuildResult is 2023-06-01 (< month end 2023-06-30), so Jun and Annual are partial.
+        Assert.False(viewModel.MonthlyReturns.Rows[0].Cells[0].IsPartial);
+        Assert.True(viewModel.MonthlyReturns.Rows[5].Cells[0].IsPartial);
+        Assert.True(viewModel.MonthlyReturns.Rows[SeasonalityMonthlyReturnsTable.AnnualRowIndex].Cells[0].IsPartial);
+        Assert.False(viewModel.MonthlyReturns.Rows[5].Cells[1].IsPartial); // Avg cell is never marked partial
     }
 
     [AvaloniaFact]

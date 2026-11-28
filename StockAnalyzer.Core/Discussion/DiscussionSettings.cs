@@ -129,7 +129,7 @@ public static class DiscussionLimits
     // ---- Fixed values (spec section 4.2) -----------------------------------------------------------------------------------------
 
     /// <summary>Hub/remote handshake version; a mismatch is HUB_UNAVAILABLE.</summary>
-    public const int WireVersion = 3;
+    public const int WireVersion = 4;
 
     /// <summary>Request/reply line bound on the pipe.</summary>
     public const int WireMaxLineBytes = 5242880;
@@ -181,7 +181,7 @@ public static class DiscussionLimits
     /// <summary>Most argument names one command record keeps (the rest are not listed; the byte count still covers all of them).</summary>
     public const int CommandLogMaxArgKeys = 32;
 
-    /// <summary>Longest tool name, argument name, outcome and request id a command record keeps, in characters; longer text is cut. Keeps a record, and so the ring and the file, bounded whatever a client sends.</summary>
+    /// <summary>Longest tool name, argument name, outcome and request id a command record keeps, in characters; longer text is cut. Keeps a record, and so the ring and the file, bounded whatever a client sends. The same bound cuts the argument key that an unknown-argument refusal of the hub echoes.</summary>
     public const int CommandLogTextMaxChars = 64;
 
     /// <summary>The file names of the command log: <c>commands-{process id}-{start time}.jsonl</c>, rotated to <c>.1</c>, <c>.2</c> ...</summary>

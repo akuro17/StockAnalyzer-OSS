@@ -27,17 +27,29 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             }
         }
 
-        protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
         {
+            _values.Clear();
 
-            var closePrices = PriceDataHelper.ExtractPriceSeries(candles, PriceSource).Select(v => v ?? 0m).ToList();
-
-            var ema13 = IndicatorCalculationHelper.CalculateEma(closePrices, EmaPeriod);
-            var macdHistogram = CalculateMacdHistogram(closePrices, MacdFastPeriod, MacdSlowPeriod, MacdSignalPeriod);
-
-            for (int i = 0; i < candles.Count; i++)
+            if (series == null || series.Count == 0)
             {
-                if (i == 0 || ema13[i] == null || ema13[i - 1] == null || macdHistogram[i] == null || macdHistogram[i - 1] == null)
+                return IndicatorResult.Success(_values);
+            }
+
+            if (EmaPeriod <= 0 || MacdFastPeriod <= 0 || MacdSlowPeriod <= 0 || MacdSignalPeriod <= 0)
+            {
+                for (int i = 0; i < series.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
+            }
+
+            var ema13 = IndicatorCalculationHelper.CalculateEmaWithNulls(series, EmaPeriod);
+            var macdHistogram = CalculateMacdHistogram(series, MacdFastPeriod, MacdSlowPeriod, MacdSignalPeriod);
+
+            for (int i = 0; i < series.Count; i++)
+            {
+                if (i == 0 || !series[i].HasValue || !series[i - 1].HasValue ||
+                    ema13[i] == null || ema13[i - 1] == null ||
+                    macdHistogram[i] == null || macdHistogram[i - 1] == null)
                 {
                     _values.Add(null);
                     continue;
@@ -63,12 +75,12 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             return IndicatorResult.Success(_values);
         }
 
-        private List<decimal?> CalculateMacdHistogram(List<decimal> prices, int fastPeriod, int slowPeriod, int signalPeriod)
+        private static List<decimal?> CalculateMacdHistogram(IReadOnlyList<decimal?> prices, int fastPeriod, int slowPeriod, int signalPeriod)
         {
-            var fastEma = IndicatorCalculationHelper.CalculateEma(prices, fastPeriod);
-            var slowEma = IndicatorCalculationHelper.CalculateEma(prices, slowPeriod);
+            var fastEma = IndicatorCalculationHelper.CalculateEmaWithNulls(prices, fastPeriod);
+            var slowEma = IndicatorCalculationHelper.CalculateEmaWithNulls(prices, slowPeriod);
 
-            var macdLine = new List<decimal?>();
+            var macdLine = new List<decimal?>(prices.Count);
             for (int i = 0; i < prices.Count; i++)
             {
                 if (fastEma[i] != null && slowEma[i] != null)
@@ -83,7 +95,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
             var signalLine = IndicatorCalculationHelper.CalculateEmaWithNulls(macdLine, signalPeriod);
 
-            var histogram = new List<decimal?>();
+            var histogram = new List<decimal?>(macdLine.Count);
             for (int i = 0; i < macdLine.Count; i++)
             {
                 if (macdLine[i] != null && signalLine[i] != null)

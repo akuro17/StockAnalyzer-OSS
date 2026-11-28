@@ -1,3 +1,4 @@
+using StockAnalyzer.Core.Common;
 using StockAnalyzer.Core.Models;
 using StockAnalyzer.Core.Models.Training;
 
@@ -83,6 +84,26 @@ public class PredictionSettings
     /// </summary>
     public bool AllowIntraOpSpinning { get; set; } = DefaultAllowIntraOpSpinning;
 
+    /// <summary>Sidecar filename suffix written alongside deployed fallback ONNX models.</summary>
+    public const string Sha256SidecarSuffix = ".sha256";
+
+    /// <summary>Hard byte ceiling enforced when reading a fallback <c>.onnx.sha256</c> sidecar.</summary>
+    public const long MaxSha256SidecarBytes = 256;
+
+    /// <summary>
+    /// Optional 64-character hexadecimal SHA-256 digest pinning the configured fallback ONNX model
+    /// (overrides any co-located <c>.sha256</c> sidecar when non-empty).
+    /// </summary>
+    public string? ExpectedModelSha256 { get; set; } = null;
+
+    /// <summary>
+    /// When <see langword="true"/>, rejects loading an unleased fallback ONNX model if neither
+    /// <see cref="ExpectedModelSha256"/> nor a co-located <c>.onnx.sha256</c> sidecar exists.
+    /// Default <see langword="false"/> logs a warning for legacy unverified fallback models while
+    /// still rejecting malformed digests or hash mismatches unconditionally.
+    /// </summary>
+    public bool RequireVerifiedFallbackModel { get; set; } = false;
+
     public void Validate()
     {
         if (string.IsNullOrWhiteSpace(ModelPath)) throw new System.InvalidOperationException("PredictionSettings: ModelPath cannot be empty.");
@@ -98,5 +119,11 @@ public class PredictionSettings
             throw new System.InvalidOperationException($"PredictionSettings: IntraOpNumThreads must be null or between {MinNumThreads} and {MaxIntraOpNumThreads}.");
         if (InterOpNumThreads is { } interOp && (interOp < MinNumThreads || interOp > MaxInterOpNumThreads))
             throw new System.InvalidOperationException($"PredictionSettings: InterOpNumThreads must be null or between {MinNumThreads} and {MaxInterOpNumThreads}.");
+        if (!string.IsNullOrWhiteSpace(ExpectedModelSha256) &&
+            !ContentHash.IsLowerHex64(ExpectedModelSha256.Trim().ToLowerInvariant()))
+        {
+            throw new System.InvalidOperationException(
+                $"PredictionSettings: ExpectedModelSha256 must be empty or {ContentHash.HexLength} hexadecimal characters.");
+        }
     }
 }

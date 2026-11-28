@@ -31,16 +31,16 @@ public class CoreSSAIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
         _values.Clear();
 
-        if (candles == null || candles.Count == 0)
+        if (series == null || series.Count == 0)
         {
             return IndicatorResult.Success(_values);
         }
 
-        int n = candles.Count;
+        int n = series.Count;
         int window = Math.Max(SsaDecompositionEngine.MinSampleCount, WindowSize);
         if (n < window)
         {
@@ -48,20 +48,35 @@ public class CoreSSAIndicator : CoreIndicatorBase
             return IndicatorResult.Success(_values);
         }
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         double[] doublePrices = new double[n];
+        int contiguousValid = 0;
+
         for (int i = 0; i < n; i++)
         {
-            doublePrices[i] = (double)(priceSeries[i] ?? 0m);
-        }
+            if (!series[i].HasValue)
+            {
+                contiguousValid = 0;
+                _values.Add(null);
+                continue;
+            }
 
-        for (int i = 0; i < window - 1; i++)
-        {
-            _values.Add(null);
-        }
+            double val = (double)series[i]!.Value;
+            if (!double.IsFinite(val))
+            {
+                contiguousValid = 0;
+                _values.Add(null);
+                continue;
+            }
 
-        for (int i = window - 1; i < n; i++)
-        {
+            doublePrices[i] = val;
+            contiguousValid++;
+
+            if (contiguousValid < window)
+            {
+                _values.Add(null);
+                continue;
+            }
+
             ReadOnlySpan<double> windowSpan = doublePrices.AsSpan(i - window + 1, window);
             double endpoint = AutoRank
                 ? ComputeAutoRankEndpoint(windowSpan)
@@ -71,13 +86,14 @@ public class CoreSSAIndicator : CoreIndicatorBase
                     NumComponents,
                     SsaDetrendMode.LeastSquaresLinear);
 
-            if (double.IsNaN(endpoint) || double.IsInfinity(endpoint))
+            decimal? decEndpoint = IndicatorCalculationHelper.ToDecimalOrNull(endpoint);
+            if (!decEndpoint.HasValue)
             {
                 _values.Add(null);
             }
             else
             {
-                _values.Add(decimal.Round((decimal)endpoint, 8, MidpointRounding.AwayFromZero));
+                _values.Add(decimal.Round(decEndpoint.Value, 8, MidpointRounding.AwayFromZero));
             }
         }
 

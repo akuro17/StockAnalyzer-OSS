@@ -539,6 +539,18 @@
                 </ItemsControl>
             </Expander>
 
+            <Border Classes="SectionCard"
+                    IsVisible="{Binding HasWarnings}"
+                    Background="{DynamicResource Brush.Background.Secondary}"
+                    AutomationProperties.AutomationId="Backtest_Results_WarningsBanner">
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="SectionTitle" Margin="0" Text="{l:Localize Backtest_Section_Warnings}"/>
+                    <SelectableTextBlock Classes="CellValue"
+                                         TextWrapping="Wrap"
+                                         Text="{Binding WarningSummaryText}"/>
+                </StackPanel>
+            </Border>
+
         </StackPanel>
     </ScrollViewer>
 </UserControl>

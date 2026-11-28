@@ -16,7 +16,12 @@ public enum DataReadStatus
 }
 
 /// <summary>The bars of a read (empty unless <see cref="Status"/> is <see cref="DataReadStatus.Read"/>) and how the read ended.</summary>
-public readonly record struct DataReadResult(DataReadStatus Status, IReadOnlyList<CandleData> Candles);
+public readonly record struct DataReadResult(
+    DataReadStatus Status,
+    IReadOnlyList<CandleData> Candles,
+    int InvalidBarCount = 0,
+    int NonMonotonicBarCount = 0,
+    DateTime? FirstInvalidTimestamp = null);
 
 /// <summary>
 /// A data service that can tell a missing file from an unreadable one, which <see cref="IDataService"/> cannot: its

@@ -300,7 +300,7 @@ public sealed class IndicatorChannelExporter
                     {string.Join(",\n                    ", rows)}
                 ) AS t(date, {valueColumnNames})
                 ORDER BY date ASC
-            ) TO '{ParquetMarketDataProvider.EscapeDuckDbPath(exportPath)}' (FORMAT PARQUET)";
+            ) TO '{ParquetMarketDataProvider.FormatDuckDbPath(exportPath)}' (FORMAT PARQUET)";
         try
         {
             command.ExecuteNonQuery();

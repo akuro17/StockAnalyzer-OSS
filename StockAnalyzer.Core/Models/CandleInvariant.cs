@@ -91,6 +91,86 @@ public static class CandleInvariant
     }
 
     /// <summary>
+    /// Summary of non-destructive OHLCV invariant and chronology diagnostics for a candle series.
+    /// </summary>
+    public readonly record struct CandleSeriesDiagnostics(
+        int InvalidBarCount,
+        int NonMonotonicBarCount,
+        DateTime? FirstInvalidTimestamp,
+        string? FirstViolationDetail)
+    {
+        public bool HasIssues => InvalidBarCount > 0 || NonMonotonicBarCount > 0;
+    }
+
+    /// <summary>
+    /// Scans <paramref name="candles"/> in ascending order without modifying or dropping rows.
+    /// Continuous futures (<see cref="TickerSymbol.IsContinuousFuturesFormat"/>, <c>=F</c> only)
+    /// allow non-positive prices per daily-chart contract Q9=A while still enforcing OHLC ordering and non-negative volume;
+    /// all other symbols (including forex pairs <c>=X</c>) diagnose <see cref="CandleViolationCode.NonPositivePrice"/>.
+    /// </summary>
+    public static CandleSeriesDiagnostics DiagnoseSeries(string? symbol, IReadOnlyList<CandleData> candles)
+    {
+        ArgumentNullException.ThrowIfNull(candles);
+        if (candles.Count == 0)
+        {
+            return new CandleSeriesDiagnostics(0, 0, null, null);
+        }
+
+        bool isContinuousFutures = !string.IsNullOrWhiteSpace(symbol)
+            && TickerSymbol.IsContinuousFuturesFormat(symbol.Trim(), TickerSymbolLimits.FileSafetyMaxLength);
+
+        int invalidCount = 0;
+        int nonMonotonicCount = 0;
+        DateTime? firstTimestamp = null;
+        string? firstDetail = null;
+
+        for (int i = 0; i < candles.Count; i++)
+        {
+            CandleData bar = candles[i];
+
+            if (i > 0 && bar.Timestamp <= candles[i - 1].Timestamp)
+            {
+                nonMonotonicCount++;
+                firstTimestamp ??= bar.Timestamp;
+                firstDetail ??= FormattableString.Invariant(
+                    $"Non-monotonic or duplicate timestamp {bar.Timestamp:yyyy-MM-dd} after {candles[i - 1].Timestamp:yyyy-MM-dd}");
+            }
+
+            bool structuralInvalid = !bar.IsValid();
+            bool nonPositiveInvalid = !isContinuousFutures
+                && (bar.Open <= 0m || bar.High <= 0m || bar.Low <= 0m || bar.Close <= 0m);
+
+            if (structuralInvalid || nonPositiveInvalid)
+            {
+                invalidCount++;
+                firstTimestamp ??= bar.Timestamp;
+                if (firstDetail is null)
+                {
+                    IReadOnlyList<CandleViolationCode> codes = Describe(bar);
+                    if (isContinuousFutures)
+                    {
+                        var filtered = new List<CandleViolationCode>(codes.Count);
+                        for (int c = 0; c < codes.Count; c++)
+                        {
+                            if (codes[c] != CandleViolationCode.NonPositivePrice)
+                            {
+                                filtered.Add(codes[c]);
+                            }
+                        }
+                        firstDetail = FormatViolationDetail(bar, filtered);
+                    }
+                    else
+                    {
+                        firstDetail = FormatViolationDetail(bar, codes);
+                    }
+                }
+            }
+        }
+
+        return new CandleSeriesDiagnostics(invalidCount, nonMonotonicCount, firstTimestamp, firstDetail);
+    }
+
+    /// <summary>
     /// Scans <paramref name="bars"/> in chronological order and returns the first invalid bar and its violations, optionally bounded by date.
     /// </summary>
     public static bool TryFindFirstViolation(

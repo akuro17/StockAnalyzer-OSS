@@ -81,5 +81,52 @@ namespace StockAnalyzer.Core.Tests
             indicator.Calculate(new List<CoreCandleData>());
             Assert.Empty(indicator.Values);
         }
+
+        [Fact]
+        public void Calculate_WithPeriodOne_ReturnsAllNullsAndSucceeds()
+        {
+            var indicator = new CoreChoppinessIndexIndicator { Period = 1 };
+            var candles = CreateTestCandles(
+                new decimal[] { 10, 11, 12, 11, 10 },
+                new decimal[] { 8, 9, 10, 9, 8 },
+                new decimal[] { 9, 10, 11, 10, 9 }
+            );
+
+            var result = indicator.Calculate(candles);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(5, indicator.Values.Count);
+            Assert.All(indicator.Values, Assert.Null);
+        }
+
+        [Fact]
+        public void Calculate_WithPeriodZero_ReturnsAllNullsAndSucceeds()
+        {
+            var indicator = new CoreChoppinessIndexIndicator { Period = 0 };
+            var candles = CreateTestCandles(
+                new decimal[] { 10, 11, 12, 11, 10 },
+                new decimal[] { 8, 9, 10, 9, 8 },
+                new decimal[] { 9, 10, 11, 10, 9 }
+            );
+
+            var result = indicator.Calculate(candles);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(5, indicator.Values.Count);
+            Assert.All(indicator.Values, Assert.Null);
+        }
+
+        [Fact]
+        public void Calculate_WithSingleCandle_ReturnsSingleNullAndSucceeds()
+        {
+            var indicator = new CoreChoppinessIndexIndicator { Period = 14 };
+            var candles = CreateTestCandles(new decimal[] { 10 }, new decimal[] { 8 }, new decimal[] { 9 });
+
+            var result = indicator.Calculate(candles);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Single(indicator.Values);
+            Assert.Null(indicator.Values[0]);
+        }
     }
 }

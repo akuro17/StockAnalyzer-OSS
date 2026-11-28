@@ -44,7 +44,7 @@ internal sealed class RlLocalParquetSession : IDisposable
     public ImmutableArray<DateOnly> ReadDates(string snapshotPath, DateOnly endExclusive, CancellationToken ct)
     {
         using var command = _db.CreateCommand();
-        string escaped = ParquetMarketDataProvider.EscapeDuckDbPath(snapshotPath.Replace('\\', '/'));
+        string escaped = ParquetMarketDataProvider.FormatDuckDbPath(snapshotPath);
         command.CommandText = $"DESCRIBE SELECT date FROM read_parquet('{escaped}')";
         using (var schema = command.ExecuteReader())
             if (!schema.Read() || schema.GetString(0) != "date" || !string.Equals(schema.GetString(1), "DATE", StringComparison.OrdinalIgnoreCase))

@@ -22,38 +22,22 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
             }
         }
 
-        protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
         {
-            if (candles.Count < SlowPeriod)
+            if (FastPeriod <= 0 || SlowPeriod <= 0 || series.Count < SlowPeriod)
             {
-                for (int i = 0; i < candles.Count; i++) _values.Add(null);
+                for (int i = 0; i < series.Count; i++) _values.Add(null);
                 return IndicatorResult.Success(_values);
             }
 
-            decimal fastMult = 2m / (FastPeriod + 1);
-            decimal slowMult = 2m / (SlowPeriod + 1);
-            decimal? fastEma = null, slowEma = null;
+            var fastEmas = IndicatorCalculationHelper.CalculateEmaWithNulls(series, FastPeriod);
+            var slowEmas = IndicatorCalculationHelper.CalculateEmaWithNulls(series, SlowPeriod);
 
-            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            var fastEmas = new List<decimal?>();
-
-            for (int i = 0; i < candles.Count; i++)
+            for (int i = 0; i < series.Count; i++)
             {
-                if (i < FastPeriod - 1) { fastEmas.Add(null); }
-                else if (fastEma == null) { fastEma = priceSeries.Take(FastPeriod).Average(v => v ?? 0m); fastEmas.Add(fastEma); }
-                else { fastEma = ((priceSeries[i] ?? 0m) - fastEma.Value) * fastMult + fastEma.Value; fastEmas.Add(fastEma); }
-            }
-
-            for (int i = 0; i < candles.Count; i++)
-            {
-                if (i < SlowPeriod - 1 || !fastEmas[i].HasValue) { _values.Add(null); continue; }
-
-                if (slowEma == null) { slowEma = priceSeries.Take(SlowPeriod).Average(v => v ?? 0m); }
-                else { slowEma = ((priceSeries[i] ?? 0m) - slowEma!.Value) * slowMult + slowEma.Value; }
-
-                if (slowEma!.Value != 0)
+                if (fastEmas[i] is { } fast && slowEmas[i] is { } slow && slow != 0m)
                 {
-                    _values.Add(((fastEmas[i]!.Value - slowEma.Value) / slowEma.Value) * 100);
+                    _values.Add(((fast - slow) / slow) * 100m);
                 }
                 else
                 {

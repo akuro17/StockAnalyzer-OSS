@@ -18,25 +18,50 @@ public class CoreCmoIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-        if (candles.Count < 2) return IndicatorResult.Success(_values);
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+        if (series.Count < 2) return IndicatorResult.Success(_values);
+        if (Period <= 0)
+        {
+            for (int i = 0; i < series.Count; i++) _values.Add(null);
+            return IndicatorResult.Success(_values);
+        }
+
         _values.Add(null);
 
-        for (int i = 1; i < candles.Count; i++)
+        for (int i = 1; i < series.Count; i++)
         {
-            if (i < Period) { _values.Add(null); continue; }
+            if (i < Period)
+            {
+                _values.Add(null);
+                continue;
+            }
 
-            decimal sumUp = 0, sumDown = 0;
+            decimal sumUp = 0m, sumDown = 0m;
+            bool hasNull = false;
             for (int j = 0; j < Period; j++)
             {
-                decimal change = (priceSeries[i - j] ?? 0m) - (priceSeries[i - j - 1] ?? 0m);
-                if (change > 0) sumUp += change;
+                decimal? curr = series[i - j];
+                decimal? prev = series[i - j - 1];
+                if (!curr.HasValue || !prev.HasValue)
+                {
+                    hasNull = true;
+                    break;
+                }
+
+                decimal change = curr.Value - prev.Value;
+                if (change > 0m) sumUp += change;
                 else sumDown += Math.Abs(change);
             }
 
-            decimal cmo = (sumUp + sumDown) == 0 ? 0 : ((sumUp - sumDown) / (sumUp + sumDown)) * 100;
+            if (hasNull)
+            {
+                _values.Add(null);
+                continue;
+            }
+
+            decimal denom = sumUp + sumDown;
+            decimal cmo = denom == 0m ? 0m : ((sumUp - sumDown) / denom) * 100m;
             _values.Add(cmo);
         }
 

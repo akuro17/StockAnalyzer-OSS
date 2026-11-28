@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Services;
 
 namespace StockAnalyzer.Core.Analysis;
 
@@ -8,7 +10,7 @@ namespace StockAnalyzer.Core.Analysis;
 /// (row, year), or <c>null</c> when it is undefined for that year — a missing month close, or a year
 /// with no positive base close.
 /// </summary>
-public readonly record struct SeasonalityMonthlyReturnCell(decimal? Return)
+public readonly record struct SeasonalityMonthlyReturnCell(decimal? Return, bool IsPartial = false)
 {
     /// <summary>True when <see cref="Return"/> holds a computed value.</summary>
     public bool IsDefined => Return.HasValue;
@@ -35,12 +37,14 @@ public sealed class SeasonalityMonthlyReturnsTable
         IReadOnlyList<int> years,
         SeasonalityMonthlyReturnCell[][] rows,
         decimal?[] rowAverages,
-        uint startMonth = 1)
+        uint startMonth = 1,
+        decimal?[]? completedRowAverages = null)
     {
         Years = years;
         _rows = rows;
         RowAverages = rowAverages;
         StartMonth = startMonth;
+        CompletedRowAverages = completedRowAverages ?? rowAverages;
     }
 
     /// <summary>Overlaid calendar years, ascending (mirrors <see cref="SeasonalityChartResult.CalendarYears"/>).</summary>
@@ -54,6 +58,13 @@ public sealed class SeasonalityMonthlyReturnsTable
     /// Length is always <see cref="RowCount"/>.
     /// </summary>
     public IReadOnlyList<decimal?> RowAverages { get; }
+
+    /// <summary>
+    /// Arithmetic mean of the defined non-partial cells in each row; <c>null</c> for a row with no
+    /// completed defined cell. Equal to <see cref="RowAverages"/> when built without a reference date.
+    /// Length is always <see cref="RowCount"/>.
+    /// </summary>
+    public IReadOnlyList<decimal?> CompletedRowAverages { get; }
 
     /// <summary>The cell for <paramref name="rowIndex"/> (0..12) and <paramref name="yearIndex"/> (into <see cref="Years"/>).</summary>
     public SeasonalityMonthlyReturnCell Cell(int rowIndex, int yearIndex) => _rows[rowIndex][yearIndex];
@@ -92,11 +103,47 @@ public static class SeasonalityMonthlyReturnsEngine
     private const int MonthsPerYear = 12;
 
     /// <summary>
+    /// Returns the latest timestamp among base-symbol (<c>SeriesId == 0</c>) samples with a valid
+    /// value, or <c>null</c> when none exists.
+    /// </summary>
+    public static DateTime? ResolveLatestBaseSampleDate(SeasonalityChartResult result)
+    {
+        if (result is null)
+        {
+            throw new ArgumentNullException(nameof(result));
+        }
+
+        DateTime? latest = null;
+        foreach (SeasonalityYearTrace trace in result.Traces)
+        {
+            if (trace.SeriesId != 0)
+            {
+                continue;
+            }
+
+            IReadOnlyList<SeasonalitySample> samples = trace.Samples;
+            for (int i = 0; i < samples.Count; i++)
+            {
+                SeasonalitySample sample = samples[i];
+                if (sample.Value.HasValue && (latest is null || sample.Timestamp > latest.Value))
+                {
+                    latest = sample.Timestamp;
+                }
+            }
+        }
+
+        return latest;
+    }
+
+    /// <summary>
     /// Builds the monthly-returns table from <paramref name="result"/>. Only series 0 (the base
     /// symbol) is read — comparison / indicator series no longer exist in the redesigned chart.
+    /// When <paramref name="referenceDate"/> is supplied, the latest calendar month and its cycle
+    /// year are flagged with <see cref="SeasonalityMonthlyReturnCell.IsPartial"/> if that month ends
+    /// after <paramref name="referenceDate"/> per <see cref="TimeFrameAggregator.IsPartialPeriod"/>.
     /// Returns <see cref="SeasonalityMonthlyReturnsTable.Empty"/> when there is no base-symbol trace.
     /// </summary>
-    public static SeasonalityMonthlyReturnsTable Build(SeasonalityChartResult result)
+    public static SeasonalityMonthlyReturnsTable Build(SeasonalityChartResult result, DateTime? referenceDate = null)
     {
         if (result is null)
         {
@@ -130,13 +177,48 @@ public static class SeasonalityMonthlyReturnsEngine
             }
         }
 
-        var averages = new decimal?[SeasonalityMonthlyReturnsTable.RowCount];
-        for (int row = 0; row < averages.Length; row++)
+        if (referenceDate is { } refDt
+            && ResolveLatestBaseSampleDate(result) is { } lastBarTs
+            && TimeFrameAggregator.IsPartialPeriod(lastBarTs, TimeFrame.MN1, refDt))
         {
-            averages[row] = ArithmeticMean(rows[row]);
+            int startMonthInt = startMonth is >= 1 and <= MonthsPerYear ? (int)startMonth : 1;
+            int lastBarMonth = lastBarTs.Month;
+            int lastBarCycleYear = startMonthInt <= 1 || lastBarMonth >= startMonthInt
+                ? lastBarTs.Year
+                : lastBarTs.Year - 1;
+            int monthRowIndex = (lastBarMonth - startMonthInt + MonthsPerYear) % MonthsPerYear;
+
+            for (int yearIndex = 0; yearIndex < years.Count; yearIndex++)
+            {
+                if (years[yearIndex] != lastBarCycleYear)
+                {
+                    continue;
+                }
+
+                if (rows[monthRowIndex][yearIndex].IsDefined)
+                {
+                    rows[monthRowIndex][yearIndex] = rows[monthRowIndex][yearIndex] with { IsPartial = true };
+                }
+
+                if (rows[SeasonalityMonthlyReturnsTable.AnnualRowIndex][yearIndex].IsDefined)
+                {
+                    rows[SeasonalityMonthlyReturnsTable.AnnualRowIndex][yearIndex] =
+                        rows[SeasonalityMonthlyReturnsTable.AnnualRowIndex][yearIndex] with { IsPartial = true };
+                }
+
+                break;
+            }
         }
 
-        return new SeasonalityMonthlyReturnsTable(years, rows, averages, startMonth);
+        var averages = new decimal?[SeasonalityMonthlyReturnsTable.RowCount];
+        var completedAverages = new decimal?[SeasonalityMonthlyReturnsTable.RowCount];
+        for (int row = 0; row < averages.Length; row++)
+        {
+            averages[row] = ArithmeticMean(rows[row], includePartial: true);
+            completedAverages[row] = ArithmeticMean(rows[row], includePartial: false);
+        }
+
+        return new SeasonalityMonthlyReturnsTable(years, rows, averages, startMonth, completedAverages);
     }
 
     private static void PopulateYearColumn(
@@ -252,13 +334,13 @@ public static class SeasonalityMonthlyReturnsEngine
         return null;
     }
 
-    private static decimal? ArithmeticMean(ReadOnlySpan<SeasonalityMonthlyReturnCell> cells)
+    private static decimal? ArithmeticMean(ReadOnlySpan<SeasonalityMonthlyReturnCell> cells, bool includePartial)
     {
         decimal sum = 0m;
         int count = 0;
         foreach (SeasonalityMonthlyReturnCell cell in cells)
         {
-            if (cell.Return is { } value)
+            if (cell.Return is { } value && (includePartial || !cell.IsPartial))
             {
                 sum += value;
                 count++;

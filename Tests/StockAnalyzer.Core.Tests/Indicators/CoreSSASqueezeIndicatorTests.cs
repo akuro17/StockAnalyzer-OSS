@@ -247,4 +247,37 @@ public class CoreSSASqueezeIndicatorTests
         Assert.Equal(5, result.MainValues.Count);
         Assert.All(result.MainValues, Assert.Null);
     }
+
+    [Fact]
+    public void Calculate_ExtremeSlopeExceedingDecimalRange_NarrowsToNullWithoutOverflow()
+    {
+        var candles = new List<CoreCandleData>();
+        var baseDate = new DateTime(2023, 1, 1);
+        for (int i = 0; i < 40; i++)
+        {
+            decimal price = 1_000_000_000_000_000_000_000_000m + i * 2_000_000_000_000_000_000_000_000_000m;
+            candles.Add(new CoreCandleData(
+                baseDate.AddDays(i),
+                price,
+                price,
+                price,
+                price,
+                1000
+            ));
+        }
+
+        var indicator = new CoreSSASqueezeIndicator
+        {
+            WindowSize = 16,
+            EmbeddingDimension = 6,
+            NumComponents = 2,
+            AtrPeriod = 10,
+            MomentumPeriod = 12
+        };
+
+        var result = indicator.Calculate(candles);
+        Assert.True(result.IsSuccessful);
+        Assert.Equal(candles.Count, result.MainValues.Count);
+        Assert.Contains(result.MainValues.Skip(indicator.WindowSize + indicator.MomentumPeriod - 2), v => v is null);
+    }
 }

@@ -596,7 +596,7 @@ public sealed partial class RlGenerationAndQValueTests : IDisposable
     {
         using var db = new DuckDBConnection("DataSource=:memory:"); db.Open(); using var command = db.CreateCommand();
         command.CommandText = "SET threads=" + RlContract.CpuThreads.ToString(CultureInfo.InvariantCulture); command.ExecuteNonQuery();
-        command.CommandText = $"COPY ({query}) TO '{ParquetMarketDataProvider.EscapeDuckDbPath(path.Replace('\\', '/'))}' (FORMAT PARQUET)";
+        command.CommandText = $"COPY ({query}) TO '{ParquetMarketDataProvider.FormatDuckDbPath(path)}' (FORMAT PARQUET)";
         command.ExecuteNonQuery();
     }
     private static void Write<T>(string path, T value) => File.WriteAllText(path, JsonSerializer.Serialize(value, RlFiles.Json));

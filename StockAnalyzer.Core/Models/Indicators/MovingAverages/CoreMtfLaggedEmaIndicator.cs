@@ -36,26 +36,32 @@ namespace StockAnalyzer.Core.Models.Indicators.MovingAverages
             }
         }
 
-        protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
         {
-            if (candles.Count < Period * TimeFrameMultiplier)
+            _values.Clear();
+
+            if (series == null || series.Count == 0)
             {
-                for (int i = 0; i < candles.Count; i++) _values.Add(null);
                 return IndicatorResult.Success(_values);
             }
 
-            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            int higherTfCount = candles.Count / TimeFrameMultiplier;
-            var higherTfCloses = new decimal[higherTfCount];
-            int index = 0;
-            for (int i = 0; i <= candles.Count - TimeFrameMultiplier; i += TimeFrameMultiplier)
+            if (Period <= 0 || series.Count < Period * TimeFrameMultiplier)
             {
-                higherTfCloses[index++] = priceSeries[i + TimeFrameMultiplier - 1] ?? 0m;
+                for (int i = 0; i < series.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
             }
 
-            var higherTfEma = IndicatorCalculationHelper.CalculateEma(higherTfCloses, Period);
+            int higherTfCount = series.Count / TimeFrameMultiplier;
+            var higherTfCloses = new decimal?[higherTfCount];
+            int index = 0;
+            for (int i = 0; i <= series.Count - TimeFrameMultiplier; i += TimeFrameMultiplier)
+            {
+                higherTfCloses[index++] = series[i + TimeFrameMultiplier - 1];
+            }
 
-            for (int i = 0; i < candles.Count; i++)
+            var higherTfEma = IndicatorCalculationHelper.CalculateEmaWithNulls(higherTfCloses, Period);
+
+            for (int i = 0; i < series.Count; i++)
             {
                 int higherTfIndex = i / TimeFrameMultiplier;
                 int laggedIndex = higherTfIndex - Lag;

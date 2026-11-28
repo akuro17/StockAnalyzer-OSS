@@ -16,27 +16,53 @@ public class CoreWilderSmoothingIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-        if (candles.Count < Period) return IndicatorResult.Success(_values);
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        // First value is SMA
-        decimal sum = 0;
-        for (int i = 0; i < Period; i++)
+        _values.Clear();
+        if (series == null || series.Count == 0) return IndicatorResult.Success(_values);
+        if (Period <= 0 || series.Count < Period)
         {
-            sum += priceSeries[i] ?? 0m;
+            for (int i = 0; i < series.Count; i++) _values.Add(null);
+            return IndicatorResult.Success(_values);
         }
-        decimal prev = sum / Period;
 
-        for (int i = 0; i < Period - 1; i++) _values.Add(null);
-        _values.Add(prev);
+        decimal? prev = null;
+        int validCount = 0;
 
-        for (int i = Period; i < candles.Count; i++)
+        for (int i = 0; i < series.Count; i++)
         {
-            // WSMA = (Prior WSMA * (n-1) + Current Price) / n
-            decimal current = (prev * (Period - 1) + (priceSeries[i] ?? 0m)) / Period;
-            _values.Add(current);
-            prev = current;
+            if (!series[i].HasValue)
+            {
+                _values.Add(null);
+                continue;
+            }
+
+            validCount++;
+            if (validCount < Period)
+            {
+                _values.Add(null);
+            }
+            else if (validCount == Period)
+            {
+                decimal sum = 0m;
+                int found = 0;
+                for (int j = i; j >= 0 && found < Period; j--)
+                {
+                    if (series[j].HasValue)
+                    {
+                        sum += series[j]!.Value;
+                        found++;
+                    }
+                }
+                prev = sum / Period;
+                _values.Add(prev);
+            }
+            else
+            {
+                // WSMA = (Prior WSMA * (n-1) + Current Price) / n
+                prev = (prev!.Value * (Period - 1) + series[i]!.Value) / Period;
+                _values.Add(prev);
+            }
         }
 
         return IndicatorResult.Success(_values);

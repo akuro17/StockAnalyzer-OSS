@@ -5,16 +5,27 @@ namespace StockAnalyzer.Core.Tests.Services
 {
     public class PythonServiceInstallArgumentsTests
     {
-        private const string Install = "-m pip install --no-build-isolation";
+        private const string Install = "-m pip install --only-binary :all:";
 
-        // The security upgrade (pip, certifi) shares the command start but is not a package build: it must not carry the build-isolation switch.
+        // The security upgrade (pip, certifi) enforces binary wheels via PipSecurityUpgradeArgumentList while keeping the legacy string constant intact.
         [Fact]
-        public void SecurityUpgrade_SharesTheCommandStartWithoutTheBuildIsolationSwitch()
+        public void SecurityUpgrade_SharesTheCommandStartAndEnforcesBinaryWheelsInArgumentList()
         {
             Assert.Equal($"-m pip install --upgrade \"pip>={PythonService.MinimumPipVersion}\" certifi", PythonService.PipSecurityUpgradeArguments);
             Assert.StartsWith(PythonPackageSets.PipInstallCommand + " ", PythonService.PipSecurityUpgradeArguments);
             Assert.DoesNotContain("--no-build-isolation", PythonService.PipSecurityUpgradeArguments);
             Assert.StartsWith(PythonPackageSets.PipInstallCommand + " ", PythonPackageSets.PipInstallPrefix);
+            Assert.Contains("--only-binary", PythonService.PipSecurityUpgradeArgumentList);
+            Assert.Contains(":all:", PythonService.PipSecurityUpgradeArgumentList);
+        }
+
+        [Fact]
+        public void BuildInstallArgumentList_ReturnsTokenizedArgumentsWithoutShellQuotes()
+        {
+            var args = PythonService.BuildInstallArgumentList("pandas", "2.3.3", shouldUpdate: true, forceUpgrade: false);
+            Assert.Equal(
+                new[] { "-m", "pip", "install", "--only-binary", ":all:", "--upgrade", "pandas>=2.3.3,<3.0.0" },
+                args);
         }
 
         [Fact]

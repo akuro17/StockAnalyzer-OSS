@@ -271,4 +271,31 @@ public class SeasonalityMonthlyReturnsPresentationTests
         Assert.Equal("-10.0%", presentation.Rows[1].Cells[0].Text);
         Assert.Equal("0.0%", presentation.Rows[2].Cells[0].Text);
     }
+
+    [Fact]
+    public void Create_PropagatesIsPartialInBothOrientations()
+    {
+        var points = new[]
+        {
+            new SeasonalityPoint(new DateTime(2023, 1, 2), 100m),
+            new SeasonalityPoint(new DateTime(2023, 2, 15), 120m), // partial February
+        };
+        var series = new SeasonalitySeriesInput(0, "BASE", SeasonalityRadiusMode.PercentVsYearStart, points);
+        SeasonalityChartResult result = SeasonalityChartEngine.Analyze(new[] { series }, new SeasonalityChartParameters(5));
+        SeasonalityMonthlyReturnsTable table = SeasonalityMonthlyReturnsEngine.Build(result, new DateTime(2023, 2, 15));
+
+        SeasonalityMonthlyReturnsPresentation rowsOrientation = SeasonalityMonthlyReturnsPresentation.Create(
+            table, "Annual", "Avg", SeasonalityMonthlyReturnsStyle.Default, SeasonalityMonthlyTableOrientation.MonthsAsRows);
+        Assert.False(rowsOrientation.Rows[0].Cells[0].IsPartial);
+        Assert.True(rowsOrientation.Rows[1].Cells[0].IsPartial);
+        Assert.True(rowsOrientation.Rows[SeasonalityMonthlyReturnsTable.AnnualRowIndex].Cells[0].IsPartial);
+        Assert.False(rowsOrientation.Rows[1].Cells[1].IsPartial); // Avg column
+
+        SeasonalityMonthlyReturnsPresentation colsOrientation = SeasonalityMonthlyReturnsPresentation.Create(
+            table, "Annual", "Avg", SeasonalityMonthlyReturnsStyle.Default, SeasonalityMonthlyTableOrientation.MonthsAsColumns);
+        Assert.False(colsOrientation.Rows[0].Cells[0].IsPartial);
+        Assert.True(colsOrientation.Rows[0].Cells[1].IsPartial);
+        Assert.True(colsOrientation.Rows[0].Cells[SeasonalityMonthlyReturnsTable.AnnualRowIndex].IsPartial);
+        Assert.False(colsOrientation.Rows[1].Cells[1].IsPartial); // Avg row
+    }
 }

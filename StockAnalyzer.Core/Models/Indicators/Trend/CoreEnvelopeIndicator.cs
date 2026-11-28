@@ -22,42 +22,50 @@ namespace StockAnalyzer.Core.Models.Indicators.Trend
             }
         }
 
-        protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
         {
-            var upper = new List<decimal?>(candles.Count);
-            var main = new List<decimal?>(candles.Count);
-            var lower = new List<decimal?>(candles.Count);
+            _values.Clear();
 
-            if (candles.Count < Period)
+            int count = series?.Count ?? 0;
+            var upper = new List<decimal?>(count);
+            var main = new List<decimal?>(count);
+            var lower = new List<decimal?>(count);
+
+            if (count == 0)
             {
-                for (int i = 0; i < candles.Count; i++)
+                return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>> { { "Upper", upper }, { "Main", main }, { "Lower", lower } });
+            }
+
+            if (Period <= 0 || count < Period)
+            {
+                for (int i = 0; i < count; i++)
                 {
-                    upper.Add(null); main.Add(null); lower.Add(null);
+                    upper.Add(null);
+                    main.Add(null);
+                    lower.Add(null);
+                    _values.Add(null);
                 }
                 return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>> { { "Upper", upper }, { "Main", main }, { "Lower", lower } });
             }
 
-            var closePrices = PriceDataHelper.ExtractPriceSeries(candles, PriceSource).Select(v => v ?? 0m).ToList();
-
-            decimal sum = 0;
-            for (int i = 0; i < Period; i++)
+            var smaValues = IndicatorCalculationHelper.CalculateSmaWithNulls(series!, Period);
+            for (int i = 0; i < count; i++)
             {
-                sum += closePrices[i];
-                upper.Add(null); main.Add(null); lower.Add(null);
-            }
-
-            decimal sma = sum / Period;
-            main[Period - 1] = sma;
-            upper[Period - 1] = sma * (1 + Deviation);
-            lower[Period - 1] = sma * (1 - Deviation);
-
-            for (int i = Period; i < candles.Count; i++)
-            {
-                sum = sum - closePrices[i - Period] + closePrices[i];
-                sma = sum / Period;
-                main.Add(sma);
-                upper.Add(sma * (1 + Deviation));
-                lower.Add(sma * (1 - Deviation));
+                decimal? sma = smaValues[i];
+                if (sma.HasValue)
+                {
+                    main.Add(sma.Value);
+                    upper.Add(sma.Value * (1m + Deviation));
+                    lower.Add(sma.Value * (1m - Deviation));
+                    _values.Add(sma.Value);
+                }
+                else
+                {
+                    main.Add(null);
+                    upper.Add(null);
+                    lower.Add(null);
+                    _values.Add(null);
+                }
             }
 
             return IndicatorResult.Success(new Dictionary<string, IReadOnlyList<decimal?>> { { "Upper", upper }, { "Main", main }, { "Lower", lower } });

@@ -21,6 +21,11 @@ public static class TickerSymbol
     /// <see cref="MaxLength"/> characters, and free of path separators, drive separators, parent-directory
     /// segments and control characters.
     /// </summary>
+    /// <remarks>
+    /// File-safety check only (pinned cross-language against <c>StockAnalyzer.Python/symbol_contract.json</c>).
+    /// Callers validating accepted ticker syntax MUST use <see cref="IsAcceptedSymbolFormat"/> instead,
+    /// and callers enforcing OS-safe plain file stems MUST use <see cref="AttestedFileNames"/>.
+    /// </remarks>
     public static bool IsWellFormed(string? symbol)
     {
         if (string.IsNullOrWhiteSpace(symbol))

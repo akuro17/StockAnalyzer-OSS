@@ -43,6 +43,7 @@ internal static class McpSettingsExposure
         nameof(IStockAnalyzerSettings.SyncTimeoutMinutes),
         nameof(IStockAnalyzerSettings.PythonEssentialPackages),
         nameof(IStockAnalyzerSettings.DisposeWaitMs),
+        nameof(IStockAnalyzerSettings.PythonAutoUpdatePackagesOnStartup),
         nameof(IStockAnalyzerSettings.PythonRequestTimeoutMs),
         nameof(IStockAnalyzerSettings.PythonMaxResponseBytes),
         nameof(IStockAnalyzerSettings.PythonMaxTimeoutRetries),
@@ -94,6 +95,8 @@ internal static class McpSettingsExposure
         nameof(IStockAnalyzerSettings.PredictionIntraOpNumThreads),
         nameof(IStockAnalyzerSettings.PredictionInterOpNumThreads),
         nameof(IStockAnalyzerSettings.PredictionAllowIntraOpSpinning),
+        nameof(IStockAnalyzerSettings.PredictionExpectedModelSha256),
+        nameof(IStockAnalyzerSettings.PredictionRequireVerifiedFallbackModel),
         nameof(IStockAnalyzerSettings.LocaleResourcePath),
     };
 

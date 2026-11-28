@@ -587,6 +587,19 @@ public sealed class SandboxedExecutionGateway : ISandboxedExecutionGateway, IDis
         {
             throw Invalid("calibration is only supported for classification targets.", nameof(request.Calibration));
         }
+
+        if (request.Hyperparameters is { Count: > 0 })
+        {
+            TrainingHyperparameterCatalog.StrictHyperparameterValidationResult hpValidation =
+                TrainingHyperparameterCatalog.ValidateStrictAllowlist(request.Framework, request.Architecture, request.Hyperparameters);
+            if (!hpValidation.IsValid)
+            {
+                string allowedHint = hpValidation.AllowedKeys.Count == 0
+                    ? "none"
+                    : string.Join(", ", hpValidation.AllowedKeys);
+                throw Invalid($"{hpValidation.Message} Allowed hyperparameters for {request.Framework}/{request.Architecture}: {allowedHint}.", nameof(request.Hyperparameters));
+            }
+        }
     }
 
     // The application's own rules; both kinds of failure they raise become one exception type (the caller maps it to INVALID_ARGUMENT).

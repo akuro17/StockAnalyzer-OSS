@@ -374,4 +374,49 @@ public class BacktestEngineTests
 
         Assert.Equal(RunStatus.Completed, result.Status);
     }
+
+    [Fact]
+    public void Defaults_ZeroFrictionAndAlwaysFillPreserved_AndReproducibilityHashBitIdentical()
+    {
+        var defaultConfig = new BacktestConfiguration();
+        Assert.Equal(0m, defaultConfig.CommissionFlat);
+        Assert.Equal(0m, defaultConfig.CommissionPerUnit);
+        Assert.Equal(0m, defaultConfig.SlippageRatio);
+        Assert.Equal(PriceLimitFillMode.AlwaysFill, defaultConfig.PriceLimitFillMode);
+
+        ImmutableArray<CandleData> bars = ImmutableArray.Create(
+            Bar(0, 100m, 100m, 100m, 100m, 10_000),
+            Bar(1, 101m, 112m, 101m, 108m, 10_000),
+            Bar(2, 110m, 115m, 109m, 111m, 10_000));
+        BacktestInput input = MakeInput(bars);
+
+        BacktestResult runWarnOnly = CreateEngine().Run(
+            input,
+            new BacktestConfiguration
+            {
+                InitialCapital = 1000m,
+                SizingParameter = 1m,
+                InitialMarginRatio = 1m,
+                MaintenanceMarginRatio = 0.5m,
+                CorporateActionHandlingMode = CorporateActionHandlingMode.WarnOnly,
+            },
+            new ScriptedStrategy(new Dictionary<int, StrategyOrderRequest> { [0] = LongEntryMarket(), [1] = LongExitMarket() }));
+
+        BacktestResult runAbortMode = CreateEngine().Run(
+            input,
+            new BacktestConfiguration
+            {
+                InitialCapital = 1000m,
+                SizingParameter = 1m,
+                InitialMarginRatio = 1m,
+                MaintenanceMarginRatio = 0.5m,
+                CorporateActionHandlingMode = CorporateActionHandlingMode.AbortOnDetection,
+            },
+            new ScriptedStrategy(new Dictionary<int, StrategyOrderRequest> { [0] = LongEntryMarket(), [1] = LongExitMarket() }));
+
+        Assert.Equal(runAbortMode.ReproducibilityHash, runWarnOnly.ReproducibilityHash);
+        Assert.Equal(runAbortMode.EquityPoints[^1].Equity, runWarnOnly.EquityPoints[^1].Equity);
+        Assert.Single(runWarnOnly.Trades);
+        Assert.Equal(runAbortMode.Trades[0], runWarnOnly.Trades[0]);
+    }
 }

@@ -32,16 +32,15 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
             }
         }
 
-        protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
         {
-            if (Period <= 0 || candles.Count < Period)
+            if (Period <= 0 || series.Count < Period)
             {
-                for (int i = 0; i < candles.Count; i++) _values.Add(null);
-                return IndicatorResult.Success(_values);
+                for (int i = 0; i < series.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(new List<decimal?>(_values));
             }
 
-            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            for (int i = 0; i < candles.Count; i++)
+            for (int i = 0; i < series.Count; i++)
             {
                 if (i < Period - 1)
                 {
@@ -50,26 +49,40 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
                 }
 
                 decimal sum = 0m;
+                bool hasNull = false;
                 int start = i - Period + 1;
                 for (int j = 0; j < Period; j++)
                 {
-                    sum += priceSeries[start + j] ?? 0m;
+                    decimal? val = series[start + j];
+                    if (!val.HasValue)
+                    {
+                        hasNull = true;
+                        break;
+                    }
+                    sum += val.Value;
                 }
-                decimal mean = sum / Period;
 
+                if (hasNull)
+                {
+                    _values.Add(null);
+                    continue;
+                }
+
+                decimal mean = sum / Period;
                 decimal sumSqDiff = 0m;
                 for (int j = 0; j < Period; j++)
                 {
-                    decimal diff = (priceSeries[start + j] ?? 0m) - mean;
+                    decimal diff = series[start + j]!.Value - mean;
                     sumSqDiff += diff * diff;
                 }
+
                 decimal variance = Period <= 1
                     ? 0m
                     : (IsPopulation ? sumSqDiff / Period : sumSqDiff / (Period - 1));
-                _values.Add((decimal)System.Math.Sqrt((double)variance));
+                _values.Add(IndicatorCalculationHelper.ToDecimalOrNull(System.Math.Sqrt((double)variance)));
             }
 
-            return IndicatorResult.Success(_values);
+            return IndicatorResult.Success(new List<decimal?>(_values));
         }
     }
 }

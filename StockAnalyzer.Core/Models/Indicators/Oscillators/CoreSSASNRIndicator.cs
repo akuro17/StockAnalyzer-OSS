@@ -57,19 +57,19 @@ public class CoreSSASNRIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
         _values.Clear();
         SignalPurity.Clear();
         ThresholdHighSeries.Clear();
         ThresholdLowSeries.Clear();
 
-        if (candles == null || candles.Count == 0)
+        if (series == null || series.Count == 0)
         {
             return CreateResultDictionary();
         }
 
-        int n = candles.Count;
+        int n = series.Count;
         int window = Math.Max(SsaDecompositionEngine.MinSampleCount, WindowSize);
 
         if (n < window)
@@ -85,21 +85,7 @@ public class CoreSSASNRIndicator : CoreIndicatorBase
             return CreateResultDictionary();
         }
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         double[] doublePrices = new double[n];
-        for (int i = 0; i < n; i++)
-        {
-            doublePrices[i] = (double)(priceSeries[i] ?? 0m);
-        }
-
-        for (int i = 0; i < window - 1; i++)
-        {
-            _values.Add(null);
-            SignalPurity.Add(null);
-            ThresholdHighSeries.Add(null);
-            ThresholdLowSeries.Add(null);
-        }
-
         int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
         int r = Math.Clamp(NumComponents, 1, Math.Min(l, k));
@@ -121,8 +107,43 @@ public class CoreSSASNRIndicator : CoreIndicatorBase
                 ? pooledProcessed.AsSpan(0, window)
                 : stackProcessed.Slice(0, window);
 
-            for (int t = window - 1; t < n; t++)
+            int contiguousValid = 0;
+
+            for (int t = 0; t < n; t++)
             {
+                if (!series[t].HasValue)
+                {
+                    contiguousValid = 0;
+                    _values.Add(null);
+                    SignalPurity.Add(null);
+                    ThresholdHighSeries.Add(null);
+                    ThresholdLowSeries.Add(null);
+                    continue;
+                }
+
+                double val = (double)series[t]!.Value;
+                if (!double.IsFinite(val))
+                {
+                    contiguousValid = 0;
+                    _values.Add(null);
+                    SignalPurity.Add(null);
+                    ThresholdHighSeries.Add(null);
+                    ThresholdLowSeries.Add(null);
+                    continue;
+                }
+
+                doublePrices[t] = val;
+                contiguousValid++;
+
+                if (contiguousValid < window)
+                {
+                    _values.Add(null);
+                    SignalPurity.Add(null);
+                    ThresholdHighSeries.Add(null);
+                    ThresholdLowSeries.Add(null);
+                    continue;
+                }
+
                 ReadOnlySpan<double> windowSpan = doublePrices.AsSpan(t - window + 1, window);
                 SsaDecompositionEngine.Detrend(windowSpan, processed, SsaDetrendMode.LeastSquaresLinear, out _, out _);
 
@@ -165,10 +186,22 @@ public class CoreSSASNRIndicator : CoreIndicatorBase
                     purity = Math.Clamp((sSignal / sTotal) * 100.0, 0.0, 100.0);
                 }
 
-                _values.Add(decimal.Round((decimal)snrDb, 4, MidpointRounding.AwayFromZero));
-                SignalPurity.Add(decimal.Round((decimal)purity, 4, MidpointRounding.AwayFromZero));
-                ThresholdHighSeries.Add(ThresholdHigh);
-                ThresholdLowSeries.Add(ThresholdLow);
+                decimal? snrDec = IndicatorCalculationHelper.ToDecimalOrNull(snrDb);
+                decimal? purityDec = IndicatorCalculationHelper.ToDecimalOrNull(purity);
+                if (!snrDec.HasValue || !purityDec.HasValue)
+                {
+                    _values.Add(null);
+                    SignalPurity.Add(null);
+                    ThresholdHighSeries.Add(null);
+                    ThresholdLowSeries.Add(null);
+                }
+                else
+                {
+                    _values.Add(decimal.Round(snrDec.Value, 4, MidpointRounding.AwayFromZero));
+                    SignalPurity.Add(decimal.Round(purityDec.Value, 4, MidpointRounding.AwayFromZero));
+                    ThresholdHighSeries.Add(ThresholdHigh);
+                    ThresholdLowSeries.Add(ThresholdLow);
+                }
             }
         }
         finally

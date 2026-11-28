@@ -680,4 +680,14 @@ public sealed class RunScreenerToolTests : IDisposable
         var warning = Assert.Single(warnings);
         Assert.Contains("UniverseGroupId", warning, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public async Task RunScreener_IncludesSurvivorshipBiasDisclosureInNotesWithoutPollutingWarnings()
+    {
+        using var response = await RunAsync(await StartAsync(), HighClose);
+        JsonElement structured = McpTestSupport.Structured(response);
+        Assert.False(structured.TryGetProperty("warnings", out _));
+        string[] notes = structured.GetProperty("notes").EnumerateArray().Select(n => n.GetString()!).ToArray();
+        Assert.Contains(notes, n => n.StartsWith("SURVIVORSHIP_BIAS_UNIVERSE:", StringComparison.Ordinal));
+    }
 }

@@ -78,46 +78,71 @@ public class CorePolarPhaseIndicator : CoreIndicatorBase
         }
 
         int count = series.Count;
-        decimal[] prices = ArrayPool<decimal>.Shared.Rent(count);
-        try
+        for (int i = 0; i < count; i++)
         {
-            for (int i = 0; i < count; i++)
-            {
-                prices[i] = series[i] ?? 0m;
-            }
-
-            var decompositionParams = new HilbertDecompositionParameters(
-                DefaultPeriod: DefaultPeriod,
-                MinPeriod: MinPeriod,
-                MaxPeriod: MaxPeriod,
-                SmoothBeta: SmoothBeta,
-                DeltaLimit: DeltaLimit,
-                WarmupBars: IndicatorDefaultConstants.HilbertTransformWarmupBars);
-
-            var decomp = PolarCoordinateDecompositionEngine.Decompose(prices.AsSpan(0, count), decompositionParams);
-
-            for (int i = 0; i < count; i++)
-            {
-                var s = decomp[i];
-                if (s.IsWarmup || !s.IsValid)
-                {
-                    _values.Add(null);
-                    NormalizedInPhase.Add(null);
-                    NormalizedQuadrature.Add(null);
-                    PhaseStability.Add(null);
-                }
-                else
-                {
-                    _values.Add((decimal)s.PhaseDegrees);
-                    NormalizedInPhase.Add(s.NormalizedInPhase);
-                    NormalizedQuadrature.Add(s.NormalizedQuadrature);
-                    PhaseStability.Add(double.IsNaN(s.PhaseStability) ? (decimal?)null : (decimal)s.PhaseStability);
-                }
-            }
+            _values.Add(null);
+            NormalizedInPhase.Add(null);
+            NormalizedQuadrature.Add(null);
+            PhaseStability.Add(null);
         }
-        finally
+
+        var decompositionParams = new HilbertDecompositionParameters(
+            DefaultPeriod: DefaultPeriod,
+            MinPeriod: MinPeriod,
+            MaxPeriod: MaxPeriod,
+            SmoothBeta: SmoothBeta,
+            DeltaLimit: DeltaLimit,
+            WarmupBars: IndicatorDefaultConstants.HilbertTransformWarmupBars);
+
+        // Compute only across contiguous non-null segments; never substitute 0m for missing bars.
+        int segStart = 0;
+        while (segStart < count)
         {
-            ArrayPool<decimal>.Shared.Return(prices);
+            if (!series[segStart].HasValue)
+            {
+                segStart++;
+                continue;
+            }
+
+            int segEnd = segStart + 1;
+            while (segEnd < count && series[segEnd].HasValue)
+            {
+                segEnd++;
+            }
+
+            int segLen = segEnd - segStart;
+            decimal[] segPrices = ArrayPool<decimal>.Shared.Rent(segLen);
+            try
+            {
+                for (int k = 0; k < segLen; k++)
+                {
+                    segPrices[k] = series[segStart + k]!.Value;
+                }
+
+                var decomp = PolarCoordinateDecompositionEngine.Decompose(segPrices.AsSpan(0, segLen), decompositionParams);
+
+                for (int k = 0; k < segLen; k++)
+                {
+                    var s = decomp[k];
+                    if (!s.IsWarmup && s.IsValid)
+                    {
+                        decimal? phaseDeg = IndicatorCalculationHelper.ToDecimalOrNull(s.PhaseDegrees);
+                        if (phaseDeg.HasValue)
+                        {
+                            _values[segStart + k] = phaseDeg.Value;
+                            NormalizedInPhase[segStart + k] = s.NormalizedInPhase;
+                            NormalizedQuadrature[segStart + k] = s.NormalizedQuadrature;
+                            PhaseStability[segStart + k] = IndicatorCalculationHelper.ToDecimalOrNull(s.PhaseStability);
+                        }
+                    }
+                }
+            }
+            finally
+            {
+                ArrayPool<decimal>.Shared.Return(segPrices);
+            }
+
+            segStart = segEnd;
         }
 
         return CreateAutomaticResult();

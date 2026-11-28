@@ -51,10 +51,17 @@ public class CorePrimeNumberOscillatorIndicator : CoreIndicatorBase
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         for (int i = 0; i < count; i++)
         {
-            decimal price = priceSeries[i] ?? 0m;
             _buySignals.Add(null);
             _sellSignals.Add(null);
 
+            decimal? nullablePrice = priceSeries[i];
+            if (!nullablePrice.HasValue)
+            {
+                _values.Add(null);
+                continue;
+            }
+
+            decimal price = nullablePrice.Value;
             if (price <= 0m)
             {
                 _values.Add(0.0m);
@@ -99,23 +106,40 @@ public class CorePrimeNumberOscillatorIndicator : CoreIndicatorBase
 
         for (int i = minRequired - 1; i < count; i++)
         {
-            decimal currentPno = _values[i]!.Value;
+            decimal? currentPnoNullable = _values[i];
+            if (!currentPnoNullable.HasValue)
+            {
+                continue;
+            }
+            decimal currentPno = currentPnoNullable.Value;
 
             // Calculate local extrema within lookback window [i-W+1, i]
             decimal peak = decimal.MinValue;
             decimal trough = decimal.MaxValue;
+            bool windowHasNull = false;
             for (int j = 0; j < W; j++)
             {
-                decimal v = _values[i - j]!.Value;
-                if (v > peak) peak = v;
-                if (v < trough) trough = v;
+                decimal? v = _values[i - j];
+                if (!v.HasValue)
+                {
+                    windowHasNull = true;
+                    break;
+                }
+                if (v.Value > peak) peak = v.Value;
+                if (v.Value < trough) trough = v.Value;
+            }
+
+            if (windowHasNull)
+            {
+                continue;
             }
 
             // Evaluate Plateau condition across consecutive periods [i-K+1, i]
             bool isPlateau = true;
             for (int k = 1; k < K; k++)
             {
-                if (Math.Abs(_values[i - k]!.Value - currentPno) > Tolerance)
+                decimal? prevVal = _values[i - k];
+                if (!prevVal.HasValue || Math.Abs(prevVal.Value - currentPno) > Tolerance)
                 {
                     isPlateau = false;
                     break;

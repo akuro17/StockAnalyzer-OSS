@@ -17,29 +17,36 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
-
+            _values.Clear();
             if (!candles.Any())
             {
                 return IndicatorResult.Success(_values);
             }
 
             var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            decimal previousVpt = 0;
-            // The first value is typically 0 or based on an initial value not provided here.
-            _values.Add(0);
+            decimal previousVpt = 0m;
+            _values.Add(priceSeries[0].HasValue ? 0m : null);
 
             for (int i = 1; i < candles.Count; i++)
             {
-                var currentCandle = candles[i];
-                decimal previousPrice = priceSeries[i - 1] ?? 0m;
-
-                if (previousPrice == 0)
+                decimal? curr = priceSeries[i];
+                decimal? prev = priceSeries[i - 1];
+                if (!curr.HasValue || !prev.HasValue)
                 {
-                    _values.Add(previousVpt); // Or handle as an error/special case
+                    _values.Add(null);
                     continue;
                 }
 
-                decimal priceChangePercent = ((priceSeries[i] ?? 0m) - previousPrice) / previousPrice;
+                var currentCandle = candles[i];
+                decimal previousPrice = prev.Value;
+
+                if (previousPrice == 0m)
+                {
+                    _values.Add(previousVpt);
+                    continue;
+                }
+
+                decimal priceChangePercent = (curr.Value - previousPrice) / previousPrice;
                 decimal vpt = previousVpt + currentCandle.Volume * priceChangePercent;
                 _values.Add(vpt);
                 previousVpt = vpt;

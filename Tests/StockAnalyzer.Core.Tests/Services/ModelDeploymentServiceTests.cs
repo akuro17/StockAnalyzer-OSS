@@ -35,6 +35,8 @@ namespace StockAnalyzer.Core.Tests.Services
             {
                 TryDelete(path);
                 TryDelete(path + ".tmp");
+                TryDelete(path + ".sha256");
+                TryDelete(path + ".sha256.tmp");
                 TryDelete(path + ".metrics.json");
                 TryDelete(path + ".metrics.json.tmp");
             }

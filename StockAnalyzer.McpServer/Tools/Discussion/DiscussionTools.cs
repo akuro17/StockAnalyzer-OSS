@@ -140,6 +140,7 @@ internal sealed class DiscussionReadTool : DiscussionToolBase
         "compact and headerMode shorten the answer: compact leaves out the null, empty and false fields, headerMode minimal keeps only the changing part of the session header and none leaves it out. " +
         "excludeEvents leaves out the server events (joined, left, passed, closed); tail reads only the newest messages (for joining late); view summary returns only a short summary of each message; " +
         "waitForTurn (roundRobin only, requires waitSeconds above 0, cannot be combined with tail) waits until you hold the speaking floor or the discussion closes and returns all accumulated unread messages. " +
+        "excludeOwn leaves out your own messages and analysis entries, so your post is not sent back to you and a wait ends only when someone else posts. " +
         "If the answer is too large (LIMIT_EXCEEDED), read again with a smaller limit.";
 
     public override string? ExampleArgumentsJson => "{\"sessionId\":\"Sabcdef\",\"participantToken\":\"abcdef.AAAAAAAAAAAAAAAAAAAAAA\",\"afterSequence\":0}";
@@ -156,6 +157,7 @@ internal sealed class DiscussionReadTool : DiscussionToolBase
             $"{DiscussionNames.HeaderFull}: the whole session header; {DiscussionNames.HeaderMinimal}: only id, state, closeReason, floor and the counters; {DiscussionNames.HeaderNone}: no session header. Default {(_compactDefaults ? DiscussionNames.HeaderMinimal : DiscussionNames.HeaderFull)}.",
             allowedValues: new[] { DiscussionNames.HeaderFull, DiscussionNames.HeaderMinimal, DiscussionNames.HeaderNone })
         .Boolean(DiscussionArgumentNames.ExcludeEvents, "true leaves out the server events (kind event: joined, left, passed, floor passed, closed); peer messages and analysis entries stay. nextAfterSequence still moves past the events that were left out. Default false.")
+        .Boolean(DiscussionArgumentNames.ExcludeOwn, "true leaves out your own messages and analysis entries (server events stay unless excludeEvents is also true); nextAfterSequence still moves past them, and a wait ends only when someone else posts. The test is by handle: a participant that re-joined under its name keeps its handle, so its earlier messages are left out too; leave excludeOwn false to catch up on them. Default false.")
         .Integer(DiscussionArgumentNames.Tail, $"Read only the newest messages (1 to {_settings.MaxReadLimit}) instead of reading forward from afterSequence; they are returned oldest first. Replaces limit; cannot be combined with afterSequence above 0, limit or waitSeconds above 0. Leave out to read forward.", minimum: 1, maximum: _settings.MaxReadLimit)
         .String(
             DiscussionArgumentNames.View,

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -8,6 +9,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Python.Runtime;
+using StockAnalyzer.Core.Common;
 
 namespace StockAnalyzer.Core.Services
 {
@@ -107,7 +109,7 @@ namespace StockAnalyzer.Core.Services
                 try
                 {
                     progress?.Report($"Downloading Python {PythonEmbeddedDistribution.PythonVersion}...");
-                    await DownloadAsync(PythonEmbeddedDistribution.ArchiveUrl, archivePath, ct).ConfigureAwait(false);
+                    await DownloadAsync(PythonEmbeddedDistribution.ArchiveUrl, archivePath, PythonEmbeddedDistribution.MaxArchiveBytes, ct).ConfigureAwait(false);
                     VerifySha256(archivePath, PythonEmbeddedDistribution.ArchiveSha256);
 
                     progress?.Report("Extracting Python environment...");
@@ -174,7 +176,7 @@ namespace StockAnalyzer.Core.Services
         private static async Task BootstrapPipAsync(string directory, CancellationToken ct)
         {
             var scriptPath = Path.Combine(directory, GetPipScriptName);
-            await DownloadAsync(PythonEmbeddedDistribution.GetPipUrl, scriptPath, ct).ConfigureAwait(false);
+            await DownloadAsync(PythonEmbeddedDistribution.GetPipUrl, scriptPath, PythonEmbeddedDistribution.MaxGetPipBytes, ct).ConfigureAwait(false);
             VerifySha256(scriptPath, PythonEmbeddedDistribution.GetPipSha256);
             try
             {
@@ -216,14 +218,83 @@ namespace StockAnalyzer.Core.Services
             }
         }
 
-        private static async Task DownloadAsync(string url, string destination, CancellationToken ct)
+        private static Task DownloadAsync(string url, string destination, long maxBytes, CancellationToken ct)
+            => DownloadWithClientAsync(Http, url, destination, maxBytes, attempt => TimeSpan.FromSeconds(1 << attempt), ct);
+
+        internal static async Task DownloadWithClientAsync(
+            HttpClient client,
+            string url,
+            string destination,
+            long maxBytes,
+            Func<int, TimeSpan>? backoffProvider,
+            CancellationToken ct)
         {
-            using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+            ArgumentNullException.ThrowIfNull(client);
+            ArgumentException.ThrowIfNullOrWhiteSpace(url);
+            ArgumentException.ThrowIfNullOrWhiteSpace(destination);
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
+
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    await DownloadOnceAsync(client, url, destination, maxBytes, ct).ConfigureAwait(false);
+                    return;
+                }
+                catch (Exception ex) when (attempt + 1 < PythonEmbeddedDistribution.MaxDownloadAttempts
+                    && !ct.IsCancellationRequested
+                    && (ex is HttpRequestException || ex is IOException || ex is TaskCanceledException))
+                {
+                    BestEffortFile.TryDelete(destination);
+                    TimeSpan delay = backoffProvider?.Invoke(attempt) ?? TimeSpan.Zero;
+                    if (delay > TimeSpan.Zero)
+                    {
+                        await Task.Delay(delay, ct).ConfigureAwait(false);
+                    }
+                }
+            }
+        }
+
+        private static async Task DownloadOnceAsync(HttpClient client, string url, string destination, long maxBytes, CancellationToken ct)
+        {
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
 
+            long? declaredLength = response.Content.Headers.ContentLength;
+            if (declaredLength.HasValue && declaredLength.Value > maxBytes)
+            {
+                throw new InvalidDataException($"Download content length ({declaredLength.Value} bytes) exceeds maximum allowed ({maxBytes} bytes).");
+            }
+
             await using var source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-            await using var target = File.Create(destination);
-            await source.CopyToAsync(target, ct).ConfigureAwait(false);
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(81920);
+            try
+            {
+                long totalRead = 0;
+                await using (var target = File.Create(destination))
+                {
+                    int read;
+                    while ((read = await source.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false)) > 0)
+                    {
+                        totalRead += read;
+                        if (totalRead > maxBytes)
+                        {
+                            throw new InvalidDataException($"Download exceeded maximum allowed size ({maxBytes} bytes).");
+                        }
+
+                        await target.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+                    }
+                }
+            }
+            catch
+            {
+                BestEffortFile.TryDelete(destination);
+                throw;
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
 
         private static void DeleteFileIfExists(string path)

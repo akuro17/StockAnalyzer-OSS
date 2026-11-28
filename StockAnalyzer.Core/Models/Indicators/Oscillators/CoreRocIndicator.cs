@@ -19,20 +19,31 @@ public class CoreRocIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        for (int i = 0; i < candles.Count; i++)
+        if (Period <= 0)
         {
-            if (i < Period) { _values.Add(null); continue; }
-            decimal prev = priceSeries[i - Period] ?? 0m;
-            _values.Add(prev == 0 ? 0 : (((priceSeries[i] ?? 0m) - prev) / prev) * 100);
+            for (int i = 0; i < series.Count; i++) _values.Add(null);
+        }
+        else
+        {
+            for (int i = 0; i < series.Count; i++)
+            {
+                if (i < Period || !series[i].HasValue || !series[i - Period].HasValue)
+                {
+                    _values.Add(null);
+                    continue;
+                }
+
+                decimal prev = series[i - Period]!.Value;
+                _values.Add(prev == 0m ? 0m : ((series[i]!.Value - prev) / prev) * 100m);
+            }
         }
 
-        var series = new System.Collections.Generic.Dictionary<string, IReadOnlyList<decimal?>>();
+        var resultSeries = new System.Collections.Generic.Dictionary<string, IReadOnlyList<decimal?>>();
         string seriesName = DisplayStyle == RocDisplayStyle.Histogram ? "Histogram" : IndicatorResult.MainSeriesName;
-        series[seriesName] = _values;
+        resultSeries[seriesName] = _values;
 
-        return IndicatorResult.Success(series);
+        return IndicatorResult.Success(resultSeries);
     }
 }

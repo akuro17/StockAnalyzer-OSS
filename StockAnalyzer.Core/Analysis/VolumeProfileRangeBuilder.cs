@@ -37,6 +37,7 @@ public static class VolumeProfileRangeBuilder
         if (count <= 0) return;
 
         int startIndex = visibleEnd - count;
-        destination.Add(new VolumeProfileRange(startIndex, count, false));
+        bool isPartial = period > 0 && count < period;
+        destination.Add(new VolumeProfileRange(startIndex, count, isPartial));
     }
 }

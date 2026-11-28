@@ -297,6 +297,7 @@ internal sealed class RunWalkForwardTool : IMcpTool
         {
             warnings.Add(sampleWarning);
         }
+        BacktestAdvisory.AppendSweepAdvisories(warnings, bound.Settings);
 
         return ToolJson.Build(writer => Write(
             writer, resolved.Symbol, timeFrame, objective, minimize, hasList ? ModeList : mode.ToString(), grid, results, firstDay, lastDay, hasGenerator ? barCount : null, minInSampleTrades, warnings, compactReport));

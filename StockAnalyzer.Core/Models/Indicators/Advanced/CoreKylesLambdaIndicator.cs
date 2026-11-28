@@ -15,29 +15,38 @@ public class CoreKylesLambdaIndicator : CoreIndicatorBase
 
     protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
     {
+        _values.Clear();
 
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         for (int i = 0; i < candles.Count; i++)
         {
-            if (i < Period)
+            if (Period <= 0 || i < Period)
             {
                 _values.Add(null);
                 continue;
             }
 
-            // Lambda = Slope of Price Change / Volume?
-            // Simplified: Sum(|DeltaP|) / Sum(Volume) over Period
-            decimal sumAbsOnyx = 0;
-            decimal sumVol = 0;
+            // Lambda = Sum(|DeltaP|) / Sum(Volume) over Period
+            decimal sumAbsOnyx = 0m;
+            decimal sumVol = 0m;
+            bool hasNull = false;
 
             for (int j = 0; j < Period; j++)
             {
-                sumAbsOnyx += Math.Abs((priceSeries[i - j] ?? 0m) - (priceSeries[i - j - 1] ?? 0m));
+                decimal? curr = priceSeries[i - j];
+                decimal? prev = priceSeries[i - j - 1];
+                if (!curr.HasValue || !prev.HasValue)
+                {
+                    hasNull = true;
+                    break;
+                }
+                sumAbsOnyx += Math.Abs(curr.Value - prev.Value);
                 sumVol += candles[i - j].Volume;
             }
 
-            if (sumVol == 0) _values.Add(0);
-            else _values.Add(sumAbsOnyx / sumVol * 1000000); // Scale up
+            if (hasNull) _values.Add(null);
+            else if (sumVol == 0m) _values.Add(0m);
+            else _values.Add(sumAbsOnyx / sumVol * 1000000m); // Scale up
         }
 
         return IndicatorResult.Success(_values);

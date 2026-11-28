@@ -75,9 +75,9 @@ public sealed class CoreBSmaIndicator : CoreIndicatorBase
         };
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-        int count = candles?.Count ?? 0;
+        int count = series?.Count ?? 0;
 
         if (_values.Capacity < count)
         {
@@ -109,19 +109,40 @@ public sealed class CoreBSmaIndicator : CoreIndicatorBase
             _values.Add(null);
         }
 
-        // 3. Sliding Window Dot Product (Zero-Allocation Hot Loop; priceSeries extracted once above)
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+        // 3. Sliding Window Dot Product with strict null propagation
         for (int i = Period - 1; i < count; i++)
         {
-            decimal sum = 0m;
             int startIdx = i - Period + 1;
-
+            bool hasNull = false;
             for (int j = 0; j < Period; j++)
             {
-                sum += (priceSeries[startIdx + j] ?? 0m) * (decimal)weights[j];
+                if (!series![startIdx + j].HasValue)
+                {
+                    hasNull = true;
+                    break;
+                }
             }
 
-            _values.Add(sum);
+            if (hasNull)
+            {
+                _values.Add(null);
+                continue;
+            }
+
+            decimal sum = 0m;
+            for (int j = 0; j < Period; j++)
+            {
+                decimal? w = IndicatorCalculationHelper.ToDecimalOrNull(weights[j]);
+                if (!w.HasValue)
+                {
+                    sum = 0m;
+                    hasNull = true;
+                    break;
+                }
+                sum += series![startIdx + j]!.Value * w.Value;
+            }
+
+            _values.Add(hasNull ? null : sum);
         }
 
         return IndicatorResult.Success(_values);

@@ -196,7 +196,7 @@ public sealed class TrainingSourceSnapshotProviderTests
     }
 
     private static string SqlPath(string path) =>
-        ParquetMarketDataProvider.EscapeDuckDbPath(path.Replace("\\", "/"));
+        ParquetMarketDataProvider.FormatDuckDbPath(path);
 
     private sealed class Fixture : IDisposable
     {

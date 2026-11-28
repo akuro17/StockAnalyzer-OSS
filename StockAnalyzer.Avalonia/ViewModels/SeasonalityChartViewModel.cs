@@ -406,14 +406,20 @@ public partial class SeasonalityChartViewModel : ViewModelBase, IDisposable
 
     /// <summary>Builds the monthly-returns projection for the current result with the current style, or null.</summary>
     private SeasonalityMonthlyReturnsPresentation? BuildMonthlyReturns()
-        => Result is { } currentResult
-            ? SeasonalityMonthlyReturnsPresentation.Create(
-                SeasonalityMonthlyReturnsEngine.Build(currentResult),
-                LocalizationManager.Instance["Seasonality_MonthlyReturns_Annual"],
-                LocalizationManager.Instance["Seasonality_MonthlyReturns_Average"],
-                MonthlyReturnsStyle,
-                SeasonalitySettings.SeasonalityMonthlyTableOrientation)
-            : null;
+    {
+        if (Result is not { } currentResult)
+        {
+            return null;
+        }
+
+        DateTime? referenceDate = SeasonalityMonthlyReturnsEngine.ResolveLatestBaseSampleDate(currentResult);
+        return SeasonalityMonthlyReturnsPresentation.Create(
+            SeasonalityMonthlyReturnsEngine.Build(currentResult, referenceDate),
+            LocalizationManager.Instance["Seasonality_MonthlyReturns_Annual"],
+            LocalizationManager.Instance["Seasonality_MonthlyReturns_Average"],
+            MonthlyReturnsStyle,
+            SeasonalitySettings.SeasonalityMonthlyTableOrientation);
+    }
 
     /// <summary>
     /// Runs one seasonality analysis for the current parameters. Not a bound command — the view has no

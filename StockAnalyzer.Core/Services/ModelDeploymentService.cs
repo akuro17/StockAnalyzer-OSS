@@ -2,11 +2,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using StockAnalyzer.Core.Common;
+using StockAnalyzer.Core.Models.Settings;
 using StockAnalyzer.Core.Models.Training;
 
 namespace StockAnalyzer.Core.Services;
@@ -24,6 +26,7 @@ public sealed class ModelDeploymentService : IModelDeploymentService
     private readonly ILogger<ModelDeploymentService> _logger;
     private readonly IModelGenerationRegistry? _registry;
     private readonly IStockAnalyzerSettings? _settings;
+    internal Func<string, ReadOnlyMemory<byte>, CancellationToken, Task> WriteSidecarBytesAsync { get; set; } = AtomicFileWriter.WriteAllBytesAsync;
 
     /// <param name="settings">Gives the chart's confidence threshold for <see cref="ModelAutoActivationGate"/>; without it only the log-loss condition of the gate applies.</param>
     public ModelDeploymentService(ILogger<ModelDeploymentService>? logger = null,
@@ -91,9 +94,33 @@ public sealed class ModelDeploymentService : IModelDeploymentService
 
         var fileName = Path.GetFileName(onnxSourcePath);
         var finalOnnxPath = PathDiscovery.ResolvePredictionModelPath(fileName);
+        var expectedSha256 = ContentHash.OfFile(onnxSourcePath);
 
         await AtomicCopyAsync(onnxSourcePath, finalOnnxPath, ct).ConfigureAwait(false);
         _logger.LogInformation("ModelDeploymentService: deployed {Source} -> {Destination}.", onnxSourcePath, finalOnnxPath);
+
+        var finalSha256Path = finalOnnxPath + PredictionSettings.Sha256SidecarSuffix;
+        BestEffortFile.TryDelete(finalSha256Path);
+        try
+        {
+            var shaBytes = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false).GetBytes(expectedSha256);
+            await WriteSidecarBytesAsync(finalSha256Path, shaBytes, ct).ConfigureAwait(false);
+            _logger.LogInformation("ModelDeploymentService: deployed SHA-256 sidecar -> {Destination}.", finalSha256Path);
+        }
+        catch (OperationCanceledException)
+        {
+            BestEffortFile.TryDelete(finalSha256Path);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            BestEffortFile.TryDelete(finalSha256Path);
+            if (ex is IOException)
+            {
+                throw;
+            }
+            throw new IOException($"Failed to deploy SHA-256 sidecar '{finalSha256Path}'.", ex);
+        }
 
         if (!string.IsNullOrWhiteSpace(metricsSourcePath) && File.Exists(metricsSourcePath))
         {

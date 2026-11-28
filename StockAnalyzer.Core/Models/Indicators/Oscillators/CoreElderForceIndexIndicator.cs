@@ -23,24 +23,27 @@ namespace StockAnalyzer.Core.Models.Indicators.Oscillators
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
+            _values.Clear();
             if (candles.Count < 2) return IndicatorResult.Success(_values);
-            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            var forceIndex = new List<decimal> { 0 };
-            for (int i = 1; i < candles.Count; i++)
-                forceIndex.Add(((priceSeries[i] ?? 0m) - (priceSeries[i - 1] ?? 0m)) * candles[i].Volume);
 
-            // Apply EMA
-            decimal mult = 2m / (Period + 1);
-            decimal? ema = null;
-            _values.Add(null);
-            for (int i = 1; i < forceIndex.Count; i++)
+            if (Period <= 0)
             {
-                if (i < Period) { _values.Add(null); continue; }
-                if (ema == null) { ema = forceIndex.Skip(1).Take(Period).Average(); } // Skip first 0 value
-                else { ema = (forceIndex[i] - ema.Value) * mult + ema.Value; }
-                _values.Add(ema);
+                for (int i = 0; i < candles.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
             }
 
+            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+            var forceIndex = new List<decimal?>(candles.Count) { null };
+            for (int i = 1; i < candles.Count; i++)
+            {
+                decimal? curr = priceSeries[i];
+                decimal? prev = priceSeries[i - 1];
+                forceIndex.Add(curr.HasValue && prev.HasValue
+                    ? (curr.Value - prev.Value) * candles[i].Volume
+                    : null);
+            }
+
+            _values.AddRange(IndicatorCalculationHelper.CalculateEmaWithNulls(forceIndex, Period));
             return IndicatorResult.Success(_values);
         }
     }

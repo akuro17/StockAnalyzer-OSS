@@ -16,38 +16,29 @@ public class CoreDemaIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-        decimal mult = 2m / (Period + 1);
-
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        decimal? ema1 = null, ema2 = null;
-        var ema1List = new List<decimal?>();
-
-        for (int i = 0; i < candles.Count; i++)
+        _values.Clear();
+        if (series == null || series.Count == 0) return IndicatorResult.Success(_values);
+        if (Period <= 0)
         {
-            if (i < Period - 1) { ema1List.Add(null); _values.Add(null); continue; }
+            for (int i = 0; i < series.Count; i++) _values.Add(null);
+            return IndicatorResult.Success(_values);
+        }
 
-            if (ema1 == null)
+        var ema1 = IndicatorCalculationHelper.CalculateEmaWithNulls(series, Period);
+        var ema2 = IndicatorCalculationHelper.CalculateEmaWithNulls(ema1, Period);
+
+        for (int i = 0; i < series.Count; i++)
+        {
+            if (ema1[i].HasValue && ema2[i].HasValue)
             {
-                decimal sum = 0;
-                for (int j = 0; j < Period; j++) sum += priceSeries[i - j] ?? 0m;
-                ema1 = sum / Period;
+                _values.Add(2m * ema1[i]!.Value - ema2[i]!.Value);
             }
-            else ema1 = ((priceSeries[i] ?? 0m) - ema1.Value) * mult + ema1.Value;
-            ema1List.Add(ema1);
-
-            if (i < 2 * Period - 2) { _values.Add(null); continue; }
-
-            if (ema2 == null)
+            else
             {
-                decimal sum = 0;
-                for (int j = 0; j < Period; j++) sum += ema1List[i - j]!.Value;
-                ema2 = sum / Period;
+                _values.Add(null);
             }
-            else ema2 = (ema1.Value - ema2.Value) * mult + ema2.Value;
-
-            _values.Add(2 * ema1 - ema2);
         }
 
         return IndicatorResult.Success(_values);

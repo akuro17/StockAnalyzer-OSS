@@ -327,7 +327,8 @@
                             BorderThickness="1"
                             CornerRadius="4"
                             Margin="0,8,4,0"
-                            Padding="12">
+                            Padding="12"
+                            ToolTip.Tip="{l:Localize Screener_Tooltip_UniverseSurvivorship}">
                         <StackPanel>
                             <!-- Target Source Selection -->
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,6">

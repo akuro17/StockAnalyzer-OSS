@@ -19,33 +19,27 @@ public class CoreDmaIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
+        _values.Clear();
 
-        if (candles == null || candles.Count < Period)
+        if (series == null || series.Count == 0)
         {
-            if (candles != null) _values.AddRange(Enumerable.Repeat<decimal?>(null, candles.Count));
             return IndicatorResult.Success(_values);
         }
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        var smaValues = new List<decimal?>();
-        for (int i = 0; i < candles.Count; i++)
+        if (Period <= 0 || series.Count < Period)
         {
-            if (i < Period - 1)
-            {
-                smaValues.Add(null);
-            }
-            else
-            {
-                smaValues.Add(priceSeries.Skip(i - Period + 1).Take(Period).Average(v => v ?? 0m));
-            }
+            _values.AddRange(Enumerable.Repeat<decimal?>(null, series.Count));
+            return IndicatorResult.Success(_values);
         }
 
+        var smaValues = IndicatorCalculationHelper.CalculateSmaWithNulls(series, Period);
+
         // Displace the SMA values
-        for (int i = 0; i < candles.Count; i++)
+        for (int i = 0; i < series.Count; i++)
         {
-            if (i >= Displacement && i - Displacement < smaValues.Count && i - Displacement >= 0) // Ensure index validity
+            if (i >= Displacement && i - Displacement < smaValues.Count && i - Displacement >= 0)
             {
                 _values.Add(smaValues[i - Displacement]);
             }

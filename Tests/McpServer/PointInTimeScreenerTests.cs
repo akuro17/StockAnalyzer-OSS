@@ -39,11 +39,13 @@ public sealed class PointInTimeScreenerTests : IDisposable
         """{"conditionTree":{"left":{"price":"Close"},"comparison":"GreaterThan","right":{"indicator":"SMA","parameters":{"Period":20}}},"symbols":["MSFT","AAPL"],"includeMatchedValues":true,"maxReturnedMatches":1}""",
     };
 
+    private const string SurvivorshipNoteJson = "\"notes\":[\"SURVIVORSHIP_BIAS_UNIVERSE: Evaluation uses only symbols present in the local Parquet dataset; delisted symbols removed from disk are excluded (survivorship bias).\"]";
+
     private static readonly string[] ZigZagGolden =
     {
-        """{"timeFrame":"D1","universe":"AllAvailable","groupId":null,"evaluatedSymbolCount":3,"matchedSymbolCount":3,"returnedMatchCount":3,"truncated":false,"treeNodeCount":2,"treeDepth":1,"matchedSymbols":["7203-T","AAPL","MSFT"]}""",
-        """{"timeFrame":"D1","universe":"Custom","groupId":null,"evaluatedSymbolCount":2,"matchedSymbolCount":2,"returnedMatchCount":2,"truncated":false,"treeNodeCount":3,"treeDepth":1,"matchedSymbols":["AAPL","MSFT"],"comparisons":[{"id":"L0","path":"conditionTree.children[0]","text":"Close > 150"},{"id":"L1","path":"conditionTree.children[1]","text":"Volume >= 1000"}],"matchedValues":{"AAPL":{"L0":{"left":200,"right":150},"L1":{"left":1000,"right":1000}},"MSFT":{"L0":{"left":200,"right":150},"L1":{"left":1000,"right":1000}}}}""",
-        """{"timeFrame":"D1","universe":"Custom","groupId":null,"evaluatedSymbolCount":2,"matchedSymbolCount":2,"returnedMatchCount":1,"truncated":true,"treeNodeCount":2,"treeDepth":1,"matchedSymbols":["AAPL"],"comparisons":[{"id":"L0","path":"conditionTree","text":"Close > SMA(20)"}],"matchedValues":{"AAPL":{"L0":{"left":200,"right":198.0}}}}""",
+        "{\"timeFrame\":\"D1\",\"universe\":\"AllAvailable\",\"groupId\":null,\"evaluatedSymbolCount\":3,\"matchedSymbolCount\":3,\"returnedMatchCount\":3,\"truncated\":false,\"treeNodeCount\":2,\"treeDepth\":1,\"matchedSymbols\":[\"7203-T\",\"AAPL\",\"MSFT\"]," + SurvivorshipNoteJson + "}",
+        "{\"timeFrame\":\"D1\",\"universe\":\"Custom\",\"groupId\":null,\"evaluatedSymbolCount\":2,\"matchedSymbolCount\":2,\"returnedMatchCount\":2,\"truncated\":false,\"treeNodeCount\":3,\"treeDepth\":1,\"matchedSymbols\":[\"AAPL\",\"MSFT\"]," + SurvivorshipNoteJson + ",\"comparisons\":[{\"id\":\"L0\",\"path\":\"conditionTree.children[0]\",\"text\":\"Close > 150\"},{\"id\":\"L1\",\"path\":\"conditionTree.children[1]\",\"text\":\"Volume >= 1000\"}],\"matchedValues\":{\"AAPL\":{\"L0\":{\"left\":200,\"right\":150},\"L1\":{\"left\":1000,\"right\":1000}},\"MSFT\":{\"L0\":{\"left\":200,\"right\":150},\"L1\":{\"left\":1000,\"right\":1000}}}}",
+        "{\"timeFrame\":\"D1\",\"universe\":\"Custom\",\"groupId\":null,\"evaluatedSymbolCount\":2,\"matchedSymbolCount\":2,\"returnedMatchCount\":1,\"truncated\":true,\"treeNodeCount\":2,\"treeDepth\":1,\"matchedSymbols\":[\"AAPL\"]," + SurvivorshipNoteJson + ",\"comparisons\":[{\"id\":\"L0\",\"path\":\"conditionTree\",\"text\":\"Close > SMA(20)\"}],\"matchedValues\":{\"AAPL\":{\"L0\":{\"left\":200,\"right\":198.0}}}}",
     };
 
     private readonly List<IDisposable> _disposables = new();

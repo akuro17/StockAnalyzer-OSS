@@ -333,10 +333,10 @@ public sealed class RunAInvalidBarDiagnosticsTests : IDisposable
 
         var tool = new CheckRlPlaybackPreflightTool(
             symbols,
+            sanitizer,
             registry,
             dataService,
             sourceFolders: null,
-            sanitizer: sanitizer,
             gateway: gateway);
 
         McpMessageDispatcher dispatcher = await McpTestSupport.InitializedAsync(new IMcpTool[] { tool });

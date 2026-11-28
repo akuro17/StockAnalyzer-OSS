@@ -48,8 +48,8 @@ public sealed class RsRatingCalculatorTests : IDisposable
 
     private void CreateParquetFile(string symbol, IReadOnlyList<(DateOnly Date, float? Close)> bars)
     {
-        string filePath = Path.Combine(_tempDir, $"{symbol}.parquet").Replace("\\", "/");
-        string escapedPath = ParquetMarketDataProvider.EscapeDuckDbPath(filePath);
+        string filePath = Path.Combine(_tempDir, $"{symbol}.parquet");
+        string escapedPath = ParquetMarketDataProvider.FormatDuckDbPath(filePath);
 
         using var conn = new DuckDBConnection("DataSource=:memory:");
         conn.Open();

@@ -31,6 +31,8 @@ PROVIDER_COLUMN_RENAMES = {'adj close': ADJ_CLOSE_COLUMN, 'stock splits': STOCK_
 WHOLE_HISTORY_START_TS = 0
 # Value of a "no event" corporate-action row (0.0 = no event; a missing column in a stored file is null = not fetched).
 NO_EVENT_VALUE = 0.0
+# Maximum number of imputed sample dates included in a single OHLCV imputation warning.
+MAX_IMPUTATION_SAMPLE_DATES = 5
 
 
 class StockDataProvider:
@@ -138,6 +140,8 @@ class StockDataProvider:
                 logging.info(f"Empty data for {symbol}, retrying as index: {index_symbol}")
                 try:
                     df_raw = self._download(index_symbol, start_ts, start_date, end_date, is_latest, auto_adjust)
+                    if df_raw is not None and not df_raw.empty:
+                        logging.warning(f"Resolved {symbol} daily data via index fallback: using {index_symbol}")
                 except Exception as e:
                     logging.error(f"Index retry download failed for {index_symbol}: {e}")
                     return None
@@ -163,6 +167,30 @@ class StockDataProvider:
         # Clean nulls: drop rows with missing date or close price
         if 'close' in df.columns and 'date' in df.columns:
             df = df.dropna(subset=['date', 'close'])
+
+        ohl_cols = [c for c in ('open', 'high', 'low') if c in df.columns]
+        missing_open_rows = int(df['open'].isna().sum()) if 'open' in df.columns else 0
+        missing_high_rows = int(df['high'].isna().sum()) if 'high' in df.columns else 0
+        missing_low_rows = int(df['low'].isna().sum()) if 'low' in df.columns else 0
+        missing_ohl_mask = df[ohl_cols].isna().any(axis=1) if ohl_cols else pd.Series(False, index=df.index)
+        missing_ohl_rows = int(missing_ohl_mask.sum())
+        missing_vol_mask = df['volume'].isna() if 'volume' in df.columns else pd.Series(False, index=df.index)
+        missing_vol_rows = int(missing_vol_mask.sum())
+
+        if missing_ohl_rows > 0 or missing_vol_rows > 0:
+            any_missing_mask = missing_ohl_mask | missing_vol_mask
+            sample_dates = []
+            if 'date' in df.columns:
+                for date_val in df.loc[any_missing_mask, 'date'].head(MAX_IMPUTATION_SAMPLE_DATES):
+                    sample_dates.append(date_val.strftime('%Y-%m-%d') if hasattr(date_val, 'strftime') else str(date_val)[:10])
+            logging.warning(
+                f"{symbol}: OHLCV imputation applied before writing 6-column Parquet contract: "
+                f"missing O/H/L filled from close in {missing_ohl_rows} row(s) "
+                f"(open={missing_open_rows}, high={missing_high_rows}, low={missing_low_rows}), "
+                f"missing volume filled with 0 in {missing_vol_rows} row(s); "
+                f"sample dates: {', '.join(sample_dates) if sample_dates else 'N/A'}"
+            )
+
         if 'volume' in df.columns:
             df['volume'] = df['volume'].fillna(0)
         if 'open' in df.columns and 'close' in df.columns:
@@ -198,6 +226,8 @@ class StockDataProvider:
             "currency": "N/A",
             "currentPrice": None,
             "lastClose": None,
+            "resolvedAsIndex": False,
+            "providerSymbol": None,
             "message": ""
         }
 
@@ -211,6 +241,7 @@ class StockDataProvider:
             if re.match(r'^\d[0-9A-Z]{3}$', symbol):
                 symbol = symbol + "-T"
             yf_symbol = re.sub(r'-([A-Z]{1,3})$', r'.\1', symbol)
+            res["providerSymbol"] = yf_symbol
             ticker = self.yf.Ticker(yf_symbol)
 
             # 1. Fetch info first (single round-trip).
@@ -233,7 +264,9 @@ class StockDataProvider:
                 if _index_info.get("shortName"):
                     ticker = _index_ticker
                     info = _index_info
-                    logging.info(f"Resolved {symbol} as index: using {_index_sym}")
+                    res["resolvedAsIndex"] = True
+                    res["providerSymbol"] = _index_sym
+                    logging.warning(f"Resolved {symbol} metadata via index fallback: using {_index_sym}")
 
             # 2. Fetch Price Snapshot (Priority: fast_info > info)
             try:

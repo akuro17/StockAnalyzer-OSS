@@ -38,16 +38,16 @@ public class CoreSSAEntropyIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
         _values.Clear();
 
-        if (candles == null || candles.Count == 0)
+        if (series == null || series.Count == 0)
         {
             return IndicatorResult.Success(_values);
         }
 
-        int n = candles.Count;
+        int n = series.Count;
         int window = Math.Max(SsaDecompositionEngine.MinSampleCount, WindowSize);
         if (n < window)
         {
@@ -57,25 +57,8 @@ public class CoreSSAEntropyIndicator : CoreIndicatorBase
 
         int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
-        if (l < 2 || k < 2)
-        {
-            _values.AddRange(Enumerable.Repeat<decimal?>(null, window - 1));
-            _values.AddRange(Enumerable.Repeat<decimal?>(0.0m, n - (window - 1)));
-            return IndicatorResult.Success(_values);
-        }
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         double[] doublePrices = new double[n];
-        for (int i = 0; i < n; i++)
-        {
-            doublePrices[i] = (double)(priceSeries[i] ?? 0m);
-        }
-
-        for (int i = 0; i < window - 1; i++)
-        {
-            _values.Add(null);
-        }
-
         double lnL = Math.Log(l);
         double[,] sMatrix = new double[l, l];
         double[] eigenvalues = new double[l];
@@ -94,8 +77,40 @@ public class CoreSSAEntropyIndicator : CoreIndicatorBase
                 ? pooledProcessed.AsSpan(0, window)
                 : stackProcessed.Slice(0, window);
 
-            for (int i = window - 1; i < n; i++)
+            int contiguousValid = 0;
+
+            for (int i = 0; i < n; i++)
             {
+                if (!series[i].HasValue)
+                {
+                    contiguousValid = 0;
+                    _values.Add(null);
+                    continue;
+                }
+
+                double val = (double)series[i]!.Value;
+                if (!double.IsFinite(val))
+                {
+                    contiguousValid = 0;
+                    _values.Add(null);
+                    continue;
+                }
+
+                doublePrices[i] = val;
+                contiguousValid++;
+
+                if (contiguousValid < window)
+                {
+                    _values.Add(null);
+                    continue;
+                }
+
+                if (l < 2 || k < 2)
+                {
+                    _values.Add(0.0m);
+                    continue;
+                }
+
                 ReadOnlySpan<double> windowSpan = doublePrices.AsSpan(i - window + 1, window);
                 SsaDecompositionEngine.Detrend(windowSpan, processed, DetrendMode, out _, out _);
 
@@ -117,7 +132,10 @@ public class CoreSSAEntropyIndicator : CoreIndicatorBase
                 double entropy = ShannonEntropyMath.Nats(eigenvalues, sumEigenvalues, ShannonEntropyMath.NegligibleShare);
 
                 double normEntropy = (lnL > 1e-12) ? Math.Clamp(entropy / lnL, 0.0, 1.0) : 0.0;
-                _values.Add(decimal.Round((decimal)normEntropy, 4, MidpointRounding.AwayFromZero));
+                decimal? decEntropy = IndicatorCalculationHelper.ToDecimalOrNull(normEntropy);
+                _values.Add(decEntropy.HasValue
+                    ? decimal.Round(decEntropy.Value, 4, MidpointRounding.AwayFromZero)
+                    : null);
             }
         }
         finally

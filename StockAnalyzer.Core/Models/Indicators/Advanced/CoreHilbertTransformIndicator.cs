@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using StockAnalyzer.Core.Analysis;
 using StockAnalyzer.Core.Models.Parameters;
@@ -56,23 +57,17 @@ public class CoreHilbertTransformIndicator : CoreIndicatorBase
         }
 
         int count = series.Count;
-        var prices = new decimal[count];
         for (int i = 0; i < count; i++)
         {
-            prices[i] = series[i] ?? 0m;
+            _values.Add(null);
+            InPhase.Add(null);
+            Quadrature.Add(null);
         }
 
         // The Ehlers Canonical Homodyne Discriminator pipeline lives in exactly one place:
         // HilbertDecompositionEngine. This indicator is now a thin projection of that engine's
         // result onto its historical three-series output contract (Main = DominantCycle,
         // InPhase = i2, Quadrature = q2), with a null prefix over the warm-up window.
-        //
-        // Parameter sanitation (approved "Plan A"): HilbertDecompositionParameters.Validate()
-        // rejects two configurations the previous inline implementation silently tolerated --
-        // DeltaLimit <= 0 (previously absorbed by Math.Max(DeltaLimit, epsilon) at the use site)
-        // and DefaultPeriod outside [MinPeriod, MaxPeriod] (previously only a seed value). Clamp
-        // both here so behavior is preserved: the DeltaLimit floor is byte-identical to the old
-        // safeDeltaLimit guard, and the DefaultPeriod clamp is a no-op for every valid config.
         const decimal deltaLimitFloor = 1e-10m;
         decimal safeDeltaLimit = Math.Max(DeltaLimit, deltaLimitFloor);
         int seedDefaultPeriod = Math.Clamp(DefaultPeriod, MinPeriod, MaxPeriod);
@@ -87,27 +82,47 @@ public class CoreHilbertTransformIndicator : CoreIndicatorBase
             WarmupBars: warmupBars,
             DetrendMode: DetrendMode);
 
-        var decomposition = HilbertDecompositionEngine.Decompose(prices, parameters);
-
-        for (int i = 0; i < count; i++)
+        // Compute only across contiguous non-null segments; never substitute 0m for missing bars.
+        int segStart = 0;
+        while (segStart < count)
         {
-            var sample = decomposition[i];
+            if (!series[segStart].HasValue)
+            {
+                segStart++;
+                continue;
+            }
 
-            // Gate on the bar index (not sample.IsWarmup): the engine's single-bar fast path
-            // reports IsWarmup == false, whereas the historical contract emits null for every
-            // bar before warmupBars regardless of series length.
-            if (i < warmupBars)
+            int segEnd = segStart + 1;
+            while (segEnd < count && series[segEnd].HasValue)
             {
-                _values.Add(null);
-                InPhase.Add(null);
-                Quadrature.Add(null);
+                segEnd++;
             }
-            else
+
+            int segLen = segEnd - segStart;
+            decimal[] segPrices = ArrayPool<decimal>.Shared.Rent(segLen);
+            try
             {
-                _values.Add(sample.DominantCycle);
-                InPhase.Add(sample.InPhase);
-                Quadrature.Add(sample.Quadrature);
+                for (int k = 0; k < segLen; k++)
+                {
+                    segPrices[k] = series[segStart + k]!.Value;
+                }
+
+                var decomposition = HilbertDecompositionEngine.Decompose(segPrices.AsSpan(0, segLen), parameters);
+
+                for (int k = warmupBars; k < segLen; k++)
+                {
+                    var sample = decomposition[k];
+                    _values[segStart + k] = sample.DominantCycle;
+                    InPhase[segStart + k] = sample.InPhase;
+                    Quadrature[segStart + k] = sample.Quadrature;
+                }
             }
+            finally
+            {
+                ArrayPool<decimal>.Shared.Return(segPrices);
+            }
+
+            segStart = segEnd;
         }
 
         var resultSeries = new Dictionary<string, IReadOnlyList<decimal?>>

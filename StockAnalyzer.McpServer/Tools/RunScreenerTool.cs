@@ -504,6 +504,10 @@ internal sealed class RunScreenerTool : IMcpTool
                 writer.WriteEndArray();
             }
 
+            writer.WriteStartArray("notes");
+            writer.WriteStringValue(BacktestAdvisory.ForSurvivorshipUniverse());
+            writer.WriteEndArray();
+
             if (legacyCriteria.Count > 0)
             {
                 writer.WriteStartArray("legacyCriteria");

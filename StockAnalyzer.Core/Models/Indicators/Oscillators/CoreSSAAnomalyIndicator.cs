@@ -61,19 +61,19 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
         _values.Clear();
         AnomalyStateSeries.Clear();
         EnterThresholdSeries.Clear();
         ExitThresholdSeries.Clear();
 
-        if (candles == null || candles.Count == 0)
+        if (series == null || series.Count == 0)
         {
             return CreateResultDictionary();
         }
 
-        int n = candles.Count;
+        int n = series.Count;
         int window = Math.Max(SsaDecompositionEngine.MinSampleCount, WindowSize);
 
         if (n < window)
@@ -89,22 +89,7 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
             return CreateResultDictionary();
         }
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         double[] doublePrices = new double[n];
-        for (int i = 0; i < n; i++)
-        {
-            doublePrices[i] = (double)(priceSeries[i] ?? 0m);
-        }
-
-        // Fill warm-up periods
-        for (int i = 0; i < window - 1; i++)
-        {
-            _values.Add(null);
-            AnomalyStateSeries.Add(null);
-            EnterThresholdSeries.Add(null);
-            ExitThresholdSeries.Add(null);
-        }
-
         int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
 
@@ -114,14 +99,60 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
         double enterThreshDbl = (double)EnterThreshold;
         double exitThreshDbl = (double)ExitThreshold;
 
-        // Causal Hysteresis State Machine
+        // Causal Hysteresis State Machine per contiguous valid segment
         SsaAnomalyState state = SsaAnomalyState.Normal;
         int stateStartBar = 0;
         double peakZ = 0.0;
         int coolDownCount = 0;
+        int contiguousValid = 0;
+        int firstValidSegmentOutputIdx = -1;
 
-        for (int t = window - 1; t < n; t++)
+        for (int t = 0; t < n; t++)
         {
+            if (!series[t].HasValue)
+            {
+                contiguousValid = 0;
+                firstValidSegmentOutputIdx = -1;
+                state = SsaAnomalyState.Normal;
+                coolDownCount = 0;
+                _values.Add(null);
+                AnomalyStateSeries.Add(null);
+                EnterThresholdSeries.Add(null);
+                ExitThresholdSeries.Add(null);
+                continue;
+            }
+
+            double val = (double)series[t]!.Value;
+            if (!double.IsFinite(val))
+            {
+                contiguousValid = 0;
+                firstValidSegmentOutputIdx = -1;
+                state = SsaAnomalyState.Normal;
+                coolDownCount = 0;
+                _values.Add(null);
+                AnomalyStateSeries.Add(null);
+                EnterThresholdSeries.Add(null);
+                ExitThresholdSeries.Add(null);
+                continue;
+            }
+
+            doublePrices[t] = val;
+            contiguousValid++;
+
+            if (contiguousValid < window)
+            {
+                _values.Add(null);
+                AnomalyStateSeries.Add(null);
+                EnterThresholdSeries.Add(null);
+                ExitThresholdSeries.Add(null);
+                continue;
+            }
+
+            if (firstValidSegmentOutputIdx < 0)
+            {
+                firstValidSegmentOutputIdx = t;
+            }
+
             // Copy causal past window [t - window + 1 .. t]
             Array.Copy(doublePrices, t - window + 1, windowBuffer, 0, window);
 
@@ -155,8 +186,8 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
             double res = doublePrices[t] - causalReconstructed;
             causalResiduals[t] = res;
 
-            // Rolling variance of causal residuals over available causal window
-            int resStart = Math.Max(window - 1, t - window + 1);
+            // Rolling variance of causal residuals over available causal window within the valid segment
+            int resStart = Math.Max(firstValidSegmentOutputIdx, t - window + 1);
             int resCount = t - resStart + 1;
             double sumSqRes = 0.0;
             double sumAbsPrice = 0.0;
@@ -263,10 +294,21 @@ public class CoreSSAAnomalyIndicator : CoreIndicatorBase
                 stateValue = -1m;
             }
 
-            _values.Add((decimal)z);
-            AnomalyStateSeries.Add(stateValue);
-            EnterThresholdSeries.Add(EnterThreshold);
-            ExitThresholdSeries.Add(ExitThreshold);
+            decimal? decZ = IndicatorCalculationHelper.ToDecimalOrNull(z);
+            if (!decZ.HasValue)
+            {
+                _values.Add(null);
+                AnomalyStateSeries.Add(null);
+                EnterThresholdSeries.Add(null);
+                ExitThresholdSeries.Add(null);
+            }
+            else
+            {
+                _values.Add(decZ.Value);
+                AnomalyStateSeries.Add(stateValue);
+                EnterThresholdSeries.Add(EnterThreshold);
+                ExitThresholdSeries.Add(ExitThreshold);
+            }
         }
 
         return CreateResultDictionary();

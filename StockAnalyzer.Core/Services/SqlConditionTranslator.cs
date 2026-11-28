@@ -10,7 +10,10 @@ namespace StockAnalyzer.Core.Services;
 
 /// <summary>
 /// Translates screening conditions into SQL WHERE clauses for DuckDB.
+/// Note: Uses a rolling simple-window RSI approximation rather than Wilder exponential smoothing.
+/// For strict Wilder RSI parity with <see cref="CoreRsiIndicator"/>, use <see cref="ScreenerConditionTreeCondition"/> or <see cref="RsiOversoldCondition"/>.
 /// </summary>
+[Obsolete("Uses a rolling simple-window RSI approximation for DuckDB SQL compatibility; use ScreenerConditionTreeCondition / CoreRsiIndicator for strict Wilder RSI parity.")]
 public static class SqlConditionTranslator
 {
     public static string BuildBatchQuery(string parquetPattern, ScreeningCriteria criteria)
@@ -33,7 +36,7 @@ public static class SqlConditionTranslator
         // 1. Load data and calculate diff for RSI
         // 2. Calculate all indicators in parallel
         // 3. Filter for latest row and meet condition
-        var safePattern = parquetPattern.Replace("\\", "/").Replace("'", "''");
+        var safePattern = ParquetMarketDataProvider.FormatDuckDbPath(parquetPattern);
         return $@"
             WITH raw_data AS (
                 SELECT *, 
@@ -124,9 +127,10 @@ public static class SqlConditionTranslator
             WITH rsi_data AS (
                 SELECT 
                     Close,
-                    row_number() OVER() as rn,
-                    Close - LAG(Close) OVER() as diff
+                    row_number() OVER (ORDER BY date) as rn,
+                    Close - LAG(Close) OVER (ORDER BY date) as diff
                 FROM current_file
+                WHERE Close IS NOT NULL
             ),
             g_l AS (
                 SELECT 

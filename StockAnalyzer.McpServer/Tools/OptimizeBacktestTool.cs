@@ -190,6 +190,7 @@ internal sealed class OptimizeBacktestTool : IMcpTool
         {
             warnings.Add(sampleWarning);
         }
+        BacktestAdvisory.AppendSweepAdvisories(warnings, bound.Settings);
 
         return ToolJson.Build(writer => Write(
             writer, symbol, timeFrame, objective, minimize, grid, inSample, objectiveValues, ranked, outOfSample, effectiveStart, effectiveEnd, inSampleEnd,

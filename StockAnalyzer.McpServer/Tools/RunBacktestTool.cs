@@ -233,6 +233,7 @@ internal sealed class RunBacktestTool : IMcpTool
         {
             advisoryWarnings.Add(sampleWarning);
         }
+        BacktestAdvisory.AppendBacktestAdvisories(advisoryWarnings, settings.Configuration);
         return ToolJson.Build(writer => Write(writer, artifact, symbol, timeFrame, effectiveStart, effectiveEnd, requestedStart is null || requestedEnd is null, settings, accountArguments, conditions, maxTrades, template, symbolWarnings, advisoryWarnings, diagnostics, compactReport, compactRows));
     }
 

@@ -12,6 +12,9 @@ internal static class DiscussionRouterTexts
 {
     public const string DifferentVersionHint = "The hub is a different server version; restart all clients.";
     public const string RestartHint = "Restart the MCP server, or all clients, and start the discussion again.";
+
+    /// <summary>Hint of a key the hub does not know: for the caller it may be valid, when the hub is older than its client.</summary>
+    public const string UnknownArgumentHint = "If this argument is valid for the calling client, the discussion hub is older than the client: restart all StockAnalyzer MCP clients.";
 }
 
 /// <summary>Switches that exist for tests only; production code never sets either.</summary>

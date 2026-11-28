@@ -2,7 +2,7 @@ import sys
 import json
 import argparse
 import time
-import io
+import math
 import os
 import re
 import threading
@@ -17,6 +17,24 @@ if not IS_WINDOWS:
 PIPE_READ_CHUNK_SIZE = 65536
 MAX_LINE_BYTES = 16 * 1024 * 1024       # 16 MiB
 MAX_TRANSFER_BYTES = 256 * 1024 * 1024  # 256 MiB
+MAX_TRANSFER_ROWS = 100000
+MAX_TRANSFER_COLUMNS = 32
+
+MIN_WINDOW_SIZE = 4
+MAX_WINDOW_SIZE = 4096
+MIN_TOP_K = 1
+MAX_TOP_K = 100
+MIN_FUTURE_STEPS = 1
+MAX_FUTURE_STEPS = 500
+MIN_QUERY_LENGTH = 2
+MAX_QUERY_LENGTH = 1000
+MIN_LOOKBACK = 0
+MAX_LOOKBACK = 50000
+MIN_WARPING_RADIUS = -1
+MAX_WARPING_RADIUS = 500
+MIN_THRESHOLD = 0.0
+MAX_THRESHOLD = 1.0
+
 _PIPE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
 
@@ -230,6 +248,296 @@ def parent_monitor_loop(parent_pid, socket_path=None):
         except Exception:
             pass
 
+def _require_int_in_range(args, key, default, min_val, max_val):
+    value = args.get(key, default)
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"Parameter '{key}' must be an integer.")
+    if value < min_val or value > max_val:
+        raise ValueError(f"Parameter '{key}' must be between {min_val} and {max_val}.")
+    return value
+
+
+def _require_finite_float_in_range(args, key, default, min_val, max_val):
+    value = args.get(key, default)
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(f"Parameter '{key}' must be a finite number.")
+    result = float(value)
+    if not math.isfinite(result) or result < min_val or result > max_val:
+        raise ValueError(f"Parameter '{key}' must be finite and between {min_val} and {max_val}.")
+    return result
+
+
+def _read_transfer_buffer(read_pipe, size):
+    """Read an exact byte payload directly into one preallocated bytearray without chunk concatenation copies."""
+    buf = bytearray(size)
+    mv = memoryview(buf)
+    received = 0
+    try:
+        while received < size:
+            to_read = min(PIPE_READ_CHUNK_SIZE, size - received)
+            data_chunk = read_pipe(to_read)
+            chunk_len = len(data_chunk)
+            if chunk_len <= 0:
+                raise IOError("Connection closed while reading Arrow transfer payload.")
+            if chunk_len > size - received:
+                raise IOError("Received more bytes than declared transfer size.")
+            mv[received:received + chunk_len] = data_chunk
+            received += chunk_len
+    finally:
+        mv.release()
+    return buf
+
+
+def _load_arrow_dataframe(buf):
+    """Decode an Arrow IPC stream with strict column/row limits and zero-extra-copy buffer view."""
+    reader = pa.ipc.open_stream(pa.py_buffer(buf))
+    if len(reader.schema) > MAX_TRANSFER_COLUMNS:
+        raise ValueError(f"Arrow table exceeds maximum column limit ({MAX_TRANSFER_COLUMNS}).")
+    batches = []
+    total_rows = 0
+    for batch in reader:
+        total_rows += batch.num_rows
+        if total_rows > MAX_TRANSFER_ROWS:
+            raise ValueError(f"Arrow table exceeds maximum row limit ({MAX_TRANSFER_ROWS}).")
+        batches.append(batch)
+    table = pa.Table.from_batches(batches, schema=reader.schema)
+    del batches
+    df = table.to_pandas()
+    del table
+    if 'Close' not in df.columns:
+        raise ValueError("DataFrame must contain 'Close' column")
+    return df
+
+
+def _dispatch_command(method, args, global_df):
+    """Validate and execute non-transfer JSON RPC methods cleanly without silent clamping."""
+    response = {"status": "ok", "result": None}
+    args_dict = {} if args is None else args
+    if not isinstance(args_dict, dict):
+        raise ValueError("Command 'args' must be a JSON object.")
+
+    if method == "ping":
+        response["result"] = "pong"
+        return response
+
+    if method == "calculate_fft_trend_filter":
+        window_size = _require_int_in_range(args_dict, 'windowSize', 64, MIN_WINDOW_SIZE, MAX_WINDOW_SIZE)
+        max_harmonics = window_size // 2 + 1
+        num_harmonics = _require_int_in_range(args_dict, 'numHarmonics', 4, 1, max_harmonics)
+        if global_df is None:
+            response["status"] = "error"
+            response["error"] = "No data available. Send data first."
+            return response
+
+        import numpy as np
+
+        if 'High' in global_df.columns and 'Low' in global_df.columns:
+            prices = (global_df['High'] + global_df['Low']) / 2.0
+        else:
+            prices = global_df['Close']
+        prices = prices.values
+
+        n = len(prices)
+        trend = np.full(n, None, dtype=object)
+
+        for i in range(window_size - 1, n):
+            segment = prices[i - window_size + 1:i + 1]
+
+            # No windowing, no detrend: unlike the FFT Cycle indicator, this
+            # filter must retain the DC/trend component, and a Hanning
+            # taper would suppress the very last sample we extract below.
+            spectrum = np.fft.rfft(segment)
+            filtered_spectrum = np.zeros_like(spectrum)
+            filtered_spectrum[:num_harmonics] = spectrum[:num_harmonics]
+            reconstructed = np.fft.irfft(filtered_spectrum, n=window_size)
+
+            # Causal: only the last sample (this bar) is emitted, so no
+            # future data leaks in and no repaint occurs as new bars
+            # arrive -- the value at bar i depends only on prices up to i.
+            trend[i] = float(reconstructed[-1])
+
+        response["result"] = {
+            "trend": [float(x) if x is not None else None for x in trend]
+        }
+        return response
+
+    if method == "calculate_backtest_stats":
+        import pandas as pd
+        import numpy as np
+
+        trades = args_dict.get('trades', [])
+        if not trades:
+            response["status"] = "error"
+            response["error"] = "No trades provided."
+            return response
+
+        df_trades = pd.DataFrame(trades)
+        if 'ProfitLoss' not in df_trades.columns:
+            raise Exception("Trades must contain 'ProfitLoss' column")
+
+        pnl = df_trades['ProfitLoss'].values
+        cumulative_pnl = np.cumsum(pnl)
+        peak = np.maximum.accumulate(cumulative_pnl)
+        drawdown = peak - cumulative_pnl
+        max_drawdown = float(np.max(drawdown)) if len(drawdown) > 0 else 0.0
+
+        wins = df_trades[df_trades['ProfitLoss'] > 0]
+        win_rate = float(len(wins) / len(df_trades)) if len(df_trades) > 0 else 0.0
+        avg_profit = float(wins['ProfitLoss'].mean()) if len(wins) > 0 else 0.0
+        losses = df_trades[df_trades['ProfitLoss'] <= 0]
+        avg_loss = float(losses['ProfitLoss'].mean()) if len(losses) > 0 else 0.0
+        profit_factor = float(abs(wins['ProfitLoss'].sum() / losses['ProfitLoss'].sum())) if len(losses) > 0 and losses['ProfitLoss'].sum() != 0 else float('inf')
+
+        mean_pnl = np.mean(pnl)
+        std_pnl = np.std(pnl)
+        trade_sharpe = float(mean_pnl / std_pnl) if std_pnl != 0 else 0.0
+
+        downside_pnl = pnl[pnl < 0]
+        downside_std = np.std(downside_pnl) if len(downside_pnl) > 0 else 0.0
+        trade_sortino = float(mean_pnl / downside_std) if downside_std != 0 else 0.0
+
+        def safe_float(v):
+            if pd.isna(v) or np.isinf(v):
+                return None
+            return float(v)
+
+        response["result"] = {
+            "TotalTrades": len(df_trades),
+            "WinRate": safe_float(win_rate),
+            "MaxDrawdown": safe_float(max_drawdown),
+            "AverageProfit": safe_float(avg_profit),
+            "AverageLoss": safe_float(avg_loss),
+            "ProfitFactor": safe_float(profit_factor),
+            "TradeSharpeRatio": safe_float(trade_sharpe),
+            "TradeSortinoRatio": safe_float(trade_sortino),
+            "TotalProfit": float(np.sum(pnl))
+        }
+        return response
+
+    if method == "search_similar_patterns":
+        lookback = _require_int_in_range(args_dict, 'lookback', 0, MIN_LOOKBACK, MAX_LOOKBACK)
+        top_k = _require_int_in_range(args_dict, 'topK', 5, MIN_TOP_K, MAX_TOP_K)
+        future_steps = _require_int_in_range(args_dict, 'futureSteps', 20, MIN_FUTURE_STEPS, MAX_FUTURE_STEPS)
+        threshold = _require_finite_float_in_range(args_dict, 'threshold', 0.3, MIN_THRESHOLD, MAX_THRESHOLD)
+        query_start_index = _require_int_in_range(args_dict, 'queryStartIndex', -1, -1, MAX_TRANSFER_ROWS)
+        query_length = _require_int_in_range(args_dict, 'queryLength', 30, MIN_QUERY_LENGTH, MAX_QUERY_LENGTH)
+        use_structural = args_dict.get('useStructural', False)
+        if not isinstance(use_structural, bool):
+            raise ValueError("Parameter 'useStructural' must be a boolean.")
+        warping_radius = _require_int_in_range(
+            args_dict,
+            'warpingRadius',
+            DTW_UNCONSTRAINED_RADIUS,
+            MIN_WARPING_RADIUS,
+            MAX_WARPING_RADIUS,
+        )
+
+        if global_df is None:
+            response["status"] = "error"
+            response["error"] = "No data available. Send data first."
+            return response
+
+        import numpy as np
+
+        close = global_df['Close'].values.astype(float)
+        n = len(close)
+
+        if n < query_length + future_steps:
+            response["status"] = "error"
+            response["error"] = f"Insufficient data: need >= {query_length + future_steps} candles, got {n}"
+            return response
+
+        actual_q_start = query_start_index if query_start_index >= 0 else (n - query_length)
+        actual_q_end = actual_q_start + query_length
+        actual_q_start = max(0, min(actual_q_start, n - 1))
+        actual_q_end = max(actual_q_start + 1, min(actual_q_end, n))
+        query_length = actual_q_end - actual_q_start
+
+        query = close[actual_q_start:actual_q_end]
+        q_std = np.std(query)
+        if q_std < 1e-10:
+            q_std = 1.0
+        query_z = ((query - np.mean(query)) / q_std).reshape(-1, 1)
+
+        vol_full = None
+        query_vol = 0.0
+        if use_structural:
+            supplied_vol = args_dict.get('volatility')
+            if supplied_vol is not None and len(supplied_vol) == n:
+                vol_full = np.asarray(supplied_vol, dtype=float)
+                if np.all(np.isfinite(vol_full)):
+                    query_vol = float(np.mean(vol_full[actual_q_start:actual_q_end]))
+                else:
+                    vol_full = None
+            if vol_full is None:
+                use_structural = False
+
+        search_start = 0
+        if lookback > 0:
+            search_start = max(0, actual_q_start - lookback)
+        search_end = actual_q_start - query_length
+
+        if search_end <= search_start:
+            response["result"] = {
+                "patterns": [],
+                "queryLength": query_length,
+                "debug_info": f"q_s={actual_q_start} n={n} s={search_start} e={search_end} (No historical data before selection)",
+            }
+            return response
+
+        candidates = []
+        step = max(1, query_length // 4)
+        for start in range(search_start, search_end, step):
+            end = start + query_length
+            segment = close[start:end]
+            s_std = np.std(segment)
+            if s_std < 1e-10:
+                continue
+            segment_z = ((segment - np.mean(segment)) / s_std).reshape(-1, 1)
+
+            if warping_radius >= 0:
+                dist = float(_dtw_distance_1d(query_z, segment_z, sakoe_chiba_radius=warping_radius))
+            else:
+                dist = float(_dtw_distance_1d(query_z, segment_z))
+            rmse = dist / np.sqrt(query_length)
+
+            if use_structural and vol_full is not None:
+                seg_vol = float(np.mean(vol_full[start:end]))
+                vol_ratio = max(query_vol, seg_vol) / max(min(query_vol, seg_vol), 1e-10)
+                vol_penalty = np.log1p(vol_ratio - 1)
+                rmse += vol_penalty * 0.1
+
+            prob = float(np.exp(-rmse))
+            if prob >= threshold or len(candidates) < top_k * 2:
+                future_end = min(end + future_steps, n)
+                future_raw = close[end:future_end].tolist()
+                base_price = float(close[end - 1])
+                future_pct = [round((p / base_price - 1.0) * 100, 4) for p in future_raw]
+
+                candidates.append({
+                    "distance": round(dist, 4),
+                    "probability": round(prob, 4),
+                    "startIndex": int(start),
+                    "endIndex": int(end - 1),
+                    "matchedPrices": [round(float(v), 4) for v in close[start:end]],
+                    "futureRawPrices": [round(float(v), 4) for v in future_raw],
+                    "futurePercentChange": future_pct
+                })
+
+        candidates.sort(key=lambda x: x["distance"])
+        top_matches = candidates[:top_k]
+        response["result"] = {
+            "queryLength": query_length,
+            "patterns": top_matches,
+            "debug_info": f"scanned {len(candidates)} candidates. top matches: {len(top_matches)}"
+        }
+        return response
+
+    response["status"] = "error"
+    response["error"] = f"Unknown method: {method}"
+    return response
+
+
 def run_server(pipe_name):
     # Start parent monitor thread
     parent_pid = os.getppid()
@@ -343,308 +651,36 @@ def run_server(pipe_name):
                 request = json.loads(decoded_msg)
                 method = request.get('method')
                 args = request.get('args')
-                
-                response = { "status": "ok", "result": None }
 
-                if method == "ping":
-                    response["result"] = "pong"
-                elif method == "echo":
-                     response["result"] = args
-                elif method == "prepare_data_transfer":
-                    # Args should contain 'size'
+                if method == "prepare_data_transfer":
                     size = args.get('size', 0) if isinstance(args, dict) else 0
-                    if not isinstance(size, int) or size <= 0 or size > MAX_TRANSFER_BYTES:
-                        response["status"] = "error"
-                        response["error"] = f"Invalid transfer size. Must be an integer between 1 and {MAX_TRANSFER_BYTES} bytes."
-                        write_pipe((json.dumps(response) + "\n").encode('utf-8'))
+                    if not isinstance(size, int) or isinstance(size, bool) or size <= 0 or size > MAX_TRANSFER_BYTES:
+                        err_resp = {
+                            "status": "error",
+                            "error": f"Invalid transfer size. Must be an integer between 1 and {MAX_TRANSFER_BYTES} bytes."
+                        }
+                        write_pipe((json.dumps(err_resp) + "\n").encode('utf-8'))
                     else:
-                        # Send "ready" first
-                        response["status"] = "ready"
-                        write_pipe((json.dumps(response) + "\n").encode('utf-8'))
-                        
-                        # Now read binary data
-                        received = 0
-                        chunks = []
-                        while received < size:
-                            to_read = min(65536, size - received)
-                            data_chunk = read_pipe(to_read)
-                            chunks.append(data_chunk)
-                            received += len(data_chunk)
-                        
-                        full_data = b"".join(chunks)
-                        
-                        # Process Arrow Data
+                        write_pipe((json.dumps({"status": "ready", "result": None}) + "\n").encode('utf-8'))
                         try:
-                            reader = pa.ipc.open_stream(io.BytesIO(full_data))
-                            table = reader.read_all()
-                            
-                            global_df = table.to_pandas()
-                            # Ensure 'Close' column exists and is numeric
-                            if 'Close' not in global_df.columns:
-                                raise Exception("DataFrame must contain 'Close' column")
-                            
-                            # Send completion response
-                            final_response = { "status": "transfer_complete", "rows": len(global_df) }
+                            buf = _read_transfer_buffer(read_pipe, size)
+                            global_df = _load_arrow_dataframe(buf)
+                            del buf
+                            final_response = {"status": "transfer_complete", "rows": len(global_df)}
                             write_pipe((json.dumps(final_response) + "\n").encode('utf-8'))
-                            continue 
-                            
                         except Exception as e:
-                             err_response = { "status": "error", "error": str(e) }
-                             write_pipe((json.dumps(err_response) + "\n").encode('utf-8'))
-                             continue
-                
-                elif method == "calculate_fft_trend_filter":
-                    if global_df is None:
-                        response["status"] = "error"
-                        response["error"] = "No data available. Send data first."
-                    else:
-                        try:
-                            import numpy as np
+                            err_response = {"status": "error", "error": str(e)}
+                            write_pipe((json.dumps(err_response) + "\n").encode('utf-8'))
+                    continue
 
-                            window_size = int(args.get('windowSize', 64))
-                            if window_size < 4:
-                                window_size = 4
+                try:
+                    response = _dispatch_command(method, args, global_df)
+                except ImportError as ie:
+                    response = {"status": "error", "error": f"Required package not installed: {ie}"}
+                except Exception as e:
+                    response = {"status": "error", "error": str(e)}
 
-                            max_harmonics = window_size // 2 + 1
-                            num_harmonics = int(args.get('numHarmonics', 4))
-                            num_harmonics = max(1, min(num_harmonics, max_harmonics))
-
-                            if 'High' in global_df.columns and 'Low' in global_df.columns:
-                                prices = (global_df['High'] + global_df['Low']) / 2.0
-                            else:
-                                prices = global_df['Close']
-                            prices = prices.values
-
-                            n = len(prices)
-                            trend = np.full(n, None, dtype=object)
-
-                            for i in range(window_size - 1, n):
-                                segment = prices[i - window_size + 1:i + 1]
-
-                                # No windowing, no detrend: unlike the FFT Cycle indicator, this
-                                # filter must retain the DC/trend component, and a Hanning
-                                # taper would suppress the very last sample we extract below.
-                                spectrum = np.fft.rfft(segment)
-                                filtered_spectrum = np.zeros_like(spectrum)
-                                filtered_spectrum[:num_harmonics] = spectrum[:num_harmonics]
-                                reconstructed = np.fft.irfft(filtered_spectrum, n=window_size)
-
-                                # Causal: only the last sample (this bar) is emitted, so no
-                                # future data leaks in and no repaint occurs as new bars
-                                # arrive -- the value at bar i depends only on prices up to i.
-                                trend[i] = float(reconstructed[-1])
-
-                            response["result"] = {
-                                "trend": [float(x) if x is not None else None for x in trend]
-                            }
-                        except Exception as e:
-                            response["status"] = "error"
-                            response["error"] = str(e)
-
-                elif method == "calculate_backtest_stats":
-                    try:
-                        import pandas as pd
-                        import numpy as np
-
-                        trades = args.get('trades', [])
-                        if not trades:
-                            response["status"] = "error"
-                            response["error"] = "No trades provided."
-                        else:
-                            # trades is a list of dicts: {"EntryTime": "...", "ExitTime": "...", "EntryPrice": ..., "ExitPrice": ..., "Quantity": ..., "ProfitLoss": ...}
-                            df_trades = pd.DataFrame(trades)
-                            
-                            if 'ProfitLoss' not in df_trades.columns:
-                                raise Exception("Trades must contain 'ProfitLoss' column")
-                                
-                            # Basic calculations based on ProfitLoss
-                            # Assume Risk-Free Rate is 0 for simplicity, and we calculate per trade (or per period if times are given)
-                            # To calculate standard Sharpe, we need returns over time. If we only have trade PnL, we can calculate Trade Sharpe.
-                            # For a proper Sharpe, we'd need Equity Curve (daily returns).
-                            # If we only get a list of trades, we will calculate based on Trade Returns if available, or just aggregate PnL.
-                            
-                            # Let's assume we can compute an equity curve from ProfitLoss, or at least metrics based on trade outcomes
-                            pnl = df_trades['ProfitLoss'].values
-                            cumulative_pnl = np.cumsum(pnl)
-                            
-                            # Max Drawdown
-                            peak = np.maximum.accumulate(cumulative_pnl)
-                            drawdown = peak - cumulative_pnl
-                            max_drawdown = float(np.max(drawdown)) if len(drawdown) > 0 else 0.0
-                            
-                            # Win Rate
-                            wins = df_trades[df_trades['ProfitLoss'] > 0]
-                            win_rate = float(len(wins) / len(df_trades)) if len(df_trades) > 0 else 0.0
-                            
-                            # Average Profit/Loss
-                            avg_profit = float(wins['ProfitLoss'].mean()) if len(wins) > 0 else 0.0
-                            losses = df_trades[df_trades['ProfitLoss'] <= 0]
-                            avg_loss = float(losses['ProfitLoss'].mean()) if len(losses) > 0 else 0.0
-                            
-                            profit_factor = float(abs(wins['ProfitLoss'].sum() / losses['ProfitLoss'].sum())) if len(losses) > 0 and losses['ProfitLoss'].sum() != 0 else float('inf')
-                            
-                            # Simplified Sharpe/Sortino based on trade series (not time series, which is usually standard, but this is a start)
-                            mean_pnl = np.mean(pnl)
-                            std_pnl = np.std(pnl)
-                            trade_sharpe = float(mean_pnl / std_pnl) if std_pnl != 0 else 0.0
-                            
-                            downside_pnl = pnl[pnl < 0]
-                            downside_std = np.std(downside_pnl) if len(downside_pnl) > 0 else 0.0
-                            trade_sortino = float(mean_pnl / downside_std) if downside_std != 0 else 0.0
-
-                            def safe_float(v):
-                                if pd.isna(v) or np.isinf(v):
-                                    return None
-                                return float(v)
-
-                            response["result"] = {
-                                "TotalTrades": len(df_trades),
-                                "WinRate": safe_float(win_rate),
-                                "MaxDrawdown": safe_float(max_drawdown),
-                                "AverageProfit": safe_float(avg_profit),
-                                "AverageLoss": safe_float(avg_loss),
-                                "ProfitFactor": safe_float(profit_factor),
-                                "TradeSharpeRatio": safe_float(trade_sharpe),
-                                "TradeSortinoRatio": safe_float(trade_sortino),
-                                "TotalProfit": float(np.sum(pnl))
-                            }
-                    except Exception as e:
-                        response["status"] = "error"
-                        response["error"] = str(e)
-
-                elif method == "search_similar_patterns":
-                    if global_df is None:
-                        response["status"] = "error"
-                        response["error"] = "No data available. Send data first."
-                    else:
-                        try:
-                            import numpy as np
-
-                            lookback = args.get('lookback', 0) if args else 0  # 0 = use all history
-                            top_k = args.get('topK', 5) if args else 5
-                            future_steps = args.get('futureSteps', 20) if args else 20
-                            threshold = args.get('threshold', 0.3) if args else 0.3
-                            query_start_index = args.get('queryStartIndex', -1) if args else -1
-                            query_length = args.get('queryLength', 30) if args else 30
-                            use_structural = args.get('useStructural', False) if args else False
-                            warping_radius = args.get('warpingRadius', DTW_UNCONSTRAINED_RADIUS) if args else DTW_UNCONSTRAINED_RADIUS
-
-                            close = global_df['Close'].values.astype(float)
-                            n = len(close)
-
-                            if n < query_length + future_steps:
-                                response["status"] = "error"
-                                response["error"] = f"Insufficient data: need >= {query_length + future_steps} candles, got {n}"
-                            else:
-                                # Determine actual query segment
-                                actual_q_start = query_start_index if query_start_index >= 0 else (n - query_length)
-                                actual_q_end = actual_q_start + query_length
-                                
-                                # Safety clamp
-                                actual_q_start = max(0, min(actual_q_start, n - 1))
-                                actual_q_end = max(actual_q_start + 1, min(actual_q_end, n))
-                                query_length = actual_q_end - actual_q_start
-                                
-                                query = close[actual_q_start:actual_q_end]
-                                q_std = np.std(query)
-                                if q_std < 1e-10:
-                                    q_std = 1.0
-                                query_z = ((query - np.mean(query)) / q_std).reshape(-1, 1)
-
-                                # Optional structural filtering: the volatility series is estimated by the .NET side (one value per candle).
-                                # Without a usable series (missing, wrong length, non-finite) the search runs without the filter.
-                                vol_full = None
-                                query_vol = 0.0
-                                if use_structural:
-                                    supplied_vol = args.get('volatility') if args else None
-                                    if supplied_vol is not None and len(supplied_vol) == n:
-                                        vol_full = np.asarray(supplied_vol, dtype=float)
-                                        if np.all(np.isfinite(vol_full)):
-                                            query_vol = float(np.mean(vol_full[actual_q_start:actual_q_end]))
-                                        else:
-                                            vol_full = None
-                                    if vol_full is None:
-                                        use_structural = False  # Fallback to non-structural
-
-                                # Determine search range (search for patterns ending BEFORE the query starts)
-                                search_start = 0
-                                if lookback > 0:
-                                    search_start = max(0, actual_q_start - lookback)
-
-                                # Search must end such that its future projection doesn't overlap the exact match,
-                                # meaning the window ends before `actual_q_start`. The max start for the candidate is `actual_q_start - query_length`
-                                search_end = actual_q_start - query_length
-
-                                if search_end <= search_start:
-                                    response["result"] = {"patterns": [], "queryLength": query_length, "debug_info": f"q_s={actual_q_start} n={n} s={search_start} e={search_end} (No historical data before selection)"}
-                                else:
-                                    candidates = []
-                                    step = max(1, query_length // 4)
-
-                                    for start in range(search_start, search_end, step):
-                                        end = start + query_length
-                                        segment = close[start:end]
-                                        s_std = np.std(segment)
-                                        if s_std < 1e-10:
-                                            continue
-                                        segment_z = ((segment - np.mean(segment)) / s_std).reshape(-1, 1)
-
-                                        if warping_radius >= 0:
-                                            dist = float(_dtw_distance_1d(query_z, segment_z, sakoe_chiba_radius=warping_radius))
-                                        else:
-                                            dist = float(_dtw_distance_1d(query_z, segment_z))
-                                        rmse = dist / np.sqrt(query_length)
-
-                                        # Optional volatility penalty
-                                        if use_structural and vol_full is not None:
-                                            seg_vol = float(np.mean(vol_full[start:end]))
-                                            vol_ratio = max(query_vol, seg_vol) / max(min(query_vol, seg_vol), 1e-10)
-                                            vol_penalty = np.log1p(vol_ratio - 1)
-                                            rmse += vol_penalty * 0.1
-
-                                        prob = float(np.exp(-rmse))
-
-                                        # Temporarily relaxing threshold requirement for debugging
-                                        if prob >= threshold or len(candidates) < top_k * 2:
-                                            # Extract future path as raw prices
-                                            future_end = min(end + future_steps, n)
-                                            future_raw = close[end:future_end].tolist()
-                                            # Also provide % change from match endpoint
-                                            base_price = float(close[end - 1])
-                                            future_pct = [round((p / base_price - 1.0) * 100, 4) for p in future_raw]
-
-                                            candidates.append({
-                                                "distance": round(dist, 4),
-                                                "probability": round(prob, 4),
-                                                "startIndex": int(start),
-                                                "endIndex": int(end - 1),
-                                                "matchedPrices": [round(float(v), 4) for v in close[start:end]],
-                                                "futureRawPrices": [round(float(v), 4) for v in future_raw],
-                                                "futurePercentChange": future_pct
-                                            })
-
-                                    candidates.sort(key=lambda x: x["distance"])
-                                    top_matches = candidates[:top_k]
-
-                                    response["result"] = {
-                                        "queryLength": query_length,
-                                        "patterns": top_matches,
-                                        "debug_info": f"scanned {len(candidates)} candidates. top matches: {len(top_matches)}"
-                                    }
-
-                        except ImportError as ie:
-                            response["status"] = "error"
-                            response["error"] = f"Required package not installed: {ie}"
-                        except Exception as e:
-                            response["status"] = "error"
-                            response["error"] = str(e)
-
-                else:
-                    response["status"] = "error"
-                    response["error"] = f"Unknown method: {method}"
-
-                # Send response
-                response_json = json.dumps(response) + "\n" 
+                response_json = json.dumps(response) + "\n"
                 write_pipe(response_json.encode('utf-8'))
                 
             except json.JSONDecodeError as e:

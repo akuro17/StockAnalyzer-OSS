@@ -37,66 +37,27 @@ public class CoreGmaIndicator : CoreIndicatorBase
         // Currently GMA uses fixed periods, but we support the base parameter for future extension
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-        if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
+        _values.Clear();
+        if (series == null || series.Count == 0) return IndicatorResult.Success(_values);
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        var series = new Dictionary<string, IReadOnlyList<decimal?>>();
+        var resultSeries = new Dictionary<string, IReadOnlyList<decimal?>>();
         var allPeriods = ShortTermPeriods.Concat(LongTermPeriods);
 
         foreach (var period in allPeriods)
         {
-            series[$"EMA{period}"] = CalculateEma(priceSeries, period);
+            resultSeries[$"EMA{period}"] = IndicatorCalculationHelper.CalculateEmaWithNulls(series, period);
         }
 
         // Set the first EMA as the "Main" series for backward compatibility
-        if (series.Count > 0)
+        if (resultSeries.Count > 0)
         {
-            var first = series.First();
-            series[IndicatorResult.MainSeriesName] = first.Value;
+            var first = resultSeries.First();
+            resultSeries[IndicatorResult.MainSeriesName] = first.Value;
+            _values.AddRange(first.Value);
         }
 
-        return IndicatorResult.Success(series);
-    }
-
-    private List<decimal?> CalculateEma(IReadOnlyList<decimal?> priceSeries, int period)
-    {
-        var emaValues = new List<decimal?>();
-        if (priceSeries.Count < period)
-        {
-            for (int i = 0; i < priceSeries.Count; i++)
-            {
-                emaValues.Add(null);
-            }
-            return emaValues;
-        }
-
-        decimal multiplier = 2.0m / (period + 1);
-        decimal? prevEma = null;
-
-        for (int i = 0; i < priceSeries.Count; i++)
-        {
-            if (i < period - 1)
-            {
-                emaValues.Add(null);
-            }
-            else if (i == period - 1)
-            {
-                decimal sum = 0;
-                for (int j = 0; j < period; j++)
-                {
-                    sum += priceSeries[i - j] ?? 0m;
-                }
-                prevEma = sum / period;
-                emaValues.Add(prevEma);
-            }
-            else
-            {
-                prevEma = ((priceSeries[i] ?? 0m) - prevEma) * multiplier + prevEma;
-                emaValues.Add(prevEma);
-            }
-        }
-        return emaValues;
+        return IndicatorResult.Success(resultSeries);
     }
 }

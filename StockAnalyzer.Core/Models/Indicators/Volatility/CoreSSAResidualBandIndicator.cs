@@ -18,6 +18,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility;
 public class CoreSSAResidualBandIndicator : CoreIndicatorBase
 {
     public const double FloorEpsilon = 1e-12;
+    private const decimal FloorEpsilonDecimal = 1e-12m;
 
     public int WindowSize { get; set; } = IndicatorDefaultConstants.SsaResidualBandDefaultWindowSize;
     public int EmbeddingDimension { get; set; } = IndicatorDefaultConstants.SsaResidualBandDefaultEmbeddingDimension;
@@ -55,19 +56,19 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
         _values.Clear();
         UpperBand.Clear();
         LowerBand.Clear();
         BandWidth.Clear();
 
-        if (candles == null || candles.Count == 0)
+        if (series == null || series.Count == 0)
         {
             return CreateAutomaticResult();
         }
 
-        int n = candles.Count;
+        int n = series.Count;
         int window = Math.Max(SsaDecompositionEngine.MinSampleCount, WindowSize);
         if (n < window)
         {
@@ -82,22 +83,7 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
             return CreateAutomaticResult();
         }
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         double[] doublePrices = new double[n];
-        for (int i = 0; i < n; i++)
-        {
-            doublePrices[i] = (double)(priceSeries[i] ?? 0m);
-        }
-
-        // Pre-fill nulls for warmup bars
-        for (int i = 0; i < window - 1; i++)
-        {
-            _values.Add(null);
-            UpperBand.Add(null);
-            LowerBand.Add(null);
-            BandWidth.Add(null);
-        }
-
         int l = SsaDecompositionEngine.ClampEmbeddingDimension(EmbeddingDimension, window);
         int k = window - l + 1;
         int r = Math.Clamp(NumComponents, 1, Math.Min(l, k));
@@ -113,9 +99,43 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
             double[] eigenvalues = new double[l];
             double[,] eigenvectors = new double[l, l];
             int[] sortedIndices = new int[l];
+            int contiguousValid = 0;
 
-            for (int t = window - 1; t < n; t++)
+            for (int t = 0; t < n; t++)
             {
+                if (!series[t].HasValue)
+                {
+                    contiguousValid = 0;
+                    _values.Add(null);
+                    UpperBand.Add(null);
+                    LowerBand.Add(null);
+                    BandWidth.Add(null);
+                    continue;
+                }
+
+                double val = (double)series[t]!.Value;
+                if (!double.IsFinite(val))
+                {
+                    contiguousValid = 0;
+                    _values.Add(null);
+                    UpperBand.Add(null);
+                    LowerBand.Add(null);
+                    BandWidth.Add(null);
+                    continue;
+                }
+
+                doublePrices[t] = val;
+                contiguousValid++;
+
+                if (contiguousValid < window)
+                {
+                    _values.Add(null);
+                    UpperBand.Add(null);
+                    LowerBand.Add(null);
+                    BandWidth.Add(null);
+                    continue;
+                }
+
                 ReadOnlySpan<double> windowSpan = doublePrices.AsSpan(t - window + 1, window);
                 SsaDecompositionEngine.Detrend(windowSpan, processed, SsaDetrendMode.LeastSquaresLinear, out double slope, out double intercept);
 
@@ -165,7 +185,12 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
                     sigmaRes = Math.Sqrt(Math.Max(0.0, sumSqErr / window));
                 }
 
-                if (!double.IsFinite(centerVal) || !double.IsFinite(sigmaRes))
+                double mult = (double)Multiplier;
+                decimal? centerDec = IndicatorCalculationHelper.ToDecimalOrNull(centerVal);
+                decimal? upperDec = IndicatorCalculationHelper.ToDecimalOrNull(centerVal + mult * sigmaRes);
+                decimal? lowerDec = IndicatorCalculationHelper.ToDecimalOrNull(centerVal - mult * sigmaRes);
+
+                if (!centerDec.HasValue || !upperDec.HasValue || !lowerDec.HasValue || !double.IsFinite(sigmaRes))
                 {
                     _values.Add(null);
                     UpperBand.Add(null);
@@ -174,12 +199,11 @@ public class CoreSSAResidualBandIndicator : CoreIndicatorBase
                 }
                 else
                 {
-                    decimal center = decimal.Round((decimal)centerVal, 8, MidpointRounding.AwayFromZero);
-                    double mult = (double)Multiplier;
-                    decimal upper = decimal.Round((decimal)(centerVal + mult * sigmaRes), 8, MidpointRounding.AwayFromZero);
-                    decimal lower = decimal.Round((decimal)(centerVal - mult * sigmaRes), 8, MidpointRounding.AwayFromZero);
+                    decimal center = decimal.Round(centerDec.Value, 8, MidpointRounding.AwayFromZero);
+                    decimal upper = decimal.Round(upperDec.Value, 8, MidpointRounding.AwayFromZero);
+                    decimal lower = decimal.Round(lowerDec.Value, 8, MidpointRounding.AwayFromZero);
 
-                    decimal? bw = (Math.Abs(centerVal) <= FloorEpsilon)
+                    decimal? bw = (Math.Abs(center) <= FloorEpsilonDecimal)
                         ? null
                         : decimal.Round(((upper - lower) / Math.Abs(center)) * 100m, 8, MidpointRounding.AwayFromZero);
 

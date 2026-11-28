@@ -59,3 +59,23 @@ internal sealed class DiscussionToolTestRig : IDisposable
         return McpTestSupport.Structured(joined).GetProperty("participantToken").GetString()!;
     }
 }
+
+/// <summary>A real <see cref="IMcpTool"/> for the tests that need an inner tool (the analysis-snapshot tool runs one): its weight and its work are given by the test.</summary>
+internal sealed class WeightedTool : IMcpTool
+{
+    private readonly Func<CancellationToken, Task<string>> _run;
+
+    public WeightedTool(string name, bool isHeavy, Func<CancellationToken, Task<string>> run)
+    {
+        Name = name;
+        IsHeavy = isHeavy;
+        _run = run;
+    }
+
+    public string Name { get; }
+    public string Description => "Test weighted tool.";
+    public bool IsHeavy { get; }
+    public bool IsReadOnly => true;
+    public string InputSchemaJson => ToolSchema.Object().Build();
+    public Task<string> InvokeAsync(JsonElement arguments, CancellationToken cancellationToken) => _run(cancellationToken);
+}

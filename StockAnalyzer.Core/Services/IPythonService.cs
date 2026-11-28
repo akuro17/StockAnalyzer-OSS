@@ -42,6 +42,8 @@ namespace StockAnalyzer.Core.Services
         Task RunUpdatePipelineAsync(string? symbol, SyncSessionConfig config, System.IProgress<int>? progress = null, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
         Task<bool> IsPackageInstalledAsync(string packageName, System.Threading.CancellationToken ct = default) => Task.FromResult(false);
         Task InstallPackagesAsync(IEnumerable<string> packageNames, bool forceUpgrade = false, System.IProgress<string>? progress = null, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
+        Task RunPipCommandAsync(IReadOnlyList<string> arguments, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
+        [System.Obsolete("Use RunPipCommandAsync(IReadOnlyList<string>, CancellationToken) so arguments use ProcessStartInfo.ArgumentList.")]
         Task RunPipCommandAsync(string arguments, System.Threading.CancellationToken ct = default) => Task.CompletedTask;
 
         /// <summary>

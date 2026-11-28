@@ -21,7 +21,7 @@ public sealed class RlLocalParquetReaderTests : IDisposable
         string path = Path.Combine(_root, Guid.NewGuid().ToString("N") + ".parquet");
         using var db = new DuckDBConnection("DataSource=:memory:"); db.Open();
         using var command = db.CreateCommand();
-        command.CommandText = $"COPY ({query}) TO '{ParquetMarketDataProvider.EscapeDuckDbPath(path.Replace('\\', '/'))}' (FORMAT PARQUET)";
+        command.CommandText = $"COPY ({query}) TO '{ParquetMarketDataProvider.FormatDuckDbPath(path)}' (FORMAT PARQUET)";
         command.ExecuteNonQuery(); return path;
     }
     private static string Row(string date, string open = "100.123456", string close = "101") =>

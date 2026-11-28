@@ -209,7 +209,7 @@ public sealed class DiscussionSettingsTests
     [Fact]
     public void TheFixedValuesAreThoseOfTheSpecification()
     {
-        Assert.Equal(3, DiscussionLimits.WireVersion);
+        Assert.Equal(4, DiscussionLimits.WireVersion);
         Assert.Equal(5242880, DiscussionLimits.WireMaxLineBytes);
         Assert.Equal(32, DiscussionLimits.MaxHubConnections);
         Assert.Equal(300, DiscussionLimits.PipeConnectTimeoutMs);

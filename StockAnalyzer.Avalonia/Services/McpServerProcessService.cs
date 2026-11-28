@@ -151,31 +151,24 @@ public class McpServerProcessService : IMcpServerProcessService
 
         // Ensure settings are fresh
         var settings = await _settingsManager.LoadAsync(cancellationToken).ConfigureAwait(false);
-        string arguments = settings.BuildLaunchArguments();
+        var argumentList = settings.BuildLaunchArgumentList();
+        string arguments = string.Join(" ", argumentList);
 
         var startInfo = new ProcessStartInfo
         {
             FileName = exePath,
-            Arguments = arguments,
             WorkingDirectory = Path.GetDirectoryName(exePath) ?? AppContext.BaseDirectory,
-            UseShellExecute = true // Launch with visible console window so user/agents can monitor stdout/stderr
+            UseShellExecute = false,
+            CreateNoWindow = false
         };
+        foreach (string arg in argumentList)
+        {
+            startInfo.ArgumentList.Add(arg);
+        }
 
         try
         {
-            Process? process;
-            try
-            {
-                process = Process.Start(startInfo);
-            }
-            catch (Exception ex) when (startInfo.UseShellExecute)
-            {
-                // Fallback to UseShellExecute = false if ShellExecute fails on target platform
-                _logger.LogWarning(ex, "Failed to start with UseShellExecute=true; trying UseShellExecute=false.");
-                startInfo.UseShellExecute = false;
-                startInfo.CreateNoWindow = false;
-                process = Process.Start(startInfo);
-            }
+            Process? process = Process.Start(startInfo);
 
             if (process is null)
             {

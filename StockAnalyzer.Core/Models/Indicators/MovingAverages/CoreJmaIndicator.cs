@@ -22,18 +22,18 @@ public class CoreJmaIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
+        _values.Clear();
 
-        if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
-        var prices = PriceDataHelper.ExtractPriceSeries(candles, PriceSource).Select(p => p ?? 0m).ToList();
-        if (prices.Count < Period || Period <= 1)
+        if (series == null || series.Count == 0) return IndicatorResult.Success(_values);
+        if (series.Count < Period || Period <= 1)
         {
-            _values.AddRange(Enumerable.Repeat<decimal?>(null, prices.Count));
+            _values.AddRange(Enumerable.Repeat<decimal?>(null, series.Count));
             return IndicatorResult.Success(_values);
         }
 
-        var results = new decimal?[prices.Count];
+        var results = new decimal?[series.Count];
 
         // Constants
         double phase_ratio = Phase < -100 ? 0.5 : (Phase > 100 ? 2.5 : Phase / 100.0 + 1.5);
@@ -46,15 +46,32 @@ public class CoreJmaIndicator : CoreIndicatorBase
 
         // State variables
         double e0 = 0, e1 = 0, e2 = 0, jma = 0;
+        int validCount = 0;
 
-        // Initialization with the first price
-        e0 = (double)prices[0];
-        jma = (double)prices[0];
-
-        // Start loop from the second price
-        for (int i = 1; i < prices.Count; i++)
+        for (int i = 0; i < series.Count; i++)
         {
-            double price = (double)prices[i];
+            if (!series[i].HasValue)
+            {
+                results[i] = null;
+                continue;
+            }
+
+            double price = (double)series[i]!.Value;
+            if (!double.IsFinite(price))
+            {
+                results[i] = null;
+                continue;
+            }
+
+            validCount++;
+            if (validCount == 1)
+            {
+                // Initialize recursive state at the first non-null bar
+                e0 = price;
+                jma = price;
+                results[i] = null;
+                continue;
+            }
 
             double prev_e0 = e0;
             e0 = (1 - alpha) * price + alpha * prev_e0;
@@ -67,11 +84,12 @@ public class CoreJmaIndicator : CoreIndicatorBase
 
             jma = jma + e2;
 
-            if (i >= Period)
+            if (validCount > Period)
             {
-                results[i] = (decimal)jma;
+                results[i] = IndicatorCalculationHelper.ToDecimalOrNull(jma);
             }
         }
+
         _values.AddRange(results);
 
         return IndicatorResult.Success(_values);

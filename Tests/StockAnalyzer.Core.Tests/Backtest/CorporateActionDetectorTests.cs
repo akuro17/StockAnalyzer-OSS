@@ -276,6 +276,108 @@ public class CorporateActionDetectorTests
         Assert.Equal(30_000, adjusted[5].Volume);
     }
 
+    [Fact]
+    public void DetectPotentialSplits_ThreeToTwoSplitWithVolumeSurge_EmitsWarning()
+    {
+        var builder = ImmutableArray.CreateBuilder<CandleData>();
+        for (int i = 0; i < 5; i++)
+        {
+            builder.Add(MakeBar(i, 150m, 10_000));
+        }
+        builder.Add(MakeBar(5, 100m, 30_000)); // ratio 1.5 (3:2 split), 3.0x volume surge
+
+        var warnings = CorporateActionDetector.DetectPotentialSplits(builder.ToImmutable());
+
+        BacktestWarning warning = Assert.Single(warnings);
+        Assert.Equal(WarningCode.PotentialUnadjustedSplit, warning.Code);
+        Assert.Equal(5, warning.BarIndex);
+        Assert.Contains("1.50", warning.Message);
+    }
+
+    [Fact]
+    public void DetectPotentialSplits_ZeroCurrentVolumeWithLowConfidenceFlag_ReturnsEmpty()
+    {
+        var builder = ImmutableArray.CreateBuilder<CandleData>();
+        for (int i = 0; i < 5; i++)
+        {
+            builder.Add(MakeBar(i, 100m, 0));
+        }
+        builder.Add(MakeBar(5, 50m, 0)); // 2:1 jump, currBar.Volume == 0 (FX/index)
+
+        var warnings = CorporateActionDetector.DetectPotentialSplits(
+            builder.ToImmutable(),
+            includeLowConfidenceWithoutVolumeSurge: true);
+
+        Assert.Empty(warnings);
+    }
+
+    [Fact]
+    public void DetectPotentialSplits_TwoToThreeReverseSplitWithoutVolumeSurge_EmitsLowConfidenceAndSkipsAdjustment()
+    {
+        var builder = ImmutableArray.CreateBuilder<CandleData>();
+        for (int i = 0; i < 5; i++)
+        {
+            builder.Add(MakeBar(i, 200m, 10_000));
+        }
+        // prev/curr = 200 / 301 = 0.66445..., within 1% of 2/3 (0.66666...), and 1.2x volume (< 2.5x surge)
+        builder.Add(MakeBar(5, 301m, 12_000));
+        ImmutableArray<CandleData> bars = builder.ToImmutable();
+
+        var warnings = CorporateActionDetector.DetectPotentialSplits(
+            bars,
+            includeLowConfidenceWithoutVolumeSurge: true);
+
+        BacktestWarning warning = Assert.Single(warnings);
+        Assert.Equal(WarningCode.PotentialUnadjustedSplitLowConfidence, warning.Code);
+        Assert.Equal(5, warning.BarIndex);
+        Assert.Contains("low-confidence: volume surge not confirmed", warning.Message);
+
+        // AdjustSplits must NEVER adjust PotentialUnadjustedSplitLowConfidence
+        ImmutableArray<CandleData> afterAdjust = CorporateActionDetector.AdjustSplits(bars, warnings);
+        Assert.Equal(bars, afterAdjust);
+
+        // AbortOnDetection and AutoAdjustHistorical must ignore low-confidence-only anomalies
+        var input = new BacktestInput(bars, "REV_SPLIT", TimeFrame.D1, BacktestInput.CurrentDataVersion, bars[0].Timestamp, bars[^1].Timestamp.AddDays(1), 0, 0);
+        var engine = new BacktestEngine(new StockAnalyzer.Core.Models.Indicators.IndicatorFactory());
+
+        var warnOnlyConfig = new BacktestConfiguration
+        {
+            InitialCapital = 10_000m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 1m,
+            InitialMarginRatio = 1m,
+            MaintenanceMarginRatio = 0.5m,
+            CorporateActionHandlingMode = CorporateActionHandlingMode.WarnOnly
+        };
+        var abortConfig = new BacktestConfiguration
+        {
+            InitialCapital = 10_000m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 1m,
+            InitialMarginRatio = 1m,
+            MaintenanceMarginRatio = 0.5m,
+            CorporateActionHandlingMode = CorporateActionHandlingMode.AbortOnDetection
+        };
+        var autoAdjustConfig = new BacktestConfiguration
+        {
+            InitialCapital = 10_000m,
+            SizingModel = PositionSizingModel.FixedQuantity,
+            SizingParameter = 1m,
+            InitialMarginRatio = 1m,
+            MaintenanceMarginRatio = 0.5m,
+            CorporateActionHandlingMode = CorporateActionHandlingMode.AutoAdjustHistorical
+        };
+
+        var warnOnlyResult = engine.Run(input, warnOnlyConfig, new NullStrategy());
+        Assert.Contains(warnOnlyResult.Warnings, w => w.Code == WarningCode.PotentialUnadjustedSplitLowConfidence);
+
+        var abortResult = engine.Run(input, abortConfig, new NullStrategy());
+        Assert.Empty(abortResult.Warnings);
+
+        var autoAdjustResult = engine.Run(input, autoAdjustConfig, new NullStrategy());
+        Assert.Empty(autoAdjustResult.Warnings);
+    }
+
     private sealed class NullStrategy : IBacktestStrategy
     {
         public string Name => "Null";

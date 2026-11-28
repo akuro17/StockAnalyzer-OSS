@@ -448,6 +448,7 @@ internal sealed class RunPortfolioBacktestTool : IMcpTool
         {
             advisoryWarnings.Add(sampleAdvisory);
         }
+        BacktestAdvisory.AppendBacktestAdvisories(advisoryWarnings, settings.Configuration);
 
         return ToolJson.Build(writer =>
         {

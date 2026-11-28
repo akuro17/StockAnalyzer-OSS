@@ -1431,7 +1431,7 @@ public sealed class DiscussionHub : IDisposable
             for (int index = session.Messages.Count - 1; index >= 0 && messages.Count < tail; index--)
             {
                 MessageRecord record = session.Messages[index];
-                if (PassesFilter(record, options))
+                if (PassesFilter(record, options, participant.Handle))
                 {
                     messages.Add(ToReadMessage(session, record));
                 }
@@ -1447,7 +1447,7 @@ public sealed class DiscussionHub : IDisposable
             {
                 MessageRecord record = session.Messages[index];
                 next = record.Sequence;
-                if (PassesFilter(record, options))
+                if (PassesFilter(record, options, participant.Handle))
                 {
                     messages.Add(ToReadMessage(session, record));
                     if (messages.Count == limit)
@@ -1462,8 +1462,34 @@ public sealed class DiscussionHub : IDisposable
         return new DiscussionReadResult(messages, next, last, next < last, timedOut, Header(session, op.Now));
     }
 
-    private static bool PassesFilter(MessageRecord record, DiscussionReadOptions options)
-        => !options.ExcludeEvents || record.Kind != DiscussionMessageKind.Event;
+    /// <summary>
+    /// Whether a record is shown by a read with <paramref name="options"/>. Events are removed only by <see cref="DiscussionReadOptions.ExcludeEvents"/>; the caller's own
+    /// records only by <see cref="DiscussionReadOptions.ExcludeOwn"/> (which needs <paramref name="callerHandle"/>), and the two flags are independent.
+    /// </summary>
+    private static bool PassesFilter(MessageRecord record, DiscussionReadOptions options, string? callerHandle = null)
+    {
+        if (options.ExcludeEvents && record.Kind == DiscussionMessageKind.Event)
+        {
+            return false;
+        }
+
+        return !(options.ExcludeOwn && callerHandle is not null && IsOwnAuthored(record, callerHandle));
+    }
+
+    /// <summary>
+    /// True for a record that the caller wrote: its handle is the caller's (ordinal; a participant that re-joined keeps its handle) and its kind is classified as authored by a
+    /// participant. The table is positive on purpose: a kind added later is shown until somebody decides about it (the kind test guards the table), never hidden by a negated test.
+    /// </summary>
+    private static bool IsOwnAuthored(MessageRecord record, string callerHandle)
+        => record.Handle is not null
+            && string.Equals(record.Handle, callerHandle, StringComparison.Ordinal)
+            && record.Kind switch
+            {
+                DiscussionMessageKind.Message => true,
+                DiscussionMessageKind.Analysis => true,
+                DiscussionMessageKind.Event => false,
+                _ => false,
+            };
 
     // ---- analysis snapshots (hub side of spec 5.10) -----------------------------------------------------------------------------------
 

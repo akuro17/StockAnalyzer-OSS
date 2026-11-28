@@ -35,17 +35,17 @@ internal sealed class GetModelAttentionTool : IMcpTool
     public GetModelAttentionTool(
         IReadOnlyStockAnalyzerGateway gateway,
         SymbolResolver symbols,
+        ErrorMessageSanitizer sanitizer,
         IStockAnalyzerSettings? settings = null,
         ReadOnlyModelGenerationRegistry? registry = null,
         IAttentionService? attentionService = null,
-        McpLimits? limits = null,
-        ErrorMessageSanitizer? sanitizer = null)
+        McpLimits? limits = null)
     {
         _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
         _symbols = symbols ?? throw new ArgumentNullException(nameof(symbols));
+        _sanitizer = sanitizer ?? throw new ArgumentNullException(nameof(sanitizer));
         _registry = registry ?? new ReadOnlyModelGenerationRegistry();
         _limits = limits ?? new McpLimits();
-        _sanitizer = sanitizer ?? new ErrorMessageSanitizer(Array.Empty<string?>());
         _attentionService = attentionService ?? new AttentionService(
             _registry,
             settings ?? FallbackSettings(),

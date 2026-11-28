@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using StockAnalyzer.Core.Models;
+using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Indicators.Oscillators;
 using StockAnalyzer.Core.Models.ScreeningConditions;
 using Xunit;
 
@@ -99,5 +101,44 @@ public class RsiOversoldConditionTests
 
         var condition = new RsiOversoldCondition(period: 14, threshold: 30m);
         Assert.False(condition.IsMet(candles));
+    }
+
+    [Fact]
+    public void IsMet_UsesWilderSmoothingMatchingCoreRsiIndicator()
+    {
+        // Audit benchmark series: 100, +10 x7, -1 x7, +10 x7, -1 x7, +5 x14
+        // Last 14 bars are strictly rising (+5), so a simple rolling window would give 100.0 (false for < 98),
+        // while Wilder RSI retains prior loss history (~95.81 < 98 -> true).
+        var closes = new List<decimal> { 100m };
+        void AppendStep(int count, decimal delta)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                closes.Add(closes[^1] + delta);
+            }
+        }
+
+        AppendStep(7, 10m);
+        AppendStep(7, -1m);
+        AppendStep(7, 10m);
+        AppendStep(7, -1m);
+        AppendStep(14, 5m);
+
+        var candles = CreateSequence(closes.ToArray());
+        var coreCandles = new CoreCandleData[candles.Count];
+        for (int i = 0; i < candles.Count; i++)
+        {
+            CandleData c = candles[i];
+            coreCandles[i] = new CoreCandleData(c.Timestamp, c.Open, c.High, c.Low, c.Close, c.Volume);
+        }
+
+        var indicator = new CoreRsiIndicator { Period = 14, PriceSource = PriceType.Close };
+        IIndicatorResult result = indicator.Calculate(coreCandles);
+        Assert.True(result.IsSuccessful);
+        decimal latestWilderRsi = result.MainValues[^1]!.Value;
+
+        Assert.InRange(latestWilderRsi, 95m, 97m);
+        Assert.True(new RsiOversoldCondition(period: 14, threshold: 98m).IsMet(candles));
+        Assert.False(new RsiOversoldCondition(period: 14, threshold: latestWilderRsi).IsMet(candles));
     }
 }

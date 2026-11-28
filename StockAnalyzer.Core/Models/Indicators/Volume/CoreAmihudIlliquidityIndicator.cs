@@ -21,29 +21,32 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
-
-            if (candles.Count < 2)
+            if (Period < 1 || candles.Count < 2)
             {
                 for (int i = 0; i < candles.Count; i++) _values.Add(null);
                 return IndicatorResult.Success(_values);
             }
 
             var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            var illiquidityValues = new List<decimal?>();
+            var illiquidityValues = new List<decimal?>(candles.Count);
             illiquidityValues.Add(null); // No return for the first candle
 
             for (int i = 1; i < candles.Count; i++)
             {
                 var current = candles[i];
-                decimal previousPrice = priceSeries[i - 1] ?? 0m;
+                decimal? currPriceNullable = priceSeries[i];
+                decimal? prevPriceNullable = priceSeries[i - 1];
 
-                if (previousPrice == 0 || current.Volume == 0)
+                if (!currPriceNullable.HasValue || !prevPriceNullable.HasValue ||
+                    prevPriceNullable.Value <= 0m || currPriceNullable.Value <= 0m || current.Volume <= 0)
                 {
-                    illiquidityValues.Add(0); // Avoid division by zero, treat as perfectly liquid
+                    illiquidityValues.Add(null);
                     continue;
                 }
 
-                decimal returnVal = ((priceSeries[i] ?? 0m) - previousPrice) / previousPrice;
+                decimal currPrice = currPriceNullable.Value;
+                decimal prevPrice = prevPriceNullable.Value;
+                decimal returnVal = (currPrice - prevPrice) / prevPrice;
                 illiquidityValues.Add(Math.Abs(returnVal) / current.Volume);
             }
 
@@ -55,7 +58,7 @@ namespace StockAnalyzer.Core.Models.Indicators.Volume
                     continue;
                 }
 
-                decimal? sum = 0;
+                decimal sum = 0m;
                 int count = 0;
                 for (int j = i - Period + 1; j <= i; j++)
                 {

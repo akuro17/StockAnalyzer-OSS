@@ -20,6 +20,7 @@ public interface IStockAnalyzerSettings
     int SyncTimeoutMinutes { get; }
     IReadOnlyList<string> PythonEssentialPackages { get; }
     int DisposeWaitMs { get; }
+    bool PythonAutoUpdatePackagesOnStartup => new Models.Settings.PythonSettings().AutoUpdatePackagesOnStartup;
 
     // Chart Defaults
     string DefaultSymbol { get; }
@@ -191,6 +192,8 @@ public interface IStockAnalyzerSettings
     int? PredictionIntraOpNumThreads => Models.Settings.PredictionSettings.DefaultIntraOpNumThreads;
     int? PredictionInterOpNumThreads => Models.Settings.PredictionSettings.DefaultInterOpNumThreads;
     bool PredictionAllowIntraOpSpinning => Models.Settings.PredictionSettings.DefaultAllowIntraOpSpinning;
+    string? PredictionExpectedModelSha256 => new Models.Settings.PredictionSettings().ExpectedModelSha256;
+    bool PredictionRequireVerifiedFallbackModel => new Models.Settings.PredictionSettings().RequireVerifiedFallbackModel;
 
     // Localization
     string? LocaleResourcePath { get; }

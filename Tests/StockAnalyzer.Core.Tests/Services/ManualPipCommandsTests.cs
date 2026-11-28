@@ -104,7 +104,7 @@ namespace StockAnalyzer.Core.Tests.Services
         {
             var command = ManualPipCommands.Setup(ManualShell.CommandPrompt);
 
-            Assert.Contains($"-m pip install --no-build-isolation -r \"{ManualPipCommands.RequirementsFile}\"", command);
+            Assert.Contains($"-m pip install --only-binary :all: -r \"{ManualPipCommands.RequirementsFile}\"", command);
             Assert.DoesNotContain("--upgrade -r", command);
         }
 
@@ -115,7 +115,7 @@ namespace StockAnalyzer.Core.Tests.Services
         {
             var command = ManualPipCommands.Setup(shell);
 
-            Assert.Contains($"-m pip install --no-build-isolation -r {ManualPipCommands.QuotePath(shell, ManualPipCommands.RequirementsFile)}", command);
+            Assert.Contains($"-m pip install --only-binary :all: -r {ManualPipCommands.QuotePath(shell, ManualPipCommands.RequirementsFile)}", command);
             Assert.DoesNotContain($"-r \"{ManualPipCommands.RequirementsFile}\"", command);
         }
 
@@ -124,7 +124,7 @@ namespace StockAnalyzer.Core.Tests.Services
         {
             var command = ManualPipCommands.Update(ManualShell.PowerShell7);
 
-            Assert.Contains("-m pip install --no-build-isolation --upgrade yfinance pandas polars pyarrow", command);
+            Assert.Contains("-m pip install --only-binary :all: --upgrade yfinance pandas polars pyarrow", command);
             Assert.DoesNotContain("==", command);
         }
 

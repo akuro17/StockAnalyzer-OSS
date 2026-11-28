@@ -173,6 +173,45 @@ public class VolumeProfileViewportTests
         Assert.Single(dest);
         Assert.Equal(5, dest[0].StartIndex);
         Assert.Equal(15, dest[0].Count);
+        Assert.False(dest[0].IsPartial);
+    }
+
+    [Fact]
+    public void BuildRanges_CountLessThanPeriod_MarksIsPartialTrue()
+    {
+        var candles = new List<CoreCandleData>();
+        var baseDate = new DateTime(2026, 1, 1);
+        for (int i = 0; i < 10; i++)
+        {
+            candles.Add(CreateCandle(baseDate.AddDays(i), 10m, 15m, 8m, 12m, 1000));
+        }
+
+        var dest = new List<VolumeProfileRange>();
+        VolumeProfileRangeBuilder.Build(candles, 0, 10, 20, dest);
+
+        Assert.Single(dest);
+        Assert.Equal(0, dest[0].StartIndex);
+        Assert.Equal(10, dest[0].Count);
+        Assert.True(dest[0].IsPartial);
+    }
+
+    [Fact]
+    public void BuildRanges_PeriodZeroWithClampedVisibleCount_MarksIsPartialFalse()
+    {
+        var candles = new List<CoreCandleData>();
+        var baseDate = new DateTime(2026, 1, 1);
+        for (int i = 0; i < 10; i++)
+        {
+            candles.Add(CreateCandle(baseDate.AddDays(i), 10m, 15m, 8m, 12m, 1000));
+        }
+
+        var dest = new List<VolumeProfileRange>();
+        VolumeProfileRangeBuilder.Build(candles, 0, 50, 0, dest);
+
+        Assert.Single(dest);
+        Assert.Equal(0, dest[0].StartIndex);
+        Assert.Equal(10, dest[0].Count);
+        Assert.False(dest[0].IsPartial);
     }
 
     #endregion

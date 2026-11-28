@@ -52,43 +52,64 @@ public class CoreHilbertTrendModeIndicator : CoreIndicatorBase
         }
 
         int count = series.Count;
-        decimal[] prices = ArrayPool<decimal>.Shared.Rent(count);
-        try
+        for (int i = 0; i < count; i++)
         {
-            for (int i = 0; i < count; i++)
-            {
-                prices[i] = series[i] ?? 0m;
-            }
-
-            var decompositionParams = new HilbertDecompositionParameters(
-                DefaultPeriod: DefaultPeriod,
-                MinPeriod: MinPeriod,
-                MaxPeriod: MaxPeriod,
-                SmoothBeta: SmoothBeta,
-                DeltaLimit: DeltaLimit,
-                WarmupBars: IndicatorDefaultConstants.HilbertTransformWarmupBars,
-                StabilityWindow: StabilityWindow,
-                StabilityThresholdDegrees: StabilityThreshold,
-                DetrendMode: DetrendMode);
-
-            var decomp = HilbertDecompositionEngine.Decompose(prices.AsSpan(0, count), decompositionParams);
-
-            for (int i = 0; i < count; i++)
-            {
-                var sample = decomp[i];
-                if (sample.IsWarmup || !sample.IsValid || double.IsNaN(sample.CycleStability))
-                {
-                    _values.Add(null);
-                }
-                else
-                {
-                    _values.Add(sample.TrendMode ? 1m : 0m);
-                }
-            }
+            _values.Add(null);
         }
-        finally
+
+        var decompositionParams = new HilbertDecompositionParameters(
+            DefaultPeriod: DefaultPeriod,
+            MinPeriod: MinPeriod,
+            MaxPeriod: MaxPeriod,
+            SmoothBeta: SmoothBeta,
+            DeltaLimit: DeltaLimit,
+            WarmupBars: IndicatorDefaultConstants.HilbertTransformWarmupBars,
+            StabilityWindow: StabilityWindow,
+            StabilityThresholdDegrees: StabilityThreshold,
+            DetrendMode: DetrendMode);
+
+        // Compute only across contiguous non-null segments; never substitute 0m for missing bars.
+        int segStart = 0;
+        while (segStart < count)
         {
-            ArrayPool<decimal>.Shared.Return(prices);
+            if (!series[segStart].HasValue)
+            {
+                segStart++;
+                continue;
+            }
+
+            int segEnd = segStart + 1;
+            while (segEnd < count && series[segEnd].HasValue)
+            {
+                segEnd++;
+            }
+
+            int segLen = segEnd - segStart;
+            decimal[] segPrices = ArrayPool<decimal>.Shared.Rent(segLen);
+            try
+            {
+                for (int k = 0; k < segLen; k++)
+                {
+                    segPrices[k] = series[segStart + k]!.Value;
+                }
+
+                var decomp = HilbertDecompositionEngine.Decompose(segPrices.AsSpan(0, segLen), decompositionParams);
+
+                for (int k = 0; k < segLen; k++)
+                {
+                    var sample = decomp[k];
+                    if (!sample.IsWarmup && sample.IsValid && !double.IsNaN(sample.CycleStability))
+                    {
+                        _values[segStart + k] = sample.TrendMode ? 1m : 0m;
+                    }
+                }
+            }
+            finally
+            {
+                ArrayPool<decimal>.Shared.Return(segPrices);
+            }
+
+            segStart = segEnd;
         }
 
         return IndicatorResult.Success(_values);

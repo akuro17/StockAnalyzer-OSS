@@ -292,6 +292,11 @@ public static class ScreenerHistoryRequirements
             return EnumerateEntries(treeCondition.Root).Select(GetMaxPeriod).DefaultIfEmpty(0).Max();
         }
 
+        if (condition is RsiOversoldCondition rsi)
+        {
+            return Math.Max(UnknownConditionPeriod, rsi.Period);
+        }
+
         return UnknownConditionPeriod;
     }
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -91,10 +92,13 @@ public sealed partial class BacktestEngine : IBacktestEngine, IBacktestDiagnosti
             return new BacktestDiagnosedRun(BacktestResult.CreateEmpty(configuration), null);
         }
 
-        ImmutableArray<BacktestWarning> warnings = CorporateActionDetector.DetectPotentialSplits(input.Bars);
+        ImmutableArray<BacktestWarning> warnings = CorporateActionDetector.DetectPotentialSplits(
+            input.Bars,
+            includeLowConfidenceWithoutVolumeSurge: configuration.CorporateActionHandlingMode == CorporateActionHandlingMode.WarnOnly);
         if (!warnings.IsEmpty)
         {
-            if (configuration.CorporateActionHandlingMode == CorporateActionHandlingMode.AbortOnDetection)
+            if (configuration.CorporateActionHandlingMode == CorporateActionHandlingMode.AbortOnDetection &&
+                warnings.Any(static w => w.Code == WarningCode.PotentialUnadjustedSplit))
             {
                 throw new DataIntegrityException(
                     $"Potential unadjusted corporate action detected ({warnings.Length} warnings). Backtest aborted per AbortOnDetection configuration.");

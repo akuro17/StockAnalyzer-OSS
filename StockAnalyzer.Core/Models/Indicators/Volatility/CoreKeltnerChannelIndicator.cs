@@ -42,36 +42,35 @@ public class CoreKeltnerChannelIndicator : CoreIndicatorBase
         UpperBand.Clear();
         LowerBand.Clear();
 
+        if (candles.Count == 0)
+        {
+            return CreateAutomaticResult();
+        }
+
+        if (EmaPeriod <= 0 || AtrPeriod <= 0)
+        {
+            for (int i = 0; i < candles.Count; i++)
+            {
+                _values.Add(null);
+                UpperBand.Add(null);
+                LowerBand.Add(null);
+            }
+            return CreateAutomaticResult();
+        }
+
         // Center line follows the configurable Price Source (defaults to Close, preserving prior behavior).
         // The ATR band width intentionally keeps using the real High/Low/Close — inherent to ATR's definition.
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-
-        decimal mult = 2m / (EmaPeriod + 1);
-        decimal? ema = null;
+        var emas = IndicatorCalculationHelper.CalculateEmaWithNulls(priceSeries, EmaPeriod);
 
         var atr = new CoreAtrIndicator { Period = AtrPeriod };
         atr.Calculate(candles);
 
-        int emaSeedIndex = EmaPeriod - 1;
-
         for (int i = 0; i < candles.Count; i++)
         {
-            if (i >= emaSeedIndex)
-            {
-                if (ema == null)
-                {
-                    decimal sum = 0;
-                    for (int j = 0; j < EmaPeriod; j++) sum += priceSeries[i - j] ?? 0m;
-                    ema = sum / EmaPeriod;
-                }
-                else
-                {
-                    ema = ((priceSeries[i] ?? 0m) - ema.Value) * mult + ema.Value;
-                }
-            }
-
-            var atrV = atr.Values[i];
-            if (ema == null || !atrV.HasValue)
+            decimal? ema = emas[i];
+            decimal? atrV = atr.Values[i];
+            if (!ema.HasValue || !atrV.HasValue)
             {
                 _values.Add(null);
                 UpperBand.Add(null);
@@ -79,9 +78,9 @@ public class CoreKeltnerChannelIndicator : CoreIndicatorBase
             }
             else
             {
-                _values.Add(ema);
-                UpperBand.Add(ema + Multiplier * atrV.Value);
-                LowerBand.Add(ema - Multiplier * atrV.Value);
+                _values.Add(ema.Value);
+                UpperBand.Add(ema.Value + Multiplier * atrV.Value);
+                LowerBand.Add(ema.Value - Multiplier * atrV.Value);
             }
         }
 

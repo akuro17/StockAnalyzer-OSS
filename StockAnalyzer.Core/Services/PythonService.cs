@@ -32,6 +32,10 @@ namespace StockAnalyzer.Core.Services
             new(@"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$",
                 System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
+        private static readonly System.Text.RegularExpressions.Regex ValidPyPiPackageNameRegex =
+            new(@"^[A-Za-z0-9._-]+$",
+                System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
         private void LogSyncActivity(string message, LogLevel level = LogLevel.Information)
         {
             _logger.Log(level, "{Message}", message);
@@ -315,6 +319,15 @@ namespace StockAnalyzer.Core.Services
 
         public async Task<string> SendCandlesAsync(System.Collections.Generic.List<StockAnalyzer.Core.Models.CandleData> candles)
         {
+            ArgumentNullException.ThrowIfNull(candles);
+            if (candles.Count > Models.Settings.PythonIpcLimits.MaxTransferRows)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(candles),
+                    candles.Count,
+                    $"Candle count cannot exceed {Models.Settings.PythonIpcLimits.MaxTransferRows}.");
+            }
+
             if (_processManager == null) throw new InvalidOperationException("External process not initialized.");
 
             // IMPORTANT: Do NOT acquire _transactionLock here.
@@ -357,6 +370,23 @@ namespace StockAnalyzer.Core.Services
 
         public async Task<string> CalculateFftTrendFilterAsync(int windowSize = IndicatorDefaultConstants.FftTrendFilterDefaultWindowSize, int numHarmonics = IndicatorDefaultConstants.FftTrendFilterDefaultNumHarmonics)
         {
+            if (windowSize < Models.Settings.PythonIpcLimits.MinWindowSize || windowSize > Models.Settings.PythonIpcLimits.MaxWindowSize)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(windowSize),
+                    windowSize,
+                    $"windowSize must be between {Models.Settings.PythonIpcLimits.MinWindowSize} and {Models.Settings.PythonIpcLimits.MaxWindowSize}.");
+            }
+
+            int maxHarmonics = windowSize / 2 + 1;
+            if (numHarmonics < 1 || numHarmonics > maxHarmonics)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(numHarmonics),
+                    numHarmonics,
+                    $"numHarmonics must be between 1 and {maxHarmonics}.");
+            }
+
             if (_processManager == null) throw new InvalidOperationException("External process not initialized.");
 
             return await _processManager.SendCommandAsync("calculate_fft_trend_filter", new { windowSize = windowSize, numHarmonics = numHarmonics });
@@ -371,6 +401,8 @@ namespace StockAnalyzer.Core.Services
 
         public async Task<string> SearchSimilarPatternsAsync(int lookback = 0, int topK = 5, int futureSteps = 20, double threshold = 0.3, int queryLength = 30, int queryStartIndex = -1, bool useStructural = false, int warpingRadius = ChartConstants.DtwDefaultWarpingRadius, System.Collections.Generic.IReadOnlyList<double>? volatility = null)
         {
+            ValidateSearchSimilarPatternsArgs(lookback, topK, futureSteps, threshold, queryLength, queryStartIndex, warpingRadius);
+
             if (_processManager == null) throw new InvalidOperationException("External process not initialized.");
 
             return await _processManager.SendCommandAsync("search_similar_patterns", new
@@ -385,6 +417,31 @@ namespace StockAnalyzer.Core.Services
                 warpingRadius = warpingRadius,
                 volatility = volatility
             });
+        }
+
+        private static void ValidateSearchSimilarPatternsArgs(
+            int lookback,
+            int topK,
+            int futureSteps,
+            double threshold,
+            int queryLength,
+            int queryStartIndex,
+            int warpingRadius)
+        {
+            if (lookback < Models.Settings.PythonIpcLimits.MinLookback || lookback > Models.Settings.PythonIpcLimits.MaxLookback)
+                throw new ArgumentOutOfRangeException(nameof(lookback), lookback, $"lookback must be between {Models.Settings.PythonIpcLimits.MinLookback} and {Models.Settings.PythonIpcLimits.MaxLookback}.");
+            if (topK < Models.Settings.PythonIpcLimits.MinTopK || topK > Models.Settings.PythonIpcLimits.MaxTopK)
+                throw new ArgumentOutOfRangeException(nameof(topK), topK, $"topK must be between {Models.Settings.PythonIpcLimits.MinTopK} and {Models.Settings.PythonIpcLimits.MaxTopK}.");
+            if (futureSteps < Models.Settings.PythonIpcLimits.MinFutureSteps || futureSteps > Models.Settings.PythonIpcLimits.MaxFutureSteps)
+                throw new ArgumentOutOfRangeException(nameof(futureSteps), futureSteps, $"futureSteps must be between {Models.Settings.PythonIpcLimits.MinFutureSteps} and {Models.Settings.PythonIpcLimits.MaxFutureSteps}.");
+            if (!double.IsFinite(threshold) || threshold < Models.Settings.PythonIpcLimits.MinThreshold || threshold > Models.Settings.PythonIpcLimits.MaxThreshold)
+                throw new ArgumentOutOfRangeException(nameof(threshold), threshold, $"threshold must be finite and between {Models.Settings.PythonIpcLimits.MinThreshold} and {Models.Settings.PythonIpcLimits.MaxThreshold}.");
+            if (queryLength < Models.Settings.PythonIpcLimits.MinQueryLength || queryLength > Models.Settings.PythonIpcLimits.MaxQueryLength)
+                throw new ArgumentOutOfRangeException(nameof(queryLength), queryLength, $"queryLength must be between {Models.Settings.PythonIpcLimits.MinQueryLength} and {Models.Settings.PythonIpcLimits.MaxQueryLength}.");
+            if (queryStartIndex < Models.Settings.PythonIpcLimits.MinQueryStartIndex || queryStartIndex > Models.Settings.PythonIpcLimits.MaxTransferRows)
+                throw new ArgumentOutOfRangeException(nameof(queryStartIndex), queryStartIndex, $"queryStartIndex must be between {Models.Settings.PythonIpcLimits.MinQueryStartIndex} and {Models.Settings.PythonIpcLimits.MaxTransferRows}.");
+            if (warpingRadius < Models.Settings.PythonIpcLimits.MinWarpingRadius || warpingRadius > Models.Settings.PythonIpcLimits.MaxWarpingRadius)
+                throw new ArgumentOutOfRangeException(nameof(warpingRadius), warpingRadius, $"warpingRadius must be between {Models.Settings.PythonIpcLimits.MinWarpingRadius} and {Models.Settings.PythonIpcLimits.MaxWarpingRadius}.");
         }
 
         private string ResolvePythonExecutable()
@@ -414,141 +471,18 @@ namespace StockAnalyzer.Core.Services
 
             LogSyncActivity($"RunUpdatePipelineAsync START for {symbol}");
 
-            // Set a safety timeout from settings (default 2 minutes) to prevent indefinite hangs.
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            var timeoutMinutes = _settings.SyncTimeoutMinutes > 0 ? _settings.SyncTimeoutMinutes : 2;
-            timeoutCts.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes));
-            var linkedToken = timeoutCts.Token;
-
-            var executionTask = Task.Run(async () =>
-            {
-                try
+            await ExecuteUpdatePipelineCoreAsync(
+                symbol,
+                args =>
                 {
-                    LogSyncActivity("Pipeline task started in background...");
-
-                    // 1. Initialize
-                    LogSyncActivity("Invoking InitializeAsync...");
-                    await InitializeAsync(ct: linkedToken);
-
-                    // 2. Resolve Paths
-                    var pythonExe = ResolvePythonExecutable();
-
-                    if (!System.IO.File.Exists(pythonExe))
-                        throw new System.IO.FileNotFoundException($"Python executable not found at {pythonExe}");
-
-                    var resolvedScriptPath = PythonScriptLocator.Resolve("update_pipeline.py");
-
-                    // 3. Process Setup
-                    var startInfo = new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = pythonExe,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        CreateNoWindow = true,
-                        StandardOutputEncoding = System.Text.Encoding.UTF8,
-                        StandardErrorEncoding = System.Text.Encoding.UTF8,
-                        WorkingDirectory = System.IO.Path.GetDirectoryName(resolvedScriptPath)
-                    };
-                    startInfo.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
-
-                    startInfo.ArgumentList.Add("-u");
-                    startInfo.ArgumentList.Add(resolvedScriptPath);
-                    if (!string.IsNullOrEmpty(symbol))
-                    {
-                        startInfo.ArgumentList.Add("--ticker");
-                        startInfo.ArgumentList.Add(symbol);
-                    }
                     if (forceMetadata)
                     {
-                        startInfo.ArgumentList.Add("--force-metadata");
+                        args.Add("--force-metadata");
                     }
-
-                    LogSyncActivity($"Starting process: {pythonExe} {string.Join(" ", startInfo.ArgumentList)}");
-
-                    var combinedOutput = new RollingLogBuffer(500);
-
-                    await _resiliencePipeline.ExecuteAsync(async innerCt =>
-                    {
-                        using var process = new System.Diagnostics.Process { StartInfo = startInfo };
-
-                        process.OutputDataReceived += (s, e) =>
-                        {
-                            if (string.IsNullOrEmpty(e.Data)) return;
-                            combinedOutput.AppendLine(e.Data);
-                            if (e.Data.StartsWith("PROGRESS:"))
-                            {
-                                if (int.TryParse(e.Data.Substring(9), out int p)) progress?.Report(p);
-                            }
-                        };
-                        process.ErrorDataReceived += (s, e) =>
-                        {
-                            if (!string.IsNullOrEmpty(e.Data))
-                            {
-                                combinedOutput.AppendLine("[STDERR] " + e.Data);
-                                LogSyncActivity($"[Python ERR] {e.Data}", LogLevel.Debug);
-                            }
-                        };
-
-                        using var reg = innerCt.Register(() =>
-                        {
-                            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
-                        });
-
-                        process.Start();
-                        using var jobHandle = WindowsJobObject.TryAssign(process);
-                        process.BeginOutputReadLine();
-                        process.BeginErrorReadLine();
-
-                        try
-                        {
-                            await process.WaitForExitAsync(innerCt);
-                        }
-                        catch
-                        {
-                            try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
-                            throw;
-                        }
-
-                        LogSyncActivity($"Process exited with code {process.ExitCode}");
-
-                        if (process.ExitCode != 0)
-                        {
-                            var errorLogs = combinedOutput.ToString();
-                            throw new Exception($"Update pipeline failed with exit code {process.ExitCode}.{Environment.NewLine}Logs:{Environment.NewLine}{errorLogs}");
-                        }
-                    }, linkedToken);
-
-                    string? timeframeFailure = await GenerateTimeFramesAsync(symbol, progress, linkedToken).ConfigureAwait(false);
-
-                    if (timeframeFailure != null)
-                    {
-                        throw new InvalidOperationException(timeframeFailure);
-                    }
-
-                    LogSyncActivity("Pipeline task completed Successfully.");
-                    progress?.Report(100);
-                }
-                catch (Exception ex)
-                {
-                    LogSyncActivity($"Pipeline task FAILED: {ex.GetType().Name}: {ex.Message}");
-                    throw;
-                }
-            }, linkedToken);
-
-            var timeoutTask = Task.Delay(TimeSpan.FromMinutes(timeoutMinutes), linkedToken);
-
-            var completedTask = await Task.WhenAny(executionTask, timeoutTask);
-
-            if (completedTask == timeoutTask)
-            {
-                LogSyncActivity($"RunUpdatePipelineAsync TIMEOUT triggered ({timeoutMinutes} minutes)", LogLevel.Error);
-                throw new TimeoutException($"The update pipeline timed out after {timeoutMinutes} minutes. Please check the application logs for details.");
-            }
-
-            // Await executionTask to propagate any exceptions
-            await executionTask;
-            LogSyncActivity("RunUpdatePipelineAsync FINISH (Success)");
+                },
+                "RunUpdatePipelineAsync",
+                progress,
+                ct).ConfigureAwait(false);
         }
 
         /// <summary>
@@ -622,31 +556,76 @@ namespace StockAnalyzer.Core.Services
 
             LogSyncActivity($"RunUpdatePipelineAsync (Config) START for {symbol}");
 
-            // Set a safety timeout from settings (default 2 minutes) to prevent indefinite hangs.
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            await ExecuteUpdatePipelineCoreAsync(
+                symbol,
+                args =>
+                {
+                    if (!config.IsTimeSeriesSyncEnabled)
+                    {
+                        args.Add("--skip-daily");
+                    }
+                    if (config.IsMetadataSyncEnabled)
+                    {
+                        args.Add("--force-metadata");
+                        if (config.IsImputeMissingMetadataEnabled)
+                        {
+                            args.Add("--impute-missing");
+                        }
+                    }
+
+                    // Delay is fully managed on the C# Ticker-Loop side. Force Python process delay to 0.
+                    args.Add("--delay");
+                    args.Add("0");
+
+                    if (config.IsFullHistoryEnabled)
+                    {
+                        args.Add("--full-history");
+                    }
+                    else
+                    {
+                        args.Add("--start-period");
+                        args.Add(config.StartSyncPeriodYears.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    }
+
+                    if (config.IsForcePeriodDownloadEnabled)
+                    {
+                        args.Add("--force-period");
+                    }
+                },
+                "RunUpdatePipelineAsync (Config)",
+                progress,
+                ct).ConfigureAwait(false);
+        }
+
+        private async Task ExecuteUpdatePipelineCoreAsync(
+            string? symbol,
+            Action<System.Collections.Generic.IList<string>> appendArguments,
+            string logLabel,
+            IProgress<int>? progress,
+            CancellationToken ct)
+        {
             var timeoutMinutes = _settings.SyncTimeoutMinutes > 0 ? _settings.SyncTimeoutMinutes : 2;
-            timeoutCts.CancelAfter(TimeSpan.FromMinutes(timeoutMinutes));
+            var timeout = TimeSpan.FromMinutes(timeoutMinutes);
+            var timeoutSeconds = checked(timeoutMinutes * 60);
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             var linkedToken = timeoutCts.Token;
 
             var executionTask = Task.Run(async () =>
             {
                 try
                 {
-                    LogSyncActivity("Pipeline task (Config) started in background...");
+                    LogSyncActivity($"Pipeline task ({logLabel}) started in background...");
 
-                    // 1. Initialize
-                    LogSyncActivity("Invoking InitializeAsync...");
-                    await InitializeAsync(ct: linkedToken);
+                    await InitializeAsync(ct: linkedToken).ConfigureAwait(false);
 
-                    // 2. Resolve Paths
                     var pythonExe = ResolvePythonExecutable();
-
                     if (!System.IO.File.Exists(pythonExe))
                         throw new System.IO.FileNotFoundException($"Python executable not found at {pythonExe}");
 
                     var resolvedScriptPath = PythonScriptLocator.Resolve("update_pipeline.py");
 
-                    // 3. Process Setup
                     var startInfo = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = pythonExe,
@@ -667,40 +646,11 @@ namespace StockAnalyzer.Core.Services
                         startInfo.ArgumentList.Add("--ticker");
                         startInfo.ArgumentList.Add(symbol);
                     }
-                    if (!config.IsTimeSeriesSyncEnabled)
-                    {
-                        startInfo.ArgumentList.Add("--skip-daily");
-                    }
-                    if (config.IsMetadataSyncEnabled)
-                    {
-                        startInfo.ArgumentList.Add("--force-metadata");
-                        if (config.IsImputeMissingMetadataEnabled)
-                        {
-                            startInfo.ArgumentList.Add("--impute-missing");
-                        }
-                    }
+                    appendArguments(startInfo.ArgumentList);
+                    startInfo.ArgumentList.Add("--timeout");
+                    startInfo.ArgumentList.Add(timeoutSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
-                    // Delay is fully managed on the C# Ticker-Loop side. We force Python process delay to 0
-                    // to prevent processes from hanging/sleeping, saving resources.
-                    startInfo.ArgumentList.Add("--delay");
-                    startInfo.ArgumentList.Add("0");
-
-                    if (config.IsFullHistoryEnabled)
-                    {
-                        startInfo.ArgumentList.Add("--full-history");
-                    }
-                    else
-                    {
-                        startInfo.ArgumentList.Add("--start-period");
-                        startInfo.ArgumentList.Add(config.StartSyncPeriodYears.ToString(System.Globalization.CultureInfo.InvariantCulture));
-                    }
-
-                    if (config.IsForcePeriodDownloadEnabled)
-                    {
-                        startInfo.ArgumentList.Add("--force-period");
-                    }
-
-                    LogSyncActivity($"Starting process (Config): {pythonExe} {string.Join(" ", startInfo.ArgumentList)}");
+                    LogSyncActivity($"Starting process ({logLabel}): {pythonExe} {string.Join(" ", startInfo.ArgumentList)}");
 
                     var combinedOutput = new RollingLogBuffer(500);
 
@@ -712,9 +662,9 @@ namespace StockAnalyzer.Core.Services
                         {
                             if (string.IsNullOrEmpty(e.Data)) return;
                             combinedOutput.AppendLine(e.Data);
-                            if (e.Data.StartsWith("PROGRESS:"))
+                            if (e.Data.StartsWith("PROGRESS:") && int.TryParse(e.Data.Substring(9), out int p))
                             {
-                                if (int.TryParse(e.Data.Substring(9), out int p)) progress?.Report(p);
+                                progress?.Report(p);
                             }
                         };
                         process.ErrorDataReceived += (s, e) =>
@@ -734,26 +684,31 @@ namespace StockAnalyzer.Core.Services
                         try
                         {
                             var exitTask = process.WaitForExitAsync();
-                            var cancelTask = Task.Delay(-1, innerCt);
+                            using var cancelDelayCts = CancellationTokenSource.CreateLinkedTokenSource(innerCt);
+                            var cancelTask = Task.Delay(-1, cancelDelayCts.Token);
 
-                            var completedTask = await Task.WhenAny(exitTask, cancelTask);
-                            if (completedTask == cancelTask)
+                            var completed = await Task.WhenAny(exitTask, cancelTask).ConfigureAwait(false);
+                            if (completed == cancelTask)
                             {
                                 LogSyncActivity("Cancellation triggered. Waiting up to 5 seconds for graceful exit...");
-                                var delayTask = Task.Delay(5000);
-                                var graceCompletedTask = await Task.WhenAny(exitTask, delayTask);
-                                if (graceCompletedTask == delayTask)
+                                using var graceCts = new CancellationTokenSource();
+                                var graceTask = Task.Delay(5000, graceCts.Token);
+                                var graceCompleted = await Task.WhenAny(exitTask, graceTask).ConfigureAwait(false);
+                                if (graceCompleted == graceTask)
                                 {
                                     LogSyncActivity("Grace period expired. Forcefully killing process tree...");
                                     try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
-                                    await exitTask;
+                                    await exitTask.ConfigureAwait(false);
+                                }
+                                else
+                                {
+                                    graceCts.Cancel();
                                 }
                                 throw new OperationCanceledException(innerCt);
                             }
-                            else
-                            {
-                                await exitTask;
-                            }
+
+                            cancelDelayCts.Cancel();
+                            await exitTask.ConfigureAwait(false);
                         }
                         catch
                         {
@@ -768,10 +723,9 @@ namespace StockAnalyzer.Core.Services
                             var errorLogs = combinedOutput.ToString();
                             throw new Exception($"Update pipeline failed with exit code {process.ExitCode}.{Environment.NewLine}Logs:{Environment.NewLine}{errorLogs}");
                         }
-                    }, linkedToken);
+                    }, linkedToken).ConfigureAwait(false);
 
                     string? timeframeFailure = await GenerateTimeFramesAsync(symbol, progress, linkedToken).ConfigureAwait(false);
-
                     if (timeframeFailure != null)
                     {
                         throw new InvalidOperationException(timeframeFailure);
@@ -787,19 +741,32 @@ namespace StockAnalyzer.Core.Services
                 }
             }, linkedToken);
 
-            var timeoutTask = Task.Delay(TimeSpan.FromMinutes(timeoutMinutes), linkedToken);
-
-            var completedTask = await Task.WhenAny(executionTask, timeoutTask);
+            var timeoutTask = Task.Delay(timeout, delayCts.Token);
+            var completedTask = await Task.WhenAny(executionTask, timeoutTask).ConfigureAwait(false);
 
             if (completedTask == timeoutTask)
             {
-                LogSyncActivity($"RunUpdatePipelineAsync TIMEOUT triggered ({timeoutMinutes} minutes)", LogLevel.Error);
+                if (ct.IsCancellationRequested)
+                {
+                    ct.ThrowIfCancellationRequested();
+                }
+
+                LogSyncActivity($"{logLabel} TIMEOUT triggered ({timeoutMinutes} minutes)", LogLevel.Error);
+                timeoutCts.Cancel();
+                try
+                {
+                    await executionTask.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Observe cleanup fault/cancellation so TimeoutException remains the reported error.
+                }
                 throw new TimeoutException($"The update pipeline timed out after {timeoutMinutes} minutes. Please check the application logs for details.");
             }
 
-            // Await executionTask to propagate any exceptions
-            await executionTask;
-            LogSyncActivity("RunUpdatePipelineAsync FINISH (Success)");
+            delayCts.Cancel();
+            await executionTask.ConfigureAwait(false);
+            LogSyncActivity($"{logLabel} FINISH (Success)");
         }
 
         /// <summary>
@@ -807,7 +774,7 @@ namespace StockAnalyzer.Core.Services
         /// form with compound statements is a syntax error in Python, so the probe never reported an update.
         /// </summary>
         internal const string UpdateCheckScript = """
-            import importlib.metadata, json, sys, urllib.request
+            import importlib.metadata, json, re, sys, urllib.parse, urllib.request
 
             def parse_v(v):
                 return tuple(int(x) for x in v.split('.') if x.isdigit())
@@ -829,8 +796,11 @@ namespace StockAnalyzer.Core.Services
             name = sys.argv[1]
             request_timeout = float(sys.argv[2])
             try:
+                if not re.fullmatch(r'[A-Za-z0-9._-]+', name):
+                    raise ValueError(f'Invalid package name: {name!r}')
                 installed = importlib.metadata.version(name)
-                req = urllib.request.Request(f'https://pypi.org/pypi/{name}/json', headers={'User-Agent': 'StockAnalyzer'})
+                encoded_name = urllib.parse.quote(name, safe='')
+                req = urllib.request.Request(f'https://pypi.org/pypi/{encoded_name}/json', headers={'User-Agent': 'StockAnalyzer'})
                 with urllib.request.urlopen(req, timeout=request_timeout) as r:
                     doc = json.loads(r.read().decode())
                 if len(sys.argv) >= 5:
@@ -854,6 +824,11 @@ namespace StockAnalyzer.Core.Services
         /// </summary>
         private async Task<UpdateCheckResult> CheckForUpdateAsync(string packageName, string? pinnedVersion, CancellationToken ct)
         {
+            if (string.IsNullOrWhiteSpace(packageName) || !ValidPyPiPackageNameRegex.IsMatch(packageName))
+            {
+                return new UpdateCheckResult(UpdateCheckState.CheckFailed, $"invalid package name '{packageName}'");
+            }
+
             var pythonExe = ResolvePythonExecutable();
 
             if (!System.IO.File.Exists(pythonExe))
@@ -890,6 +865,7 @@ namespace StockAnalyzer.Core.Services
 
         private async Task InstallPackage(string packageName, bool forceUpgrade, CancellationToken ct)
         {
+            ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
             LogSyncActivity($"InstallPackage START: {packageName} (forceUpgrade={forceUpgrade})");
 
             // Map pip package names to import names for those that differ
@@ -907,6 +883,13 @@ namespace StockAnalyzer.Core.Services
                 return;
             }
 
+            bool isInstalled = state == ModuleInstallState.Installed;
+            if (ShouldSkipUpdateCheck(isInstalled, forceUpgrade, _settings.PythonAutoUpdatePackagesOnStartup))
+            {
+                LogSyncActivity($"Module {packageName} is already installed and startup auto-update is disabled. Skipping PyPI check.");
+                return;
+            }
+
             var pinnedMap = GetPinnedPackageVersions(msg => LogSyncActivity(msg, LogLevel.Warning));
             string? pinnedVersion = null;
             if (pinnedMap.TryGetValue(packageName, out pinnedVersion))
@@ -918,7 +901,6 @@ namespace StockAnalyzer.Core.Services
                 LogSyncActivity($"Package '{packageName}' not found in requirements.txt; proceeding without strict pin", LogLevel.Warning);
             }
 
-            bool isInstalled = state == ModuleInstallState.Installed;
             bool shouldUpdate = forceUpgrade;
 
             if (isInstalled && !forceUpgrade)
@@ -945,40 +927,66 @@ namespace StockAnalyzer.Core.Services
 
             await EnsurePipSecureAsync(ct);
 
-            await RunPipCommandAsync(BuildInstallArguments(packageName, pinnedVersion, shouldUpdate, forceUpgrade), ct);
+            await RunPipCommandAsync(BuildInstallArgumentList(packageName, pinnedVersion, shouldUpdate, forceUpgrade), ct);
             LogSyncActivity($"InstallPackage FINISH: {packageName}");
         }
 
+        internal static bool ShouldSkipUpdateCheck(bool isInstalled, bool forceUpgrade, bool autoUpdateOnStartup)
+            => isInstalled && !forceUpgrade && !autoUpdateOnStartup;
+
         /// <summary>
-        /// pip arguments of an install step. Fresh install of a pinned package: the exact pin. Automatic update of a pinned package: the latest
-        /// release inside <c>&gt;=pin,&lt;next major</c> (D-01 B). A forced (user-initiated) upgrade and a package without a pin are not bounded
-        /// (N-04 A). The command start (build isolation bypassed) is <see cref="PythonPackageSets.PipInstallPrefix"/>.
+        /// Tokenized pip arguments of an install step for <see cref="System.Diagnostics.ProcessStartInfo.ArgumentList"/>.
+        /// Fresh install of a pinned package uses exact pin; automatic update (when enabled) stays inside <c>&gt;=pin,&lt;next major</c>.
+        /// Enforces binary wheels via <see cref="PythonPackageSets.PipInstallPrefixTokens"/>.
         /// </summary>
-        internal static string BuildInstallArguments(string packageName, string? pinnedVersion, bool shouldUpdate, bool forceUpgrade)
+        internal static System.Collections.Generic.IReadOnlyList<string> BuildInstallArgumentList(
+            string packageName, string? pinnedVersion, bool shouldUpdate, bool forceUpgrade)
         {
-            const string installPrefix = PythonPackageSets.PipInstallPrefix;
+            ArgumentException.ThrowIfNullOrWhiteSpace(packageName);
+
+            var args = new System.Collections.Generic.List<string>(PythonPackageSets.PipInstallPrefixTokens);
             bool upgrade = shouldUpdate || forceUpgrade;
 
             if (packageName == PythonPackageSets.TorchPackage)
             {
-                return upgrade
-                    ? $"{installPrefix} --upgrade {packageName} --index-url {PythonPackageSets.TorchIndexUrl}"
-                    : $"{installPrefix} {packageName} --index-url {PythonPackageSets.TorchIndexUrl}";
+                if (upgrade) args.Add("--upgrade");
+                args.Add(packageName);
+                args.Add("--index-url");
+                args.Add(PythonPackageSets.TorchIndexUrl);
+                return args;
             }
 
             if (!string.IsNullOrEmpty(pinnedVersion) && !upgrade)
             {
-                return $"{installPrefix} {packageName}=={pinnedVersion}";
+                args.Add($"{packageName}=={pinnedVersion}");
+                return args;
             }
 
             if (upgrade && !forceUpgrade && PackageVersionRange.UpgradeSpecifier(packageName, pinnedVersion) is { } specifier)
             {
-                return $"{installPrefix} --upgrade \"{specifier}\"";
+                args.Add("--upgrade");
+                args.Add(specifier);
+                return args;
             }
 
-            return upgrade
-                ? $"{installPrefix} --upgrade {packageName}"
-                : $"{installPrefix} {packageName}";
+            if (upgrade) args.Add("--upgrade");
+            args.Add(packageName);
+            return args;
+        }
+
+        /// <summary>
+        /// Formatted string representation of <see cref="BuildInstallArgumentList"/> (retained for diagnostics and existing unit tests).
+        /// </summary>
+        internal static string BuildInstallArguments(string packageName, string? pinnedVersion, bool shouldUpdate, bool forceUpgrade)
+        {
+            var tokens = BuildInstallArgumentList(packageName, pinnedVersion, shouldUpdate, forceUpgrade);
+            var formatted = new string[tokens.Count];
+            for (int i = 0; i < tokens.Count; i++)
+            {
+                string t = tokens[i];
+                formatted[i] = t.IndexOfAny(['>', '<', ' ']) >= 0 ? $"\"{t}\"" : t;
+            }
+            return string.Join(' ', formatted);
         }
 
         private static System.Collections.Generic.Dictionary<string, string>? _pinnedPackageVersions;
@@ -1037,11 +1045,14 @@ namespace StockAnalyzer.Core.Services
         /// <summary>Interpreter arguments that enforce <see cref="MinimumPipVersion"/> and refresh the CA bundle.</summary>
         public const string PipSecurityUpgradeArguments = PythonPackageSets.PipInstallCommand + " --upgrade \"pip>=" + MinimumPipVersion + "\" certifi";
 
+        /// <summary>Tokenized security upgrade arguments passed via <see cref="System.Diagnostics.ProcessStartInfo.ArgumentList"/>.</summary>
+        public static readonly System.Collections.Generic.IReadOnlyList<string> PipSecurityUpgradeArgumentList =
+            [.. PythonPackageSets.PipInstallCommandTokens, "--only-binary", ":all:", "--upgrade", $"pip>={MinimumPipVersion}", "certifi"];
 
         private Task EnsurePipSecureAsync(CancellationToken ct)
             => _pipSecurity.EnsureAsync(
                 ReadInstalledPipVersionAsync,
-                token => RunPipCommandAsync(PipSecurityUpgradeArguments, token),
+                token => RunPipCommandAsync(PipSecurityUpgradeArgumentList, token),
                 ct);
 
         /// <summary>
@@ -1080,56 +1091,23 @@ namespace StockAnalyzer.Core.Services
             }
         }
 
-        public async Task RunPipCommandAsync(System.Collections.Generic.IReadOnlyList<string> arguments, CancellationToken ct = default)
+        public Task RunPipCommandAsync(System.Collections.Generic.IReadOnlyList<string> arguments, CancellationToken ct = default)
         {
-            var pythonExe = ResolvePythonExecutable();
-
-            if (!System.IO.File.Exists(pythonExe))
-                throw new System.IO.FileNotFoundException("Python executable not found for pip install.", pythonExe);
-
-            var startInfo = new System.Diagnostics.ProcessStartInfo
+            ArgumentNullException.ThrowIfNull(arguments);
+            return ExecutePipProcessAsync(startInfo =>
             {
-                FileName = pythonExe,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true
-            };
-            foreach (var arg in arguments)
-            {
-                startInfo.ArgumentList.Add(arg);
-            }
-
-            using var process = new System.Diagnostics.Process { StartInfo = startInfo };
-            process.OutputDataReceived += (s, e) => { if (e.Data != null) LogSyncActivity($"[PIP OUT] {e.Data}", LogLevel.Debug); };
-            process.ErrorDataReceived += (s, e) => { if (e.Data != null) LogSyncActivity($"[PIP ERR] {e.Data}", LogLevel.Debug); };
-
-            using var reg = ct.Register(() => { try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { } });
-
-            await _resiliencePipeline.ExecuteAsync(async innerCt =>
-            {
-                process.Start();
-                // One Job Object per launch attempt (a retry starts the process again): if this app is killed abruptly, Windows closes the
-                // handle and ends the pip child too. Disposed when the attempt ends, i.e. after the process has exited or been killed.
-                using var jobHandle = WindowsJobObject.TryAssign(process);
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
-                try
+                foreach (var arg in arguments)
                 {
-                    await process.WaitForExitAsync(innerCt);
-                }
-                catch
-                {
-                    try { if (!process.HasExited) process.Kill(entireProcessTree: true); } catch { }
-                    throw;
+                    startInfo.ArgumentList.Add(arg);
                 }
             }, ct);
-
-            if (process.ExitCode != 0)
-                throw new InvalidOperationException($"Pip command failed with exit code {process.ExitCode}");
         }
 
-        public async Task RunPipCommandAsync(string arguments, CancellationToken ct = default)
+        [Obsolete("Use RunPipCommandAsync(IReadOnlyList<string>, CancellationToken) so arguments use ProcessStartInfo.ArgumentList.")]
+        public Task RunPipCommandAsync(string arguments, CancellationToken ct = default)
+            => ExecutePipProcessAsync(startInfo => startInfo.Arguments = arguments, ct);
+
+        private async Task ExecutePipProcessAsync(Action<System.Diagnostics.ProcessStartInfo> configureArguments, CancellationToken ct)
         {
             var pythonExe = ResolvePythonExecutable();
 
@@ -1139,12 +1117,12 @@ namespace StockAnalyzer.Core.Services
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = pythonExe,
-                Arguments = arguments,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 CreateNoWindow = true
             };
+            configureArguments(startInfo);
 
             using var process = new System.Diagnostics.Process { StartInfo = startInfo };
             process.OutputDataReceived += (s, e) => { if (e.Data != null) LogSyncActivity($"[PIP OUT] {e.Data}", LogLevel.Debug); };

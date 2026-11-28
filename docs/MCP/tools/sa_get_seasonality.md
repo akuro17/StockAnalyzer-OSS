@@ -4,7 +4,7 @@
 
 ## Contract & Constraints
 
-Extracts the historical calendar seasonality matrix and monthly fractional return statistics for a symbol. Output contains raw monthly return ratios and averages; no advice or win-rate is synthesized. Also emits `referenceDate` (`min(endDate, latest stored daily bar)`), `lastBarPeriodEnd`, and `lastBarPartial`. Unfinished month and annual periods remain included in Core `average` without altering Core numbers; MCP writes `partial: true` only on non-null cells whose period ends after `referenceDate` (both the unfinished month cell and that cycle's Annual cell), omitting `partial` everywhere else. decimalPlaces (0 to 10, optional) rounds returnRatio and average (away from zero at the midpoint; output only); without it the ratios are as calculated.
+Extracts the historical calendar seasonality matrix and monthly fractional return statistics for a symbol. Output contains raw monthly return ratios and averages; no advice or win-rate is synthesized. Also emits `referenceDate` (`min(endDate, latest stored daily bar)`), `lastBarPeriodEnd`, and `lastBarPartial`. Unfinished month and annual periods remain included in Core `RowAverages` (`average` output, without altering existing MCP numeric output; Core `SeasonalityMonthlyReturnsTable` also provides `IsPartial` per cell and `CompletedRowAverages` excluding partial cells); MCP writes `partial: true` only on non-null cells whose period ends after `referenceDate` (both the unfinished month cell and that cycle's Annual cell), omitting `partial` everywhere else. decimalPlaces (0 to 10, optional) rounds returnRatio and average (away from zero at the midpoint; output only); without it the ratios are as calculated.
 
 ## Arguments (`inputSchema`)
 

@@ -63,5 +63,14 @@ namespace StockAnalyzer.Core.Services
 
         /// <summary>Folder that holds the pip bootstrap packages inside the interpreter.</summary>
         public const string SitePackagesRelativePath = "Lib\\site-packages";
+
+        /// <summary>Maximum allowed byte size of the downloaded embedded Python archive (64 MiB).</summary>
+        public const long MaxArchiveBytes = 64L * 1024 * 1024;
+
+        /// <summary>Maximum allowed byte size of the downloaded get-pip bootstrap script (16 MiB).</summary>
+        public const long MaxGetPipBytes = 16L * 1024 * 1024;
+
+        /// <summary>Maximum download attempts for transient transport failures.</summary>
+        internal const int MaxDownloadAttempts = 3;
     }
 }

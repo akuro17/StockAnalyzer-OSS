@@ -37,6 +37,7 @@ Captures the complete state of a configured backtest run (symbol, timeframe, eva
 - **`CommissionFlat`** (`decimal`, `>= 0`, e.g. `0.0`): Fixed fee per order.
 - **`CommissionPerUnit`** (`decimal`, `>= 0`, e.g. `0.005`): Fee per traded share.
 - **`SlippageRatio`** (`decimal`, `0 <= s < 1`, e.g. `0.0005` [0.05%]): Proportional execution slippage.
+  *(Factory defaults in `BacktestDefaults` remain `0` commission / `0` slippage with `PriceLimitFillMode.AlwaysFill` to preserve run-fingerprint and reproducibility-hash determinism; backtest evaluates split-adjusted price returns excluding cash dividends and runs over local Parquet data without delisted symbols — these assumptions are surfaced additively in the UI Evaluation Audit rows and MCP `warnings[]` / `notes[]` advisories.)*
 - **`SizingModel`** (`integer`, enum `PositionSizingModel`): `0` = `FixedQuantity`, `1` = `PercentOfEquity`. These are the only two members; any other value is rejected on load.
 - **`SizingParameter`** (`decimal`): Depends on `SizingModel`. `FixedQuantity`: integer `>= 1` (shares per entry). `PercentOfEquity`: ratio with `0 < value <= 1` (`0.20` = 20% of equity).
 

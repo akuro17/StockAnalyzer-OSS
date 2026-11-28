@@ -66,12 +66,30 @@ public class CoreHmmIndicator : CoreIndicatorBase
             return IndicatorResult.Empty();
         }
 
-        int count = candles.Count;
+        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
+        return CalculateSeriesCoreInternal(priceSeries, cancellationToken);
+    }
+
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
+    {
+        _values.Clear();
+
+        if (series == null || series.Count == 0)
+        {
+            return IndicatorResult.Empty();
+        }
+
+        return CalculateSeriesCoreInternal(series, CancellationToken.None);
+    }
+
+    private IIndicatorResult CalculateSeriesCoreInternal(IReadOnlyList<decimal?> priceSeries, CancellationToken cancellationToken)
+    {
+        int count = priceSeries.Count;
         int w = Period;
         int k = States;
 
         // If not enough data for at least one full estimation window
-        if (count <= w)
+        if (w <= 0 || k < 2 || count <= w)
         {
             for (int i = 0; i < count; i++)
             {
@@ -79,8 +97,6 @@ public class CoreHmmIndicator : CoreIndicatorBase
             }
             return IndicatorResult.Success(_values);
         }
-
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
 
         // Fill warm-up bars
         for (int t = 0; t < w; t++)
@@ -99,10 +115,16 @@ public class CoreHmmIndicator : CoreIndicatorBase
             bool hasInvalidPrice = false;
             for (int m = 0; m < w; m++)
             {
-                decimal currDec = priceSeries[t - w + 1 + m] ?? 0m;
-                decimal prevDec = priceSeries[t - w + m] ?? 0m;
-                double pCurr = (double)currDec;
-                double pPrev = (double)prevDec;
+                decimal? currDec = priceSeries[t - w + 1 + m];
+                decimal? prevDec = priceSeries[t - w + m];
+                if (!currDec.HasValue || !prevDec.HasValue)
+                {
+                    hasInvalidPrice = true;
+                    break;
+                }
+
+                double pCurr = (double)currDec.Value;
+                double pPrev = (double)prevDec.Value;
 
                 if (pCurr <= 1e-12 || pPrev <= 1e-12 || double.IsNaN(pCurr) || double.IsNaN(pPrev) || double.IsInfinity(pCurr) || double.IsInfinity(pPrev))
                 {
@@ -448,13 +470,14 @@ public class CoreHmmIndicator : CoreIndicatorBase
 
             // 6. Causal Filtered Output Value
             double bullProb = ws.Alpha[w - 1, bullState];
-            if (double.IsNaN(bullProb) || double.IsInfinity(bullProb))
+            decimal? bullDec = IndicatorCalculationHelper.ToDecimalOrNull(bullProb);
+            if (!bullDec.HasValue)
             {
                 _values.Add(null);
             }
             else
             {
-                decimal rawPercent = (decimal)bullProb * 100.0m;
+                decimal rawPercent = bullDec.Value * 100.0m;
                 decimal rounded = Math.Round(rawPercent, 4, MidpointRounding.AwayFromZero);
                 decimal clamped = Math.Clamp(rounded, 0.0000m, 100.0000m);
                 _values.Add(clamped);

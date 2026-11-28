@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using StockAnalyzer.Core.Models.Indicators;
+using StockAnalyzer.Core.Models.Indicators.Oscillators;
 
 namespace StockAnalyzer.Core.Models.ScreeningConditions;
 
 /// <summary>
-/// Screening condition that checks if RSI is below a specified oversold threshold.
+/// Screening condition that checks if Wilder RSI is below a specified oversold threshold.
 /// </summary>
 public class RsiOversoldCondition : IScreeningCondition
 {
@@ -29,22 +31,23 @@ public class RsiOversoldCondition : IScreeningCondition
     {
         if (candles == null || candles.Count < _period + 1) return false;
 
-        // Calculate simple RSI for screening using algebraic single-division SSoT
-        decimal gains = 0m;
-        decimal losses = 0m;
-
-        int startIndex = candles.Count - _period;
-        for (int i = startIndex; i < candles.Count; i++)
+        var closes = new decimal?[candles.Count];
+        for (int i = 0; i < candles.Count; i++)
         {
-            decimal diff = candles[i].Close - candles[i - 1].Close;
-            if (diff > 0) gains += diff;
-            else losses += Math.Abs(diff);
+            closes[i] = candles[i].Close;
         }
 
-        decimal sum = gains + losses;
-        if (sum <= 1e-12m) return 50.0m < _threshold;
-        decimal rsi = (100.0m * gains) / sum;
+        var rsiIndicator = new CoreRsiIndicator
+        {
+            Period = _period,
+            PriceSource = PriceType.Close
+        };
 
-        return rsi < _threshold;
+        IIndicatorResult result = rsiIndicator.CalculateSeries(closes);
+        decimal? latestRsi = result.IsSuccessful && result.MainValues.Count > 0
+            ? result.MainValues[^1]
+            : null;
+
+        return latestRsi.HasValue && latestRsi.Value < _threshold;
     }
 }

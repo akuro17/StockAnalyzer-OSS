@@ -135,14 +135,12 @@ internal sealed class GetSeasonalityTool : IMcpTool
         var seriesInput = new SeasonalitySeriesInput(0, symbol, SeasonalityRadiusMode.PercentVsYearStart, points);
         var parameters = new SeasonalityChartParameters((uint)years, StartMonth: (uint)startMonth);
         SeasonalityChartResult chartResult = SeasonalityChartEngine.Analyze(new[] { seriesInput }, parameters);
-        SeasonalityMonthlyReturnsTable table = SeasonalityMonthlyReturnsEngine.Build(chartResult);
+        SeasonalityMonthlyReturnsTable table = SeasonalityMonthlyReturnsEngine.Build(chartResult, referenceDate);
 
         string[] abbreviatedMonths = CultureInfo.InvariantCulture.DateTimeFormat.AbbreviatedMonthNames;
         DateTime lastBarTs = loaded[^1].Timestamp;
         DateTime lastBarPeriodEnd = TimeFrameAggregator.PeriodEnd(lastBarTs, TimeFrame.MN1);
-        bool lastBarPartial = referenceDate is { } refDt && lastBarPeriodEnd.Date > refDt.Date;
-        int lastBarMonth = lastBarTs.Month;
-        int lastBarCycleYear = startMonth <= 1 || lastBarMonth >= startMonth ? lastBarTs.Year : lastBarTs.Year - 1;
+        bool lastBarPartial = referenceDate is { } refDt && TimeFrameAggregator.IsPartialPeriod(lastBarTs, TimeFrame.MN1, refDt);
 
         return ToolJson.Build(writer =>
         {
@@ -176,7 +174,8 @@ internal sealed class GetSeasonalityTool : IMcpTool
                 {
                     writer.WriteStartObject();
                     writer.WriteNumber("year", table.Years[y]);
-                    decimal? ret = table.Cell(r, y).Return;
+                    SeasonalityMonthlyReturnCell cell = table.Cell(r, y);
+                    decimal? ret = cell.Return;
                     if (ret.HasValue)
                     {
                         writer.WriteNumber("returnRatio", SeriesOutputOptions.RoundIfRequested(ret.Value, decimalPlaces));
@@ -186,13 +185,9 @@ internal sealed class GetSeasonalityTool : IMcpTool
                         writer.WriteNull("returnRatio");
                     }
 
-                    if (lastBarPartial && ret.HasValue && table.Years[y] == lastBarCycleYear)
+                    if (cell.IsPartial && ret.HasValue)
                     {
-                        int cellMonth = ((startMonth - 1 + r) % 12) + 1;
-                        if (isAnnual || cellMonth == lastBarMonth)
-                        {
-                            writer.WriteBoolean("partial", true);
-                        }
+                        writer.WriteBoolean("partial", true);
                     }
 
                     writer.WriteEndObject();

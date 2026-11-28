@@ -2,6 +2,7 @@ import os
 import polars as pl
 import argparse
 from symbol_validator import is_well_formed_ticker
+from update_daily import count_invalid_bars
 
 def verify_parquet(file_path):
     print(f"Verifying: {file_path}")
@@ -36,7 +37,12 @@ def verify_parquet(file_path):
         df_real = df.collect()
         print(f"Row count: {len(df_real)}")
         print(f"Date range: {df_real['date'].min()} to {df_real['date'].max()}")
-        
+        if all(c in df_real.columns for c in ("open", "high", "low", "close", "volume")):
+            invalid_bars = count_invalid_bars(df_real)
+            print(f"Invalid OHLCV bars: {invalid_bars}")
+        else:
+            print("Invalid OHLCV bars: N/A (missing OHLCV columns)")
+
         return True
     except Exception as e:
         print(f"Error during verification: {e}")

@@ -28,3 +28,27 @@ public class PythonIpcSettings
         if (MaxTimeoutRetries < 0) throw new InvalidOperationException("PythonIpcSettings: MaxTimeoutRetries must not be negative.");
     }
 }
+
+/// <summary>
+/// Hard SSoT ceilings mirrored by <c>StockAnalyzer.Core/Scripts/server.py</c> for Python IPC command arguments and Arrow transfers.
+/// </summary>
+public static class PythonIpcLimits
+{
+    public const int MinWindowSize = 4;
+    public const int MaxWindowSize = 4096;
+    public const int MinTopK = 1;
+    public const int MaxTopK = 100;
+    public const int MinFutureSteps = 1;
+    public const int MaxFutureSteps = 500;
+    public const int MinQueryLength = 2;
+    public const int MaxQueryLength = 1000;
+    public const int MinLookback = 0;
+    public const int MaxLookback = 50000;
+    public const int MinWarpingRadius = -1;
+    public const int MaxWarpingRadius = 500;
+    public const int MinQueryStartIndex = -1;
+    public const double MinThreshold = 0.0;
+    public const double MaxThreshold = 1.0;
+    public const int MaxTransferRows = 100000;
+    public const int MaxTransferColumns = 32;
+}

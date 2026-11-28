@@ -32,16 +32,21 @@ public class CoreMovingAverageCrossIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
         ShortMA.Clear();
         LongMA.Clear();
         BullishSignals.Clear();
         BearishSignals.Clear();
 
-        if (candles.Count < LongPeriod)
+        if (series == null || series.Count == 0)
         {
-            var nulls = Enumerable.Repeat<decimal?>(null, candles.Count);
+            return CreateAutomaticResult();
+        }
+
+        if (ShortPeriod <= 0 || LongPeriod <= 0 || series.Count < LongPeriod)
+        {
+            var nulls = Enumerable.Repeat<decimal?>(null, series.Count);
             ShortMA.AddRange(nulls);
             LongMA.AddRange(nulls);
             BullishSignals.AddRange(nulls);
@@ -49,16 +54,15 @@ public class CoreMovingAverageCrossIndicator : CoreIndicatorBase
             return CreateAutomaticResult();
         }
 
-        // Calculate SMAs
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        CalculateSma(priceSeries, ShortPeriod, ShortMA);
-        CalculateSma(priceSeries, LongPeriod, LongMA);
+        // Calculate SMAs with strict null propagation
+        ShortMA.AddRange(IndicatorCalculationHelper.CalculateSmaWithNulls(series, ShortPeriod));
+        LongMA.AddRange(IndicatorCalculationHelper.CalculateSmaWithNulls(series, LongPeriod));
 
         // Signal Detection
         decimal? prevShort = null;
         decimal? prevLong = null;
 
-        for (int i = 0; i < candles.Count; i++)
+        for (int i = 0; i < series.Count; i++)
         {
             decimal? currShort = ShortMA[i];
             decimal? currLong = LongMA[i];
@@ -85,28 +89,6 @@ public class CoreMovingAverageCrossIndicator : CoreIndicatorBase
         }
 
         return CreateAutomaticResult();
-    }
-
-    private static void CalculateSma(IReadOnlyList<decimal?> priceSeries, int period, List<decimal?> target)
-    {
-        decimal sum = 0;
-        for (int i = 0; i < priceSeries.Count; i++)
-        {
-            sum += priceSeries[i] ?? 0m;
-            if (i >= period)
-            {
-                sum -= priceSeries[i - period] ?? 0m;
-            }
-
-            if (i >= period - 1)
-            {
-                target.Add(sum / period);
-            }
-            else
-            {
-                target.Add(null);
-            }
-        }
     }
 
 }

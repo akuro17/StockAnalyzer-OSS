@@ -46,21 +46,13 @@ public sealed class DiscussionHubElectionTests : IDisposable
 
     private static string NewSuffix() => Guid.NewGuid().ToString("N")[..12];
 
-    // A full run of this assembly stalls the whole process in garbage collections (measured: about 63 percent of 100 ms in the first minute), and the specified election lasts
-    // about one second (3 rounds of a 300 ms connect and a 50 ms pause), so a stall of that length makes a router answer HUB_UNAVAILABLE although the board is fine. The tests of
-    // the election itself therefore widen the budget (rounds and the connect wait of a call); only the tests that pin the specified budget use it as it is.
-    private const int ToleratedElectionAttempts = 30;
-    private const int ToleratedCallConnectTimeoutMs = 1500;
+    // The tolerated election budget (see DiscussionRouterTestFactory) is the default of NewRouter; only the tests that pin the specified budget use it as it is.
     private const int StallMilliseconds = 1500;
 
     private DiscussionGatewayRouter NewRouter(
         string suffix, string? dataFolder = null, bool sharing = true, ICommandLog? commandLog = null, DiscussionSettings? settings = null, bool specifiedBudget = false)
     {
-        var transport = specifiedBudget
-            ? new DiscussionTransportOptions(suffix, sharing)
-            : new DiscussionTransportOptions(suffix, sharing, ToleratedElectionAttempts, ToleratedCallConnectTimeoutMs);
-        var router = new DiscussionGatewayRouter(
-            settings ?? new DiscussionSettings(), TimeProvider.System, commandLog, protocolSuffix: null, dataFolder ?? DataFolder, transport);
+        DiscussionGatewayRouter router = DiscussionRouterTestFactory.Create(suffix, dataFolder ?? DataFolder, sharing, commandLog, settings, specifiedBudget);
         _disposables.Add(router);
         return router;
     }

@@ -21,6 +21,22 @@
 #
 # =============================================================================
 
+import math
+
+
+def _valid_close(candle):
+    if not isinstance(candle, dict):
+        return None
+    raw = candle.get('close')
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return val if math.isfinite(val) else None
+
+
 # -------------------------------------------------------------
 # Type-Level Explanation: SimpleMovingAverage (class)
 #
@@ -29,7 +45,9 @@
 # [How]  Calculates the average of the last N closing prices.
 # -------------------------------------------------------------
 class SimpleMovingAverage:
-    
+
+    RESYNC_INTERVAL = 1000
+
     # -------------------------------------------------------------
     # Constructor: __init__
     # -------------------------------------------------------------
@@ -47,57 +65,69 @@ class SimpleMovingAverage:
     # - candles: List[dict]
     #
     # [Process]
-    # 1. Initialize Running Sum.
+    # 1. Initialize Running Sum and null count.
     # 2. Iterate through candles.
-    # 3. Add current Close to Sum.
-    # 4. If window is full, subtract the (i-period)th Close from Sum.
-    # 5. Divide Sum by Period.
+    # 3. Add valid current Close to Sum (or increment null count).
+    # 4. If window is full, subtract the (i-period)th valid Close (or decrement null count).
+    # 5. Periodically resynchronize running_sum via math.fsum to prevent float drift.
+    # 6. Divide Sum by Period when window contains no missing/non-finite closes.
     #
     # [Output]
     # - None.
     # =============================================================================
     def calculate(self, candles):
-        
+
         # -------------------------------------------------------------
         # Logic Step 1: Reset
         # [Why]  Clean state for new calculation.
         # -------------------------------------------------------------
         self.values.clear()
-        if len(candles) == 0:
+        if candles is None or len(candles) == 0:
             return
 
         # -------------------------------------------------------------
-        # Logic Step 2: Main Loop (Optimized Running Sum)
-        # [Why]  O(1) approach is faster than sum(window) which is O(N).
-        # [How]  Add incoming value, subtract outgoing value.
+        # Logic Step 2: Main Loop (Optimized Running Sum with Null/Drift Safety)
+        # [Why]  O(1) approach with periodic math.fsum resync and C# null parity.
+        # [How]  Add incoming value, subtract outgoing value, track null count.
         # -------------------------------------------------------------
         running_sum = 0.0
-        
+        null_count = 0
+        bars_since_resync = 0
+
         for i in range(len(candles)):
-            
+
             # Logic Step 2.1: Add Newest Value
-            # [Visual]
-            # Window: [A, B, C]. Sum = A+B+C.
-            # Next: D comes in. Sum = A+B+C+D.
-            new_val = candles[i]['close']
-            running_sum += new_val
-            
+            curr = _valid_close(candles[i])
+            if curr is not None:
+                running_sum += curr
+            else:
+                null_count += 1
+
             # Logic Step 2.2: Remove Oldest Value (if Exceeds Period)
-            # [Visual]
-            # Window size 3. Current count 4 (A,B,C,D).
-            # Remove A. Sum = B+C+D.
             if i >= self.period:
-                old_val = candles[i - self.period]['close']
-                running_sum -= old_val
-                
+                prev = _valid_close(candles[i - self.period])
+                if prev is not None:
+                    running_sum -= prev
+                else:
+                    null_count -= 1
+
             # Logic Step 2.3: Compute Average
             if i < self.period - 1:
                 # Not enough data yet (e.g. Day 2 of Period 10)
                 self.values.append(None)
+                continue
+
+            bars_since_resync += 1
+            if bars_since_resync >= self.RESYNC_INTERVAL and null_count == 0:
+                running_sum = math.fsum(
+                    _valid_close(candles[j]) for j in range(i - self.period + 1, i + 1)
+                )
+                bars_since_resync = 0
+
+            if null_count > 0:
+                self.values.append(None)
             else:
-                # Full window available
-                avg = running_sum / self.period
-                self.values.append(avg)
+                self.values.append(running_sum / self.period)
 
 # =============================================================================
 # Static Wrapper Function

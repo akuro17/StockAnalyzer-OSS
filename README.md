@@ -159,6 +159,9 @@ Data/
 ```
 
 > [!TIP]
+> For step-by-step instructions on adding tickers via Tools > Add Ticker (or bulk CSV/TXT import) and monitoring market data downloads in Sync Progress, see the [Add Ticker and Sync Guide](https://github.com/akuro17/StockAnalyzer-OSS/blob/main/docs/add-ticker-and-sync.md).
+
+> [!TIP]
 > For detailed instructions on chart drawing shortcut keys, editing controls, and configuring custom icon stamps in `Data/Drawings/Icon/`, see the [Drawing Tools Guide](https://github.com/akuro17/StockAnalyzer-OSS/blob/main/docs/DRAWING_TOOLS_GUIDE.md).
 
 > [!TIP]

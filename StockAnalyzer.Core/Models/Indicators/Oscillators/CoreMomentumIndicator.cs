@@ -16,14 +16,23 @@ public class CoreMomentumIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        for (int i = 0; i < candles.Count; i++)
+        if (Period <= 0)
         {
-            if (i < Period) { _values.Add(null); continue; }
-            _values.Add((priceSeries[i] ?? 0m) - (priceSeries[i - Period] ?? 0m));
+            for (int i = 0; i < series.Count; i++) _values.Add(null);
+            return IndicatorResult.Success(_values);
+        }
+
+        for (int i = 0; i < series.Count; i++)
+        {
+            if (i < Period || !series[i].HasValue || !series[i - Period].HasValue)
+            {
+                _values.Add(null);
+                continue;
+            }
+
+            _values.Add(series[i]!.Value - series[i - Period]!.Value);
         }
 
         return IndicatorResult.Success(_values);

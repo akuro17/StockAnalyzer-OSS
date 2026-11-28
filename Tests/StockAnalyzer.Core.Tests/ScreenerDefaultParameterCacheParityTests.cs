@@ -139,7 +139,18 @@ public class ScreenerDefaultParameterCacheParityTests
     //   Old -> new hash: 1A60C19210E78AB323A0F627F73634DB1945AE26E79D9143BA9643BF498C17CC -> 71164AAB93992241F8B4E0ABA6BF432B8D3B681E0853FC7B46D077FAEE2388BC.
     //   No existing line changed: removing the new types returns the twenty-first pin identically (ValuesOfTheTypesBeforeDslExpansionAreUnchanged). Every value of the new types equals a
     //   standalone calculation (TheDslExpansionTypesGiveTheValueOfAStandaloneCalculation_WithoutAndWithAPeriod). Later runs of the plan append their types to DslExpansionTypes and re-pin.
-    private const string PinnedFingerprint = "71164AAB93992241F8B4E0ABA6BF432B8D3B681E0853FC7B46D077FAEE2388BC";
+    // TWENTY-THIRD re-pin, 2026-11-28 (Axis B MP-1 / MP-8, CoreChoppinessIndexIndicator single-narrowing compliance; NOT purely additive, OWNER-APPROVED 2026-11-28 Option A):
+    //   Changed type: ChoppinessIndex (5 lines, 5 variants; the line count stays 1485). CoreChoppinessIndexIndicator now computes the Log10 ratio in double and narrows once via
+    //   IndicatorCalculationHelper.ToDecimalOrNull instead of performing two raw (decimal)Log10 casts followed by decimal division, changing only the 16th+ digit on the 300 test candles:
+    //     period7 / period7+unknown: 29.066478423258914690086842058 -> 29.0664784232589
+    //     none / none-again:         25.564562602167646183356657577 -> 25.5645626021677
+    //     json9:                     20.797791086337896974776883904 -> 20.7977910863379
+    //   Old -> new hash: 71164AAB93992241F8B4E0ABA6BF432B8D3B681E0853FC7B46D077FAEE2388BC -> 171A6A6382BAD0C81FA89991651304AA53AE07AFBE03D25DB0ECDE54E436B61E.
+    //   No other line (including AmihudIlliquidity or any other Axis B MP-1..MP-8 change) changed: BuildReportAtTwentySecondPin puts the 5 ChoppinessIndex lines back to their prior values
+    //   and hashes identically to the twenty-second pin (OnlyTheLinesOfChoppinessIndexMovedSinceTheTwentySecondPin).
+    private const string PinnedFingerprint = "171A6A6382BAD0C81FA89991651304AA53AE07AFBE03D25DB0ECDE54E436B61E";
+    /// <summary>The twenty-second pin before CoreChoppinessIndexIndicator single-narrowing changed the 5 ChoppinessIndex lines at the 16th+ digit.</summary>
+    private const string FingerprintBeforeChoppinessNarrowing = "71164AAB93992241F8B4E0ABA6BF432B8D3B681E0853FC7B46D077FAEE2388BC";
     /// <summary>The twenty-first pin before the DSL expansion types were appended.</summary>
     private const string FingerprintBeforeDslExpansion = "1A60C19210E78AB323A0F627F73634DB1945AE26E79D9143BA9643BF498C17CC";
     /// <summary>The twentieth pin before Skewness and Kurtosis were appended.</summary>
@@ -200,10 +211,32 @@ public class ScreenerDefaultParameterCacheParityTests
 
     private static readonly string[] DslExpansionTypes = DslExpansionSingleSymbolTypes.Concat(DslExpansionTwoSymbolTypes).ToArray();
 
+    private static readonly Dictionary<string, string> TwentySecondPinChoppinessOldValues = new(StringComparer.Ordinal)
+    {
+        ["period7"] = "29.066478423258914690086842058",
+        ["none"] = "25.564562602167646183356657577",
+        ["period7+unknown"] = "29.066478423258914690086842058",
+        ["json9"] = "20.797791086337896974776883904",
+        ["none-again"] = "25.564562602167646183356657577",
+    };
+
+    /// <summary>The current report with the 5 ChoppinessIndex lines put back to their 28-digit decimal division values from before the twenty-third re-pin.</summary>
+    private static string BuildReportAtTwentySecondPin()
+    {
+        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
+        {
+            string[] parts = line.Split('|');
+            return parts[0] == "ChoppinessIndex" && TwentySecondPinChoppinessOldValues.TryGetValue(parts[1], out string? oldValue)
+                ? $"{parts[0]}|{parts[1]}|{oldValue}"
+                : line;
+        });
+        return string.Join("\n", lines) + "\n";
+    }
+
     private static string BuildReportBeforeSplitMoments()
     {
         var removed = SplitStatisticalMomentTypes.Concat(DslExpansionTypes).ToHashSet();
-        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
+        var lines = BuildReportAtTwentySecondPin().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
         return string.Join("\n", lines) + "\n";
     }
 
@@ -211,7 +244,7 @@ public class ScreenerDefaultParameterCacheParityTests
     private static string BuildReportBeforeChartPatterns()
     {
         var removed = ChartPatternFlagTypes.Concat(SplitStatisticalMomentTypes).Concat(DslExpansionTypes).ToHashSet();
-        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
+        var lines = BuildReportAtTwentySecondPin().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
         return string.Join("\n", lines) + "\n";
     }
 
@@ -875,7 +908,7 @@ public class ScreenerDefaultParameterCacheParityTests
     [Fact]
     public void OnlyTheLinesOfTheSplitMomentsAreNewSinceTheTwentiethPin()
     {
-        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !DslExpansionTypes.Contains(line.Split('|')[0])).ToArray();
+        string[] current = BuildReportAtTwentySecondPin().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !DslExpansionTypes.Contains(line.Split('|')[0])).ToArray();
         string[] before = BuildReportBeforeSplitMoments().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var added = current.Where(line => SplitStatisticalMomentTypes.Contains(line.Split('|')[0])).ToArray();
 
@@ -929,7 +962,7 @@ public class ScreenerDefaultParameterCacheParityTests
     public void ValuesOfTheTypesBeforeDslExpansionAreUnchanged()
     {
         var removed = DslExpansionTypes.ToHashSet();
-        var lines = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
+        var lines = BuildReportAtTwentySecondPin().Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(line => !removed.Contains(line.Split('|')[0]));
         Assert.Equal(FingerprintBeforeDslExpansion, Fingerprint(string.Join("\n", lines) + "\n"));
     }
 
@@ -937,13 +970,38 @@ public class ScreenerDefaultParameterCacheParityTests
     [Fact]
     public void OnlyTheLinesOfTheDslExpansionTypesAreNewSinceTheTwentyFirstPin()
     {
-        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] current = BuildReportAtTwentySecondPin().Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var added = current.Where(line => DslExpansionTypes.Contains(line.Split('|')[0])).ToArray();
         var rest = current.Where(line => !DslExpansionTypes.Contains(line.Split('|')[0])).ToArray();
 
         Assert.Equal(DslExpansionTypes.Length * VariantsPerType, added.Length);
         Assert.Equal(current.Length - added.Length, rest.Length);
         Assert.Equal(Fingerprint(string.Join("\n", rest) + "\n"), FingerprintBeforeDslExpansion);
+    }
+
+    /// <summary>
+    /// Proof of the twenty-third re-pin: only the 5 lines of ChoppinessIndex moved (at the 16th+ significant digit due to double-division + single ToDecimalOrNull narrowing)
+    /// and NOTHING else did.
+    /// </summary>
+    [Fact]
+    public void OnlyTheLinesOfChoppinessIndexMovedSinceTheTwentySecondPin()
+    {
+        string[] current = BuildReport().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        string[] before = BuildReportAtTwentySecondPin().Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(before.Length, current.Length);
+
+        var moved = new List<string>();
+        for (int i = 0; i < current.Length; i++)
+        {
+            if (current[i] == before[i]) continue;
+
+            string type = current[i].Split('|')[0];
+            Assert.Equal("ChoppinessIndex", type);
+            moved.Add(current[i]);
+        }
+
+        Assert.Equal(VariantsPerType, moved.Count);
+        Assert.Equal(FingerprintBeforeChoppinessNarrowing, Fingerprint(string.Join("\n", before) + "\n"));
     }
 
     /// <summary>The line of every DSL expansion type equals a standalone calculation (a Period outside the range of the parameter object keeps the defaults, like the screener does).</summary>

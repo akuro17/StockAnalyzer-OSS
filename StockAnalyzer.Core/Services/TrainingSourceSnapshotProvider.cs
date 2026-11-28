@@ -167,7 +167,7 @@ public sealed class TrainingSourceSnapshotProvider : ITrainingSourceSnapshotProv
         using var db = new DuckDBConnection("DataSource=:memory:");
         db.Open();
         using var command = db.CreateCommand();
-        var escaped = ParquetMarketDataProvider.EscapeDuckDbPath(path.Replace("\\", "/"));
+        var escaped = ParquetMarketDataProvider.FormatDuckDbPath(path);
         command.CommandText = $"DESCRIBE SELECT * FROM read_parquet('{escaped}')";
         var schema = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         using (var reader = command.ExecuteReader())
@@ -233,7 +233,7 @@ public sealed class TrainingSourceSnapshotProvider : ITrainingSourceSnapshotProv
             command.CommandText = "INSERT INTO input VALUES " + string.Join(",", values);
             command.ExecuteNonQuery();
         }
-        command.CommandText = $"COPY (SELECT * FROM input ORDER BY date) TO '{ParquetMarketDataProvider.EscapeDuckDbPath(path.Replace("\\", "/"))}' (FORMAT PARQUET)";
+        command.CommandText = $"COPY (SELECT * FROM input ORDER BY date) TO '{ParquetMarketDataProvider.FormatDuckDbPath(path)}' (FORMAT PARQUET)";
         command.ExecuteNonQuery();
     }
 

@@ -245,9 +245,21 @@ internal sealed class GetCapabilitiesTool : IMcpTool
             writer.WriteEndArray();
             WriteFixedValues(writer, EphemeralFixedValues.Current);
             WriteReinforcementLearning(writer);
+            WriteIsolationDisclosure(writer);
             WriteExecutionLimits(writer, settings);
         }
 
+        writer.WriteEndObject();
+    }
+
+    private static void WriteIsolationDisclosure(Utf8JsonWriter writer)
+    {
+        writer.WriteStartObject("isolation");
+        writer.WriteString("kind", "os-temp-folder");
+        writer.WriteBoolean("osSandboxed", false);
+        writer.WriteBoolean("networkIsolated", false);
+        writer.WriteBoolean("mutatesDataTree", false);
+        writer.WriteString("disclosure", "Artifacts are isolated to an OS temporary folder under current user privileges without OS or network sandboxing.");
         writer.WriteEndObject();
     }
 

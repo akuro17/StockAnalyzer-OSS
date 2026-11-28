@@ -26,6 +26,22 @@
 #
 # =============================================================================
 
+import math
+
+
+def _valid_close(candle):
+    if not isinstance(candle, dict):
+        return None
+    raw = candle.get('close')
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return val if math.isfinite(val) else None
+
+
 # -------------------------------------------------------------
 # Type-Level Explanation: RelativeStrengthIndex (class)
 #
@@ -56,9 +72,9 @@ class RelativeStrengthIndex:
     # - candles: List[dict]
     #
     # [Process]
-    # 1. Compute Change = Close - PrevClose.
+    # 1. Compute Change = Close - PrevClose (skipping None / non-finite closes).
     # 2. Separate into U (Gain) and D (Loss).
-    # 3. First N periods: Calculate Simple Average of Gains and Losses.
+    # 3. First N valid changes: Calculate Simple Average of Gains and Losses.
     # 4. Subsequent periods: Apply Wilder's Smoothing.
     # 5. Compute RS = AvgGain / AvgLoss.
     # 6. Compute RSI.
@@ -72,7 +88,7 @@ class RelativeStrengthIndex:
         # Logic Step 1: Reset
         # -------------------------------------------------------------
         self.values.clear()
-        if len(candles) == 0:
+        if candles is None or len(candles) == 0:
             return
             
         # The first bar has no "change", so RSI is undefined
@@ -81,75 +97,49 @@ class RelativeStrengthIndex:
         if len(candles) < 2:
             return
 
-        # State Variables for Smoothing
-        sum_gains = 0.0
-        sum_losses = 0.0
+        # State Variables for Smoothing (matching C# CoreRsiIndicator.CalculateSegment)
+        avg_gain = 0.0
+        avg_loss = 0.0
+        valid_changes = 0
+        is_initialized = False
         
         # -------------------------------------------------------------
         # Logic Step 2: Main Loop
         # -------------------------------------------------------------
         for i in range(1, len(candles)):
-            
-            # Logic Step 2.1: Calculate Raw Change
-            change = candles[i]['close'] - candles[i - 1]['close']
-            
-            # Logic Step 2.2: Separate Up/Down
-            if change > 0:
-                gain = change
-                loss = 0.0
-            else:
-                gain = 0.0
-                loss = -change # Make positive
-
-            # -------------------------------------------------------------
-            # Phase A: Seed Period (Accumulation)
-            # [Limit] i < N
-            # -------------------------------------------------------------
-            if i < self.period:
-                sum_gains += gain
-                sum_losses += loss
-                # Not enough data for RSI yet
+            curr = _valid_close(candles[i])
+            prev = _valid_close(candles[i - 1])
+            if curr is None or prev is None:
+                if not is_initialized:
+                    avg_gain = 0.0
+                    avg_loss = 0.0
+                    valid_changes = 0
                 self.values.append(None)
                 continue
-                
-            # -------------------------------------------------------------
-            # Phase B: First RSI (Simple Average)
-            # [Limit] i == N
-            # [Why] Wilder initialized the Series with a Simple MA.
-            # -------------------------------------------------------------
-            if i == self.period:
-                sum_gains += gain
-                sum_losses += loss
-                
-                # Calculate Initial Averages
-                avg_gain = sum_gains / self.period
-                avg_loss = sum_losses / self.period
-                
-                # Compute & Store
-                rsi = self._compute_rsi_value(avg_gain, avg_loss)
-                self.values.append(rsi)
-                
-                # [Crucial State Update]
-                # For the NEXT step (Wilder's Smoothing), the "Previous Average"
-                # is the current Average we just calculated.
-                # So we repurpose sum_gains/sum_losses to hold averages.
-                sum_gains = avg_gain
-                sum_losses = avg_loss
-                continue
 
-            # -------------------------------------------------------------
-            # Phase C: Subsequent RSI (Wilder's Smoothing)
-            # [Limit] i > N
-            # [Formula] NewAvg = (PrevAvg * (N-1) + Current) / N
-            # -------------------------------------------------------------
+            # Logic Step 2.1: Calculate Raw Change
+            change = curr - prev
             
-            # Smooth the Averages
-            sum_gains = (sum_gains * (self.period - 1) + gain) / self.period
-            sum_losses = (sum_losses * (self.period - 1) + loss) / self.period
-            
-            # Compute & Store
-            rsi = self._compute_rsi_value(sum_gains, sum_losses)
-            self.values.append(rsi)
+            # Logic Step 2.2: Separate Up/Down
+            gain = change if change > 0.0 else 0.0
+            loss = -change if change < 0.0 else 0.0
+
+            if not is_initialized:
+                avg_gain += gain
+                avg_loss += loss
+                valid_changes += 1
+
+                if valid_changes == self.period:
+                    avg_gain /= self.period
+                    avg_loss /= self.period
+                    is_initialized = True
+                    self.values.append(self._compute_rsi_value(avg_gain, avg_loss))
+                else:
+                    self.values.append(None)
+            else:
+                avg_gain = (avg_gain * (self.period - 1) + gain) / self.period
+                avg_loss = (avg_loss * (self.period - 1) + loss) / self.period
+                self.values.append(self._compute_rsi_value(avg_gain, avg_loss))
 
 
     # =============================================================================

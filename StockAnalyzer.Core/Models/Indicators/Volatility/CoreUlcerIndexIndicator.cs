@@ -20,28 +20,55 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
             }
         }
 
-        protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+        protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
         {
-            var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-            for (int i = 0; i < candles.Count; i++)
+            if (Period <= 0)
             {
-                if (i < Period - 1) { _values.Add(null); continue; }
-                decimal maxClose = 0;
-                for (int j = 0; j < Period; j++) maxClose = Math.Max(maxClose, priceSeries[i - j] ?? 0m);
+                for (int i = 0; i < series.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
+            }
 
-                if (maxClose == 0)
+            for (int i = 0; i < series.Count; i++)
+            {
+                if (i < Period - 1)
                 {
-                    _values.Add(0); // Avoid division by zero, drawdown is 0%
+                    _values.Add(null);
                     continue;
                 }
 
-                decimal sumSq = 0;
+                decimal maxClose = 0m;
+                bool hasNull = false;
                 for (int j = 0; j < Period; j++)
                 {
-                    decimal dd = ((priceSeries[i - j] ?? 0m) - maxClose) / maxClose * 100;
+                    decimal? val = series[i - j];
+                    if (!val.HasValue)
+                    {
+                        hasNull = true;
+                        break;
+                    }
+                    maxClose = Math.Max(maxClose, val.Value);
+                }
+
+                if (hasNull)
+                {
+                    _values.Add(null);
+                    continue;
+                }
+
+                if (maxClose == 0m)
+                {
+                    _values.Add(0m); // Avoid division by zero when non-null prices are <= 0
+                    continue;
+                }
+
+                decimal sumSq = 0m;
+                for (int j = 0; j < Period; j++)
+                {
+                    decimal dd = (series[i - j]!.Value - maxClose) / maxClose * 100m;
                     sumSq += dd * dd;
                 }
-                _values.Add((decimal)Math.Sqrt((double)(sumSq / Period)));
+
+                _values.Add(IndicatorCalculationHelper.ToDecimalOrNull(Math.Sqrt((double)(sumSq / Period))));
             }
 
             return IndicatorResult.Success(_values);

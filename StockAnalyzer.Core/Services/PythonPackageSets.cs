@@ -8,12 +8,17 @@ namespace StockAnalyzer.Core.Services
         /// <summary>The interpreter arguments every pip install command line starts with (automatic and manual, including the pip and certifi security upgrade).</summary>
         internal const string PipInstallCommand = "-m pip install";
 
+        /// <summary>Tokenized <see cref="PipInstallCommand"/> for <see cref="System.Diagnostics.ProcessStartInfo.ArgumentList"/>.</summary>
+        internal static readonly string[] PipInstallCommandTokens = { "-m", "pip", "install" };
+
         /// <summary>
-        /// Start of the install command lines of the packages (automatic and manual). Build isolation is bypassed because the embedded environment often
-        /// fails to create a clean isolated environment with all necessary build tools (like setuptools). The pip and certifi security upgrade uses
-        /// <see cref="PipInstallCommand"/> only: both are wheels, so there is nothing to build.
+        /// Start of the install command lines of the packages (automatic and manual). Enforces binary wheels (<c>--only-binary :all:</c>)
+        /// so arbitrary source-package <c>setup.py</c> execution cannot occur during installation or upgrade.
         /// </summary>
-        internal const string PipInstallPrefix = PipInstallCommand + " --no-build-isolation";
+        internal const string PipInstallPrefix = PipInstallCommand + " --only-binary :all:";
+
+        /// <summary>Tokenized <see cref="PipInstallPrefix"/> for <see cref="System.Diagnostics.ProcessStartInfo.ArgumentList"/>.</summary>
+        internal static readonly string[] PipInstallPrefixTokens = { "-m", "pip", "install", "--only-binary", ":all:" };
 
         /// <summary>CPU-only PyTorch index (torch is installed from here on Windows).</summary>
         public const string TorchIndexUrl = "https://download.pytorch.org/whl/cpu";

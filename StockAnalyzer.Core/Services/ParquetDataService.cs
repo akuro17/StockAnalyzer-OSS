@@ -415,8 +415,27 @@ public class ParquetDataService : IDataService, IAttestedMonitoringDataSource, I
             candles.RemoveRange(0, candles.Count - count);
         }
 
+        // Diagnose the series actually returned to callers (when count > 0, only the requested trailing window; full file when count <= 0).
+        var diagnostics = CandleInvariant.DiagnoseSeries(symbol, candles);
+        if (diagnostics.HasIssues)
+        {
+            _logger.LogWarning(
+                "OHLCV diagnostic warning for {Symbol} ({TimeFrame}): {InvalidCount} invalid bar(s), {NonMonotonicCount} non-monotonic/duplicate timestamp(s), first at {FirstDate:yyyy-MM-dd} ({Detail}). Rows retained unchanged.",
+                symbol,
+                timeFrame,
+                diagnostics.InvalidBarCount,
+                diagnostics.NonMonotonicBarCount,
+                diagnostics.FirstInvalidTimestamp,
+                diagnostics.FirstViolationDetail ?? string.Empty);
+        }
+
         _logger.LogInformation("Loaded {Count} candles for {Symbol} from {FilePath}", candles.Count, symbol, filePath);
-        return new DataReadResult(DataReadStatus.Read, candles);
+        return new DataReadResult(
+            DataReadStatus.Read,
+            candles,
+            diagnostics.InvalidBarCount,
+            diagnostics.NonMonotonicBarCount,
+            diagnostics.FirstInvalidTimestamp);
     }
 
     private string ResolveBasePath(TimeFrame timeFrame)

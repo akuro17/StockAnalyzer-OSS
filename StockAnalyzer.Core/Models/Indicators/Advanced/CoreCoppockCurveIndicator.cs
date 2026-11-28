@@ -21,38 +21,38 @@ public class CoreCoppockCurveIndicator : CoreIndicatorBase
         }
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-
-        // Coppock = WMA[10] of (ROC[14] + ROC[11])
-        int maxRoc = Math.Max(LongRocPeriod, ShortRocPeriod);
-
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        var rocSum = new List<decimal>();
-
-        for (int i = 0; i < candles.Count; i++)
+        if (LongRocPeriod <= 0 || ShortRocPeriod <= 0 || WmaPeriod <= 0)
         {
-            if (i < maxRoc)
+            for (int i = 0; i < series.Count; i++) _values.Add(null);
+            return IndicatorResult.Success(_values);
+        }
+
+        // Coppock = WMA[WmaPeriod] of (ROC[LongRocPeriod] + ROC[ShortRocPeriod])
+        int maxRoc = Math.Max(LongRocPeriod, ShortRocPeriod);
+        var rocSum = new List<decimal?>(series.Count);
+
+        for (int i = 0; i < series.Count; i++)
+        {
+            if (i < maxRoc
+                || !series[i - LongRocPeriod].HasValue
+                || !series[i - ShortRocPeriod].HasValue
+                || !series[i].HasValue)
             {
-                rocSum.Add(0); // Placeholder
+                rocSum.Add(null);
                 continue;
             }
 
-            decimal longBase = priceSeries[i - LongRocPeriod] ?? 0m;
-            decimal shortBase = priceSeries[i - ShortRocPeriod] ?? 0m;
-            decimal current = priceSeries[i] ?? 0m;
+            decimal longBase = series[i - LongRocPeriod]!.Value;
+            decimal shortBase = series[i - ShortRocPeriod]!.Value;
+            decimal current = series[i]!.Value;
             decimal rocLong = longBase == 0m ? 0m : (current - longBase) / longBase * 100m;
             decimal rocShort = shortBase == 0m ? 0m : (current - shortBase) / shortBase * 100m;
             rocSum.Add(rocLong + rocShort);
         }
 
-        // Apply WMA to rocSum
-        // WMA calculation... 
-        // For simplicity, reusing CoreWma logic would be best, but implementing inline here for now
-        // Or better: use helper if available. 
-        // Implementing standard WMA loop for now.
-
-        for (int i = 0; i < candles.Count; i++)
+        for (int i = 0; i < series.Count; i++)
         {
             if (i < maxRoc + WmaPeriod - 1)
             {
@@ -60,16 +60,24 @@ public class CoreCoppockCurveIndicator : CoreIndicatorBase
                 continue;
             }
 
-            decimal numerator = 0;
-            decimal denominator = 0;
+            decimal numerator = 0m;
+            decimal denominator = 0m;
+            bool hasNull = false;
             for (int j = 0; j < WmaPeriod; j++)
             {
-                decimal val = rocSum[i - j];
+                decimal? val = rocSum[i - j];
+                if (!val.HasValue)
+                {
+                    hasNull = true;
+                    break;
+                }
+
                 decimal weight = WmaPeriod - j;
-                numerator += val * weight;
+                numerator += val.Value * weight;
                 denominator += weight;
             }
-            _values.Add(numerator / denominator);
+
+            _values.Add(hasNull ? null : numerator / denominator);
         }
 
         return IndicatorResult.Success(_values);

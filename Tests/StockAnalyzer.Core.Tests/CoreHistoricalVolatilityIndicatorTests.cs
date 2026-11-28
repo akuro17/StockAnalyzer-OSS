@@ -66,5 +66,70 @@ namespace StockAnalyzer.Core.Tests
             indicator.Calculate(new List<CoreCandleData>());
             Assert.Empty(indicator.Values);
         }
+
+        [Fact]
+        public void Calculate_WithZeroCloseBar_ReturnsNullForAffectedWindowsAndSucceeds()
+        {
+            var indicator = new CoreHistoricalVolatilityIndicator { Period = 3 };
+            var candles = CreateTestCandles(new decimal[] { 10m, 11m, 0m, 12m, 13m, 14m, 15m, 16m });
+
+            var result = indicator.Calculate(candles);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(8, indicator.Values.Count);
+            for (int i = 0; i <= 5; i++)
+            {
+                Assert.Null(indicator.Values[i]);
+            }
+            Assert.NotNull(indicator.Values[6]);
+            Assert.NotNull(indicator.Values[7]);
+        }
+
+        [Fact]
+        public void Calculate_WithNegativeCloseBar_ReturnsNullForAffectedWindowsAndSucceeds()
+        {
+            var indicator = new CoreHistoricalVolatilityIndicator { Period = 3 };
+            var candles = CreateTestCandles(new decimal[] { 10m, 11m, -5m, 12m, 13m, 14m, 15m });
+
+            var result = indicator.Calculate(candles);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(7, indicator.Values.Count);
+            for (int i = 0; i <= 5; i++)
+            {
+                Assert.Null(indicator.Values[i]);
+            }
+            Assert.NotNull(indicator.Values[6]);
+        }
+
+        [Fact]
+        public void CalculateSeries_WithNullInSeries_PropagatesNullAndRecovers()
+        {
+            var indicator = new CoreHistoricalVolatilityIndicator { Period = 3 };
+            var series = new decimal?[] { 10m, 11m, null, 12m, 13m, 14m, 15m };
+
+            var result = indicator.CalculateSeries(series);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(7, indicator.Values.Count);
+            for (int i = 0; i <= 5; i++)
+            {
+                Assert.Null(indicator.Values[i]);
+            }
+            Assert.NotNull(indicator.Values[6]);
+        }
+
+        [Fact]
+        public void Calculate_WithPeriodOne_ReturnsAllNullsAndSucceeds()
+        {
+            var indicator = new CoreHistoricalVolatilityIndicator { Period = 1 };
+            var candles = CreateTestCandles(new decimal[] { 10m, 11m, 12m, 11m, 10m });
+
+            var result = indicator.Calculate(candles);
+
+            Assert.True(result.IsSuccessful);
+            Assert.Equal(5, indicator.Values.Count);
+            Assert.All(indicator.Values, Assert.Null);
+        }
     }
 }

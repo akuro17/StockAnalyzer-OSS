@@ -31,71 +31,52 @@ public class CoreBollingerBandsRatioIndicator : CoreIndicatorBase
         return settings;
     }
 
-    protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
+    protected override IIndicatorResult CalculateSeriesCore(IReadOnlyList<decimal?> series, IReadOnlyList<decimal?>? dynamicPeriods = null)
     {
-
-        if (candles == null || candles.Count == 0) return IndicatorResult.Success(_values);
-        if (candles.Count < Period)
+        if (series.Count == 0) return IndicatorResult.Success(_values);
+        if (Period <= 0 || series.Count < Period)
         {
-            _values.AddRange(Enumerable.Repeat<decimal?>(null, candles.Count));
+            _values.AddRange(Enumerable.Repeat<decimal?>(null, series.Count));
             return IndicatorResult.Success(_values);
         }
 
-        var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
-        var middleBand = new List<decimal?>();
-        var stdDevs = new List<decimal?>();
+        var middleBand = IndicatorCalculationHelper.CalculateSmaWithNulls(series, Period);
 
-        // Calculate SMA (Middle Band) and StdDev
-        for (int i = 0; i < candles.Count; i++)
+        for (int i = 0; i < series.Count; i++)
         {
-            if (i < Period - 1)
-            {
-                middleBand.Add(null);
-                stdDevs.Add(null);
-            }
-            else
-            {
-                decimal sum = 0m;
-                int start = i - Period + 1;
-                for (int j = 0; j < Period; j++)
-                {
-                    sum += priceSeries[start + j] ?? 0m;
-                }
-                decimal sma = sum / Period;
-                middleBand.Add(sma);
-
-                decimal sumOfSquares = 0m;
-                for (int j = 0; j < Period; j++)
-                {
-                    decimal diff = (priceSeries[start + j] ?? 0m) - sma;
-                    sumOfSquares += diff * diff;
-                }
-                stdDevs.Add((decimal)Math.Sqrt((double)(sumOfSquares / Period)));
-            }
-        }
-
-        // Calculate Bollinger Bands Ratio (%B)
-        for (int i = 0; i < candles.Count; i++)
-        {
-            if (middleBand[i].HasValue && stdDevs[i].HasValue)
-            {
-                var upperBand = middleBand[i]!.Value + StdDevMultiplier * stdDevs[i]!.Value;
-                var lowerBand = middleBand[i]!.Value - StdDevMultiplier * stdDevs[i]!.Value;
-                var bandRange = upperBand - lowerBand;
-
-                if (bandRange != 0)
-                {
-                    _values.Add(((priceSeries[i] ?? 0m) - lowerBand) / bandRange);
-                }
-                else
-                {
-                    // If range is 0, price is at the middle. Typically represented as 0.5
-                    _values.Add(0.5m);
-                }
-            }
-            else
+            if (middleBand[i] is not { } sma || series[i] is not { } currentPrice)
             {
                 _values.Add(null);
+                continue;
+            }
+
+            decimal sumOfSquares = 0m;
+            int start = i - Period + 1;
+            for (int j = 0; j < Period; j++)
+            {
+                decimal diff = series[start + j]!.Value - sma;
+                sumOfSquares += diff * diff;
+            }
+
+            decimal? stdDev = IndicatorCalculationHelper.ToDecimalOrNull(Math.Sqrt((double)(sumOfSquares / Period)));
+            if (!stdDev.HasValue)
+            {
+                _values.Add(null);
+                continue;
+            }
+
+            decimal upperBand = sma + StdDevMultiplier * stdDev.Value;
+            decimal lowerBand = sma - StdDevMultiplier * stdDev.Value;
+            decimal bandRange = upperBand - lowerBand;
+
+            if (bandRange != 0m)
+            {
+                _values.Add((currentPrice - lowerBand) / bandRange);
+            }
+            else
+            {
+                // If range is 0, price is at the middle. Typically represented as 0.5
+                _values.Add(0.5m);
             }
         }
 

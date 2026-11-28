@@ -31,7 +31,7 @@ internal static class RlLocalParquetReader
         command.CommandText = "SET memory_limit='" + Math.Min(RlContract.BufferByteLimit,
             checked((long)limits.MaxTensorSizeMiB * TrainingResourceOverrides.MiB)).ToString(CultureInfo.InvariantCulture) + "B'";
         command.ExecuteNonQuery();
-        string escaped = ParquetMarketDataProvider.EscapeDuckDbPath(snapshotPath.Replace('\\', '/'));
+        string escaped = ParquetMarketDataProvider.FormatDuckDbPath(snapshotPath);
         command.CommandText = $"DESCRIBE SELECT * FROM read_parquet('{escaped}')";
         var schema = new Dictionary<string, string>(StringComparer.Ordinal);
         using (var reader = command.ExecuteReader())
@@ -91,7 +91,7 @@ internal static class RlLocalParquetReader
     internal static IReadOnlyDictionary<string, string?> ReadMetadata(DuckDBConnection db, string metadataSnapshot)
     {
         using var command = db.CreateCommand();
-        string escaped = ParquetMarketDataProvider.EscapeDuckDbPath(metadataSnapshot.Replace('\\', '/'));
+        string escaped = ParquetMarketDataProvider.FormatDuckDbPath(metadataSnapshot);
         command.CommandText = $"SELECT * FROM read_parquet('{escaped}')";
         using var reader = command.ExecuteReader();
         if (!reader.Read()) throw new InvalidDataException("Local symbol metadata is empty.");

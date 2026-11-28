@@ -49,6 +49,7 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
                 throw Invalid(DiscussionArgumentNames.Arguments, "arguments must be a JSON object.");
             }
 
+            CheckKnownKeys(request.Operation, document.RootElement);
             var arguments = new Arguments(document.RootElement);
             string json = request.Operation switch
             {
@@ -85,6 +86,32 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
 
     private static DiscussionException Invalid(string parameter, string message)
         => new(DiscussionErrorCodes.InvalidArgument, message, parameter);
+
+    /// <summary>
+    /// The first step of every operation, before a value is read: the first top-level key (in document order) that the operation does not accept is refused, so that a hub
+    /// older than its client never ignores a new optional argument in silence. A name without a list keeps the answer of the dispatch below. Nested objects keep their own checks.
+    /// </summary>
+    private static void CheckKnownKeys(string operation, JsonElement root)
+    {
+        if (!DiscussionOperationArguments.HasOperation(operation))
+        {
+            return;
+        }
+
+        foreach (JsonProperty property in root.EnumerateObject())
+        {
+            if (!DiscussionOperationArguments.IsKnown(operation, property))
+            {
+                // The key is client text of any length (a pipe line may hold 5 MiB, and the key is echoed twice): it is cut like every other client text that a record or a refusal keeps.
+                string shown = DiscussionText.Truncate(property.Name, DiscussionLimits.CommandLogTextMaxChars);
+                throw new DiscussionException(
+                    DiscussionErrorCodes.InvalidArgument,
+                    $"Unknown argument '{shown}' for operation '{operation}'.",
+                    shown,
+                    DiscussionRouterTexts.UnknownArgumentHint);
+            }
+        }
+    }
 
     private readonly struct Arguments
     {
@@ -378,7 +405,8 @@ public sealed class DiscussionHubGateway : IDiscussionGateway
         bool excludeEvents = arguments.Boolean(DiscussionArgumentNames.ExcludeEvents) ?? false;
         int? tail = arguments.Integer(DiscussionArgumentNames.Tail) is { } tailValue ? CheckedInt(DiscussionArgumentNames.Tail, tailValue) : null;
         bool waitForTurn = arguments.Boolean(DiscussionArgumentNames.WaitForTurn) ?? false;
-        var options = new DiscussionReadOptions(excludeEvents, tail, waitForTurn);
+        bool excludeOwn = arguments.Boolean(DiscussionArgumentNames.ExcludeOwn) ?? false;
+        var options = new DiscussionReadOptions(excludeEvents, tail, waitForTurn, excludeOwn);
 
         DiscussionReadResult read = await _hub.ReadAsync(
             arguments.String(DiscussionArgumentNames.SessionId),

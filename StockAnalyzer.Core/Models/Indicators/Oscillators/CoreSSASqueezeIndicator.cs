@@ -130,12 +130,32 @@ public class CoreSSASqueezeIndicator : CoreIndicatorBase
             }
         }
 
-        // 2. Extract Price Series
+        // 2. Extract Price Series (strict null / finite guard without 0m substitution)
         var priceSeries = PriceDataHelper.ExtractPriceSeries(candles, PriceSource);
         double[] doublePrices = new double[n];
+        bool[] validWindowEnd = new bool[n];
+        int contiguousValid = 0;
         for (int i = 0; i < n; i++)
         {
-            doublePrices[i] = (double)(priceSeries[i] ?? 0m);
+            if (!priceSeries[i].HasValue)
+            {
+                contiguousValid = 0;
+                continue;
+            }
+
+            double val = (double)priceSeries[i]!.Value;
+            if (!double.IsFinite(val))
+            {
+                contiguousValid = 0;
+                continue;
+            }
+
+            doublePrices[i] = val;
+            contiguousValid++;
+            if (contiguousValid >= window)
+            {
+                validWindowEnd[i] = true;
+            }
         }
 
         // 3. Compute Rolling SSA Center & Residual StdDev
@@ -161,6 +181,11 @@ public class CoreSSASqueezeIndicator : CoreIndicatorBase
 
             for (int t = window - 1; t < n; t++)
             {
+                if (!validWindowEnd[t])
+                {
+                    continue;
+                }
+
                 ReadOnlySpan<double> windowSpan = doublePrices.AsSpan(t - window + 1, window);
                 SsaDecompositionEngine.Detrend(windowSpan, processed, SsaDetrendMode.LeastSquaresLinear, out double slope, out double intercept);
 
@@ -233,11 +258,19 @@ public class CoreSSASqueezeIndicator : CoreIndicatorBase
                 double safeChannelWidthAtr = Math.Max(2.0 * atrMult * atrValues[t], Math.Max(1e-12, closeScale));
 
                 double ratio = bandWidthSsa / safeChannelWidthAtr;
-                decimal ratioDec = decimal.Round((decimal)ratio, 4, MidpointRounding.AwayFromZero);
-                SqueezeRatio.Add(ratioDec);
-
-                decimal statusDec = (ratio < sqThresh) ? 1.0m : 0.0m;
-                SqueezeStatus.Add(statusDec);
+                decimal? ratioDecRaw = double.IsFinite(safeChannelWidthAtr)
+                    ? IndicatorCalculationHelper.ToDecimalOrNull(ratio)
+                    : null;
+                if (ratioDecRaw is { } ratioDec)
+                {
+                    SqueezeRatio.Add(decimal.Round(ratioDec, 4, MidpointRounding.AwayFromZero));
+                    SqueezeStatus.Add((ratio < sqThresh) ? 1.0m : 0.0m);
+                }
+                else
+                {
+                    SqueezeRatio.Add(null);
+                    SqueezeStatus.Add(null);
+                }
             }
 
             // Momentum calculation: requires momPeriod consecutive valid SSA center values
@@ -275,7 +308,8 @@ public class CoreSSASqueezeIndicator : CoreIndicatorBase
 
                     double slope = (sumTiYi - momMeanI * sumY) / momDenom;
                     double momentumVal = slope * momPeriod;
-                    _values.Add(decimal.Round((decimal)momentumVal, 6, MidpointRounding.AwayFromZero));
+                    decimal? momDec = IndicatorCalculationHelper.ToDecimalOrNull(momentumVal);
+                    _values.Add(momDec.HasValue ? decimal.Round(momDec.Value, 6, MidpointRounding.AwayFromZero) : null);
                 }
             }
         }

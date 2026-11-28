@@ -24,7 +24,14 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
 
         protected override IIndicatorResult CalculateCore(IReadOnlyList<CoreCandleData> candles)
         {
-            if (candles.Count < 2) return IndicatorResult.Success(_values);
+            if (candles.Count == 0) return IndicatorResult.Success(_values);
+            if (Period < 2 || candles.Count < Period + 1)
+            {
+                for (int i = 0; i < candles.Count; i++) _values.Add(null);
+                return IndicatorResult.Success(_values);
+            }
+
+            double log10Period = Math.Log10(Period);
             for (int i = 0; i < candles.Count; i++)
             {
                 if (i < Period) { _values.Add(null); continue; }
@@ -47,12 +54,12 @@ namespace StockAnalyzer.Core.Models.Indicators.Volatility
                 decimal range = highestHigh - lowestLow;
                 if (range == 0 || atrSum == 0)
                 {
-                    _values.Add(100); // Max choppiness if no range or ATR
+                    _values.Add(100m); // Max choppiness if no range or ATR
                 }
                 else
                 {
-                    decimal ci = 100 * (decimal)Math.Log10((double)(atrSum / range)) / (decimal)Math.Log10(Period);
-                    _values.Add(ci);
+                    double ci = 100.0 * Math.Log10((double)(atrSum / range)) / log10Period;
+                    _values.Add(IndicatorCalculationHelper.ToDecimalOrNull(ci));
                 }
             }
 
